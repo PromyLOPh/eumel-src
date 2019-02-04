@@ -1,0 +1,670 @@
+(* ------------------- VERSION 10 vom 17.04.86 ------------------- *)
+PACKET archive manager DEFINES                 (* Autor: J.Liedtke*)
+ 
+      archive manager ,
+      provide channel :
+
+
+
+LET std archive channel  = 31 ,
+
+    ack              = 0 ,
+    nak              = 1 ,
+    error nak        = 2 ,
+    second phase ack = 5 ,
+    false code       = 6 ,
+ 
+    fetch code       = 11 ,
+    save code        = 12 ,
+    exists code      = 13 ,
+    erase code       = 14 ,
+    list code        = 15 ,
+    all code         = 17 ,
+    clear code       = 18 ,
+    reserve code     = 19 ,
+    free code        = 20 ,
+    check read code  = 22 ,
+    format code      = 23 ,
+
+    read error       = 92 ,
+ 
+    max files = 200 ,
+ 
+    start of volume = 1000 ,
+    end of volume = 1 ,
+    file header   = 3 , 
+
+    number of header blocks = 2 ,
+ 
+    quote         = """" ,
+    dummy name    = "-" ,
+    dummy date    = "        " ,
+
+ 
+    HEADER = STRUCT (TEXT name, date, INT type, TEXT password) ;
+
+
+BOUND STRUCT (TEXT name, pass) VAR msg ;
+
+INT VAR archive channel := std archive channel ;
+
+TASK VAR archive owner := niltask ,
+         order task ;
+TEXT VAR archive name := "" , write stamp ;
+
+REAL VAR last access time := 0.0 ;
+
+BOOL VAR was already write access ;
+
+
+DATASPACE VAR header space := nilspace ;
+BOUND HEADER VAR header ;
+
+TEXT VAR file name := "" ;
+
+LET invalid   = 0 ,
+    read only = 1 ,
+    valid     = 2 ;
+
+LET accept read errors = TRUE ,
+    ignore read errors = FALSE ;
+
+
+INT VAR directory state := invalid ;
+
+THESAURUS VAR directory ;
+INT VAR dir index ;
+
+INT VAR archive size ;
+
+INT VAR end of volume block ;
+ROW max files INT VAR header block ;
+ROW max files TEXT VAR header date ;
+
+
+ 
+PROC provide channel (INT CONST channel) :
+
+  archive channel := channel
+
+ENDPROC provide channel ;
+
+PROC archive manager :
+
+  archive manager (archive channel)
+
+ENDPROC archive manager ;
+
+PROC archive manager (INT CONST channel) :
+
+  archive channel := channel ;
+  task password ("-") ;
+  global manager 
+     (PROC (DATASPACE VAR, INT CONST, INT CONST, TASK CONST) archive manager)
+
+ENDPROC archive manager ;
+
+PROC archive manager (DATASPACE VAR ds, INT CONST order, phase,
+                      TASK CONST task) :
+
+
+  enable stop ;
+  order task := task ;
+  msg := ds ;
+  SELECT order OF
+    CASE fetch code       : fetch file
+    CASE save code        : save file
+    CASE exists code      : exists file
+    CASE erase code       : erase file
+    CASE list code        : list (ds); manager ok (ds)
+    CASE all code         : deliver directory
+    CASE clear code,
+         format code      : clear or format
+    CASE reserve code     : reserve 
+    CASE free code        : free
+    CASE check read code  : check
+    OTHERWISE errorstop (name (myself) + ": unbekannter Auftrag")
+  ENDSELECT .
+
+deliver directory :
+  access archive ;
+  BOUND THESAURUS VAR all names := ds ;
+  all names := directory ;
+  WHILE all names CONTAINS dummy name REP
+    delete (all names, dummy name, dir index)
+  PER ;
+  manager ok (ds) .
+
+clear or format :
+  IF NOT (order task = archive owner)
+    THEN errorstop ("Archiv nicht angemeldet")
+  ELIF phase = 1
+    THEN ask for erase all
+  ELSE   directory state := invalid ;
+         IF order <> clear code
+           THEN format archive (specification) ;
+                archive size := archive blocks
+         FI ;
+         rewind ;
+         write header (archive name, text (clock(1),13,1), start of volume);
+         write end of volume ;
+         manager ok (ds)
+  FI .
+
+ask for erase all :
+  IF order = format code AND specification > 3
+    THEN errorstop ("ungueltiger Format-Code")
+  FI ;
+  look at volume header ;
+  IF header.name <> ""
+    THEN IF order = clear code
+           THEN manager question ("Archiv """+header.name+""" loeschen", order task) 
+           ELSE manager question ("Archiv """+header.name+""" formatieren", order task) 
+         FI 
+    ELSE IF order = clear code
+           THEN manager question ("Archiv initialisieren", order task) 
+           ELSE manager question ("Archiv formatieren", order task)
+         FI
+  FI .
+
+specification :
+  int (msg.name) .
+
+reserve :
+  IF reserve or free permitted
+     THEN continue archive channel;
+          disable stop ;
+          directory state := invalid ;
+          archive owner := order task ;
+          archive name := msg.name ;
+          manager ok (ds)
+     ELSE errorstop ("Archiv wird von Task """+name(archive owner)+""" benutzt")
+  FI .
+
+continue archive channel :
+  continue channel (archive channel) .
+
+free :
+  IF reserve or free permitted 
+    THEN archive owner := niltask ;
+         break (quiet) ;
+         manager ok (ds)
+    ELSE manager message ("Archiv nicht angemeldet", order task)
+  FI.
+
+reserve or free permitted :
+     order task = archive owner OR last access more than five minutes ago
+     OR archive owner = niltask OR NOT
+     (exists (archive owner) OR station (archive owner) <> station (myself)) .
+ 
+last access more than five minutes ago :
+     abs (last access time - clock (1)) > 300.0 .
+
+fetch file :
+  access archive ;
+  access file (msg.name) ;
+  IF no read error remarked
+    THEN disable stop ;
+         fetch (ds, accept read errors) ;
+         IF read error occurred
+           THEN remark read error
+         FI ;
+         enable stop
+    ELSE fetch (ds, ignore read errors)
+  FI ;
+  manager ok (ds) .
+
+no read error remarked :
+  pos (file name, " mit Lesefehler") = 0 .
+
+read error occurred :
+  is error AND error code = read error .
+
+remark read error :
+  dir index := link (directory, file name) ;
+  REP
+    file name CAT " mit Lesefehler" ;
+  UNTIL NOT (directory CONTAINS file name) PER ;
+  IF LENGTH file name < 100
+    THEN rename (directory, dir index, file name)
+  FI .
+
+save file :
+  IF phase = 1
+    THEN access archive ;
+         access file (msg.name) ;
+         IF file in directory
+           THEN manager question (""""+file name +""" ueberschreiben", order task)
+           ELSE send (order task, second phase ack, ds)
+         FI
+    ELSE access archive ;
+         access file (file name) ;
+         erase ;
+         save (ds) ;
+         forget (ds) ;
+         ds := nilspace ;
+         manager ok (ds)
+  FI .
+
+exists file :
+  access archive ;
+  access file (msg.name) ;
+  IF file in directory
+    THEN manager ok (ds)
+    ELSE send (order task, false code, ds)
+  FI .
+
+erase file :
+  access archive ;
+  access file (msg.name) ;
+  IF file in directory
+    THEN IF phase = 1
+           THEN manager question (""""+file name+""" loeschen", order task)
+           ELSE erase ; manager ok (ds)
+         FI
+    ELSE manager message ("gibt es nicht", order task)
+  FI .
+
+check :
+  access archive ;
+  access file (msg.name) ;
+  IF file in directory
+    THEN position to file ;
+         disable stop ;
+         check read ;
+         IF is error
+           THEN clear error; error ("fehlerhaft")
+           ELSE last access time := clock (1) ;
+                manager message ("""" + file name + """ ohne Fehler gelesen", order task)
+         FI
+    ELSE error ("gibt es nicht")
+  FI .
+
+file in directory :  dir index > 0 .
+
+position to file :
+  seek (header block (dir index) + number of header blocks) .
+
+ENDPROC archive manager ;
+
+PROC manager ok (DATASPACE VAR ds) :
+
+  send (order task, ack, ds) ;
+  last access time := clock (1) .
+
+ENDPROC manager ok ;
+
+PROC access archive :
+ 
+  IF NOT (order task = archive owner)
+    THEN errorstop ("Archiv nicht angemeldet")
+  ELIF directory state = invalid
+    THEN open archive
+  ELIF last access more than two seconds ago
+    THEN check volume name ;
+         new open if somebody changed medium
+  FI .
+
+last access more than two seconds ago :
+  abs (clock (1) - last access time) > 2.0 .
+
+new open if somebody changed medium :
+  IF header.date <> write stamp
+    THEN directory state := invalid ;
+         access archive
+  FI .
+
+open archive :
+  directory state := invalid ;
+  check volume name ;
+  write stamp := header.date ;
+  was already write access := FALSE ;
+  read directory ;
+  make directory valid if no read errors occurred .
+
+read directory :
+  directory := empty thesaurus ;
+  rewind ;
+  get next header ;
+  WHILE header.type = file header REP
+    IF directory CONTAINS header.name
+      THEN rename (directory, header.name, dummy name)
+    FI ;
+    insert (directory, header.name, dir index) ;
+    header block (dir index) := end of volume block ;
+    header date (dir index)  := header.date ;
+    get next header ;
+  PER .
+
+make directory valid if no read errors occurred :
+  IF directory state = invalid
+    THEN directory state := valid
+  FI .
+
+ENDPROC access archive ;
+
+PROC access file (TEXT CONST name) :
+
+  file name := name ;
+  dir index := link (directory, file name) .
+
+ENDPROC access file ;
+
+
+PROC check volume name :
+
+  disable stop ;
+  archive size := archive blocks ;
+  read volume header ;
+  IF header.type <> start of volume
+    THEN simulate header (start of volume, "?????")
+  ELIF header.name <> archive name
+    THEN errorstop ("Archiv heisst """ + header.name + """")
+  FI .
+
+read volume header :
+  rewind ;
+  read header ;
+  IF is error AND error code = read error
+    THEN clear error ;
+         simulate header (start of volume, "?????")
+  FI .
+
+ENDPROC check volume name ;
+
+PROC get next header :
+
+  disable stop ;
+  skip dataspace ;
+  IF NOT is error
+    THEN read header
+  FI ;
+  IF is error
+    THEN clear error ;
+         directory state := read only ;
+         search header
+  FI ;
+  end of volume block := block number - number of header blocks .
+
+search header :
+  INT VAR ds pages ;
+  search dataspace (ds pages) ;
+  IF ds pages < 0
+    THEN simulate header (end of volume, "")
+  ELIF NOT is header space
+    THEN simulate header (file header, "????? " + text (block number))
+  FI .
+
+is header space :
+  IF ds pages <> 1
+    THEN FALSE
+    ELSE remember position ;
+         read header ;
+         IF read error occurred
+           THEN clear error; back to old position; FALSE
+         ELIF header format looks ok
+           THEN TRUE
+           ELSE back to old position ; FALSE
+         FI
+  FI .
+
+read error occurred :
+  is error CAND error code = read error .
+
+header format looks ok :
+  header.type = file header OR header.type = end of volume .
+
+remember position :
+  INT CONST old block nr := block number .
+
+back to old position :
+  seek (old block nr) .
+
+ENDPROC get next header ;
+
+PROC fetch (DATASPACE VAR ds, BOOL CONST error accept):
+
+  enable stop ;
+  IF file name <> dummy name
+    THEN fetch from archive
+    ELSE error ("Name unzulaessig")
+  FI .
+
+fetch from archive :
+  IF file in directory
+    THEN position to file ;
+         read (ds, 30000, error accept)
+  ELIF directory state = read only
+    THEN error ("gibt es nicht (oder Lesefehler)")
+    ELSE error ("gibt es nicht")
+  FI .
+
+position to file :
+  seek (header block (dir index) + number of header blocks) .
+
+file in directory :  dir index > 0 .
+ 
+ENDPROC fetch ;
+
+PROC erase :
+
+  IF directory state = read only
+    THEN errorstop ("'save'/'erase' wegen Lesefehler verboten")
+    ELSE update write stamp if first write access ;
+         erase archive
+  FI .
+
+update write stamp if first write access :
+  IF NOT was already write access 
+    THEN rewind ;
+         write stamp := text (clock (1), 13, 1) ;
+         write header (archive name, write stamp, start of volume) ;
+         was already write access := TRUE
+  FI .
+
+erase archive :
+  IF file in directory
+    THEN IF is last file of archive
+           THEN cut off all erased files
+           ELSE rename to dummy
+         FI
+  FI .
+
+file in directory :         dir index > 0 .
+
+is last file of archive :   dir index = highest entry (directory) .
+
+cut off all erased files :
+  directory state := invalid ;
+  REP
+    delete (directory, dir index) ;
+    dir index DECR 1
+  UNTIL dir index = 0 COR name (directory, dir index) <> dummy name PER ;
+  behind last valid file ;
+  write end of volume ;
+  directory state := valid .
+
+behind last valid file :
+  seek (header block (dir index + 1)) ;
+  end of volume block := block number .
+
+rename to dummy :
+    directory state := invalid ;
+    to file header ;
+    read header ;
+    to file header ;
+    header.name := dummy name ;
+    header.date := dummy date ;
+    write (header space) ;
+    rename (directory, file name, dummy name) ;
+    header date (dir index) := dummy date ;
+    directory state := valid .
+
+to file header :
+  seek (header block (dir index)) .
+
+ENDPROC erase ;
+
+PROC save (DATASPACE VAR ds) :
+
+  IF file name <> dummy name
+    THEN save to archive
+    ELSE error ("Name unzulaessig")
+  FI .
+
+save to archive :
+  IF file too large OR highest entry (directory) >= max files
+    THEN error ( "kann nicht geschrieben werden (Archiv voll)")
+    ELSE write new file
+  FI .
+
+file too large :
+  end of volume block + ds pages (ds) + 5 > archive size .
+
+write new file :
+  seek (end of volume block) ;
+  disable stop ;
+  write file (ds) ;
+  IF is error
+    THEN seek (end of volume block)
+    ELSE insert (directory, file name, dir index) ;
+         remember begin of header block ;
+         remember date
+  FI ;
+  write end of volume .
+
+remember begin of header block :
+  header block (dir index) := end of volume block .
+
+remember date :
+  header date (dir index) := date .
+
+ENDPROC save ;
+
+PROC write file (DATASPACE CONST ds) :
+
+  enable stop ;
+  write header (file name, date, file header) ;
+  write (ds) 
+
+ENDPROC write file ;
+
+PROC write end of volume :
+
+  disable stop ;
+  end of volume block := block number ;
+  write header ("", "", end of volume)
+
+ENDPROC write end of volume ;
+
+PROC write header (TEXT CONST name, date, INT CONST header type) :
+
+  forget (header space) ;
+  header space := nilspace ;
+  header := header space ;
+
+  header.name := subtext (name,1,100) ;
+  header.date := date ;
+  header.type := header type ;
+
+  write (header space) 
+
+ENDPROC write header ;
+
+PROC read header :
+
+  IF archive size > 0
+    THEN forget (header space) ;
+         header space := nilspace ;
+         read (header space, 1, accept read errors) ;
+         header := header space
+    ELSE errorstop ("Lesen unmoeglich (Archiv)")
+  FI .
+
+ENDPROC read header ;
+
+PROC simulate header (INT CONST type, TEXT CONST name) :
+
+  forget (header space) ;
+  header space := nilspace ;
+  header := header space ;
+  header.name := name ;
+  header.date := "??.??.??" ;
+  header.type := type ;
+  header.password := ""
+
+ENDPROC simulate header ;
+
+PROC look at volume header :
+
+  rewind ;
+  archive size := archive blocks ;
+  forget (header space) ;
+  header space := nilspace ;
+  INT VAR return code ;
+  read block (header space, 1, 1, return code) ;
+  header := header space ;
+  disable stop ;
+  IF return code <> 0 OR
+     LENGTH header.name < 0 OR LENGTH header.name > 100 OR is error
+    THEN header.name := "" ;
+         clear error
+  FI
+
+ENDPROC look at volume header ;
+
+PROC list (DATASPACE VAR ds) :
+
+  access archive ;
+  open list file ;
+  INT VAR file number := 0 ;
+  get (directory, file name, file number) ;
+  WHILE file number > 0 REP
+    generate list line ;
+    get (directory, file name, file number)
+  PER ;
+  IF directory state = read only
+    THEN putline (list file, "Lesefehler: Evtl. fehlen Eintraege")
+  FI ;
+  write list head .
+
+open list file :
+  forget (ds) ;
+  ds := nilspace ;
+  FILE VAR list file := sequential file (output, ds) ;
+  putline (list file, "") .
+
+generate list line :
+  write (list file, header date (file number)) ;
+  write (list file, text (file blocks DIV 2, 5)) ;
+  write (list file, " K  ") ;
+  IF file name = dummy name
+    THEN write (list file, dummy name)
+    ELSE write (list file, quote) ;
+         write (list file, file name) ;
+         write (list file, quote)
+  FI ;
+  line (list file) .
+
+file blocks :
+  IF file number < highest entry (directory)
+    THEN header block (file number+1) - header block (file number)
+    ELSE end of volume block - header block (file number)
+  FI .
+
+write list head :                                      (* wk 22.08.85 *)
+  headline (list file, archive name +
+            " (" + used + " K belegt von " + text (archive size DIV 2) + " K)") .
+
+used :  text ((end of volume block + 3) DIV 2) .
+
+ENDPROC list ;
+
+PROC error (TEXT CONST error msg) :
+
+  errorstop ("""" + file name + """ " + error msg)
+ 
+ENDPROC error ;
+
+ENDPACKET archive manager ;
+

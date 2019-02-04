@@ -1,0 +1,93 @@
+PACKET listederaufsichtszeitenDEFINES 
+aufsichtszeitenlisteerstellenunddruckenggfvorherzeigen:LET fnrausggeplanteshj
+=2,fnrausgaktuelleshj=3,fnrausgdrucker=4,fnrausgbild=5;LET 
+schluesselschuljahr="Schuljahr",schluesselschulhalbjahr="Schulhalbjahr";LET 
+zusätzlicherlaubtetasten="vr";LET meldunglistewirdaufgebaut=7,
+meldunglistewirdausgedruckt=58,meldungbittewarten=69,
+meldungkeinedatenvorhanden=68;LET dateinamezumzeigen=
+"Liste der Aufsichtszeiten",ueberschrift1fuerdruckdatei=
+"Liste der Aufsichtszeiten",ueberschrift2fuerdruckdatei=
+"-------------------------",textanfangfuerschulhalbjahr="für Schuljahr ",
+trennerfuerschuljahr="/",textmittefuerschulhalbjahr=", ",
+textendefuerschulhalbjahr=". Halbjahr",ueberschrift1dertabelle=
+" Tag Nr.  Bezeichnung            Stunde            Uhrzeit",
+ueberschrift2dertabelle=
+"                                 vorher nachher    von      bis",
+trennstrichdertabelle=
+"--------+----------------------+-----------------+-----------------",
+stelligkeitdestages=100,füllervorbezeichnung=".  ",bezeichnungslänge=20,
+füllervorstunde="   ",stundenprowochentag=12,leerestunde="  ",füllerinstunde=
+".    ",füllervoruhrzeit=".        ",blankszumauffüllen="    ",stellenfürzeit
+=4,füllerinuhrzeit="    ",stdundmintrenner=":",laengederstundenzeit=2,
+blanksvorwochentag="  ",leererwochentag="     ",textmontag="Mo",textdienstag=
+"Di",textmittwoch="Mi",textdonnerstag="Do",textfreitag="Fr",textsamstag="Sa",
+nummerfürsa=6;LET niltext="",blank=" ";BOOL VAR erstaufbildschirm:=FALSE ;
+TEXT VAR schuljahr:=niltext,halbjahr:=niltext;INT VAR fehlerstatus;FILE VAR f
+;INT VAR akttag;PROC aufsichtszeitenlisteerstellenunddruckenggfvorherzeigen(
+INT CONST nr):SELECT nrOF CASE 1:aufsichtszeitenlisteerstellenCASE 2:
+aufsichtszeitenlistedruckenENDSELECT .END PROC 
+aufsichtszeitenlisteerstellenunddruckenggfvorherzeigen;PROC 
+aufsichtszeitenlisteerstellen:INT VAR i;prüfeobrichtigangekreuztist;IF 
+fehlerstatus<>0THEN infeld(fehlerstatus);return(1);LEAVE 
+aufsichtszeitenlisteerstellenFI ;erstaufbildschirm:=standardmaskenfeld(
+fnrausgbild)<>niltext;IF erstaufbildschirmTHEN standardmeldung(
+meldunglistewirdaufgebaut,niltext)ELSE standardmeldung(meldungbittewarten,
+niltext)FI ;berechnebearbeitungsschuljahrundhalbjahr;
+fuellediedateimitdenaufsichtszeiten;IF akttag=0THEN standardmeldung(
+meldungkeinedatenvorhanden,niltext);forget(dateinamezumzeigen,quiet);return(1
+);LEAVE aufsichtszeitenlisteerstellenFI ;IF erstaufbildschirmTHEN zeigedatei(
+dateinamezumzeigen,zusätzlicherlaubtetasten)ELSE standardmeldung(
+meldunglistewirdausgedruckt,niltext);aufsichtszeitenlistedruckenFI .
+prüfeobrichtigangekreuztist:standardpruefe(5,fnrausggeplanteshj,
+fnrausgaktuelleshj,0,niltext,fehlerstatus);IF fehlerstatus=0THEN 
+standardpruefe(5,fnrausgdrucker,fnrausgbild,0,niltext,fehlerstatus);FI .
+fuellediedateimitdenaufsichtszeiten:f:=sequentialfile(output,
+dateinamezumzeigen);putline(f,blank);putline(f,zentriert(
+textanfangfuerschulhalbjahr+text(schuljahr,2)+trennerfuerschuljahr+subtext(
+schuljahr,3)+textmittefuerschulhalbjahr+halbjahr+textendefuerschulhalbjahr,
+bildbreite));putline(f,blank);putline(f,blank);putline(f,
+ueberschrift1dertabelle+blank);putline(f,ueberschrift2dertabelle+blank);
+putline(f,trennstrichdertabelle+blank);akttag:=0;inittupel(dnraufsichtszeiten
+);statleseschleife(dnraufsichtszeiten,schuljahr,halbjahr,fnrazsj,fnrazhj,
+PROC fuellediedatei);FOR iFROM akttag+1UPTO nummerfürsaREP putline(f,blank);
+putline(f,wochentag(i));PER ;.berechnebearbeitungsschuljahrundhalbjahr:
+schuljahr:=schulkenndatum(schluesselschuljahr);halbjahr:=schulkenndatum(
+schluesselschulhalbjahr);IF standardmaskenfeld(fnrausgaktuelleshj)=niltext
+THEN geplanteshjundsjberechnen(halbjahr,schuljahr)FI .END PROC 
+aufsichtszeitenlisteerstellen;PROC aufsichtszeitenlistedrucken:INT VAR 
+zeilenzähler;TEXT VAR t;FILE VAR f1:=sequentialfile(input,dateinamezumzeigen)
+;initdruckkopf(zentriert(ueberschrift1fuerdruckdatei,druckbreite),zentriert(
+ueberschrift2fuerdruckdatei,druckbreite));setzemitseitennummern(TRUE );
+druckvorbereiten;druckkopfschreiben;getline(f1,t);druckzeileschreiben(t);
+getline(f1,t);druckzeileschreiben(zentriert(compress(t),druckbreite));
+zeilenzähler:=drucklaenge(2)-2;WHILE NOT eof(f1)REP IF zeilenzähler=0THEN 
+seitenwechsel;druckkopfschreiben;druckzeileschreiben(ueberschrift1dertabelle)
+;druckzeileschreiben(ueberschrift2dertabelle);druckzeileschreiben(
+trennstrichdertabelle);zeilenzähler:=drucklaenge(2)-3;FI ;getline(f1,t);
+druckzeileschreiben(t);zeilenzählerDECR 1;PER ;drucknachbereiten;forget(
+dateinamezumzeigen,quiet);IF erstaufbildschirmTHEN enter(2)ELSE enter(1)FI 
+END PROC aufsichtszeitenlistedrucken;TEXT PROC wochentag(INT CONST tag):TEXT 
+VAR t;SELECT tagOF CASE 1:t:=blanksvorwochentag+textmontag+blankCASE 2:t:=
+blanksvorwochentag+textdienstag+blankCASE 3:t:=blanksvorwochentag+
+textmittwoch+blankCASE 4:t:=blanksvorwochentag+textdonnerstag+blankCASE 5:t:=
+blanksvorwochentag+textfreitag+blankCASE 6:t:=blanksvorwochentag+textsamstag+
+blankEND SELECT ;tEND PROC wochentag;PROC fuellediedatei(BOOL VAR b):INT VAR 
+i,neuertag;TEXT VAR t,t2;IF wert(fnrazsj)>schuljahrCOR wert(fnrazhj)>halbjahr
+COR dbstatus<>okTHEN b:=TRUE ELSE neuertag:=intwert(fnrazaufsichtszeit)DIV 
+stelligkeitdestages;IF neuertag>akttagTHEN putline(f,blank);FOR iFROM akttag+
+1UPTO neuertag-1REP putline(f,wochentag(i));putline(f,blank);PER ;t:=
+wochentag(neuertag);akttag:=neuertag;ELSE t:=leererwochentagFI ;tCAT text(
+intwert(fnrazaufsichtszeit)MOD stelligkeitdestages,2);tCAT 
+füllervorbezeichnung;tCAT text(wert(fnrazbezeichnung),bezeichnungslänge);t
+CAT füllervorstunde;IF intwert(fnraztagstdvor)=0THEN tCAT leerestundeELSE i:=
+(intwert(fnraztagstdvor)-1)MOD stundenprowochentag+1;tCAT text(i,2);FI ;tCAT 
+füllerinstunde;IF intwert(fnraztagstdnach)=0THEN tCAT leerestundeELSE i:=(
+intwert(fnraztagstdnach)-1)MOD stundenprowochentag+1;tCAT text(i,2);FI ;tCAT 
+füllervoruhrzeit;t2:=blankszumauffüllen+wert(fnrazbeginnuhr);t2:=subtext(t2,
+length(t2)+1-stellenfürzeit);tCAT text(t2,laengederstundenzeit);tCAT 
+stdundmintrenner;tCAT subtext(t2,laengederstundenzeit+1);tCAT füllerinuhrzeit
+;t2:=blankszumauffüllen+wert(fnrazendeuhr);t2:=subtext(t2,length(t2)+1-
+stellenfürzeit);tCAT text(t2,laengederstundenzeit);tCAT stdundmintrenner;t
+CAT subtext(t2,laengederstundenzeit+1);tCAT blank;putline(f,t);FI END PROC 
+fuellediedatei;END PACKET listederaufsichtszeiten
+

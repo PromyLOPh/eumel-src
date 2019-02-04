@@ -1,0 +1,371 @@
+PACKET info DEFINES info:
+
+(**********************************************************************)
+(**                                                                  **)
+(**   M i n i - I N F O        Autor: G. Szalay     Stand: 87-04-03  **)
+(**                                                                  **)
+(**********************************************************************)
+
+LET charset = "1234567890ß'qwertzuiopü+asdfghjklöä#<yxcvbnm,.-
+!""§$%&/()=?`QWERTZUIOPÜ*ASDFGHJKLÖÄ^>YXCVBNM;:_ ",
+    hextab = "0123456789abcdef", stdds = 0,
+    cr = ""13"", cr rubout = ""13""12"",
+    up down left right = ""3""10""8""2"";
+TEXT VAR buf, linebuf, bytes, hexbytes, char,
+         search param := ""255"", search buffer,
+         first byte, hex search param := "ff", search mode := "h";
+INT VAR drid := stdds, adr hi := 2, adr lo := 0, lines := 4,
+        begin hi := adr hi, begin lo := adr lo, first word,
+        saddr hi, saddr lo,
+        no of found bytes, cur xx, cur x, cur y, ymin, ymax,
+        xmin := 9, xmidlo := xmin + 21,
+        xmidhi := xmidlo + 5, xmax := xmidhi + 21,
+        word, byte, i, l;
+INT CONST mask 00ff := dec ("00ff"),
+          mask ff00 := dec ("ff00"),
+          offs mask := dec ("0007"),
+          addr mask := dec ("fff8");
+BOOL VAR found, low byte flag := TRUE, interrupted,
+         area 2 nonchangeable := id (1) <> 4 (*i.e. other than 68000*);
+
+PROC wait for (TEXT CONST chars):
+  inchar (char);
+  WHILE pos (chars, char) = 0
+  REP out (""7""); inchar (char) PER
+END PROC wait for;
+
+PROC info:
+  info (drid, begin hi, begin lo, lines)
+END PROC info;
+
+PROC info (INT CONST start drid, start addr hi, start addr lo, start len):
+  drid := start drid;
+  begin hi := start addr hi;
+  begin lo := start addr lo;
+  lines := start len;
+  line; line; show dump;
+  command loop.
+
+command loop:
+  REP
+    zeige kommandoliste;
+    kommando lesen und ausfuehren
+  PER.
+
+zeige kommandoliste:
+  putline (""15"INFO: more, address, dsid, lines, find, or quit"14"").
+
+kommando lesen und ausfuehren:
+  inchar (char);
+  SELECT pos ("damlfq"3"", char) OF
+    CASE 1: drid command
+    CASE 2: addr command
+    CASE 3: more command
+    CASE 4: len command
+    CASE 5: find command
+    CASE 6: quit command
+    CASE 7: up command
+    OTHERWISE more command
+  END SELECT.
+
+quit command: LEAVE command loop.
+
+drid command:
+  out ("dsid="); gethex (buf); drid := dec (buf);
+  IF drid > 0 AND drid < 4 OR drid > 255
+  THEN beep; drid := stdds
+  ELIF drid = 4
+  THEN drid := stdds
+  FI;
+  found := FALSE;
+  show dump.
+
+len command:
+  out ("lines="); gethex (buf); lines := dec (buf); show dump.
+
+addr command:
+  out ("address=");
+  gethex (buf);
+  IF LENGTH buf < 5
+  THEN begin hi := 0; begin lo := dec (buf)
+  ELSE begin hi := dec (subtext (buf, 1, LENGTH buf - 4));
+       begin lo := dec (subtext (buf, LENGTH buf - 3))
+  FI;
+  low byte flag := TRUE; found := FALSE;
+  show dump.
+
+more command:
+  begin hi := adr hi; begin lo := adr lo;
+  low byte flag := TRUE; found := FALSE;
+  line; show dump.
+
+show dump:
+  interrupted := FALSE;
+  get cursor (cur x, cur y);
+  cursor (1, cur y - 2);
+  out ("---------------------------- dsid=");
+  IF drid = stdds THEN out ("04") ELSE outsubtext (hex (drid), 3) FI;
+  putline (" --------------------");
+  adr hi := begin hi;
+  adr lo := begin lo AND addr mask;
+  FOR l FROM 1 UPTO lines REP
+    buf := "  "; linebuf := " "; bytes := "";
+    out (txt (adr hi)); out (hex (adr lo) CT ":  ");
+    IF adr hi = 8
+    THEN out ("_________e_n_d___o_f___d_a_t_a_s_p_a_c_e_________");
+         line; beep; LEAVE show dump
+    FI;
+    FOR i FROM 1 UPTO 8 REP
+      word := dsgetw (drid, adr hi, adr lo);
+      replace (buf, 1, word); rotate (word, 8); hexbytes := hex (word);
+      IF adr lo <> begin lo
+      THEN outsubtext (hexbytes, 1, 2); out (" ");
+           outsubtext (hexbytes, 3) ; out (" ")
+      ELIF low byte flag
+      THEN out (""8"-"); outsubtext (hexbytes, 1, 2); out ("-");
+           outsubtext (hexbytes, 3); out (" ")
+      ELSE outsubtext (hexbytes, 1, 2); out ("-");
+           outsubtext (hexbytes, 3); out ("-")
+      FI;
+      IF i = 4 THEN out ("  ") FI;
+      bytes CAT buf;
+      incl (adr hi, adr lo, 1)
+    PER;
+    FOR i FROM 1 UPTO 16 REP
+      IF pos (charset, bytes SUB i) = 0 THEN replace (bytes, i, ".") FI
+    PER;
+    out ("   "); outsubtext (bytes, 1, 8);
+    out (" "); outsubtext (bytes, 9); line;
+    IF incharety <> "" THEN interrupted := TRUE; LEAVE show dump FI
+  PER.
+
+up command:
+  IF change not allowed THEN beep; reposit cursor; LEAVE up command FI;
+  get cursor (cur x, cur y);
+  ymax := cur y - 2; ymin := ymax - lines + 1;
+  cur x := xmin + (begin lo AND offs mask) * 6;
+  IF cur x > xmidlo THEN cur x INCR 2 FI;
+  IF NOT low byte flag THEN cur x INCR 3 FI;
+  cur y := ymin;
+  cursor (cur x, cur y);
+  REP inchar (char);
+      IF pos (up down left right, char) > 0 THEN move cursor
+      ELIF pos (hextab, char) > 0 THEN read byte and move cursor
+      ELIF char <> cr THEN beep
+      FI
+  UNTIL char = cr PER;
+  cursor (1, ymax + 2); line; show dump.
+
+change not allowed:
+  interrupted OR area 2 nonchangeable AND area 2 of stdds in window.
+
+area 2 of stdds in window:
+  drid = stdds AND
+  (begin hi = 2 OR
+  begin hi = 1 AND begin lo < 0 AND lines * 8 + begin lo > 0).
+
+read byte and move cursor:
+  out (char); byte := pos (hextab, char) - 1;
+  wait for (hextab);
+  out (char); byte := pos (hextab, char) - 1 + 16 * byte;
+  out (""8""8"");
+  eval cursor address and modify word;
+  char := ""2""; move cursor.
+
+eval cursor address and modify word:
+  adr hi := begin hi; adr lo := begin lo AND addr mask;
+  incl (adr hi, adr lo, ((cur y - ymin)*8 + (cur x - xmin) DIV 6));
+  word := dsgetw (drid, adr hi, adr lo);
+  IF high byte read
+  THEN rotate (byte, 8); word := (word AND mask 00ff) OR byte
+  ELSE word := (word AND mask ff00) OR byte
+  FI;
+  dsputw (drid, adr hi, adr lo, word).
+
+high byte read:
+  cur xx := cur x; IF cur xx > xmidlo THEN cur xx DECR 2 FI;
+  cur xx MOD 6 < 3.
+
+move cursor:
+  SELECT pos (up down left right, char) OF
+    CASE 1: IF cur y = ymin THEN beep ELSE cur y DECR 1 FI
+    CASE 2: IF cur y = ymax THEN beep ELSE cur y INCR 1 FI
+    CASE 3: IF cur x = xmin THEN IF cur y = ymin THEN beep
+                                 ELSE cur y DECR 1; cur x := xmax
+                                 FI
+                            ELIF cur x = xmidhi THEN cur x DECR 5
+                            ELSE cur x DECR 3 FI
+    CASE 4: IF cur x = xmax THEN IF cur y = ymax THEN beep
+                                 ELSE cur y INCR 1; cur x := xmin
+                                 FI
+                            ELIF cur x = xmidlo THEN cur x INCR 5
+                            ELSE cur x INCR 3 FI
+  ENDSELECT;
+  cursor (cur x, cur y).
+
+beep: out (""7"").
+
+reposit cursor: out (""3"").
+
+find command:
+  out ("find: hex, char, or last param? (h/H/c/C/<CR>)");
+  wait for ("hHcC"13"");
+  saddr hi := begin hi; saddr lo := begin lo;
+  IF   char = "c" OR char = "C"
+  THEN out (char); get char string; low byte flag := NOT low byte flag
+  ELIF char = "h" OR char = "H"
+  THEN out (char); get hex string; low byte flag := NOT low byte flag
+  ELSE out (search mode);
+       IF pos ("cC", search mode) > 0
+       THEN out (search param)
+       ELSE out (hex search param)
+       FI;
+       IF NOT found THEN low byte flag := NOT low byte flag
+       ELIF NOT low byte flag OR pos ("CH", search mode) > 0
+       THEN incl (saddr hi, saddr lo, 1)
+       FI
+  FI;
+  out (cr); (*acknowledge CR*)
+  search string;
+  line; show dump.
+
+get char string:
+  search mode := char;
+  search param := "";
+  REP inchar (char);
+      SELECT pos (cr rubout, char) OF
+        CASE 1: IF search param = "" THEN beep ELSE LEAVE get char string FI
+        CASE 2: delete last char
+        OTHERWISE search param CAT char; out (char)
+      ENDSELECT
+  PER.
+
+delete last char:
+  IF search param = ""
+  THEN beep
+  ELSE search param := subtext (search param, 1, LENGTH search param - 1);
+       out (""8" "8"")
+  FI.
+
+get hex string:
+  search mode := char;
+  search param := "";
+  REP wait for (hextab CT cr rubout);
+      SELECT pos (cr rubout, char) OF
+        CASE 1: IF NOT regular hex string THEN beep; char :="" FI
+        CASE 2: delete last char
+        OTHERWISE search param CAT char; out (char)
+      ENDSELECT
+  UNTIL char = cr PER;
+  hex search param := search param;
+  search param := "";
+  FOR i FROM 1 UPTO LENGTH hex search param DIV 2 REP
+    char := hex search param SUB i;
+    word := pos (hextab, hex search param SUB (2*i-1)) - 1;
+    word := word * 16 + pos (hextab, hex search param SUB (2*i)) - 1;
+    search param CAT code (word)
+  PER.
+
+regular hex string:
+  LENGTH search param > 0 AND (LENGTH search param AND 1) = 0.
+
+search string:
+  first byte := search param SUB 1; buf := "  ";
+  IF LENGTH search param > 1 THEN first word := search param ISUB 1 FI;
+  REP IF pos ("ch", search mode) > 0
+      THEN search first byte or word
+      ELSE search first word
+      FI;
+      search rest if any;
+      IF found THEN begin hi := saddr hi; begin lo := saddr lo;
+                    LEAVE search string
+      FI;
+      IF NOT low byte flag THEN incl (saddr hi, saddr lo, 1) FI
+  PER.
+
+search first byte or word:
+  REP
+    IF saddr hi = 8 THEN LEAVE search first byte or word FI;
+    word := dsgetw (drid, saddr hi, saddr lo);
+    replace (buf, 1, word);
+    IF NOT low byte flag AND (buf SUB 1) = first byte
+    THEN IF LENGTH search param = 1
+         THEN low byte flag := TRUE; no of found bytes := 1;
+              LEAVE search first byte or word
+         ELIF (buf SUB 2) = (search param SUB 2)
+         THEN low byte flag := TRUE; no of found bytes := 2;
+              LEAVE search first byte or word
+         ELSE look in high byte
+         FI
+    ELSE look in high byte
+    FI;
+    low byte flag := FALSE;
+    incr search address and provide for interaction
+  PER.
+
+search first word:
+  REP
+    IF saddr hi = 8 THEN LEAVE search first word FI;
+    word := dsgetw (drid, saddr hi, saddr lo);
+    IF LENGTH search param = 1
+    THEN replace (buf, 1, word);
+         IF (buf SUB 1) = first byte
+         THEN low byte flag := TRUE; no of found bytes := 1;
+              LEAVE search first word
+         FI
+    ELSE IF word = first word
+         THEN low byte flag := TRUE; no of found bytes := 2;
+              LEAVE search first word
+         FI
+    FI;
+    incr search address and provide for interaction
+  PER.
+
+look in high byte:
+  IF (buf SUB 2) = first byte
+  THEN low byte flag := FALSE; no of found bytes := 1;
+       LEAVE search first byte or word
+  FI.
+
+incr search address and provide for interaction:
+  incl (saddr hi, saddr lo, 1);
+  IF incharety <> ""
+  THEN cursor (64, 24); out ("--- interrupted"); line; line;
+       begin hi := saddr hi; begin lo := saddr lo;
+       LEAVE search string
+  FI.
+
+search rest if any:
+  found := TRUE;
+  IF LENGTH search param = no of found bytes OR saddr hi = 8
+  THEN LEAVE search rest if any
+  FI;
+  IF low byte flag
+  THEN search buffer := subtext (search param, 3)
+  ELSE search buffer := subtext (search param, 2)
+  FI;
+  adr hi := saddr hi; adr lo := saddr lo;
+  FOR i FROM 1 UPTO (LENGTH search param - no of found bytes) DIV 2 REP
+    incl (adr hi, adr lo, 1);
+    word := dsgetw (drid, adr hi, adr lo);
+    IF (search buffer ISUB i) = word
+    THEN no of found bytes INCR 2
+    ELSE found := FALSE
+    FI
+  UNTIL NOT found PER;
+  IF found AND LENGTH search param > no of found bytes
+  THEN search last byte
+  FI.
+
+search last byte:
+  incl (adr hi, adr lo, 1);
+  word := dsgetw (drid, adr hi, adr lo);
+  replace (buf, 1, word);
+  found := (buf SUB 1) = (search param SUB length (search param)).
+
+END PROC info;
+
+(* info *)      (****)
+
+END PACKET info;
+

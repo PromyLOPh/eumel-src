@@ -1,0 +1,178 @@
+PACKET spool cmd                                    (* Autor : R. Ruland  *)
+                                                    (* Stand : 13.08.87   *)
+       DEFINES
+               spool control password,
+ 
+               kill  spool,
+               first spool,
+               start spool,
+               stop  spool,
+               halt  spool,
+               wait for halt :
+ 
+LET error nak          = 2 ,
+ 
+    entry line code    = 23 ,
+    killer code        = 24 , 
+    first code         = 25 ,
+    start code         = 26 , 
+    stop code          = 27 ,
+    halt code          = 28 ,
+    wait for halt code = 29 ;
+ 
+DATASPACE VAR ds;
+ 
+BOUND STRUCT (TEXT entry line, INT index, TEXT actual entries, password) VAR control msg;
+BOUND TEXT VAR error msg;
+INT VAR reply;
+ 
+INITFLAG VAR in this task := FALSE;
+BOOL VAR dialogue;
+TEXT VAR control password, password;
+ 
+control password := "";
+ 
+PROC spool control password (TEXT CONST new password):
+ 
+  IF on line THEN say (""3""13""5"") FI;
+  disable stop;
+  do ("enter spool control password (""" + new password + """)");
+  clear error;
+  no do again;
+  cover tracks;
+  cover tracks (control password);
+  control password := new password;
+ 
+END PROC spool control password;
+ 
+ 
+PROC call spool (INT CONST op code, TEXT CONST name, TASK CONST spool) :
+ 
+  dialogue :=  command dialogue;
+  password :=  write password;
+  password CAT "/";
+  password CAT read password;
+  disable stop;
+  command dialogue (FALSE);
+  enter password (control password);
+  command dialogue (dialogue);
+  call (op code, name, spool);
+  command dialogue (FALSE);
+  enter password (password);
+  command dialogue (dialogue);
+ 
+END PROC call spool;
+ 
+ 
+PROC start spool (TASK CONST spool) :
+ 
+  enable stop;
+  call spool (halt  code, "", spool);
+  call spool (start code, "", spool);
+ 
+END PROC start spool;
+ 
+ 
+PROC start spool (TASK CONST spool, INT CONST new channel) :
+ 
+  enable stop;
+  call spool (halt  code, "", spool);
+  call spool (start code, text (new channel), spool);
+ 
+END PROC start spool;
+ 
+ 
+PROC stop spool (TASK CONST spool) :
+ 
+  call spool (stop code, "", spool);
+ 
+END PROC stop spool;
+ 
+PROC stop spool (TASK CONST spool, TEXT CONST deactive msg) :
+ 
+  call spool (stop code, deactive msg, spool);
+ 
+END PROC stop spool;
+ 
+ 
+PROC halt spool (TASK CONST spool) :
+ 
+  call spool (halt code, "", spool);
+ 
+END PROC halt spool;
+ 
+PROC halt spool (TASK CONST spool, TEXT CONST deactive msg) :
+ 
+  call spool (halt code, deactive msg, spool);
+ 
+END PROC halt spool;
+ 
+ 
+PROC wait for halt (TASK CONST spool) :
+ 
+  call spool (wait for halt code, "", spool);
+ 
+END PROC wait for halt;
+ 
+PROC wait for halt (TASK CONST spool, TEXT CONST deactive msg) :
+ 
+  call spool (wait for halt code, deactive msg, spool);
+ 
+END PROC wait for halt;
+ 
+ 
+PROC control spool (TASK CONST spool, INT CONST control code,
+                    TEXT CONST question, BOOL CONST leave) :
+ 
+  enable stop;
+  initialize control msg;
+  WHILE valid spool entry
+    REP IF control question THEN control spool entry FI PER;
+ 
+  . initialize control msg :
+      IF NOT initialized (in this task) THEN ds := nilspace FI;
+      forget (ds); ds := nilspace; control msg := ds;
+      control msg. entry line := "";
+      control msg. password   := control password;
+      control msg. index      := 0;
+      say (""13""10"");
+ 
+  . valid spool entry :
+      call (spool, entry line code, ds, reply);
+      IF reply = error nak
+         THEN error msg := ds;
+              errorstop (error msg);
+      FI;
+      control msg. index <> 0
+ 
+   . control question :
+       say (control msg. entry line);
+       yes (question) 
+ 
+  . control spool entry :
+      call (spool, control code, ds, reply);
+      IF reply = error nak
+         THEN error msg := ds;
+              errorstop (error msg);
+      FI;
+      IF leave THEN LEAVE control spool FI;
+ 
+END PROC control spool;
+ 
+ 
+PROC kill spool (TASK CONST spool) :
+ 
+  control spool (spool, killer code, "   loeschen", FALSE)
+ 
+END PROC kill spool;
+ 
+ 
+PROC first spool (TASK CONST spool) :
+ 
+  control spool (spool, first code, "   als erstes", TRUE)
+ 
+END PROC first spool;
+ 
+ 
+END PACKET spool cmd;             
+

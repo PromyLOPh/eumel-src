@@ -1,0 +1,90 @@
+PACKET kwanschrkurslistensek2DEFINES kursliauskunfteingang,
+kursliauskunftstarten,kursliauskunftsonderwerte,kursliauskunftscanbedingung,
+kursliauskunftdruckdateibauen:LET swkurs=520,swanrede=521,swlehrer=522,
+swklausur=523,swname=524,swvorname=525,swgebdat=526,maske=
+"ms anschr kwkursli sek2 eingang",fnrjgst=2,fnrfach=3,fnrkennung=4,fnrakthj=5
+,fnrgeplhj=6,fnrausgbs=7,fnrausgdr=8,niltext="",blank=" ",null=0,satztrenner=
+"$",feldtrenner="�",mnrbittewarten=69,mnrbittepraeziser=129,mnrkeinekwdatenda
+=406,mnrjgstfalsch=404;INT VAR mnrallgemein;TEXT CONST dateimitvordruck1:=
+"vordruck1 kursli kopfueb",dateimitvordruck2:="vordruck2 kursli zeile";INT 
+VAR index,status,dbstatusgemerkt,fehler,zeilenzahl,zusatzzeilen,
+zeilenhilfszahl,anzahlsaetze,satzanfpos,feldpos1,feldpos2;TEXT VAR hj,
+fuerkwsj,jgst,fachkennung,fach,kennung,kwdaten,kurs,anredetext,lehrer;BOOL 
+VAR bestfach,bildschirmausgabe,akthjgewaehlt,hilfsdateida;PROC 
+kursliauskunfteingang:standardvproc(maske)END PROC kursliauskunfteingang;
+PROC kursliauskunftstarten:bestfach:=FALSE ;standardpruefe(5,fnrausgbs,
+fnrausgdr,null,niltext,status);IF status<>0THEN infeld(status);return(1)ELSE 
+standardpruefe(5,fnrakthj,fnrgeplhj,null,niltext,status);IF status<>0THEN 
+infeld(status);return(1)ELSE bildschirmausgabe:=standardmaskenfeld(fnrausgdr)
+=niltext;akthjgewaehlt:=standardmaskenfeld(fnrgeplhj)=niltext;jgst:=
+standardmaskenfeld(fnrjgst);fach:=standardmaskenfeld(fnrfach);kennung:=
+standardmaskenfeld(fnrkennung);IF weiterepruefungenokTHEN startenausfuehren
+ELSE standardmeldung(mnrallgemein,niltext);return(1)FI ;FI ;FI ;.
+weiterepruefungenok:standardpruefe(2,fnrjgst,null,null,niltext,status);IF 
+status<>0THEN infeld(fnrjgst);mnrallgemein:=mnrjgstfalsch;LEAVE 
+weiterepruefungenokWITH FALSE FI ;IF int(jgst)<11COR int(jgst)>13THEN infeld(
+fnrjgst);mnrallgemein:=mnrjgstfalsch;LEAVE weiterepruefungenokWITH FALSE FI ;
+IF (fach=niltextAND kennung<>niltext)THEN infeld(fnrfach);mnrallgemein:=
+mnrbittepraeziser;LEAVE weiterepruefungenokWITH FALSE FI ;IF (fach<>niltext
+AND kennung=niltext)THEN infeld(fnrkennung);mnrallgemein:=mnrbittepraeziser;
+LEAVE weiterepruefungenokWITH FALSE FI ;IF NOT kwdatenraumokTHEN infeld(
+fnrjgst);mnrallgemein:=mnrkeinekwdatenda;LEAVE weiterepruefungenokWITH FALSE 
+FI ;inittupel(dnrlehrveranstaltungen);putwert(fnrlvsj,fuerkwsj);putwert(
+fnrlvhj,hj);putwert(fnrlvjgst,jgst);putwert(fnrlvfachkennung,text(fach,2)+
+kennung);IF fach<>niltextAND kennung<>niltextTHEN bestfach:=TRUE ;search(
+dnrlehrveranstaltungen,TRUE );IF dbstatus<>0THEN mnrallgemein:=
+mnrkeinekwdatenda;LEAVE weiterepruefungenokWITH FALSE FI ;ELSE search(
+dnrlehrveranstaltungen,FALSE );IF dbstatus<>0COR wert(fnrlvjgst)<>jgstCOR 
+wert(fnrlvhj)<>hjCOR wert(fnrlvsj)<>fuerkwsjTHEN mnrallgemein:=
+mnrkeinekwdatenda;LEAVE weiterepruefungenokWITH FALSE FI ;FI ;kurs:=text(fach
+,2)+kennung;TRUE .kwdatenraumok:hj:=schulkenndatum("Schulhalbjahr");IF 
+akthjgewaehltTHEN kurswahlinitialisieren(jgst,jgst,hj,niltext,fuerkwsj)ELSE 
+IF hj="1"THEN hj:="2"ELSE hj:="1";jgst:=text(int(jgst)+1);FI ;
+kurswahlinitialisieren(jgst,jgst,hj,niltext,fuerkwsj)FI ;kurswahlbasisholen(
+fehler);fehler=0.startenausfuehren:setzesonderwerteschulkenndaten;IF bestfach
+THEN index:=ixlvsjhjkennELSE index:=dnrlehrveranstaltungenFI ;standardmeldung
+(mnrbittewarten,niltext);zusammengesetztesanschreiben(index,bildschirmausgabe
+,FALSE ,BOOL PROC kursliauskunftsonderwerte,BOOL PROC 
+kursliauskunftscanbedingung,TEXT PROC kursliauskunftdruckdateibauen)END PROC 
+kursliauskunftstarten;BOOL PROC kursliauskunftscanbedingung:BOOL VAR ok;IF 
+bestfachTHEN ok:=dbstatus=0AND jgst=wert(fnrlvjgst)AND kurs=wert(
+fnrlvfachkennung)ELSE ok:=dbstatus=0AND jgst=wert(fnrlvjgst)FI ;okEND PROC 
+kursliauskunftscanbedingung;BOOL PROC kursliauskunftsonderwerte:BOOL VAR 
+schuelerda:=FALSE ;initialisieresonderwerte;fachkennung:=wert(
+fnrlvfachkennung);adressat(fachkennung);fach:=subtext(fachkennung,1,2);
+kennung:=subtext(fachkennung,3,6);dbstatusgemerkt:=dbstatus;kwdaten:=
+schuelerundklausur(fach,kennung,niltext);IF length(kwdaten)<>0THEN schuelerda
+:=TRUE ;setzesonderwert(swkurs,wert(fnrlvjgst)+blank+fach+blank+kennung);
+inittupel(dnrlehrer);putwert(fnrlparaphe,wert(fnrlvparaphe));search(dnrlehrer
+,TRUE );IF dbstatus=0THEN lehrer:=wert(fnrlamtsbeztitel);lehrerCAT blank;
+lehrerCAT wert(fnrlzusatz);lehrerCAT blank;lehrerCAT wert(fnrlfamname);IF 
+wert(fnrlgeschlecht)="m"THEN anredetext:="Herr "ELSE anredetext:="Frau "FI ;
+FI ;setzesonderwert(swanrede,anredetext);setzesonderwert(swlehrer,lehrer);
+dbstatus(dbstatusgemerkt);FI ;dbstatus=0AND schuelerdaEND PROC 
+kursliauskunftsonderwerte;TEXT PROC kursliauskunftdruckdateibauen:LET 
+druckdatei="liste.1",hilfsdatei="hilfsdatei";vordruckeholen;
+setzemitseitennummern(TRUE );setzeanzahlderzeichenprozeile(78);
+druckvorbereiten;zeilenzahl:=0;zusatzzeilen:=0;briefalternative(
+dateimitvordruck1,hilfsdatei);hilfsdateiindruckdatei(hilfsdatei);hilfsdateida
+:=FALSE ;satzanfpos:=pos(kwdaten,satztrenner);WHILE satzanfpos<>0AND 
+satzanfpos<length(kwdaten)REP feldpos1:=pos(kwdaten,feldtrenner,satzanfpos);
+setzesonderwert(swklausur,subtext(kwdaten,satzanfpos+1,feldpos1-1));feldpos2
+:=pos(kwdaten,feldtrenner,feldpos1+1);setzesonderwert(swname,subtext(kwdaten,
+feldpos1+1,feldpos2-1));feldpos1:=pos(kwdaten,feldtrenner,feldpos2+1);
+setzesonderwert(swvorname,subtext(kwdaten,feldpos2+1,feldpos1-1));satzanfpos
+:=pos(kwdaten,satztrenner,feldpos1);IF satzanfpos=0THEN setzesonderwert(
+swgebdat,subtext(kwdaten,feldpos1+1,length(kwdaten)))ELSE setzesonderwert(
+swgebdat,subtext(kwdaten,feldpos1+1,satzanfpos-1))FI ;briefalternative(
+dateimitvordruck2,hilfsdatei);hilfsdateida:=TRUE ;PER ;IF hilfsdateidaTHEN 
+hilfsdateiindruckdatei(hilfsdatei);FI ;drucknachbereitenohneausdrucken;
+vordruckeloeschen;druckdatei.vordruckeholen:fetch(dateimitvordruck1,/
+"anschreiben server");fetch(dateimitvordruck2,/"anschreiben server");.
+vordruckeloeschen:forget(dateimitvordruck1,quiet);forget(dateimitvordruck2,
+quiet);END PROC kursliauskunftdruckdateibauen;PROC hilfsdateiindruckdatei(
+TEXT CONST hilfsdatei):FILE VAR f;INT VAR i;TEXT VAR zeile;f:=sequentialfile(
+input,hilfsdatei);zeilenhilfszahl:=lines(f);IF zeilenzahl+zeilenhilfszahl+
+zusatzzeilen>=drucklaengeTHEN seitenwechsel;zeilenzahl:=0;FI ;FOR iFROM 1
+UPTO zeilenhilfszahlREP getline(f,zeile);druckzeileschreiben(zeile)PER ;
+forget(hilfsdatei,quiet);zeilenzahlINCR zeilenhilfszahlEND PROC 
+hilfsdateiindruckdatei;END PACKET kwanschrkurslistensek2;
+

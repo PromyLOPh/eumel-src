@@ -1,0 +1,3086 @@
+PACKET eumel coder                                 (* Autor: U. Bartling *) 
+       DEFINES coder on, coder off,
+               declare, define, apply, identify,
+               :=, =,
+               dump,
+ 
+               LIB,
+
+               LABEL,
+               gosub, goret,
+               computed branch,
+               complement condition code,
+
+               ADDRESS ,
+               GLOB, LOC, REF, DEREF,
+               ref length,
+               +, 
+               adjust,
+               get base,
+               is global, is local, is ref,
+ 
+               DTYPE, 
+               type class, type name,
+               void type, int type, real type, text type, bool type, 
+               bool result type, dataspace type, undefined type, 
+               row type, struct type, proc type, end type,
+ 
+               OPN, 
+               set length of local storage, 
+               begin module, end module, 
+               is proc, is eumel 0 instruction,
+               address, operation,
+               nop, 
+               mnemonic, 
+
+               parameter,
+               next param,
+               NEXTPARAM, 
+               access , 
+               dtype , 
+               param address,
+               same type ,
+ 
+               reserve storage, 
+               allocate denoter , 
+               allocate variable, 
+               data allocation by coder ,
+               data allocation by user,
+ 
+               run, run again, 
+               insert,
+               prot, prot off,
+               check, check on, check off,
+
+               help, bulletin, packets,
+
+(**************************************************************************)
+(*                                                                        *) 
+(*                         E U M E L  -  C O D E R                        *) 
+(*                                                                        *) 
+(*                                                                        *) 
+(*   Zur Beschreibung des Coders siehe                                    *) 
+(*         U.Bartling, J. Liedtke: EUMEL-Coder-Interface                  *) 
+(*                                                                        *) 
+(*   Stand der Dokumentation  : 29.10.1986                                *) 
+(*   Stand der Implementation : 03.09.1986                                *) 
+(*                                                                        *) 
+(*                                                                        *) 
+(**************************************************************************) 
+ 
+#page#
+(**************************************************************************) 
+(*                                                                        *) 
+(*                  0. Datentyp DINT                          03.09.1987  *) 
+(*                                                                        *) 
+(*   Definition    des Datentyps                                          *) 
+(*                 arithmetischer Operationen                             *) 
+(*            und  Konvertierungsprozeduren                               *) 
+(*                                                                        *) 
+(**************************************************************************) 
+
+
+               DINT,
+               -, *, DIV, MOD, <, <=,
+               AND, OR, XOR,
+               dput, dget, dmov,
+               ddec1, dinc1, dinc, ddec,
+               dadd, dsub,
+               dequ, dlseq,
+               INCR, DECR,
+               put, get, cout,
+               text, real, int, dint,
+               replace, DSUB :
+ 
+ 
+TYPE DINT = STRUCT (INT low, high) ; 
+
+
+REAL VAR   real value ;           (* auch fuer Ausrichtung ! *)
+TEXT VAR convertion buffer ;
+
+DINT CONST dint0 :: dint(0) ;
+DINT VAR result  :: dint 0 ;
+  
+ 
+DINT PROC dint (INT CONST number) : 
+    EXTERNAL 144
+ENDPROC dint ; 
+
+INT PROC int (DINT CONST i) : 
+    EXTERNAL 143
+ENDPROC int;
+
+REAL PROC real (DINT CONST number) : 
+    real value := 65536.0 * real (number.high) ; 
+
+    IF   number.low >= 0 
+    THEN real value INCR real (number.low) 
+    ELSE real value INCR (real (number.low AND maxint) + 32768.0) 
+    FI ; 
+    real value
+ENDPROC real ; 
+
+DINT PROC dint (REAL CONST number) : 
+    real value := abs (number) ;
+    REAL CONST low := real value MOD 65536.0 ; 
+   
+    result.high := int(real value / 65536.0) ; 
+    IF   low < 32768.0 
+    THEN result.low := int (low)
+    ELSE result.low := int (low-32768.0) OR minint
+    FI ;
+    IF number < 0.0 THEN dsub (dint0, result, result) FI ;
+    result
+ENDPROC dint ; 
+
+TEXT PROC text (DINT CONST number) :
+    IF number.high = 0 THEN convert low part only
+                       ELSE convert number 
+    FI ; 
+    convertion buffer .
+ 
+convert low part only : 
+    IF number.low >= 0 THEN convertion buffer := text (number.low) 
+                       ELSE convertion buffer := text (real of low) ;
+                            erase decimal point
+    FI . 
+
+real of low : 
+    real (number.low AND maxint) + 32768.0 .
+
+convert number : 
+    convertion buffer := text (real(number)) ;
+    erase decimal point .
+
+erase decimal point :
+    convertion buffer := subtext (convertion buffer, 1, LENGTH convertion buffer-2)
+ENDPROC text;
+
+DINT PROC dint (TEXT CONST dint txt) :
+    convertion buffer := dint txt ;
+    INT CONST dot pos :: pos (convertion buffer, ".") ; 
+    IF dot pos = 0 THEN convertion buffer CAT ".0" FI ;
+    dint (real(convertion buffer))
+ENDPROC dint ;
+
+PROC get (DINT VAR dest) : 
+    REAL VAR number ;
+    get (number) ;
+    dest := dint (number)
+ENDPROC get ; 
+
+PROC put (DINT CONST number) : 
+    put (text (number));
+ENDPROC put ; 
+
+PROC cout (DINT CONST number) : 
+    EXTERNAL 61
+ENDPROC cout;
+
+OP := (DINT VAR a, DINT CONST b) : 
+#   INLINE ;   #
+    dmov (b, a); 
+ENDOP :=;
+
+OP INCR (DINT VAR a, DINT CONST b) : 
+#   INLINE ;   #
+    dinc (b, a); 
+ENDOP INCR;
+ 
+OP DECR (DINT VAR a, DINT CONST b) : 
+#   INLINE ;   #
+    ddec (b, a); 
+ENDOP DECR;
+
+BOOL OP = (DINT CONST a, b) : 
+    EXTERNAL 137 
+ENDOP =;
+
+BOOL OP <= (DINT CONST a, b) : 
+    EXTERNAL 138 
+ENDOP <=;
+
+BOOL OP < (DINT CONST a, b) :
+#   INLINE ;   #
+    NOT (b <= a)
+ENDOP <;
+
+BOOL PROC dequ (DINT CONST a, b) : 
+    EXTERNAL 137 
+ENDPROC dequ ;
+
+BOOL PROC dlseq (DINT CONST a, b) : 
+    EXTERNAL 138 
+ENDPROC dlseq ;
+
+PROC replace (TEXT VAR text, INT CONST index of dint, DINT CONST value) :
+    INT VAR subscript := index of dint * 2 ;
+    replace (text, subscript - 1,value.low); 
+    replace (text, subscript, value.high); 
+ENDPROC replace;
+
+DINT OP DSUB (TEXT CONST text, INT CONST index of dint) : 
+    INT  VAR subscript := index of dint * 2 ;
+    result.low  := text ISUB subscript - 1; 
+    result.high := text ISUB subscript;
+    result
+ENDOP DSUB;
+
+DINT OP + (DINT CONST a, b) :
+    EXTERNAL 135 
+ENDOP + ;
+ 
+DINT OP - (DINT CONST a, b) :
+    EXTERNAL 136 
+ENDOP - ;
+
+PROC dadd (DINT CONST a, b, DINT VAR res) :
+    EXTERNAL 135 
+ENDPROC dadd ;
+ 
+PROC dsub (DINT CONST a, b, DINT VAR res) :
+    EXTERNAL 136
+ENDPROC dsub ;
+
+PROC dinc (DINT CONST source, DINT VAR dest) : 
+    EXTERNAL 133 
+ENDPROC dinc ; 
+ 
+PROC ddec (DINT CONST source, DINT VAR dest) : 
+    EXTERNAL 134 
+ENDPROC ddec ; 
+ 
+PROC dmov (DINT CONST source, DINT VAR dest) : 
+    EXTERNAL 130 
+ENDPROC dmov; 
+
+DINT OP DIV (DINT CONST a,b) :
+    EXTERNAL 152
+ENDOP DIV ;
+
+DINT OP MOD (DINT CONST a,b) :
+    EXTERNAL 153
+ENDOP MOD ;
+
+DINT OP AND (DINT CONST a,b) :
+    result.low  := a.low  AND b.low ;
+    result.high := a.high AND b.high ;
+    result
+ENDOP AND ;
+
+DINT OP OR (DINT CONST a,b) :
+    result.low  := a.low  OR b.low ;
+    result.high := a.high OR b.high ;
+    result
+ENDOP OR ;
+
+DINT OP XOR (DINT CONST a,b) :
+    result.low  := a.low  XOR b.low ;
+    result.high := a.high XOR b.high ;
+    result
+ENDOP XOR ;
+
+PROC dput (ROW 32000 DINT VAR array, DINT CONST index, value) : 
+    EXTERNAL 139 
+ENDPROC dput ; 
+ 
+PROC dget (ROW 32000 DINT VAR array, DINT CONST index, DINT VAR dest) : 
+    EXTERNAL 140 
+ENDPROC dget ; 
+
+PROC dinc1 (DINT VAR dest) : 
+    EXTERNAL 131 
+ENDPROC dinc1 ; 
+ 
+PROC ddec1 (DINT VAR dest) :
+    EXTERNAL 132 
+ENDPROC ddec1 ; 
+
+DINT OP * (DINT CONST a,b) :
+    EXTERNAL 151
+ENDOP * ; 
+
+#page#
+                   (***** Globale Variable *****) 
+
+TEXT VAR object name;
+ 
+FILE VAR bulletin file; 
+ 
+INT VAR memory management mode, global address offset, packet base,
+        hash table pointer, nt link, permanent pointer, param link,
+        packet link, index, mode, field pointer, word,
+        number of errors := 0 ;
+ 
+BOOL VAR found, end of params;
+ 
+#page#
+(**************************************************************************) 
+(*                                                                        *) 
+(*                  1. Interface zum ELAN-Compiler            13.11.1986  *) 
+(*                              1.8.1                                     *) 
+(*                                                                        *) 
+(*   Beschreibung der      Tabellen (-groessen),                          *) 
+(*                         internen Vercodung von Typen                   *) 
+(*                    und  Kennungen .                                    *) 
+(*   Initialisieren und Beenden des Compilers,                            *) 
+(*   Lesen aus und Schreiben in Namens- bzw. Permanent-Tabelle            *) 
+(*                                                                        *) 
+(**************************************************************************) 
+ 
+
+TYPE LIB = STRUCT (TEXT name, INT nt link, pt link, ADDRESS base) ;
+
+LET  begin of hash table         =     0 ,
+     end of hash table           =  1023 ,
+ 
+     begin of permanent table    = 22784 ,
+       before first pt entry     = 22784 ,
+       first permanent entry     = 22785 ,
+     end of permanent table      = 32767 , 
+
+     wordlength                  =     1 ,  (* compile  u n d  run time *)
+     two word length             =     2 ,
+     three word length           =     3 ,
+     four word length            =     4 ,
+ 
+     permanent param const             = 10000 ,
+     permanent param var               = 20000 ,
+     permanent proc op                 = 30000 ,
+     permanent type                    = 30000 ,
+     permanent row                     =    10 ,
+     permanent struct                  =    11 ,
+     permanent param proc              =    12 ,
+     permanent param proc end marker   =     0 ,
+     permanent type field              =     0 ,
+
+     ptt limit                         = 10000 ,
+     begin of pt minus ptt limit       = 12784 ,
+     begin of pt minus ptt limit 1     = 12785 , (* plus wordlength *)
+ 
+     void id                           =     0 ,
+     int id                            =     1 ,
+     real id                           =     2 ,
+     string id                         =     3 ,
+     bool id                           =     5 ,
+     bool result id                    =     6 ,
+     dataspace id                      =     7 ,
+     undefined id                      =     9 ,
+     row id                            =    10 ,
+     struct id                         =    11 ,
+     end id                            =     0 ,
+
+     const                             =     1 , 
+     var                               =     2 ,
+     proc id                           =     3 ,
+(*   denoter                           =     5 , *)
+     bold                              =     2 ,
+ 
+     ins                               = TRUE ,
+     no ins                            = FALSE ,
+     no lst                            = FALSE ,
+     sermon                            = TRUE  ,
+     no sermon                         = FALSE ,
+ 
+     run again mode                    =     0 ,
+     compile file mode                 =     1 ,
+     prep coder mode                   =     5 , 
+
+     warning message                   =     2 , 
+     error message                     =     4 ,
+ 
+     point line                        = "..............." ;
+ 
+INT CONST permanent packet            :=     -2 ,
+          permanent end               :=     -3 ;
+
+BOOL VAR coder active                 := FALSE ; 
+
+INT  VAR run again mod nr             :=     0 ;
+ 
+ 
+                     (***** Start/Ende *****)
+ 
+LET coder not active      = "CODER not active" ,
+    illegal define packet = "illegal define packet" ;
+
+PROC coder on (INT CONST data allocation mode) : 
+    mark coder on ; 
+    init opn section ; 
+    init compiler ;
+    init memory management .
+ 
+mark coder on :
+    coder active := TRUE .
+
+init memory management :
+    memory management mode := data allocation mode .
+ 
+init compiler :
+    no do again ;
+    elan (prep coder mode, bulletin file, "", run again mod nr,
+          no ins, no lst, check option, no sermon)
+
+ENDPROC coder on;
+ 
+PROC coder off (BOOL CONST insert, sermon, OPN CONST start proc) :
+    IF coder active 
+       THEN mark coder off ; 
+            end coder (insert, sermon, start mod nr if no insert)
+       ELSE errorstop (coder not active)
+    FI .
+ 
+start mod nr if no insert :
+    IF insert THEN run again mod nr := 0
+              ELSE run again mod nr := start proc.mod nr
+    FI ;
+    run again mod nr .
+
+mark coder off :
+    reset memory management mode ;
+    init opn section ;
+    coder active := FALSE
+ENDPROC coder off ; 
+ 
+PROC end coder (BOOL CONST insert wanted, sermon wanted, INT CONST mod) :
+    EXTERNAL 10021
+ENDPROC end coder ; 
+
+PROC elan (INT CONST mode, FILE VAR source, TEXT CONST line, 
+           INT VAR start module number, BOOL CONST ins, lst, rtc, ser) :
+  EXTERNAL 256
+ENDPROC elan ;
+
+PROC unsigned arithmetic : 
+    EXTERNAL 92 
+ENDPROC unsigned arithmetic ;
+ 
+
+                   (*****    Paket-Rahmen    *****)
+
+PROC declare (TEXT CONST name, LIB VAR packet) :
+    packet.name := name
+ENDPROC declare ;
+
+PROC define (LIB VAR packet) :
+    check if definition possible ;
+    declare object (packet.name, packet.nt link, packet.pt link) ;
+    open packet (packet.nt link, global address offset, packet base) ;
+    set to actual base (packet) .
+
+check if definition possible :
+    IF NOT coder active THEN errorstop (coder not active) FI ;
+    IF module open      THEN errorstop (illegal define packet) FI
+ENDPROC define ;
+
+PROC open packet (INT CONST nt link of packet name, INT VAR offset, base) :
+    EXTERNAL 10032 
+ENDPROC open packet ;
+
+PROC identify (TEXT CONST name, LIB VAR packet, BOOL VAR packet exists) :
+     to packet (name) ;
+     packet exists := found ;
+     IF found THEN packet.name    := name ;
+                   packet.nt link := nt link ;
+                   packet.pt link := packet link ;
+                   get pbas (packet.base)
+     FI
+ENDPROC identify ;
+
+ 
+                   (***** Hash/Namenstabelle *****) 
+.
+next hash entry :
+     hash table pointer INCR wordlength .
+
+end of hash table reached :
+     hash table pointer > end of hash table .
+
+yet another nt entry :
+     nt link := cdb int (nt link) ;
+     nt link <> 0 . ;
+ 
+PROC declare object (TEXT CONST name, INT VAR nt link, pt pointer) : 
+    EXTERNAL 10031
+ENDPROC declare object ; 
+ 
+PROC to object (TEXT CONST searched object) : 
+     hash ;
+     search nt entry .
+
+hash :
+     hash code := 0 ;
+     FOR index FROM 1 UPTO LENGTH searched object REP
+         addmult cyclic
+     ENDREP .
+
+addmult cyclic :
+     hash code INCR hash code ;
+     IF hash code > end of hash table THEN wrap around FI ;
+     hash code := (hash code + code (searched object SUB index)) MOD 1024 .
+
+wrap around :
+     hash code DECR end of hash table .
+
+hash code : nt link .
+
+search nt entry :
+     found := FALSE ;
+     WHILE yet another nt entry REP
+          read current entry ;
+          IF object name = searched object 
+             THEN found := TRUE ;
+                  LEAVE to object
+          FI
+     PER .
+
+read current entry :
+     permanent pointer := cdb int (nt link + wordlength) ;
+     object name := cdb text (nt link + two word length)
+ENDPROC to object ;
+
+
+                 (***** Permanent Tabelle *****) 
+.
+next procedure :
+     permanent pointer := cdb int (permanent pointer) . ;
+
+PROC next pt param :
+     mode := cdb int (param link) MOD ptt limit ;
+     param link INCR wordlength ;
+     IF   mode = permanent row    THEN skip over permanent row 
+     ELIF mode = permanent struct THEN skip over permanent struct
+     FI ;
+     set end marker if end of list .
+
+skip over permanent row :
+     param link INCR wordlength ;
+     next pt param .
+
+skip over permanent struct :
+     REP
+         mode := cdb int (param link) ;
+         IF mode = permanent type field
+            THEN param link INCR wordlength ;
+                 LEAVE skip over permanent struct
+         FI ;
+         next pt param
+     PER
+ENDPROC next pt param ;
+
+PROC set end marker if end of list :
+     mode := cdb int (param link) ;
+     end of params := mode >= permanent proc op OR mode <= 0 
+ENDPROC set end marker if end of list ;
+
+PROC get type and mode (INT VAR type) : 
+     mode := cdb int (param link) ;
+     IF   mode < 0                    THEN type := 2769 + (32767 + mode) ;
+                                           mode := 0
+     ELIF mode = permanent param proc THEN translate type
+                                      ELSE type := mode MOD ptt limit ;
+                                           mode DECR type ;
+                                           translate type if necessary ;
+                                           translate mode if necessary 
+     FI .
+
+translate type if necessary :
+     IF permanent row or struct THEN translate type FI .
+
+translate type :
+     type := param link - begin of pt minus ptt limit .
+
+translate mode if necessary : 
+    IF   mode = permanent param const THEN mode := const
+    ELIF mode = permanent param var   THEN mode := var
+    FI .
+
+permanent row or struct :
+     type = permanent row OR type = permanent struct
+ENDPROC get type and mode ;
+
+PROC put next permanent (INT CONST permanent value) : 
+    EXTERNAL 10020
+ENDPROC put next permanent ; 
+ 
+
+                 (***** Allgemeine Zugriffsprozeduren *****) 
+
+INT PROC cdb int (INT CONST index) :
+   EXTERNAL 116
+ENDPROC cdb int ;
+
+TEXT PROC cdb text (INT CONST index) :
+   EXTERNAL 117
+ENDPROC cdb text ;
+ 
+
+#page#
+(**************************************************************************) 
+(*                                                                        *) 
+(*                  2. Spruenge und Marken                    07.10.1986  *) 
+(*                                                                        *) 
+(*   Definition des Datentyps LABEL                                       *) 
+(*                                                                        *) 
+(*   Deklaration, Definition und Applikation von Marken                   *) 
+(*                                                                        *) 
+(**************************************************************************) 
+
+
+
+TYPE LABEL = INT ; 
+
+BOOL VAR invers :: FALSE ; 
+ 
+PROC declare (LABEL VAR label) : 
+    CONCR (label) := 0
+ENDPROC declare ; 
+ 
+PROC define (LABEL VAR label) : 
+    EXTERNAL 10085
+ENDPROC define ; 
+ 
+PROC complement condition code : 
+    invers := NOT invers
+ENDPROC complement condition code ; 
+ 
+PROC apply (LABEL VAR label) : 
+    EXTERNAL 10151
+ENDPROC apply ; 
+ 
+PROC apply (LABEL VAR label, BOOL CONST condition) : 
+    IF condition xor invers THEN branch true (label) 
+                            ELSE branch false (label)
+    FI ;
+    invers := FALSE .
+
+condition xor invers : 
+    IF condition THEN NOT invers
+                 ELSE invers
+    FI
+ENDPROC apply ; 
+ 
+OP := (LABEL VAR global label, local label) : (* EQUATE ! *)
+    EXTERNAL 10014 
+ENDOP := ; 
+ 
+TEXT PROC dump (LABEL CONST label) : 
+    "LAB " + text (CONCR (label)) 
+ENDPROC dump ; 
+ 
+PROC gosub (LABEL VAR label) : 
+    EXTERNAL 10015 
+ENDPROC gosub ; 
+ 
+PROC goret : 
+    s0 (q goret code) 
+ENDPROC goret ; 
+ 
+PROC branch true (LABEL VAR label) : 
+    EXTERNAL 10028
+ENDPROC branch true ; 
+ 
+PROC branch false (LABEL VAR label) : 
+    EXTERNAL 10029
+ENDPROC branch false ; 
+
+PROC computed branch (ADDRESS CONST switch, INT CONST limit, LABEL VAR out) :
+    s1 (q esc case, REPR switch) ;
+    s0 (limit) ; 
+    branch false (out)
+ENDPROC computed branch ;
+ 
+ 
+#page#
+(**************************************************************************) 
+(*                                                                        *) 
+(*                  3. Datenaddressen                         13.11.1986  *) 
+(*                                                                        *) 
+(*   Definition des Datentyps ADDRESS                                     *) 
+(*                                                                        *) 
+(*   Aufbau von Datenaddressen (Vercodung)                                *) 
+(*   Fortschalten und Ausrichten von Adressen                             *) 
+(*   Behandlung von Paketbasis-Adressen                                   *) 
+(*   Bereitstellen der Fehlermeldung "address overflow" (Coder-intern)    *) 
+(*                                                                        *) 
+(**************************************************************************) 
+ 
+ 
+ 
+TYPE ADDRESS = STRUCT (INT kind, value) ; 
+ 
+LET global                 = 0 , 
+    local                  = 1 , 
+    ref mask               = 2 , 
+    global ref             = 2 , 
+    local ref              = 3 , 
+    module nr              = 4 ,
+    immediate value        = 5 ,
+    p base                 = 6 ,
+ 
+    eumel0 stack offset    = 4 ,
+    local address limit    = 16 384 ,
+    global address zero    = 0 ,
+ 
+    illegal ref operation  = "REF not allowed" , 
+    deref on non ref       = "DEREF on non-ref address" ,
+    global ref not allowed = "GLOBAL REF not allowed" , 
+    unknown kind           = "Unknown address kind" , 
+    address overflow       = "Address Overflow" , 
+    illegal plus operation = "+ not allowed" ;
+ 
+ADDRESS VAR result addr;
+ 
+INT CONST ref length :: 2 ;
+
+OP := (ADDRESS VAR l, ADDRESS CONST r) : 
+    CONCR (l) := CONCR (r) 
+ENDOP := ; 
+ 
+ADDRESS OP GLOB (INT CONST address level) : 
+    result addr.kind  := global ; 
+    result addr.value := address level ; 
+    IF memory management mode = data allocation by user
+       THEN result addr.value INCR global address offset
+    FI ;
+    result addr
+ENDOP GLOB ;
+
+ADDRESS OP LOC (INT CONST address level) : 
+    result addr.kind  := local ;
+    result addr.value := address level + eumel0 stack offset ; 
+    result addr
+ENDOP LOC ; 
+ 
+ADDRESS OP REF (ADDRESS CONST addr) : 
+    CONCR (result addr) := CONCR (addr) ;
+    IF   result addr.kind = local  THEN result addr.kind INCR ref mask
+    ELIF result addr.kind = global THEN errorstop (global ref not allowed)
+                                   ELSE errorstop (illegal ref operation)
+    FI ;
+    result addr 
+ENDOP REF ; 
+ 
+ADDRESS OP DEREF (ADDRESS CONST ref address) : 
+    CONCR (result addr) := CONCR (ref address) ;
+    IF is not local ref THEN errorstop (deref on non ref) FI ; 
+    result addr.kind DECR ref mask ; 
+    result addr .
+ 
+is not local ref :
+    result addr.kind <> local ref
+ENDOP DEREF ;
+ 
+INT OP REPR (ADDRESS CONST addr) : 
+    CONCR (result addr) := CONCR (addr) ;
+    SELECT result addr.kind OF 
+        CASE global     :
+        CASE local      : set bit (result addr.value, 15) 
+        CASE global ref : errorstop (global ref not allowed)
+        CASE local ref  : prep local ref 
+        OTHERWISE errorstop (unknown kind)
+    ENDSELECT ; 
+    result addr.value .
+ 
+prep local ref : 
+    IF address limit exceeded THEN errorstop (address overflow) FI ;
+    set bit (result addr.value, 14) ; 
+    set bit (result addr.value, 15) .
+
+address limit exceeded :
+    result addr.value < eumel0 stack offset OR
+    result addr.value > local address limit
+ENDOP REPR ; 
+ 
+PROC get base (LIB CONST packet, ADDRESS VAR base) :
+    CONCR (base) := CONCR (packet.base)
+ENDPROC get base ;
+
+PROC set to actual base (LIB VAR packet) :
+    packet.base.kind  := p base ;
+    packet.base.value := packet base
+ENDPROC set to actual base ;
+
+PROC get pbas (ADDRESS VAR base) :
+    base.kind  := p base ;
+    base.value := cdbint (packet link + 2)
+ENDPROC get pbas ;
+
+BOOL OP = (ADDRESS CONST l,r) :
+    l.kind = r.kind AND l.value = r.value
+ENDOP = ;
+
+BOOL PROC is ref (ADDRESS CONST addr) : 
+    addr.kind = local ref
+ENDPROC is ref ; 
+ 
+BOOL PROC is global (ADDRESS CONST addr) : 
+    addr.kind = global 
+ENDPROC is global ; 
+ 
+BOOL PROC is local (ADDRESS CONST addr) : 
+    addr.kind = local 
+ENDPROC is local ; 
+ 
+ADDRESS OP + (ADDRESS CONST addr, INT CONST offset) : 
+    CONCR (result addr) := CONCR (addr) ; 
+    SELECT result addr.kind OF 
+        CASE global : inc global
+        CASE local  : inc local
+        OTHERWISE     errorstop (illegal plus operation) 
+    ENDSELECT ; 
+    result addr .
+
+inc global : 
+    result addr.value INCR offset ; 
+    IF result addr.value < 0 THEN errorstop (address overflow) FI .
+ 
+inc local : 
+    result addr.value INCR offset ; 
+    IF result addr.value < eumel 0 stack offset OR
+       result addr.value > local address limit
+       THEN errorstop (address overflow)
+    FI
+ENDOP + ; 
+ 
+PROC adjust (ADDRESS VAR addr, INT CONST adjust length) :
+    IF is local or global THEN adjust to length FI . 
+ 
+is local or global :
+    addr.kind <= local .
+
+adjust to length :
+    mode := addr.value MOD adjust length ;
+    IF mode <> 0 THEN addr.value INCR (adjust length-mode) FI
+ENDPROC adjust ;
+
+TEXT PROC dump (ADDRESS CONST addr) : 
+    kind + text (addr.value) . 
+ 
+kind : 
+    SELECT addr.kind OF 
+        CASE global          : "GLOBAL " 
+        CASE local           : "LOCAL " 
+        CASE immediate value : "IMMEDIATE "
+        CASE module nr       : "PARAM PROC "
+        CASE global ref      : "GLOBAL REF " 
+        CASE local ref       : "LOCAL REF " 
+        CASE p base          : "PBAS "
+        OTHERWISE              "undef. Addr: " 
+    ENDSELECT 
+ENDPROC dump; 
+
+
+#page#
+(**************************************************************************) 
+(*                                                                        *) 
+(*                  4. Datentypen   Teil I                    08.09.1986  *) 
+(*                                                                        *) 
+(*   Definition des Datentyps DTYPE                                       *) 
+(*                                                                        *) 
+(*   Interne Repraesentation der primitiven Datentypen                    *) 
+(*   Identifikation von DTYPEs                                            *)
+(*                                                                        *) 
+(**************************************************************************) 
+
+
+
+TYPE DTYPE = INT ; 
+ 
+OP := (DTYPE VAR l, DTYPE CONST r) : 
+    CONCR (l) := CONCR (r) 
+ENDOP := ; 
+ 
+BOOL OP = (DTYPE CONST l, r) : 
+    CONCR (l) = CONCR (r)
+ENDOP = ; 
+ 
+DTYPE PROC void type :      DTYPE :(void id)   ENDPROC  void type ; 
+ 
+DTYPE PROC int  type :      DTYPE :(int id)    ENDPROC  int type ; 
+ 
+DTYPE PROC real type :      DTYPE :(real id)   ENDPROC  real type ; 
+ 
+DTYPE PROC text type :      DTYPE :(string id) ENDPROC  text type ; 
+ 
+DTYPE PROC bool type :      DTYPE :(bool id)   ENDPROC  bool type ; 
+ 
+DTYPE PROC bool result type : DTYPE :(bool result id) ENDPROC  bool result type; 
+ 
+DTYPE PROC dataspace type : DTYPE :(dataspace id) ENDPROC dataspace type ; 
+ 
+DTYPE PROC undefined type : DTYPE :(undefined id) ENDPROC undefined type ; 
+ 
+DTYPE PROC row type  :      DTYPE :(row id)    ENDPROC row type ; 
+ 
+DTYPE PROC struct type :    DTYPE :(struct id) ENDPROC struct type ; 
+ 
+DTYPE PROC proc type :   DTYPE :(permanent param proc) ENDPROC proc type ; 
+ 
+DTYPE PROC end type  :      DTYPE :(end id)    ENDPROC end type ; 
+ 
+INT PROC type class (DTYPE CONST type) : 
+    SELECT type id OF 
+        CASE int id, real id, bool id, bool result id, string id,
+             dataspace id, undefined id : 1 
+        CASE void id   : 0 
+        CASE row id    : 3 
+        CASE struct id : 4 
+        CASE permanent param  proc : 5 
+        OTHERWISE     pt type 
+    ENDSELECT . 
+
+pt type :
+    IF type id > ptt limit THEN permanent row or struct
+                           ELSE abstract type
+    FI .
+
+abstract type : 2 .
+
+permanent row or struct :
+    unsigned arithmetic ;
+    mode := cdbint (type link into pt) MOD ptt limit ; 
+    IF   mode = struct id            THEN 4
+    ELIF mode = row id               THEN 3
+    ELIF mode = permanent param proc THEN 5
+                                     ELSE 2
+    FI .
+ 
+type link into pt :
+    type id + begin of pt minus ptt limit .
+
+type id : CONCR (type)
+ENDPROC type class ; 
+ 
+PROC identify (TEXT CONST name,INT VAR size, align, DTYPE VAR type) : 
+    SELECT type pos OF 
+          CASE 1   : size := 0; align := 0; type id := void id
+          CASE 6   : size := 1; align := 1; type id := int id
+          CASE 10  : size := 4; align := 4; type id := real id
+          CASE 15  : size := 8; align := 4; type id := string id
+          CASE 20  : size := 1; align := 1; type id := bool id
+          CASE 25  : size := 1; align := 1; type id := dataspace id
+          OTHERWISE  search for type in permanent table 
+    ENDSELECT . 
+ 
+type pos : 
+    enclose in delimiters ;
+    pos (".VOID.INT.REAL.TEXT.BOOL.DATASPACE.", object name) . 
+ 
+enclose in delimiters :
+    object name := "." ;
+    object name CAT name ;
+    object name CAT "." .
+
+search for type in permanent table : 
+    to object (name) ;
+    IF not found THEN size := 0; align := 0; type id := undefined id
+                 ELSE size := cdbint (permanent pointer + two wordlength) ;
+                      type id := permanent pointer - begin of permanent table ;
+                      IF   size < two wordlength  THEN align := 1
+                      ELIF size < four wordlength THEN align := 2
+                                                  ELSE align := 4
+                      FI
+    FI . 
+ 
+not found :
+    NOT found OR invalid entry .
+
+invalid entry :
+    permanent pointer = 0 OR
+    cdb int (permanent pointer + wordlength) <> permanent type .
+
+type id : CONCR (type)
+ENDPROC identify ; 
+ 
+ 
+#page#
+(**************************************************************************) 
+(*                                                                        *) 
+(*                  5. Operationen  Teil I                    30.09.1986  *) 
+(*                                                                        *) 
+(*   Definition des Datentyps OPN                                         *) 
+(*   Primitive Operationen (:=  etc.)                                     *) 
+(*   Initialisieren mit den externen Namen der EUMEL-0-Codes              *) 
+(*   Bereitstellen dee Fehlermeldung 'proc op expected' (coder-intern)    *) 
+(*                                                                        *) 
+(**************************************************************************) 
+
+
+TYPE OPN = STRUCT (INT kind, mod nr, top of stack) ;
+ 
+LET proc op    = 0 ,
+    param proc = 1 ,
+    eumel 0    = 2 , 
+    nil        = 3 , 
+ 
+    param proc at non ref = "PARAM PROC at non-ref address" ,
+    proc op expected      = "PROC expected" ;
+ 
+OPN VAR eumel0 opn;
+eumel0 opn.kind := eumel0 ;
+eumel0 opn.top of stack := 0 ;
+
+eumel0 opn.mod nr := q pp ;
+OPN CONST pp       :: eumel0 opn ,
+          nop code :: OPN :(nil, 0, 0) ;
+
+IF NOT exists ("eumel0 codes")
+    THEN IF yes ("Archive 'eumel coder' eingelegt")
+             THEN archive ("eumel coder") ;
+                  fetch ("eumel0 codes", archive) ;
+                  release (archive)
+             ELSE errorstop ("""eumel0 codes"" gibt es nicht")
+         FI
+FI ;
+BOUND THESAURUS VAR initial opcodes :: old ("eumel0 codes") ;
+THESAURUS VAR eumel 0 opcodes :: initial opcodes ; 
+forget ("eumel0 codes") ;
+ 
+ADDRESS PROC address (OPN CONST opn) :
+    IF opn.kind <> proc op THEN errorstop (proc op expected) FI ;
+    result addr.kind  := module nr ; 
+    result addr.value := opn.mod nr ;
+    result addr
+ENDPROC address ;
+ 
+OPN PROC operation (ADDRESS CONST addr) : 
+    IF addr.kind <> local ref THEN errorstop (param proc at non ref) FI ; 
+    OPN VAR opn ;
+    opn.kind := param proc ; 
+    opn.mod nr :=addr.value ; 
+    opn.top of stack := 0 ; 
+    opn 
+ENDPROC operation ; 
+ 
+TEXT PROC mnemonic (OPN CONST op code) : 
+    name (eumel 0 opcodes, op code.mod nr)
+ENDPROC mnemonic ;
+ 
+OPN PROC nop : 
+    nop code
+ENDPROC nop ; 
+ 
+OP := (OPN VAR r, OPN CONST l) : 
+    CONCR (r) := CONCR (l) 
+ENDOP := ; 
+ 
+BOOL PROC is proc (OPN CONST operation) : 
+    operation.kind = proc op
+ENDPROC is proc ; 
+ 
+BOOL PROC is eumel 0 instruction (TEXT CONST op code name) : 
+    link (eumel 0 opcodes, op code name) <> 0
+ENDPROC is eumel 0 instruction ; 
+
+BOOL PROC is eumel 0 instruction (OPN CONST operation) : 
+    operation.kind = eumel0
+ENDPROC is eumel 0 instruction ; 
+ 
+
+#page#
+(**************************************************************************) 
+(*                                                                        *) 
+(*                  6. Parameterfeld                          10.04.1986  *) 
+(*                                                                        *) 
+(*   Bereitstellen des Parameterfeldes                                    *) 
+(*   Schreiben und Lesen von Eintraegen im Parameterfeld                  *) 
+(*   Fortschalten von Zeigern in das Parameterfeld                        *) 
+(*   Bereitstellen der Konstanten 'size of param field' (Coder-intern)    *) 
+(*                                                                        *) 
+(**************************************************************************) 
+
+
+
+LET PARAMDESCRIPTOR = STRUCT (DTYPE type,   INT access, 
+                              ADDRESS addr, OPN push opn) , 
+ 
+    size of param field   = 100 ,
+    param field exceeded  = "Param Field Overflow",
+    param nr out of range = "Illegal Param Number" ;
+ 
+ROW size of param field PARAMDESCRIPTOR VAR param field ;
+ 
+ 
+                      (***** Schreiben *****) 
+ 
+PROC test param pos (INT CONST param nr) : 
+    IF param nr < 1 OR param nr > size of param field
+       THEN errorstop (param nr out of range)
+    FI 
+ENDPROC test param pos ; 
+ 
+PROC declare (INT CONST param nr, DTYPE CONST type) : 
+    test param pos (param nr) ; 
+    enter type . 
+ 
+enter type :
+    CONCR (param field [param nr].type) := CONCR (type) 
+ENDPROC declare ; 
+ 
+PROC declare (INT CONST param nr, access) : 
+    test param pos (param nr) ; 
+    enter access . 
+
+enter access :
+    param field [param nr].access := access 
+ENDPROC declare ; 
+ 
+PROC define (INT CONST param nr, ADDRESS CONST addr) : 
+    test param pos (param nr) ; 
+    enter address . 
+
+enter address :
+    CONCR (param field [param nr].addr) := CONCR (addr) 
+ENDPROC define ; 
+ 
+PROC define (INT CONST param nr, value) : 
+    result addr.kind  := immediate value ;
+    result addr.value := value ;
+    define (param nr, result addr) 
+ENDPROC define ; 
+ 
+PROC apply (INT CONST param nr, OPN CONST opn) : 
+    test param pos (param nr) ; 
+    enter push opn . 
+ 
+enter push opn : 
+    CONCR (param field [param nr].push opn) := CONCR (opn) 
+ENDPROC apply ; 
+ 
+PROC parameter (INT CONST param nr, DTYPE CONST type, 
+                INT CONST access, ADDRESS CONST addr) : 
+    test param pos (param nr) ; 
+    enter type ; 
+    enter access ; 
+    enter address ; 
+    enter pp as default . 
+ 
+enter type : 
+    CONCR (param field [param nr].type) := CONCR (type) .
+
+enter access :
+    param field [param nr].access := access .
+
+enter address :
+    CONCR (param field [param nr].addr) := CONCR (addr) .
+
+enter pp as default :
+    CONCR (param field [param nr].push opn) := CONCR (pp) 
+ENDPROC parameter ; 
+ 
+ 
+                       (***** Lesen *****) 
+ 
+ADDRESS PROC param address (INT CONST param nr) : 
+    test param pos (param nr) ; 
+    param field [param nr].addr 
+ENDPROC param address ; 
+ 
+DTYPE PROC dtype (INT CONST param nr) : 
+    test param pos (param nr) ; 
+    param field [param nr].type 
+ENDPROC dtype ; 
+ 
+INT PROC access (INT CONST param nr) : 
+    test param pos (param nr) ; 
+    param field [param nr].access 
+ENDPROC access ; 
+ 
+ 
+                      (***** Fortschalten *****) 
+ 
+OP NEXTPARAM (INT VAR param nr) : 
+   test param pos (param nr) ; 
+   INT CONST class :: type class (param field [param nr].type) ;
+   param nr INCR 1 ;
+   SELECT class OF
+       CASE 3    : NEXTPARAM param nr
+       CASE 4,5  : read until end 
+    ENDSELECT .
+
+read until end : 
+    WHILE NOT end marker read or end of field REP
+        NEXTPARAM param nr 
+    PER ;
+    param nr INCR 1 .
+ 
+end marker read or end of field :
+    param nr > size of param field OR
+    CONCR (param field [param nr].type) = end id
+ENDOP NEXTPARAM ; 
+ 
+INT PROC next param (INT CONST p) : 
+    INT VAR index := p ; 
+    NEXTPARAM index ; 
+    index
+ENDPROC next param ; 
+ 
+TEXT PROC dump (INT CONST p) : 
+   IF p > 0 AND p <= 100 THEN dump entry (param field (p)) 
+                         ELSE param nr out of range 
+    FI 
+ENDPROC dump ; 
+ 
+TEXT PROC dump entry (PARAMDESCRIPTOR CONST id) : 
+(*  object name :=  dump (id.type) ; *)
+    object name :=  "TYPE " ;           (*  siehe                         *)
+    object name CAT dump (id.type) ;    (*    TEXT PROC dump (DTYPE d)    *)
+    object name CAT text (id.access) ; 
+    object name CAT dump (id.addr) ; 
+    object name CAT dump (id.push opn) ;
+    object name
+ENDPROC dump entry ; 
+
+ 
+#page#
+(**************************************************************************) 
+(*                                                                        *) 
+(*                  7. Datentypen   Teil II                   08.09.1986  *) 
+(*                                                                        *) 
+(*   Deklaration neuer Datentypen                                         *) 
+(*   Vergleich von DTYPEs im Parameterfeld und in der Permanent-Tabelle   *) 
+(*                                                                        *) 
+(**************************************************************************) 
+
+
+
+DTYPE VAR pt type ;
+
+PROC declare (TEXT CONST name, INT CONST size, align, DTYPE VAR type) : 
+    entry into name table ; 
+    put next permanent (permanent type) ; 
+    put next permanent (size) ; 
+    put next permanent (nt link) ;
+    mark no offsets of text elements . 
+ 
+entry into name table : 
+    declare object (name, nt link, CONCR (type)) ;
+    CONCR (type) DECR begin of permanent table .
+ 
+mark no offsets of text elements : 
+    put next permanent (0) 
+ENDPROC declare ; 
+ 
+BOOL PROC same type (INT CONST param 1, param 2) : 
+    INT CONST left type :: CONCR (param field [param 1].type) ;
+    IF left type = right type
+       THEN same fine structure if there is one
+       ELSE left type = undefined id OR right type = undefined id
+    FI .
+ 
+right type : CONCR (param field [param 2].type) . 
+ 
+same fine structure if there is one : 
+    IF   left type = row id     THEN compare row 
+    ELIF left is struct or proc THEN compare struct 
+                                ELSE TRUE 
+    FI . 
+ 
+left is struct or proc :
+    left type = struct id OR left type = proc id .
+
+compare row : 
+    equal sizes AND same type (param1 + 1, param2 + 1) . 
+ 
+equal sizes : 
+    param field [param1+1].access = param field [param2+1].access .
+ 
+compare struct : 
+    INT VAR p1 :: param1+1, p2 :: param2+1 ; 
+    WHILE same type (p1, p2) AND NOT end type found REP
+       NEXTPARAM p1 ;
+       NEXTPARAM p2
+    UNTIL end of field PER ;
+    FALSE .
+
+end type found :
+    CONCR (param field [p1].type) = end id .
+
+end of field : 
+    p1 > size of param field OR p2 > size of param field 
+ENDPROC same type ;
+ 
+BOOL PROC same type (INT CONST param nr, DTYPE CONST type) : 
+    field pointer := param nr ;
+    CONCR (pt type) := CONCR (type) ;
+    equal types 
+ENDPROC same type ;
+
+BOOL PROC equal types :
+    identical types OR one type is undefined .
+
+one type is undefined :
+    type of actual field = undefined id OR CONCR(pt type) = undefined id .
+
+identical types :
+    SELECT type class (pt type) OF 
+        CASE 0, 1, 2 : type of actual field = CONCR (pt type)
+        CASE 3       : perhaps equal rows
+        CASE 4       : perhaps equal structs
+        CASE 5       : perhaps equal param procs
+        OTHERWISE      FALSE
+    ENDSELECT .
+
+perhaps equal rows :
+    param link := CONCR (pt type) + begin of pt minus ptt limit ;
+    is row AND equal row sizes AND equal row types . 
+ 
+is row :
+    type of actual field = row id .
+
+perhaps equal structs : 
+    param link := CONCR (pt type) + begin of pt minus ptt limit ;
+    is struct AND same type fields . 
+ 
+is struct :
+    type of actual field = struct id .
+
+equal row sizes :
+    pt row size = row size within param field . 
+
+equal row types :
+    field pointer INCR 1 ;
+    param link INCR 2 ;
+    get type and mode (CONCR(pt type)) ;
+    equal types .
+
+pt row size :
+    cdb int (param link + 1) .
+
+row size within param field :
+    param field [field pointer + 1].access .
+ 
+same type fields :
+    REP
+        field pointer INCR 1 ;
+        param link INCR 1 ;
+        IF type of actual field = end id
+             THEN LEAVE same type fields WITH pt struct end reached
+        FI ; 
+        get type and mode (CONCR(pt type)) ;
+        IF NOT equal types THEN LEAVE same type fields WITH FALSE FI
+    UNTIL end of field PER ;
+    FALSE .
+
+pt struct end reached : 
+    cdbint (param link) = permanent type field . 
+ 
+end of field :
+    field pointer > size of param field .
+
+type of actual field :
+    CONCR (param field [field pointer].type) .
+
+perhaps equal param procs :
+    param link := CONCR (pt type) + begin of pt minus ptt limit ;
+    is proc AND same param list . 
+
+is proc : cdbint (param link) = permanent param proc .
+
+same param list :
+    param link INCR wordlength ;
+    DTYPE VAR proc result type ;
+    get type and mode (CONCR (proc result type)) ;
+    compare param list ;
+    check results .
+
+compare param list :
+    INT VAR last param := field pointer + 1 ;
+    REP
+        field pointer INCR 1 ;
+        param link INCR wordlength ;
+        IF pt param list exhausted THEN LEAVE compare param list FI ; 
+        IF type of actual field = end id 
+           THEN LEAVE equal types WITH FALSE
+        FI ; 
+        get type and mode (CONCR(pt type)) ;
+        last param := field pointer ;
+    UNTIL NOT equal types OR end of field PER .
+
+check results : 
+    pt param list exhausted AND equal result types .
+
+equal result types :
+    save param link ;
+    IF same type (last param, proc result type)
+       THEN restore ;
+            TRUE
+       ELSE FALSE
+    FI .
+
+pt param list exhausted :
+    cdbint (param link) = permanent param proc end marker .
+
+save param link :
+    INT CONST p :: param link .
+
+restore :
+    field pointer INCR 1 ;
+    param link := p
+
+ENDPROC equal types ;
+
+BOOL PROC is not void bool or undefined (DTYPE CONST dtype) :
+    type <> void id AND type <> bool result id AND type <> undefined id .
+
+type : CONCR (dtype)
+ENDPROC is not void bool or undefined ;
+ 
+
+#page#
+(**************************************************************************) 
+(*                                                                        *) 
+(*                  8. Operationen  Teil II                   08.09.1986  *) 
+(*                                                                        *) 
+(*   Definition der Opcodes                                               *) 
+(*   Deklaration, Definition, Identifikation und Applikation              *) 
+(*   Eroeffnen und Schliessen eines Moduls                                *)
+(*                                                                        *) 
+(**************************************************************************) 
+ 
+ 
+ 
+LET module not opened  = "Module not opened" , 
+    define missing     = "DEFINE missing" ,
+    wrong nr of params = "Wrong Nr. of Params:" , 
+    illegal kind       = "Opcode expected" ,
+    nested module      = "Nested Modules" ,
+    no mod nr          = "Param Proc expected" ,
+    no immediate value = "Value expected" ,
+    type error         = "Type Error" ,
+ 
+    q ln              =  1 ,
+    q move            =  2 ,    q move code             =  2 048 ,
+    q inc1            =  3 ,    q inc1 code             =  3 072 ,
+    q dec1            =  4 ,    q dec1 code             =  4 096 ,
+    q inc             =  5 ,    q inc code              =  5 120 ,
+    q dec             =  6 ,    q dec code              =  6 144 ,
+    q add             =  7 ,    q add code              =  7 168 ,
+    q sub             =  8 ,    q sub code              =  8 192 ,
+    q clear           =  9 ,    q clear code            =  9 216 ,
+    q test            = 10 , 
+    q equ             = 11 ,    q equ code              = 11 264 , 
+    q lsequ           = 12 ,    q lsequ code            = 12 288 , 
+    q fmove           = 13 ,    q fmove code            = 13 312 , 
+    q fadd            = 14 ,    q fadd code             = 14 336 , 
+    q fsub            = 15 ,    q fsub code             = 15 360 , 
+    q fmult           = 16 ,    q fmult code            = 16 384 , 
+    q fdiv            = 17 ,    q fdiv code             = 17 408 ,
+    q flsequ          = 18 ,    q flsequ code           = 18 432 ,
+    q tmove           = 19 ,    q tmove code            = 19 456 ,
+    q tequ            = 20 ,    q tequ code             = 20 480 , 
+    q accds           = 21 ,    q access ds code        = 22 528 , 
+    q ref             = 22 ,    q ref code              = 23 552 ,
+    q subscript       = 23 ,    q subscript code        = 24 576 , 
+    q select          = 24 ,    q select code           = 25 600 ,
+    q ppv             = 25 ,    q ppv code              = 26 624 ,
+    q pp              = 26 , 
+    q make false      = 27 , (* q make false code       = 65 513 *)
+    q movex           = 28 ,
+(*  q longa subs                q longa subs code       = 65 376 *) 
+    q return          = 29 ,    q return code           = 32 512 ,
+    q true return     = 30 ,    q true return code      = 32 513 ,
+    q false return    = 31 ,    q false return code     = 32 514 ,
+                                q goret code            = 32 519 ,
+    q esc mult        = 32 ,    q esc mult code         = 32 553 ,
+    q esc div         = 33 ,    q esc div code          = 32 554 , 
+    q esc mod         = 34 ,    q esc mod code          = 32 555 , 
+    q pproc           = 35 , 
+    q compl int       = 36 ,    q compl int code        = 32 551 ,
+    q compl real      = 37 ,    q compl real code       = 32 550 ,
+    q alias ds        = 38 ,    q alias ds code         = 32 546 ,
+    q movim           = 39 ,    q esc movim code        = 32 547 ,
+    q fequ            = 40 ,    q fequ code             = 32 548 ,
+    q tlsequ          = 41 ,    q tlsequ code           = 32 549 ,
+(*  q case            = 42 , *) q esc case              = 32 544 ,
+    q plus            = 43 ,
+    q minus           = 44 ,
+    q mult            = 45 ,
+    q int div         = 46 ,
+    q real div        = 47 ,
+    q equal           = 48 ,
+    q lessequal       = 49 ,
+    q ulseq           = 50 ,    q ulseq code            = 21 504 ,
+    q pdadd           = 51 ,    q pdadd code            = 32 653 ,
+    q ppsub           = 52 ,    q ppsub code            = 32 654 ,
+    q dimov           = 53 ,    q dimov code            = 32 655 ,
+    q idmov           = 54 ,    q idmov code            = 32 656 ;
+
+INT CONST q make false code :: - 1 022 , 
+          q longa subs code :: -   159 ,
+          q penter code     :: -   511 ;
+ 
+
+                   (***** Deklaration *****) 
+ 
+PROC declare (OPN VAR operation) : 
+    operation.kind := proc op ;
+    get module nr (operation.mod nr) ; 
+    operation.top of stack := 0 
+ENDPROC declare ; 
+ 
+PROC declare (TEXT CONST name, INT CONST first, params, OPN VAR operation) : 
+    declare (operation) ;
+    entry into name and pt table if necessary ; 
+    enter params ; 
+    enter result ; 
+    enter module number . 
+ 
+entry into name and pt table if necessary : 
+    declare object (name, nt link, permanent pointer) . 
+ 
+enter params : 
+    field pointer := first ;
+    FOR index FROM 1 UPTO params REP
+       enter param (param field [field pointer]) ;
+       NEXTPARAM field pointer 
+    PER .
+ 
+enter result : 
+    enter param (param field[field pointer].type, permanent proc op) .
+ 
+enter module number : 
+    put next permanent (operation.mod nr)
+ENDPROC declare ; 
+ 
+PROC enter param (PARAMDESCRIPTOR CONST param) :
+    IF   param.access = const 
+         THEN enter param (param.type, permanent param const)
+    ELIF param.access = var 
+         THEN enter param (param.type, permanent param var)
+    ELSE errorstop ("Unknown Access")
+    FI
+ENDPROC enter param ;
+
+PROC enter param (DTYPE CONST type, INT CONST permanent mode) :
+    unsigned arithmetic ;
+    SELECT type class (type) OF
+        CASE 0, 1, 2 : put next permanent (CONCR(type) + permanent mode)
+        OTHERWISE      errorstop ("Illegal Type")
+    ENDSELECT
+ENDPROC enter param ;
+
+
+                    (***** Definition *****) 
+ 
+PROC define (OPN VAR opn) : 
+    IF NOT module open THEN errorstop (module not opened)
+                       ELSE proc head (opn.mod nr, opn.top of stack)
+    FI 
+ENDPROC define ; 
+ 
+PROC set length of local storage (OPN VAR opn, INT CONST size) :
+    IF   size < 0 OR size > local address limit
+         THEN errorstop (address overflow)
+    ELIF opn.top of stack = 0
+         THEN errorstop (define missing)
+    ELIF opn.kind <> proc op
+         THEN errorstop (proc op expected)
+    FI ;
+    set length (opn.top of stack, size + eumel0 stack offset)
+ENDPROC set length of local storage ; 
+ 
+PROC define (OPN VAR operation, INT CONST size) : 
+    define (operation) ; 
+    set length of local storage (operation, size)
+ENDPROC define ; 
+ 
+ 
+                 (***** Identifikation *****) 
+ 
+INT VAR counter, result index, result type repr;
+ 
+PROC identify (TEXT CONST name, INT CONST first, params, OPN VAR operation,
+               BOOL VAR object exists) :
+    find result entry ; 
+    to object (name) ;
+    IF found  THEN first fit and leave if found FI ; 
+    IF eumel0 THEN identify eumel0 instruction 
+              ELSE yield undefined operation 
+    FI .
+ 
+find result entry : 
+    result index := first; 
+    counter := 0 ;
+    WHILE counter < params REP 
+        NEXTPARAM result index ; 
+        counter INCR 1
+    PER ;
+    check on param field exceeded .
+
+check on param field exceeded :
+    IF result index > size of param field
+       THEN errorstop (param field exceeded) 
+    FI .
+ 
+yield undefined operation :
+    declare (result index, undefined type) ;
+    apply (result index, nop) ;
+    object exists := FALSE .
+ 
+first fit and leave if found :
+    WHILE yet another procedure exists REP 
+        check one procedure and leave if match ; 
+        next procedure 
+    PER . 
+ 
+yet another procedure exists : 
+    permanent pointer <> 0 . 
+ 
+check one procedure and leave if match: 
+    param link := permanent pointer + wordlength ; 
+    set end marker if end of list ;
+    counter := params ; 
+    field pointer := first ;
+    REP
+       IF   end of params AND counter = 0 
+            THEN procedure found
+       ELIF end of params OR  counter = 0 
+            THEN LEAVE check one procedure and leave if match 
+            ELSE check next param 
+       FI 
+   PER . 
+ 
+check next param : 
+    get type and mode (CONCR(pt type)) ;
+    IF same types THEN set param mode ; 
+                       field pointer INCR 1 ;
+                       param link INCR 1 ;
+                       set end marker if end of list ;
+                       counter DECR 1 ; 
+                  ELSE LEAVE check one procedure and leave if match 
+    FI . 
+ 
+same types : (* inline version ! *)
+    equal types .
+ 
+set param mode : 
+    param field [field pointer].access := mode . 
+ 
+procedure found : 
+    get result ; 
+    operation.kind   := proc op ; 
+    operation.mod nr := module number ; 
+    operation.top of stack := 0 ;
+    object exists := TRUE ;
+    LEAVE identify . 
+ 
+get result : 
+    get type and mode (result type) ; 
+    declare (result index, mode) .
+ 
+module number :
+    cdbint (param link + 1) . 
+
+result type :
+    CONCR (param field [result index].type) .
+ 
+eumel0 : 
+    eumel0 opn.mod nr := link (eumel 0 opcodes, name) ; 
+    eumel0 opn.mod nr <> 0 .
+ 
+identify eumel 0 instruction : 
+    init result type with void ; 
+    CONCR (operation) := CONCR (eumel0 opn) ;
+    object exists := check params and set result ;
+    declare (result index, DTYPE:(result type repr)) ;
+    declare (result index, const) .
+
+init result type with void :
+    result type repr := void id . 
+ 
+check params and set result :
+    SELECT operation.mod nr OF
+       CASE q return, q false return, q true return : no params 
+       CASE q inc1, q dec1          : one int param yielding void 
+       CASE q pproc, q pp, q ln     : one param yielding void
+       CASE q test                  : one param yielding bool
+       CASE q clear, q ppv          : one int or bool param yielding void 
+       CASE q make false            : one bool param yielding void 
+       CASE q move                  : two int or bool params yielding void 
+       CASE q compl int, q inc, q dec : two int params yielding void
+       CASE q compl real, q fmove   : two real params yielding void 
+       CASE q equ, q lsequ, q ulseq : two int params yielding bool 
+       CASE q fequ, q flsequ        : two real params yielding bool 
+       CASE q tequ, q tlsequ        : two text params yielding bool
+       CASE q tmove                 : two text params yielding void
+       CASE q accds, q ref, q movim,
+            q dimov, q idmov        : two params yielding void
+       CASE q add, q sub, q esc mult,
+            q esc div, q esc mod    : three int params yielding void
+       CASE q fadd, q fsub, q fmult, q fdiv : three real params yielding void
+       CASE q select, q movex, q alias ds,
+            q pdadd, q ppsub        : three params 
+       CASE q subscript             : five params 
+       CASE q plus, q mult          : two intreals yielding intreal
+       CASE q minus                 : monadic or dyadic minus
+       CASE q int div               : two int params yielding int 
+       CASE q real div              : two real params yielding real
+       CASE q equal, q lessequal    : two intrealtexts yielding bool
+       OTHERWISE                      FALSE
+    ENDSELECT .
+ 
+no params : 
+    params = 0 . 
+
+one int param yielding void : 
+    p1 void (int type, first, params) .
+
+one param yielding void :
+    params = 1 . 
+
+one param yielding bool :
+    IF params = 1 THEN result type repr := bool id ; 
+                       TRUE 
+                  ELSE FALSE
+    FI .
+ 
+one int or bool param yielding void :
+    p1 void (int type, first, params) OR p1 void (bool type, first, params) . 
+
+one bool param yielding void :
+    p1 void (bool type, first, params) . 
+ 
+two int or bool params yielding void : 
+    p2 (int  type, first, params, void id) OR
+    p2 (bool type, first, params, void id) .
+
+two int params yielding void :
+    p2 (int type, first, params, void id) .
+
+two real params yielding void :
+    p2 (real type, first, params, void id) .
+
+two text params yielding void :
+    p2 (text type, first, params, void id) .
+
+two int params yielding bool :
+    p2 (int type, first, params, bool id) .
+
+two real params yielding bool :
+    p2 (real type, first, params, bool id) .
+
+two text params yielding bool :
+    p2 (text type, first, params, bool id) .
+
+two params yielding void :
+    params = 2 . 
+
+three int params yielding void :
+    p3 void (int type, first, params) .
+
+three real params yielding void :
+    p3 void (real type, first, params) .
+
+three params :
+    params = 3 .
+
+five params : 
+    params = 5 . 
+
+two intreals yielding intreal :
+    two int params yielding int OR two real params yielding real .
+
+monadic or dyadic minus :
+    IF   params = 2 THEN two intreals yielding intreal
+    ELIF params = 1 THEN monadic minus
+                    ELSE FALSE
+    FI .
+
+monadic minus :
+    result type repr := CONCR (param field[first].type) ;
+    result type repr = int id OR result type repr = real id .
+
+two intrealtexts yielding bool :
+    two int params yielding bool OR two real params yielding bool OR
+    two text params yielding bool .
+
+two int params yielding int :
+    p2 (int type, first, params, int id) .
+
+two real params yielding real :
+    p2 (real type, first, params, real id)
+ENDPROC identify ; 
+ 
+BOOL PROC p1 void (DTYPE CONST requested type, INT CONST first, param nr) :
+    param nr = 1 AND param type is requested plain type . 
+ 
+param type is requested plain type :
+    CONCR (param field [first].type) = CONCR (requested type) 
+ 
+ENDPROC p1 void ;
+ 
+BOOL PROC p2 (DTYPE CONST requested type, INT CONST first, param nr,
+              INT CONST result type) :
+    IF param nr = 2 AND param types equal requested plain type
+       THEN result type repr := result type ;
+            TRUE
+       ELSE FALSE
+    FI .
+ 
+param types equal requested plain type :
+    CONCR (param field [first]  .type) = CONCR (requested type) AND 
+    CONCR (param field [first+1].type) = CONCR (requested type)
+
+ENDPROC p2 ;
+ 
+BOOL PROC p3 void (DTYPE CONST requested type, INT CONST first, param nr) :
+    param nr = 3 AND param types ok .
+ 
+param types ok :
+    FOR index FROM first UPTO first+2 REP
+       IF different param types THEN LEAVE p3 void WITH FALSE FI 
+    PER ;
+    TRUE .
+ 
+different param types :
+    CONCR (param field [index].type) <> CONCR (requested type)
+ENDPROC p3 void; 
+
+
+                   (***** Applikation *****) 
+ 
+INT VAR address representation, left repr, right repr, result repr;
+
+PROC apply (INT CONST first, nr of params, OPN CONST opn) : 
+    IF NOT module open THEN errorstop (module not opened) FI ;
+    SELECT opn.kind OF 
+        CASE eumel 0    : generate eumel0 instruction 
+        CASE proc op    : call operation 
+        CASE param proc : call param proc
+        CASE nil        :
+        OTHERWISE         errorstop (illegal kind) 
+    ENDSELECT .
+ 
+call operation :
+    push params if necessary (first, nr of params, opn.mod nr) ; 
+    call (opn.mod nr) .
+ 
+call param proc : 
+    result addr.kind := local ref ;
+    result addr.value := opn.mod nr ;
+    INT CONST module nr := REPR result addr ;
+    push params if necessary (first, nr of params, module nr) ;
+    call param (module nr) .
+
+generate eumel0 instruction : 
+    SELECT real nr of params OF 
+        CASE 0 : p0 instruction 
+        CASE 1 : apply p1 (opn, first addr) 
+        CASE 2 : apply p2 (opn, first addr, second addr)
+        CASE 3 : apply p3 (opn, left type, first addr, second addr, third addr) 
+        CASE 5 : subscript operation
+        OTHERWISE errorstop (wrong nr of params + text (nr of params)) 
+    ENDSELECT . 
+ 
+real nr of params :
+    IF operator denotation THEN nr of params + 1
+                           ELSE nr of params
+    FI .
+
+operator denotation :
+    opn.mod nr >= q plus AND opn.mod nr < q ulseq .
+
+p0 instruction :
+    IF   opn.mod nr = q return       THEN s0 (q return code) 
+    ELIF opn.mod nr = q true return  THEN s0 (q true return code)
+    ELIF opn.mod nr = q false return THEN s0 (q false return code)
+                                     ELSE errorstop (wrong nr of params +
+                                                     mnemonic (opn)) 
+    FI .
+ 
+subscript operation :
+    IF opn.mod nr = q subscript 
+       THEN subscription
+       ELSE errorstop (wrong nr of params + text (nr of params))
+    FI .
+
+subscription :
+    ADDRESS CONST element length :: param field [first+2].addr ,
+                  limit          :: param field [first+3].addr ;
+    check on immediates ;
+    IF element length.value < 1024
+       THEN s0 (q subscript code + element length.value)
+       ELSE s0 (q longa subs code) ;
+            s0 (element length.value)
+    FI ;
+    s3 (limit.value - 1, subs index, base addr, subs result) .
+
+check on immediates :
+    IF element length.kind <> immediate value OR
+       limit.kind <> immediate value
+       THEN errorstop (no immediate value)
+    FI .
+
+subs index  : REPR param field [first+1].addr .
+
+base addr   : REPR param field [first].addr .
+
+subs result : REPR param field [first+4].addr .
+
+first addr : 
+    param field [first].addr .
+ 
+left type :
+    param field [first].type .
+
+second addr : 
+    param field [nextparam (first)].addr .
+ 
+third addr : 
+    param field [nextparam(nextparam(first))].addr
+ENDPROC apply ;
+ 
+PROC push params if necessary (INT CONST first, nr of params, mod nr) : 
+    init param push (mod nr) ;
+    field pointer := first ;
+    IF nr of params > 0 THEN push params FI ;
+    push result if there is one .
+ 
+push params : 
+    FOR index FROM 1 UPTO nr of params REP 
+        apply p1 (push code, param addr) ; 
+        NEXTPARAM field pointer
+    PER . 
+ 
+push code : 
+    param field [field pointer].push opn . 
+ 
+param addr :
+    param field [field pointer].addr . 
+ 
+push result if there is one : 
+    IF push result necessary 
+       THEN push result address (REPR param field [field pointer].addr)
+    FI . 
+
+push result necessary :
+    param field [field pointer].push opn.kind <> nil AND 
+    is not void bool or undefined (param field [field pointer].type) 
+ENDPROC push params if necessary ;
+
+PROC apply p1 (OPN CONST opn, ADDRESS CONST addr) : 
+    IF   opn.mod nr = q ln    THEN generate line number 
+    ELIF opn.mod nr = q pproc THEN push module nr
+                              ELSE gen p1 instruction
+    FI .
+
+gen p1 instruction : 
+    address representation := REPR addr ;
+    SELECT opn.mod nr OF 
+        CASE q inc1  : t1 (q inc1 code, address representation)
+        CASE q dec1  : t1 (q dec1 code, address representation)
+        CASE q clear : t1 (q clear code,address representation)
+        CASE q test  : test bool object (address representation)
+        CASE q pp    : push param (address representation)
+        CASE q ppv   : s1 (q ppv code, address representation)
+        CASE q make false : s1 (q make false code, address representation)
+        OTHERWISE errorstop (wrong nr of params + mnemonic (opn))
+    ENDSELECT .
+
+generate line number :
+    IF addr.kind = immediate value THEN mark line (addr.value)
+                                   ELSE errorstop (no immediate value)
+    FI .
+
+push module nr : 
+    IF addr.kind = module nr THEN push param proc (addr.value)
+                             ELSE errorstop (no mod nr)
+    FI
+ENDPROC apply p1; 
+ 
+PROC apply p2 (OPN CONST opn, ADDRESS CONST left addr, right addr): 
+    left repr := REPR left addr ;
+    IF opn.mod nr = q movim THEN move immediate
+                            ELSE gen p2 instruction 
+    FI . 
+ 
+gen p2 instruction : 
+    right repr := REPR right addr ;
+    SELECT opn.mod nr OF 
+        CASE q move       : t2 (q move code, right repr, left repr)
+        CASE q inc        : t2 (q inc code, right repr, left repr) 
+        CASE q dec        : t2 (q dec code, right repr, left repr) 
+        CASE q equ        : compare (q equ code, left repr, right repr) 
+        CASE q lsequ      : compare (q lsequ code, left repr, right repr) 
+        CASE q ulseq      : compare (q ulseq code, left repr, right repr)
+        CASE q fmove      : t2 (q fmove code, right repr, left repr)
+        CASE q flsequ     : compare (q flsequ code, left repr, right repr) 
+        CASE q tmove      : t2 (q tmove code, right repr, left repr)
+        CASE q tequ       : compare (q tequ code, left repr, right repr) 
+        CASE q compl int  : s2 (q compl int code, left repr, right repr)
+        CASE q compl real : s2 (q compl real code, left repr, right repr)
+        CASE q fequ       : compare (q fequ code, left repr, right repr) 
+        CASE q tlsequ     : compare (q tlsequ code, left repr, right repr) 
+        CASE q accds      : t2 (q access ds code, left repr, right repr)
+        CASE q ref        : t2 (q ref code, left repr, right repr) 
+        CASE q dimov      : s2 (q dimov code, left repr, right repr)
+        CASE q idmov      : s2 (q idmov code, left repr, right repr)
+        OTHERWISE errorstop (wrong nr of params + mnemonic (opn))
+    ENDSELECT .
+ 
+move immediate :
+    IF right addr.kind = immediate value 
+       THEN s0 (q esc movim code) ;
+            s1 (right addr.value, left repr)
+       ELSE errorstop (no immediate value)
+    FI
+ENDPROC apply p2; 
+ 
+PROC apply p3 (OPN CONST opn, DTYPE CONST left dtype, 
+               ADDRESS CONST left addr, right addr, result addr ):
+    result repr := REPR result addr ;
+    IF   opn.mod nr = q pdadd  THEN select with dint; LEAVE apply p3
+    ELIF opn.mod nr = q select THEN gen select instruction; LEAVE apply p3 FI ;
+    left repr   := REPR left addr ; 
+    IF   opn.mod nr = q movex    THEN gen long move
+    ELIF opn.mod nr = q alias ds THEN alias dataspace
+                                 ELSE gen p3 instruction
+    FI .
+
+gen long move :
+    IF right addr.kind = immediate value
+       THEN long move (left repr, result repr, right addr.value)
+       ELSE errorstop (no immediate value)
+    FI .
+
+alias dataspace :
+    IF right addr.value = immediate value
+       THEN s0 (q alias ds code) ;
+            s2 (right addr.value, result repr, left repr)
+       ELSE errorstop (no immediate value)
+    FI .
+
+gen select instruction :
+    IF right addr.kind = immediate value 
+       THEN IF different bases
+               THEN access external (left addr.value, right addr.value)
+               ELSE t1 (q select code, REPR left addr) ;
+                    s1 (right addr.value, result repr)
+            FI
+       ELSE errorstop (no immediate value)
+    FI .
+
+select with dint :
+    right repr := REPR right addr ;
+    IF different bases THEN access external packet
+                       ELSE simple access
+    FI .
+
+different bases :
+    left addr.kind = p base AND left addr.value <> packet base .
+
+simple access :
+    s3 (q pdadd code, REPR left addr, right repr, result repr) .
+
+access external packet :
+    access external (left addr.value, global address zero) ;
+    s3 (q pdadd code, REPR REF result addr, right repr, result repr) .
+
+gen p3 instruction :
+    right repr  := REPR right addr ; 
+    SELECT opn.mod nr OF 
+        CASE q add                : int add
+        CASE q sub                : int sub
+        CASE q fadd               : real add 
+        CASE q fsub               : real sub 
+        CASE q fmult              : real mult 
+        CASE q fdiv, q real div   : real div 
+        CASE q esc mult           : int mult 
+        CASE q esc div, q int div : int div 
+        CASE q esc mod            : int mod 
+        CASE q plus               : int real add
+        CASE q minus              : int real sub
+        CASE q mult               : int real mult
+        CASE q equal, q lessequal : compare (comp code, left repr, right repr)
+        CASE q ppsub              : distance between two objects
+        OTHERWISE errorstop (wrong nr of params + mnemonic (opn))
+    ENDSELECT . 
+ 
+int add   : compute (q add code, left repr, right repr, result repr) . 
+ 
+int sub   : compute (q sub code, left repr, right repr, result repr) . 
+ 
+real add  : compute (q fadd code, left repr, right repr, result repr) . 
+ 
+real sub  : compute (q fsub code, left repr, right repr, result repr) . 
+ 
+real mult : compute (q fmult code, left repr, right repr, result repr) . 
+ 
+real div  : compute (q fdiv code, left repr, right repr, result repr) . 
+ 
+int mult  : s3 (q esc mult code, left repr, right repr, result repr) . 
+ 
+int div   : s3 (q esc div code, left repr, right repr, result repr) . 
+ 
+int mod   : s3 (q esc mod code, left repr, right repr, result repr) .
+ 
+int real add : 
+    IF left type = int id THEN int add
+                          ELSE real add
+    FI . 
+ 
+int real sub :
+    IF left type = int id THEN int sub 
+                           ELSE real sub
+    FI .
+
+int real mult :
+    IF left type = int id THEN int mult
+                          ELSE real mult
+    FI . 
+
+comp code : 
+    SELECT left type OF
+        CASE int id    : IF opn.mod nr = q equal THEN q equ  ELSE q lsequ FI 
+        CASE real id   : IF opn.mod nr = q equal THEN q fequ ELSE q flsequ FI
+        CASE string id : IF opn.mod nr = q equal THEN q tequ ELSE q tlsequ FI
+        OTHERWISE errorstop (type error); q equ
+    ENDSELECT .
+
+left type : CONCR (left dtype) .
+
+distance between two objects :
+    s3 (q ppsub code, left repr, right repr, result repr)
+
+ENDPROC apply p3; 
+ 
+PROC access external (INT CONST old base, offset) :
+    s0 (q penter code + old base) ;
+    t2 (q ref code, offset, result repr) ;
+    s0 (q penter code + packet base)
+ENDPROC access external ;
+
+
+                      (***** Modul *****) 
+ 
+BOOL VAR module open ;
+
+.init opn section : 
+    module open := FALSE .;
+
+PROC begin module : 
+    IF module open THEN errorstop (nested module) 
+                   ELSE begin modul ; 
+                        module open := TRUE 
+    FI 
+ENDPROC begin module ; 
+ 
+PROC end module : 
+    IF NOT module open
+       THEN errorstop (module not opened) 
+       ELSE end modul ;
+            module open := FALSE
+    FI
+ENDPROC end module ; 
+
+TEXT PROC dump (OPN CONST operation) : 
+    IF   operation.kind = proc op THEN " PROC" + text (operation.mod nr, 5) 
+    ELIF operation.kind = eumel 0 THEN " EUMEL0: " + mnemonic (operation)
+                                  ELSE " undef. Opn" 
+    FI 
+ENDPROC dump ; 
+ 
+PROC begin modul :
+    EXTERNAL 10073
+ENDPROC begin modul ; 
+ 
+PROC end modul :
+    EXTERNAL 10011
+ENDPROC end modul ; 
+ 
+PROC proc head (INT VAR mod nr, top of stack) :
+    EXTERNAL 10012
+ENDPROC proc head ; 
+ 
+PROC set length (INT CONST top of stack, size) : 
+    EXTERNAL 10013
+ENDPROC set length ; 
+ 
+PROC get module nr (INT VAR module nr) : 
+    EXTERNAL 10016
+ENDPROC get module nr ; 
+ 
+PROC compute (INT CONST op code, l addr, r addr, result address) :
+    EXTERNAL 10017
+ENDPROC compute ; 
+ 
+PROC compare (INT CONST op code, l addr, r addr) :
+    EXTERNAL 10018
+ENDPROC compare ; 
+ 
+PROC long move (INT CONST to, from, length) :
+    EXTERNAL 10019
+ENDPROC long move ;
+
+PROC call (INT CONST mod nr) : 
+    EXTERNAL 10022
+ENDPROC call ; 
+ 
+PROC call param (INT CONST mod nr) : 
+    EXTERNAL 10023
+ENDPROC call param ; 
+ 
+PROC push param (INT CONST addr) : 
+    EXTERNAL 10024
+ENDPROC push param ; 
+ 
+PROC push param proc (INT CONST mod nr) : 
+    EXTERNAL 10025
+ENDPROC push param proc ; 
+ 
+PROC init param push (INT CONST mod nr) : 
+    EXTERNAL 10026
+ENDPROC init param push ; 
+ 
+PROC push result address (INT CONST addr) : 
+    EXTERNAL 10027
+ENDPROC push result address ; 
+ 
+PROC test bool object (INT CONST addr) : 
+    EXTERNAL 10192
+ENDPROC test bool object ; 
+ 
+PROC mark line (INT CONST line number) : 
+    EXTERNAL 10030
+ENDPROC mark line ; 
+ 
+PROC s0 (INT CONST op code) : 
+    EXTERNAL 10038
+ENDPROC s0 ; 
+ 
+PROC s1 (INT CONST op code, addr) : 
+    EXTERNAL 10039
+ENDPROC s1 ; 
+ 
+PROC s2 (INT CONST op code , addr1, addr2) : 
+    EXTERNAL 10040
+ENDPROC s2 ; 
+ 
+PROC s3 (INT CONST op code, addr1, addr2, addr3) : 
+    EXTERNAL 10041
+ENDPROC s3 ; 
+ 
+PROC t1 (INT CONST op code, addr) : 
+    EXTERNAL 10042
+ENDPROC t1 ; 
+ 
+PROC t2 (INT CONST op code, addr1, addr2) : 
+    EXTERNAL 10043
+ENDPROC t2 ; 
+ 
+#page#
+(**************************************************************************) 
+(*                                                                        *) 
+(*                  9. Speicherverwaltung                     03.06.1986  *) 
+(*                                                                        *) 
+(*   Ablage der Paketdaten                                                *) 
+(*                                                                        *) 
+(**************************************************************************) 
+
+
+
+INT VAR address value;
+ 
+INT CONST data allocation by coder  := 1 , 
+          data allocation by user   := 2 ; 
+
+LET not initialized      = 0 ,
+    wrong mm mode        = "Wrong MM Mode" ,
+    define on non global = "Define for GLOB only" ,
+    text too long        = "TEXT too long" ;
+ 
+TEXT VAR const buffer :: point line ;
+
+.reset memory management mode :
+     memory management mode := not initialized . ;
+ 
+PROC reserve storage (INT CONST size) : 
+    IF memory management mode <> data allocation by user 
+       THEN errorstop (wrong mm mode) 
+    FI ; 
+    allocate var (address value, size) ; 
+    memory management mode := not initialized
+ENDPROC reserve storage ; 
+ 
+PROC allocate variable (ADDRESS VAR addr, INT CONST size) : 
+    IF memory management mode <> data allocation by coder 
+       THEN errorstop (wrong mm mode) 
+    FI ; 
+    allocate var (addr.value, size) ;
+    addr.kind := global
+ENDPROC allocate variable ; 
+ 
+PROC allocate denoter (ADDRESS VAR addr, INT CONST value) :
+    IF memory management mode <> data allocation by coder 
+       THEN errorstop (wrong mm mode) 
+    FI ; 
+    allocate int denoter (addr.value) ;
+    put data word (value, addr.value) ;
+    addr.kind := global
+ENDPROC allocate denoter ; 
+
+PROC allocate denoter (ADDRESS VAR addr, REAL CONST value) :
+    IF memory management mode <> data allocation by coder 
+       THEN errorstop (wrong mm mode) 
+    FI ; 
+    allocate real denoter (addr.value) ;
+    addr.kind := global ;
+    define (addr, value)
+ENDPROC allocate denoter ; 
+ 
+PROC allocate denoter (ADDRESS VAR addr, TEXT CONST value) :
+    IF memory management mode <> data allocation by coder 
+       THEN errorstop (wrong mm mode) 
+    FI ; 
+    allocate text denoter (addr.value, (LENGTH value+1) DIV 2 + 2) ; 
+    addr.kind := global ;
+    skip heaplink; 
+    define (addr, value) ; 
+    reset heaplink .
+ 
+skip heaplink : 
+    addr.value INCR 1 .
+
+reset heaplink :
+    addr.value DECR 1
+ENDPROC allocate denoter ; 
+ 
+PROC allocate denoter (ADDRESS VAR addr, DINT CONST value) :
+    IF memory management mode <> data allocation by coder 
+       THEN errorstop (wrong mm mode) 
+    FI ; 
+    allocate dint denoter (addr.value, value) ;
+    addr.kind := global
+ENDPROC allocate denoter ;
+
+PROC allocate dint denoter (INT VAR addr offset, DINT CONST value) :
+    adjust to an even address if necessary ;
+    put data word (value.low, addr offset) ;
+    allocate int denoter (address value) ;
+    put data word (value.high, address value) .
+
+adjust to an even address if necessary :
+    allocate int denoter (addr offset) ;
+    IF (addr offset AND 1) <> 0 THEN allocate int denoter (addr offset) FI
+ENDPROC allocate dint denoter ; 
+
+PROC define (ADDRESS CONST addr, INT CONST value) : 
+    IF addr.kind <> global 
+       THEN errorstop (define on non global) 
+    FI ; 
+    put data word (value, addr.value) 
+ENDPROC define ; 
+ 
+PROC define (ADDRESS CONST addr, DINT CONST value) : 
+    IF addr.kind <> global
+       THEN errorstop (define on non global) 
+    FI ; 
+    put data word (value.low , addr.value);
+    put data word (value.high, addr.value + 1)
+ENDPROC define ;
+
+PROC define (ADDRESS CONST addr, REAL CONST value) : 
+    IF addr.kind <> global 
+       THEN errorstop (define on non global) 
+    FI ; 
+    replace (const buffer, 1, value) ; 
+    address value := addr.value ;
+    FOR index FROM 1 UPTO 4 REP 
+        put data word (const buffer ISUB index, address value) ;
+        address value INCR 1
+    PER 
+ENDPROC define ; 
+ 
+PROC define (ADDRESS CONST addr, TEXT CONST value) : 
+    IF   addr.kind <> global THEN errorstop (define on non global) 
+    ELIF LENGTH value > 255  THEN errorstop (text too long)
+    FI ; 
+    address value := addr.value ;
+    const buffer := code (LENGTH value) ; 
+    const buffer CAT value ; 
+    const buffer CAT ""0"" ;
+    FOR index FROM 1 UPTO LENGTH const buffer DIV 2 REP 
+        put data word (const buffer ISUB index, address value) ;
+        address value INCR 1
+    PER ; 
+    const buffer := point line
+ENDPROC define ; 
+ 
+PROC allocate var (INT VAR addr, INT CONST length) : 
+    EXTERNAL 10033
+ENDPROC allocate var ; 
+ 
+PROC allocate int denoter (INT VAR addr) : 
+    EXTERNAL 10034
+ENDPROC allocate int denoter ;
+ 
+PROC allocate real denoter (INT VAR addr) : 
+    EXTERNAL 10035 
+ENDPROC allocate real denoter ;
+
+PROC allocate text denoter (INT VAR addr, INT CONST length) : 
+    EXTERNAL 10036 
+ENDPROC allocate text denoter ;
+ 
+PROC put data word (INT CONST value, INT CONST addr) :
+    EXTERNAL 10037
+ENDPROC put data word ; 
+ 
+ 
+#page#
+(**************************************************************************) 
+(*                                                                        *) 
+(*                 10. Inspector                              28.10.1987  *) 
+(*                                                                        *) 
+(**************************************************************************) 
+
+
+
+INT VAR line number, pattern length, begin of packet,
+        last packet entry, indentation;
+
+TEXT VAR bulletin name, type and mode, pattern, buffer, dummy name;
+ 
+DATASPACE VAR bulletin ds :: nilspace ;
+
+.packet name :
+     cdb text (cdb int(packet link + wordlength) + two word length) .
+
+.packet entry :
+     permanent pointer = 0 OR
+     cdbint (permanent pointer) = permanent packet OR
+     cdbint (permanent pointer + wordlength) = permanent packet .
+
+.within editor :
+    aktueller editor > 0 .  ;
+
+TEXT PROC type name (DTYPE CONST type) : 
+    type and mode := "" ; 
+    IF CONCR (type) = void id THEN type and mode CAT "VOID"
+                              ELSE name of type (CONCR (type)) 
+    FI ;
+    type and mode
+ENDPROC type name ; 
+ 
+TEXT PROC dump (DTYPE CONST type) :
+(*  type and mode := "TYPE " ;
+    name of type (CONCR (type)) ; 
+    type and mode
+*)
+    type name (type)    (* aus Kompatibilitätsgründen zum 1.9.2 Coder / rr *)
+ENDPROC dump ;
+
+PROC name of type (INT CONST type) :
+            SELECT type OF
+     CASE void id                 :
+     CASE int id                  : type and mode CAT "INT"
+     CASE real id                 : type and mode CAT "REAL"
+     CASE string id               : type and mode CAT "TEXT"
+     CASE bool id, bool result id : type and mode CAT "BOOL"
+     CASE dataspace id            : type and mode CAT "DATASPACE"
+     CASE row id                  : type and mode CAT "ROW "
+     CASE struct id               : type and mode CAT "STRUCT"
+     OTHERWISE                    : complex type
+            ENDSELECT .
+
+complex type :
+     unsigned arithmetic ;
+     IF type > ptt limit THEN perhaps permanent struct or row
+                         ELSE get complex type
+     FI .
+
+perhaps permanent struct or row :
+     index := type + begin of pt minus ptt limit ;
+     mode := cdb int (index) MOD ptt limit ;
+     IF   mode = permanent row    THEN get permanent row 
+     ELIF mode = permanent struct THEN get permanent struct
+                                  ELSE type and mode CAT "-"
+     FI .
+
+get complex type :
+     index := type + begin of permanent table ;
+     IF is complex type THEN get name
+                        ELSE type and mode CAT "-"
+     FI .
+
+is complex type :
+     permanent type definition mode = permanent type .
+
+get name :
+     type and mode CAT cdb text (link to type name + two word length) .
+
+link to type name :
+     cdb int (index + three word length) .
+
+permanent type definition mode :
+     cdb int (index + wordlength) .
+
+get permanent row :
+     INT VAR t; 
+     type and mode CAT "ROW " ;
+     type and mode CAT text (cdb int (index + wordlength)) ;
+     type and mode CAT " " ;
+     param link := index + two wordlength ;
+     get type and mode (t) ;
+     name of type (t) .
+ 
+get permanent struct :
+     type and mode CAT "STRUCT ( ... )" 
+ENDPROC name of type ;
+
+PROC help (TEXT CONST proc name) :
+     prep bulletin ;
+     prep help ;
+     scan (object name) ;
+     next symbol (pattern) ;
+     packet link := end of permanent table ;
+     IF function = 0 THEN standard help
+                     ELSE asterisk help
+     FI .
+
+prep help :
+     object name := compress (proc name) ;
+     INT VAR function :: 0 ;
+     INT CONST l :: LENGTH object name ;
+     IF l > 1 AND object name <> "**"
+        THEN IF (object name SUB l) = "*"
+               THEN function INCR 2 ;
+                    delete char (object name, l)
+             FI ;
+             IF (object name SUB 1) = "*"
+               THEN function INCR 1 ;
+                    delete char (object name, 1)
+             FI ;
+             IF another asterisk THEN wrong function FI
+     FI.
+
+another asterisk :
+     pos (object name, "*") <> 0 .
+
+wrong function :
+     errorstop ("unzulaessige Sternfunktion") .
+
+standard help :
+     to object (pattern) ;
+     IF found THEN display
+              ELSE error stop ("unbekannt: " + proc name)
+     FI .
+
+display :
+     IF NOT packet entry
+        THEN WHILE permanent pointer <> 0 REP
+                 put name of packet if necessary ;
+                 put specifications (pattern) ;
+                 next procedure
+             ENDREP ;
+             show bulletin file
+        FI .
+ 
+put name of packet if necessary :
+     IF new packet THEN packet link := permanent pointer ;
+                        find begin of packet ;
+                        writeline (2) ;
+                        write packet name
+     FI .
+
+find begin of packet :
+     REP 
+         packet link DECR wordlength
+     UNTIL begin of packet found PER .
+
+begin of packet found :
+     cdb int (packet link) = permanent packet .
+
+new packet :
+     permanent pointer < packet link .
+
+asterisk help :
+     hash table pointer := begin of hash table ;
+     pattern length := LENGTH pattern - 1 ;
+     REP
+        list all objects in current hash table chain ;
+        next hash entry
+     UNTIL end of hash table reached ENDREP ;
+     show bulletin file .
+
+list all objects in current hash table chain :
+     nt link := hash table pointer ;
+     WHILE yet another nt entry REP
+        permanent pointer := cdb int (nt link + wordlength) ;
+        object name := cdb text (nt link + two word length) ;
+        IF matching THEN into bulletin FI
+     PER .
+
+matching :
+     INT CONST p :: pos (object name, pattern) ;
+     SELECT function OF
+         CASE 1 :   p <> 0 AND p = LENGTH object name - pattern length
+         CASE 2 :   p = 1
+         CASE 3 :   p <> 0
+         OTHERWISE  FALSE
+     ENDSELECT .
+
+into bulletin :
+     object names into bulletin (BOOL PROC not end of chain)
+ENDPROC help ;
+ 
+BOOL PROC not end of chain :
+     permanent pointer <> 0 
+ENDPROC not end of chain ;
+
+PROC write packet name :
+     indentation := 0 ;
+     write line ;
+     write bulletin line ("PACKET ") ;
+     indentation := 7 ;
+     object name := packet name ;
+     write bulletin line (object name) ;
+     write bulletin line (":") ;
+     writeline (2)
+ENDPROC write packet name ;
+
+PROC put specifications (TEXT CONST proc name) :
+     put obj name (proc name) ;
+     to first param ;
+     IF NOT end of params THEN put param list FI ;
+     put result ;
+     writeline .
+  
+to first param :
+     param link := permanent pointer + word length ;
+     set end marker if end of list .
+
+put result :
+     INT VAR type;
+     get type and mode (type) ;
+     IF type <> void id THEN type and mode := "  --> " ;
+                             name of type (type) ;
+                             write bulletin line (type and mode)
+     FI
+ENDPROC put specifications ;
+
+PROC put param list : 
+     write bulletin line (" (") ;
+     REP
+         INT VAR type, param mode;
+         get type and mode (type) ;
+         param mode := mode ;
+         put type and mode ;
+         maybe param proc ;
+         next pt param ;
+         IF end of params THEN write bulletin line (")") ;
+                               LEAVE put param list 
+         FI ;
+         write bulletin line (", ") ;
+     PER .
+
+put type and mode :
+     type and mode := "" ;
+     name of type (type) ;
+     type and mode CAT name of mode ;
+     write bulletin line (type and mode) .
+
+name of mode :
+     IF   param mode = const THEN " CONST"
+     ELIF param mode = var   THEN " VAR"
+                             ELSE " PROC"
+     FI .
+
+maybe param proc :
+     IF mode = permanent param proc THEN put virtual params FI .
+
+put virtual params :
+     skip over result type if complex type ;
+     IF NOT end of virtual params THEN put param list FI.
+
+skip over result type if complex type :
+     next pt param .
+
+end of virtual params :
+    end of params
+ENDPROC put param list ;
+
+PROC to packet (TEXT CONST packet name) :
+     to object ( packet name) ;
+     IF found THEN find start of packet objects FI .
+
+find start of packet objects :
+     last packet entry := 0 ;
+     packet link := before first pt entry ;
+     REP
+         packet link INCR wordlength ;
+         word := cdb int (packet link) ;
+         IF word < 0 THEN IF   word = permanent packet THEN packet found
+                          ELIF word = permanent end    THEN return
+                          FI
+         FI
+     ENDREP .
+
+packet found :
+     IF cdb int (packet link + wordlength) = nt link
+        THEN last packet entry := packet link FI .
+
+return : 
+     IF last packet entry <> 0 THEN found := TRUE ;
+                                    packet link := last packet entry
+                               ELSE found := FALSE
+     FI ;
+     LEAVE to packet
+ENDPROC to packet ;
+
+PROC next packet :
+     REP
+         packet link INCR wordlength ;
+         word := cdb int (packet link) ;
+         IF   word = permanent packet THEN true return
+         ELIF end of permanents       THEN false return
+         FI ;
+     ENDREP .
+
+true return :
+     found := TRUE ;
+     LEAVE next packet .
+
+false return :
+     found := FALSE ;
+     LEAVE next packet .
+
+end of permanents :
+     word = permanent end OR packet link > end of permanent table 
+ENDPROC next packet ;
+
+PROC prep bulletin :
+     forget (bulletin ds) ;
+     bulletin ds := nilspace ;
+     bulletin file := sequential file (output, bulletin ds) ;
+     line number := 0 ;
+     buffer := ""
+ENDPROC prep bulletin ;
+
+PROC show bulletin file :
+     IF within editor THEN ueberschrift neu FI ;
+     DATASPACE VAR local ds :: bulletin ds ;
+     FILE VAR local file :: sequential file (modify, local ds) ;
+     show (local file) ;
+     forget (local ds)
+ENDPROC show bulletin file ;
+
+PROC write bulletin line (TEXT CONST line) :
+     IF LENGTH buffer + LENGTH line > 75 THEN writeline FI ;
+     buffer CAT line
+ENDPROC write bulletin line ;
+
+PROC writeline  :
+     write (bulletin file, buffer) ;
+     line (bulletin file) ;
+     line number INCR 1 ;
+     cout (line number) ;
+     buffer := indentation * " "
+ENDPROC writeline ;
+
+PROC writeline (INT CONST times) :
+     IF LENGTH compress(buffer) <> 0 THEN index := times - 1 ;
+                                          writeline
+                                     ELSE index := times
+     FI ;
+     line (bulletin file, index) ;
+     line number INCR index;
+     indentation := 0 ;
+     cout (line number)
+ENDPROC writeline ;
+ 
+PROC bulletin (TEXT CONST packet name) :
+     prep bulletin ;
+     scan (packet name) ;
+     next symbol (pattern) ;
+     to packet (pattern) ;
+     IF found THEN list packet ;
+                   show bulletin file
+              ELSE error stop (packet name + " ist kein Paketname")
+     FI . 
+ 
+ENDPROC bulletin ;
+ 
+PROC list packet :
+     begin of packet := packet link + word length ;
+     write packet name ; 
+     find end of packet ;
+     run through nametab and list all packet objects .
+ 
+find end of packet :
+     last packet entry := begin of packet ;
+     REP
+         last packet entry INCR wordlength ;
+         word := cdb int (last packet entry) ;
+     UNTIL end of packet entries PER .
+
+end of packet entries :
+     word = permanent packet OR word = permanent end .
+
+run through nametab and list all packet objects :
+     hashtable pointer := begin of hashtable ;
+     REP
+         nt link := hashtable pointer ;
+         list objects of current packet in this chain ;
+         next hash entry
+     UNTIL end of hashtable reached ENDREP .
+
+list objects of current packet in this chain :
+     WHILE yet another nt entry REP 
+         permanent pointer := cdb int (nt link + wordlength) ;
+         put objects of this name
+     PER .
+
+put objects of this name :
+    IF there is an entry THEN into bulletin FI .
+
+there is an entry :
+    NOT packet entry AND
+    there is at least one object of this name in the current packet .
+
+there is at least one object of this name in the current packet :
+     REP
+        IF permanent pointer >= begin of packet AND
+           permanent pointer < last packet entry
+           THEN LEAVE there is at least one object of this name
+                      in the current packet WITH TRUE FI ;
+        next procedure
+     UNTIL permanent pointer = 0 PER ;
+     FALSE .
+
+into bulletin :
+     object name := cdb text (nt link + two word length) ;
+     object names into bulletin (BOOL PROC within packet)
+ENDPROC list packet ;
+
+BOOL PROC within packet :
+     permanent pointer >= begin of packet AND 
+     permanent pointer < last packet entry
+ENDPROC within packet ;
+
+PROC object names into bulletin (BOOL PROC link ok) :
+     scan (object name) ;
+     next symbol (dummy name, mode) ;
+     IF type definition THEN put type definition
+                        ELSE put object definitions
+     FI .
+
+type definition :
+     mode = bold AND no params .
+
+no params :
+     cdb int (permanent pointer + word length) >= permanent type .
+
+put type definition :
+     put obj name (object name) ;
+     write bulletin line ("TYPE ") ;
+     writeline (1) .
+
+put object definitions :
+     WHILE link ok REP
+         put specifications (object name) ;
+         next procedure
+     ENDREP 
+ENDPROC object names into bulletin ;
+ 
+PROC bulletin :
+     prep bulletin ;
+     packet link := first permanent entry ;
+     REP
+         list packet ;
+         write line (4) ;
+         next packet
+     UNTIL NOT found PER ;
+     show bulletin file
+ENDPROC bulletin ;
+
+PROC put obj name (TEXT CONST name) :
+     buffer := "      " ;
+     bulletin name := point line ;
+     change (bulletin name, 1, end of line or name, name) ;
+     buffer CAT bulletin name ;
+     indentation := LENGTH buffer + 1 .
+
+end of line or name :
+     min (LENGTH name, LENGTH bulletin name)
+ENDPROC put obj name ;
+
+PROC packets :
+     prep bulletin ;
+     packet link := first permanent entry ;
+     REP
+         object name := packet name ;
+         put obj name (object name) ;
+         write line ;
+         next packet 
+     UNTIL NOT found PER ;
+     show bulletin file
+ENDPROC packets ;
+ 
+#page#
+(**************************************************************************) 
+(*                                                                        *) 
+(*                 11. ELAN Run-Interface                     04.08.1986  *) 
+(*                                                                        *) 
+(*   Uebersetzen von ELAN-Programmen                                      *) 
+(*   Bereitstellen der Ausgabeprozeduren fuer den ELAN-Compiler           *) 
+(*                                                                        *) 
+(**************************************************************************) 
+ 
+ 
+ 
+BOOL VAR list option     := FALSE ,
+         check option    :=  TRUE ,
+         warning option  := FALSE , 
+         listing enabled := FALSE ;
+
+FILE VAR listing file ;
+
+TEXT VAR listing file name := "" ;
+ 
+ 
+PROC run (TEXT CONST file name) : 
+  enable stop ;
+  IF NOT exists (file name)
+    THEN errorstop ("""" + file name + """ gibt es nicht")
+  FI ;
+  last param (file name) ;
+  run elan (file name, no ins)
+END PROC run;
+ 
+PROC run :
+  run (last param)
+ENDPROC run ;
+ 
+PROC run again :
+  IF run again mod nr <> 0
+    THEN elan (run again mode, bulletin file, "", run again mod nr, 
+               no ins, no lst, check option, no sermon)
+    ELSE errorstop ("'run again' nicht moeglich")
+  FI
+ENDPROC run again ;
+ 
+PROC insert (TEXT CONST file name) : 
+  enable stop ;
+  IF NOT exists (file name)
+    THEN errorstop ("""" + file name + """ gibt es nicht")
+  FI ;
+  last param (file name) ;
+  run elan (file name, ins)
+ENDPROC insert ;
+ 
+PROC insert :
+  insert (last param)
+ENDPROC insert ;
+ 
+PROC run elan (TEXT CONST file name, BOOL CONST insert option) :
+  FILE VAR source := sequential file (modify, file name) ;
+  IF listing enabled
+    THEN open listing file
+  FI ;
+
+  disable stop ;
+  no do again ;
+  elan (compile file mode, source, "" , run again mod nr,
+        insert option, list option, check option, sermon) ;
+ 
+  IF anything noted AND command dialogue
+    THEN ignore halt during compiling ;
+         note edit (source) ;
+         last param (file name) ; 
+         errorstop ("")
+  FI .
+
+ignore halt during compiling :
+  IF is error
+    THEN put error ;
+         clear error ;
+         pause (5)
+  FI .
+
+open listing file :
+  listing file := sequential file (output, listing file name) ;
+  max line length (listing file, 130)
+
+ENDPROC run elan ;
+(*
+PROC out text (TEXT CONST text, INT CONST out type) :
+  INTERNAL 257 ; 
+  IF online
+    THEN out (text)
+  FI ;
+  IF out type = error message OR (warning option AND out type = warning message) 
+    THEN note (text) ; 
+  FI ;
+  IF listing enabled
+    THEN write (listing file, text)
+  FI
+ENDPROC out text ;
+
+PROC out line (INT CONST out type) :
+  INTERNAL 258 ; 
+  IF online
+    THEN out (""13""10"")
+  FI ;
+  IF out type = error message
+       OR (warning option AND out type = warning message)
+    THEN note line
+  ELIF listing enabled
+    THEN line (listing file)
+  FI
+ENDPROC out line ;
+*)
+PROC prot (TEXT CONST file name) :
+  list option := TRUE ;
+  listing file name := file name ;
+  listing enabled := TRUE
+ENDPROC prot ;
+ 
+PROC prot off :
+  list option := FALSE ;
+  listing enabled := FALSE
+ENDPROC prot off ;
+
+BOOL PROC prot :
+  list option
+ENDPROC prot ;
+ 
+PROC check on :
+  check option := TRUE
+ENDPROC check on ;
+ 
+PROC check off :
+  check option := FALSE
+ENDPROC check off ;
+ 
+BOOL PROC check :
+  check option
+ENDPROC check ;
+
+PROC warnings on :                    
+  warning option := TRUE    
+ENDPROC warnings on ;    
+ 
+PROC warnings off : 
+  warning option := FALSE 
+ENDPROC warnings off ; 
+ 
+BOOL PROC warnings : 
+  warning option 
+ENDPROC warnings ; 
+
+ENDPACKET eumel coder ;  
+
+PACKET dint2 DEFINES dint type :
+ 
+INT VAR dummy ;
+DTYPE VAR d ;
+identify ("DINT", dummy, dummy, d) ; 
+ 
+DTYPE CONST dint type := d
+
+ENDPACKET dint2 ;
+

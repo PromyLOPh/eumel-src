@@ -1,0 +1,1425 @@
+                     EUMEL-Benutzerhandbuch 
+ 
+ 
+                     TEIL 6: Erste Hilfe in ELAN                     
+ 
+Prozeduren 
+ 
+Prozeduren werden verwendet, wenn 
+ 
+- Anweisungen und Datenobjekte unter einem Namen zusammengefaßt werden 
+  sollen ("Abstraktion"). 
+ 
+- gleiche Anweisungen von mehreren Stellen eines Programms verwandt werden 
+  sollen (Codereduktion) u.U. mit verschieden Datenobjekten (Parameter); 
+ 
+- wenn Datenobjekte nur kurzfristig benötigt werden (dynamische Speicherver- 
+  waltung) und diese nicht von dem gesamten Programm angesprochen werden 
+  sollen (lokale, globale Datenobjekte); 
+ 
+Im folgenden Programm stellen wir ein Fragment vor, in dem zwei Werte ver- 
+tauscht werden. In der einen (linken) Lösung wird ein Refinement, in der 
+anderen eine Prozedur verwandt. 
+ 
+Programm 19: 
+ 
+     ...                            PROC vertausche a und b: 
+     IF a > b                          INT CONST x :: a; 
+       THEN vertausche a und b         a := b; 
+     END IF;                           b := x 
+     ...                            END PROC vertausche a und b; 
+     vertausche a und b;            ... 
+     ...                            IF a > b 
+                                      THEN vertausche a und b 
+     vertausche a und b:            END IF; 
+        INT CONST x :: a;           ... 
+        a := b;                     vertausche a und b; 
+        b := x.                     ... 
+ 
+Beim ersten Hinsehen leisten beide Programme das Gleiche. Es gibt jedoch 
+drei wichtige Unterschiede: 
+ 
+1) Das Refinement 'vertausche a und b' wird zweimal (vom ELAN-Compiler) 
+   eingesetzt, d.h. der Code ist zweimal vorhanden. Die Prozedur dagegen ist 
+   vom Code nur einmal vorhanden, wird aber zweimal - durch das Aufführen 
+   des Prozedurnamens - aufgerufen. 
+ 
+2) Die Variable 'x' ist in der linken Programmversion während des gesamten 
+   Ablauf des Programms vorhanden. Solche Datenobjekte nennt man statische 
+   Datenobjekte oder auch (aus Gründen, die erst etwas später offensichtlich 
+   werden) Paket-Objekte. Das Datenobjekt 'x' der rechten Version dagegen 
+   ist nur während der Bearbeitung der Prozedur vorhanden. Solche Daten- 
+   objekte, die nur kurzfristig Speicher belegen, werden dynamische Daten- 
+   objekte genannt. 
+ 
+   Prozeduren sind also ein Mittel, um die Speicherbelegung zu beeinflussen, 
+   was besonders bei großen Datenobjekten notwendig ist. 
+ 
+3) 'x' kann in der linken Programmversion - obwohl sie in einem Refinement 
+   deklariert wurde - von jeder Stelle des Programms angesprochen werden. 
+   Solche Datenobjekte werden globale Datenobjekte genannt. Das Datenobjekt 
+   'x' der Prozedur dagegen kann nur innerhalb der Prozedur angesprochen 
+   werden, sie ist also ein lokales Datenobjekt hinsichtlich der Prozedur. 
+   Innerhalb der Prozedur dürfen globale Datenobjekte (also Objekte, die 
+   außerhalb von Prozeduren deklariert wurden) angesprochen werden. 
+ 
+   Eine Prozedur in ELAN bildet im Gegensatz zu Refinements einen eigenen 
+   Gültigkeitsbereich hinsichtlich Datenobjekten und Refinements, die inner- 
+   halb der Prozedur deklariert werden. Prozeduren sind somit ein Mittel, um 
+   die in ihr deklarierten Datenobjekte hinsichtlich der Ansprechbarkeit 
+   nach Außen "abzuschotten". 
+ 
+Prozeduren wie die in Programm 19 werden mit dem Schlüsselwort PROC, dem 
+Namen der Prozedur und einem Doppelpunkt eingeleitet. Dies nennt man den 
+Prozedurkopf. Der Prozedurkopf entspricht den Definitionen, die wir bereits 
+in vorigen Abschnitten dieses Skripts gegeben haben. Nach dem Prozedurkopf 
+folgt der Prozedurrumpf, der Datenobjekt-Deklarationen, Anweisungen und 
+Refinements enthalten kann. Abgeschlossen wird die Prozedur durch END PROC 
+und dem Prozedurnamen. 
+ 
+ 
+Aufgabe (HSG): 
+ 
+     a) Erkläre den Unterschied zwischen einer Prozedur und einem Refinement. 
+     b) Was sind globale bzw. lokale Datenobjekte? 
+Übungsziel: Begriffe, die mit Prozeduren zusammenhängen 
+ 
+ 
+Aufgabe (TSW): 
+ 
+     Gegeben sei folgendes Programmfragment: 
+        INT VAR a, b; 
+        ... (*1*) 
+        PROC x: 
+           INT VAR x1; 
+           ... (*2*) 
+        END PROC x; 
+        TEXT VAR t; 
+        PROC y: 
+           REAL VAR y1 
+           ... (*3*) 
+        END PROC y; 
+        ... (*4*) 
+ 
+     1.) Welche Objekte (einschließlich Prozeduren) sind an den Punkten 
+           (*1*) : 
+           (*2*) : 
+           (*3*) : 
+           (*4*) : 
+         ansprechbar? 
+ 
+     2.) Welche Datenobjekte sind in der Prozedur 'y' 
+         global: 
+         lokal: 
+Übungsziel: Globale und lokale Objekte 
+ 
+ 
+Prozeduren mit Parametern erlauben es, gleiche Anweisungen mit unterschied- 
+lichen Datenobjekten auszuführen: 
+ 
+ 
+Programm 20: 
+ 
+     PROC vertausche (INT VAR a, b): 
+        INT VAR x :: a; 
+        a := b; 
+        b := x 
+     END PROC vertausche; 
+ 
+     INT VAR eins :: 1, 
+             zwei :: 2, 
+             drei :: 3; 
+     vertausche (eins, zwei); 
+     vertausche (zwei, drei); 
+     vertausche (eins, zwei); 
+     put (eins); put (zwei); put (drei) 
+ 
+Die Datenobjekte 'a' und 'b' der Prozedur 'vertausche' werden formale Para- 
+meter genannt. Sie stehen als Platzhalter für die bei einem Prozeduraufruf 
+einzusetzenden aktuellen Parameter (in unserem Beispiel die Datenobjekte 
+'eins', 'zwei' und 'drei'). 
+ 
+ 
+Aufgabe (HSG): 
+ 
+     Welche Werte werden in dem Programm 20 ausgedruckt? 
+Übungsziel: Arbeiten mit Prozeduren und Parameter-Mechanismus. 
+ 
+ 
+Parameter werden im Prozedurkopf nach dem Prozedurnamen in Klammern mit 
+Datentyp und Accessrecht angegeben. Dabei bedeutet CONST, daß auf den 
+Parameter nur lesend zugegriffen wird, während auf einen VAR-Parameter auch 
+z.B. eine Zuweisung angewandt werden kann. CONST-Parameter sind also 
+Eingabe-Parameter, während VAR-Parameter Ein-/Ausgabe-Parameter realisieren. 
+ 
+Bei den aktuellen Parametern ist folgendes zu beachten: 
+ 
+a) Wird ein VAR-Parameter in der Definition der Prozedur vorgeschrieben (wie 
+   z.B. im Programm 20), darf kein Ausdruck als aktueller Parameter "überge- 
+   ben" werden, weil an einen Ausdruck nichts zugewiesen werden kann. 
+   Gegenbeispiel: 
+ 
+     vertausche ( eins * zwei, drei) 
+ 
+   Ausdrücke haben - wie bereits erwähnt - das Accessrecht CONST. 
+ 
+b) Wird ein CONST-Parameter verlangt, dann darf in diesem Fall ein Ausdruck 
+   als aktueller Parameter geschrieben werden. Aber auch ein VAR-Datenobjekt 
+   darf angegeben werden. In diesem Fall wird eine Wandlung des Accessrechts 
+   (CONSTing) vorgenommen: der aktuelle Parameter erhält sozusagen für die 
+   Zeit der Abarbeitung der Prozedur das Accessrecht CONST. 
+ 
+Es ist auch möglich, Prozeduren als Parameter zu definieren, worauf wir aber 
+hier nicht eingehen wollen. 
+ 
+Eine Werte liefernde Prozedur erhält man, wenn der Prozedurrumpf einen Wert 
+liefert, d.h. die letzte ausführbare Anweisung des Prozedurrumpfes muß einen 
+Wert liefern (analog Werte liefernde Refinements) und der zu liefernde 
+Datentyp vor den Prozedurkopf geschrieben wird. 
+ 
+ 
+Programm 21: 
+ 
+     INT PROC max (INT CONST a, b): 
+        IF a > b 
+          THEN a 
+          ELSE b 
+        END IF 
+     END PROC max; 
+ 
+     put (max (3, 4)) 
+ 
+(In unserem Beispiel liefert die IF-Anweisung einen Wert. Das erfolgt da- 
+durch, daß beide Zweige der Anweisung einen Wert liefern.) 
+ 
+ 
+ 
+Neudefinierte Operatoren 
+ 
+Neue, zusätzliche Operatoren können in ELAN wie Prozeduren definiert werden. 
+Es ist nur notwendig, bei der Definition das Wort PROC gegen OP zu vertau- 
+schen. Es sind aber auch nur 1 oder 2 Parameter bei Operatoren erlaubt. 
+ 
+ 
+Programm 22a: 
+ 
+     TEXT OP * (INT CONST mal, TEXT CONST t): 
+        INT  VAR zaehler :: mal; 
+        TEXT VAR ergebnis :: ""; 
+        WHILE zaehler > 0 REP 
+          ergebnis := ergebnis + t; 
+          zaehler := zaehler - 1 
+        END REP; 
+        ergebnis 
+     END OP *; 
+ 
+Dieser Operator vervielfältigt TEXTe ( 2 * "ha" liefert "haha"). Der Name 
+des Operators ist '*'. Man kann als Operatornamen die vorhandenen, bereits 
+benutzten Sonderzeichen verwenden. In diesem Fall bekommt der neudefinierte 
+Operator die gleiche Priorität wie der bereits vorhandene oder ein Schlüssel- 
+wort. 
+ 
+Der "Aufruf" eines Operators unterscheidet sich von einer Prozedur durch die 
+infix-Schreibweise. Im übrigen gilt das für Prozeduren Gesagte. 
+ 
+ 
+ 
+Optimierungen 
+ 
+Optimierungen werden vorgenommen, wenn man mit den Laufzeiten bzw. Speicher- 
+bedarf eines Programms nicht zufrieden ist. Kleinere, lokale Optimierungen 
+sind meist nicht sinnvoll und notwendig und bringen mehr Fehler, als Ver- 
+besserungen: 
+ 
+ 
+Programm 22b: 
+ 
+     TEXT OP * (INT CONST mal, TEXT CONST t): 
+        INT  VAR i; 
+        TEXT VAR ergebnis :: ""; 
+        FOR i FROM 1 UPTO mal REP 
+          ergebnis CAT t 
+        END REP; 
+        ergebnis 
+     END OP *; 
+ 
+Wir haben hier die WHILE-Schleife durch eine Zählschleife und 'ergebnis := 
+ergebnis + t' durch 'ergebnis CAT t' ersetzt. Dies ist nur eine minimale 
+Optimierung (wenn sie überhaupt etwas einbringt). Leider sind solche 
+"Optimierungen" sehr häufig anzutreffen. Besser ist es, eine Lösung zu 
+finden, die algorithmisch oder von den Datenstrukturen her prinzipiell 
+besser ist. Wir haben dies für das Programm 22 getan. Lösungsidee: jeweilige 
+Verdopplung eines Zwischentextes ("Russische Multiplikation"). 
+ 
+ 
+Programm 22c: 
+ 
+     TEXT OP * (INT CONST mal, TEXT CONST t): 
+        INT  VAR zaehler :: mal; 
+        TEXT VAR einer :: "", 
+                 dopplung :: t; 
+        IF fehlerhafter aufruf 
+          THEN LEAVE * WITH "" 
+          ELSE verdopplung 
+        END IF; 
+        dopplung + einer. 
+ 
+        fehlerhafter aufruf: 
+          zaehler < 1. 
+ 
+        verdopplung: 
+          WHILE zaehler > 1 REP 
+            IF zaehler ist ungerade 
+              THEN einer CAT t 
+            END IF; 
+            dopplung CAT dopplung; 
+            zaehler := zaehler DIV 2 
+          END REP. 
+ 
+        zaehler ist ungerade: 
+          zaehler MOD 2 = 1. 
+ 
+     END OP *; 
+ 
+ 
+In diesem Programm wurde eine Anweisung verwendet (LEAVE), die wir im 
+folgenden Abschnitt erklären wollen. 
+ 
+ 
+ 
+Das LEAVE-Konstrukt 
+ 
+Das LEAVE-Konstrukt wird verwendet, um eine benannte Anweisung (Refinement, 
+Prozedur oder Operator) vorzeitig zu verlassen. Es ist auch möglich, mehr- 
+fach geschachtelte Refinements zu verlassen. Durch eine (optionale) 
+WITH-Angabe kann auch ein wertelieferndes Refinement verlassen werden. 
+ 
+ 
+ 
+Reihungen 
+ 
+Wir haben bis jetzt bereits zusammengesetzte algorithmische Objekte kennen- 
+gelernt, die man unter einem Namen als Ganzes ansprechen kann (Prozeduren). 
+Die gleiche Möglichkeit gibt es auch bei Datenobjekten, wobei wir gleich- 
+artige oder ungleichartige Objekte zu einem Objekt zusammenfassen können. 
+Zuerst zu der Zusammenfassung gleichartiger Datenobjekte, die in ELAN eine 
+Reihung (ROW) genannt wird. Die einzelnen Objekte einer Reihung werden 
+Elemente genannt. Beispiel (Deklaration einer Reihung von 10 INT-Elementen): 
+ 
+     ROW 10 INT VAR feld 
+ 
+Die Angabe hinter dem Schlüsselwort ROW muß ein INT-Denoter sein (oder 
+durch ein LET definierter Name). Dabei ist ROW 10 INT ein (neuer, von den 
+elementaren unterschiedlicher) Datentyp, für den keine Operationen definiert 
+sind, außer der Zuweisung. Das Accessrecht (VAR in unserem Beispiel) und der 
+Name ('feld') gilt - wie bei den elementaren Datentypen - für diesen neuen 
+Datentyp, also für alle 10 Elemente. 
+ 
+Warum gibt es keine Operationen außer der Zuweisung? Das wird uns sehr 
+schnell einsichtig, wenn wir uns vorstellen, daß es ja sehr viele Datentypen 
+(zusätzlich zu den elementaren) gibt, weil Reihungen von jedem Datentyp 
+gebildet werden können: 
+ 
+     ROW 1 INT             ROW 1 REAL 
+     ROW 2 INT             ROW 2 REAL 
+     :                     : 
+     ROW maxint INT        ROW maxint REAL 
+ 
+     ROW 1 TEXT            ROW 1 BOOL 
+     ROW 2 TEXT            ROW 2 BOOL 
+     :                     : 
+     ROW maxint TEXT       ROW maxint BOOL 
+ 
+Für die elementaren INT-, REAL-, BOOL- und TEXT-Datentypen sind 
+unterschiedliche Operationen definiert. Man müßte nun für jeden dieser 
+zusammengesetzten Datentypen z.B. auch 'get'- und 'put'-Prozeduren 
+schreiben, was allein vom Schreibaufwand sehr aufwendig wäre. Das ist der 
+Grund dafür, daß es keine vorgegebene Operationen auf zusammengesetzte 
+Datentypen gibt. 
+ 
+Zugegebenermaßen könnte man mit solchen Datentypen, die nur über eine Opera- 
+tion verfügen (Zuweisung), nicht sehr viel anfangen, wenn es nicht eine wei- 
+tere vorgegebene Operation gäbe, die #ib#Subskription#ie#. Sie erlaubt es, 
+auf die Elemente einer Reihung zuzugreifen und den Datentyp der Elemente 
+"aufzudecken". Beispiel: 
+ 
+     feld [3] 
+ 
+bezieht sich auf das dritte Element der Reihung 'feld' und hat den Datentyp 
+INT. Für INT-Objekte haben wir aber einige Operationen, mit denen wir 
+arbeiten können. Beispiele: 
+ 
+     feld [3] := 7; 
+     feld [4] := feld [3] + 4; 
+     ... 
+ 
+Eine Subskription "schält" also vom Datentyp ein ROW ab und liefert ein 
+Element der Reihung. Die Angabe der Nummer des Elements in der Reihung nennt 
+man Subskript (in unserem Fall '3'). Der Subskript wird in ELAN in eckigen 
+Klammern angegeben, um eine bessere Unterscheidung zu den runden Klammern in 
+Ausdrücken zu erreichen. Ein subskribiertes ROW-Datenobjekt kann also über- 
+all da verwendet werden, wo ein entsprechender Datentyp benötigt wird (Aus- 
+nahme: Schleifenvariable). Als Beispiel zeigen wir zwei Prozeduren, die eine 
+Reihung einlesen bzw. ausgeben: 
+ 
+ 
+Programm 23: 
+ 
+     PROC get (ROW 10 INT VAR feld): 
+        INT VAR i; 
+        FOR i FROM 1 UPTO 10 REP 
+          put (i); put ("tes Element bitte:"); 
+          get (feld [i]); 
+          line 
+        END REP 
+     END PROC get; 
+ 
+     PROC put (ROW 10 INT CONST feld): 
+        INT VAR i; 
+        FOR i FROM 1 UPTO 10 REP 
+          put (i); put ("tes Element ist:"); 
+          put (feld [i]); 
+          line 
+        END REP 
+     END PROC put 
+ 
+ 
+Wie bereits erwähnt, ist es erlaubt, Reihungen überall dort zu verwenden, wo 
+auch die elementaren Datentypen verwandt werden können, also auch als 
+Parameter. Zudem haben wir die generischen Eigenschaften von Prozeduren in 
+ELAN bei der Benennung der Prozeduren benutzt. 
+ 
+Diese beiden Prozeduren benutzen wir gleich im nächsten Programm, welches 
+10 Werte einliest und die Summe berechnet: 
+ 
+ 
+Programm 24: 
+ 
+     ROW 10 INT VAR werte; 
+     lies werte ein; 
+     summiere sie; 
+     drucke die summe und einzelwerte. 
+ 
+     lies werte ein: 
+        get (werte). 
+ 
+     summiere sie: 
+        INT VAR summe :: 0, i; 
+        FOR i FROM 1 UPTO 10 REP 
+          summe INCR werte [i] 
+        END REP. 
+ 
+     drucke die summe und einzelwerte: 
+        put (werte); 
+        line; 
+        put ("Summe:"); put (summe). 
+ 
+ 
+Aufgabe (HSG): 
+ 
+     Wie kann man vermeiden, daß 'summe > maxint' ("overflow"-Bedingung) 
+     wird? 
+ 
+ 
+Oft benötigt man die Werte einer Reihung sortiert. Das Programm 25 zeigt 
+einen (sehr dummen und ineffizienten) Sortieralgorithmus: 
+ 
+ 
+Programm 25: 
+ 
+     ROW 10 INT VAR wert; 
+     lies die werte ein; 
+     sortiere in eine zweite liste; 
+     drucke die zweite liste. 
+ 
+     lies die werte ein: 
+        get (wert). 
+ 
+     sortiere in eine zweite liste: 
+        INT VAR i; 
+        FOR i FROM 1 UPTO 10 REP 
+          suche kleinstes element aus der werte liste; 
+          bringe dieses in die zweite liste; 
+          entferne es aus der werte liste 
+        END REP. 
+ 
+     suche kleinstes element aus der werte liste: 
+     INT VAR kleinstes element :: maxint, position kleinstes element :: 0, k; 
+        FOR k FROM 1 UPTO 10 REP 
+          IF wert [k] < kleinstes element 
+            THEN kleinstes element := wert [k]; 
+                 position kleinstes element := k 
+          END IF 
+        END REP. 
+ 
+     bringe dieses in die zweite liste: 
+        ROW 10 INT VAR liste2; 
+        liste2 [i] := kleinstes element. 
+ 
+     entferne es aus der werte liste: 
+        wert [position kleinstes element] := maxint. 
+ 
+     drucke die zweite liste: 
+        put (liste2). 
+ 
+Anmerkung: Bei diesem einfachen Sortieralgorithmus (der übrigens "lineare 
+Auswahl" heißt), wurde der Wert 'maxint' als zulässiger Wert ausgeschlossen. 
+Der  Algorithmus ist ziemlich der schlechteste, den wir uns ausdenken können. 
+Einmal braucht er den doppelten Speicherplatz für die zu sortierende Liste, 
+andererseits sind für N Werte N*N Durchläufe durch die Liste notwendig (man 
+sagt, der Algorithmus ist von der Ordnung N Quadrat). 
+ 
+Da es möglich ist, von jedem Datentyp eine Reihung zu bilden, kann man 
+natürlich auch von einer Reihung eine Reihung bilden: 
+ 
+     ROW 5 ROW 10 INT VAR matrix 
+ 
+Für eine "doppelte" Reihung gilt das für "einfache" Reihungen gesagte. 
+Wiederum existieren keine Operationen für dieses Datenobjekt (außer der 
+Zuweisung), jedoch ist es durch Subskription möglich, auf die Elemente zuzu- 
+greifen: 
+ 
+     matrix [3] 
+ 
+liefert ein Datenobjekt mit dem Datentyp ROW 10 INT, für den wir bereits in 
+Programm 23 die Prozeduren 'get' und 'put' geschrieben haben, die wir 
+verwenden können: 
+ 
+     get (matrix [4]) 
+ 
+Subskribieren wir jedoch 'matrix' nochmals, so erhalten wir ein INT: 
+ 
+     matrix [2] [8] 
+ 
+(jede Subskription "schält" von Außen ein ROW vom Datentyp ab). 
+ 
+ 
+Aufgabe (HSG): 
+ 
+     a) Geben Sie Datentyp, Accessrecht und Name der folgenden Datenobjekte 
+        an: 
+           ROW 17 INT CONST alpha; 
+           ROW 3 ROW 4 TEXT VAR matrix; 
+           ... 
+           beta [3] := 7; 
+           gamma [4] := gamma [5] 
+ 
+     b) Was führt zu Fehlern? Wenn ja, warum? 
+           ROW 17 INT VAR alpha; 
+           ROW 3 ROW 4 TEXT VAR beta, gamma; 
+           ROW 4 ROW 3 TEXT CONST delta; 
+           INT VAR x :: 7; 
+           ROW x BOOL VAR y; 
+           get (alpha); 
+           get (beta [7]); 
+           FOR x FROM 1 UPTO 3 REP 
+             get (beta [x]) 
+           END REP; 
+           beta := delta; 
+           delta [1] [2] := "mist"; 
+           beta := gamma; 
+           beta [3] := gamma [3]; 
+           get (beta [1] [1]); 
+           gamma [1] [5] := beta [1] [1] + "ELAN" 
+           x := alpha [3]; 
+           x := 20; 
+           alpha [x] := alpha [3] + 7 
+Übungsziel: Umgang mit Reihungen 
+ 
+ 
+ 
+Strukturen 
+ 
+Strukturen sind Datenverbunde wie Reihungen, aber die Komponenten können 
+ungleichartige Datentypen haben. Die Komponenten von Strukturen heißen 
+Felder (bei Reihungen: Elemente) und der Zugriff auf ein Feld Selektion 
+(Reihungen: Subskription). Eine Struktur ist - genauso wie bei Reihungen - 
+ein eigener Datentyp, der in einer Deklaration angegeben werden muß. 
+Beispiel: 
+ 
+     STRUCT (TEXT name, INT alter) VAR ich 
+ 
+Wiederum existieren keine Operationen auf Strukturen außer der Zuweisung und 
+der Selektion, die es erlaubt, Komponenten aus einer Struktur herauszulösen: 
+ 
+     ich . name 
+     ich . alter 
+ 
+Die erste Selektion liefert einen TEXT-, die zweite ein INT-Datenobjekt. Mit 
+diesen (selektierten) Datenobjekten kann - wie gewohnt - gearbeitet werden 
+(Ausnahme: nicht als Schleifenvariable). 
+ 
+Zum Datentyp einer Struktur gehören auch die Feldnamen: 
+ 
+     STRUCT (TEXT produkt name, INT artikel nr) VAR erzeugnis 
+ 
+ist ein anderer Datentyp als im ersten Beispiel dieses Abschnitts. Für 
+Strukturen - genauso wie bei Reihungen - kann man sich neue Operationen 
+definieren. Im folgenden Programm definieren wir für eine Struktur, die 
+Personen beschreibt, die Operationen 'put', 'get' und den dyadischen 
+Operator HEIRATET. Anschließend werden drei Paare verHEIRATET. 
+ 
+ 
+Programm 26a: 
+ 
+     PROC get (STRUCT (TEXT name, vorname, INT alter) VAR p): 
+        put ("bitte Nachname:"); get ( p.name); 
+        put ("bitte Vorname:");  get ( p.vorname); 
+        put ("bitte Alter:");    get ( p.alter); 
+        line 
+     END PROC get; 
+ 
+     PROC put (STRUCT (TEXT name, vorname, INT alter) CONST p): 
+        put (p.vorname); put (p.name); 
+        put ("ist"); 
+        put (p.alter); 
+        put ("Jahre alt"); 
+        line 
+     END PROC put; 
+ 
+     OP HEIRATET 
+        (STRUCT (TEXT name, vorname, INT alter) VAR w, 
+         STRUCT (TEXT name, vorname, INT alter) CONST m): 
+        w.name := m.name 
+     END OP HEIRATET; 
+ 
+     ROW 3 STRUCT (TEXT name, vorname, INT alter) VAR frau, mann; 
+ 
+     personendaten einlesen; 
+     heiraten lassen; 
+     paardaten ausgeben. 
+ 
+     personendaten einlesen: 
+        INT VAR i; 
+        FOR i FROM 1 UPTO 3 REP 
+          get (frau [i]); 
+          get (mann [i]) 
+        END REP. 
+ 
+     heiraten lassen: 
+        FOR i FROM 1 UPTO 3 REP 
+          frau [i] HEIRATET mann [i] 
+        END REP. 
+ 
+     paardaten ausgeben: 
+        FOR i FROM 1 UPTO 3 REP 
+          put (frau [i]); 
+          put ("hat geheiratet:"); line; 
+          put (mann [i]); line 
+        END REP. 
+ 
+Reihungen und Strukturen dürfen miteinander kombiniert werden, d.h. es darf 
+eine Reihung in einer Struktur erscheinen oder es darf eine Reihung von einer 
+Struktur vorgenommen werden. Selektion und Subskription sind in diesen Fällen 
+in der Reihenfolge vorzunehmen, wie die Datentypen aufgebaut wurden (von 
+außen nach innen). 
+ 
+ 
+Aufgabe (HSG): 
+ 
+     In ELAN heissen 
+        a1) Datenverbunde gleichartiger Komponenten: 
+        a2) Datenverbunde ungleichartiger Komponenten: 
+        b1) die Komponenten eines ROWs: 
+        b2) die Komponenten eines STRUCTs: 
+        c1) die Zugriffe auf die Komponenten eines ROWs: 
+        c2) die Zugriffe auf die Komponenten eines STRUCTs: 
+Übungsziel: Begriffe von ROWs und STRUCTs kennenlernen 
+ 
+ 
+ 
+LET-Konstrukt 
+ 
+Wie wir in Programm 26 gesehen haben, ist die Verwendung von Strukturen 
+oder auch Reihungen manchmal schreibaufwendig. Mit dem LET-Konstrukt darf 
+man Datentypen (und Denotern) einen Namen geben. Dieser Name steht als 
+Abkürzung und verringert so die Schreibarbeit. Zusätzlich wird durch die 
+Namensgebung die Lesbarkeit des Programms erhöht. Beispiel: 
+ 
+ 
+Programm 26b: 
+ 
+     LET PERSON = STRUCT (TEXT name, vorname, INT alter); 
+ 
+     PROC get (PERSON VAR p): 
+        put ("bitte Nachname:"); get ( p.name); 
+        put ("bitte Vorname:");  get ( p.vorname); 
+        put ("bitte Alter:");    get ( p.alter); 
+        line 
+     END PROC get; 
+ 
+     PROC put (PERSON CONST p): 
+        put (p.vorname); put (p.name); put ("ist"); 
+        put (p.alter);   put ("Jahre alt"); line 
+     END PROC put; 
+ 
+     OP HEIRATET (PERSON VAR f, PERSON CONST m): 
+        f.name := m.name 
+     END OP HEIRATET; 
+ 
+     ROW 3 PERSON VAR mann, frau; 
+     ... 
+ 
+Überall wo der abzukürzende Datentyp verwandt werden kann, kann PERSON 
+benutzt werden. Wohlgemerkt: PERSON ist kein neuer Datentyp, sondern nur ein 
+Name, der für STRUCT (....) steht. Der Zugriff auf die Komponenten des 
+abgekürzten Datentyps bleibt erhalten (was bei abstrakten Datentypen, die wir 
+etwas später erklären, nicht mehr der Fall ist). 
+ 
+Neben der Funktion der Abkürzung von Datentypen kann das LET-Konstrukt 
+auch für die Namensgebung für die Denoter verwandt werden. Beispiele: 
+ 
+     LET pi = 3.14159; 
+     LET blank = " "; 
+     LET anzahl = 27 
+ 
+Der Einsatz von LET-Namen für INT-Denoter macht es möglich, Programme 
+leicht zu ändern: 
+ 
+ 
+Programm 26c: 
+ 
+     LET anzahl paare = 3; 
+     ROW anzahl paare PERSON VAR frau, mann; 
+ 
+     personendaten einlesen; 
+     heiraten lassen; 
+     paardaten ausgeben. 
+ 
+     personendaten einlesen: 
+        INT VAR i; 
+        FOR i FROM 1 UPTO anzahl paare REP 
+          get (frau [i]); 
+          get (mann [i]) 
+        END REP. 
+     ... 
+ 
+Ebenso wie die Abkürzung von Datentypen (LET PERSON = STRUCT (...)) wird 
+im obigen Beispiel für den Namen 'anzahl paare' bei jedem Auftreten der 
+Denoter '3' vom ELAN-Compiler eingesetzt. Um nun (z.B.) 27 Paare "heiraten" 
+zu lassen, brauchen wir nur die LET-Anweisung in '27' zu verändern... 
+(Scheidungen erfordern etwas mehr Aufwand). 
+ 
+ 
+Aufgabe (HSG): 
+ 
+     Was ist falsch? 
+        LET anz = 5, 
+            max = 5*5, 
+            MAT = ROW anz ROW anz TEXT; 
+ 
+        PROC get (MAT CONST m): 
+           FOR i FROM 1 UPTO max REP 
+             get (m [i]) 
+           END REP 
+        END PROC get; 
+ 
+        MAT VAR x,y; 
+        get (x); 
+        x := y + 1 
+ 
+ 
+Aufgabe (HSG): 
+ 
+     Schreibe ein Programm, das mit den Deklarationen 
+        LET anz = 5, 
+            VEC = ROW anz INT, 
+            MAT = ROW anz VEC; 
+     folgende Prozeduren realisiert: 
+        PROC get (VEC VAR v) 
+        PROC get (MAT VAR m) 
+        PROC put (VEC CONST v) 
+        PROC put (MAT CONST m) 
+        INT PROC reihensumme (VEC CONST v) 
+Übungsziel: Reihungen als Parameter 
+ 
+ 
+ 
+Denoter für Datenverbunde: Konstruktoren 
+ 
+Denoter für die elementaren Datentypen haben wir kennengelernt. Oft ergibt 
+sich auch die Notwendigkeit (z.B. bei Initialisierungen), Datenverbunde in 
+einem Programm Werte zu geben. Das kann durch normale Zuweisungen erfolgen. 
+Beispiel: 
+ 
+     LET PERSON = STRUCT (TEXT name, vorname, INT alter); 
+ 
+     PERSON VAR mann; 
+ 
+     mann.name := "meier"; 
+     mann.vorname := "egon"; 
+     mann.alter := 27 
+ 
+Aber man möchte auch Denoter für Datenverbunde z.B. in Ausdrücken verwenden, 
+was durch die Konstruktoren ermöglicht wird. Beispiel: 
+ 
+     LET PERSON = STRUCT (TEXT name, vorname, INT alter); 
+ 
+     PERSON VAR mann, frau; 
+ 
+     frau := PERSON : ( "niemeyer", "einfalt", 65); 
+     frau HEIRATET PERSON : ( "meier", "egon", 27) 
+ 
+Ein Konstruktor ist also ein Mechanismus, um ein Datenobjekt eines Datenver- 
+bundes in einem Programm zu notieren. Ein Konstruktor besteht aus der Angabe 
+des Datentyps (der auch durch einen LET-Namen abgekürzt sein darf), einem 
+Doppelpunkt und den in Klammern eingefaßten Komponenten (hier Denoter). 
+Besteht eine der Komponenten wiederum aus einem Datenverbund, muß inner- 
+halb des Konstruktors wiederum ein Konstruktor eingesetzt werden usw. Kon- 
+struktoren sind natürlich für Reihungen auch möglich: 
+ 
+     ROW 7 INT VAR feld; 
+     feld := ROW 7 INT : ( 1, 2, 3, 4, 5, 6, 7); 
+ 
+ 
+Aufgabe (HSG): 
+ 
+     Geben Sie Datentyp, Accessrecht und Name der folgenden Datenobjekte an: 
+        STRUCT (INT alter, TEXT name) VAR mensch; 
+        STRUCT (INT jahrgang, ROW 2 TEXT lage) CONST wein; 
+        ROW 100 STRUCT (PERSON p, NUMMER n) VAR betriebsangehoeriger; 
+        STRUCT (INT anz terminals, STRUCT (TEXT systemname, INT version) art) 
+                                                         CONST betriebsystem; 
+        mensch := ...; 
+        betriebsangehoeriger [2] := ...; 
+        betriebsangehoeriger [2]. n := NUMMER: (...); 
+        betriebsystem.art.systemname := "EUMEL"; 
+        wein.lage := ROW 2 TEXT: ("Loire", "Frankreich"); 
+        wein.lage [1] := "Kroever Nacktarsch"; 
+Übungsziel: Umgang mit Strukturen. 
+ 
+ 
+ 
+Rekursive Prozeduren und Operatoren 
+ 
+Alle Prozeduren und Operatoren dürfen in ELAN rekursiv sein. 
+ 
+ 
+Programm 27: 
+ 
+     INT PROC fakultaet (INT CONST n): 
+        IF n > 0 
+          THEN fakultaet (n-1) * n 
+          ELSE 1 
+        END IF 
+     END PROC fakultaet 
+ 
+Dieses Beispiel ist aber (leider) kein gutes Beispiel für eine Rekursion, 
+denn das Programm kann leicht in eine iterative Version umgewandelt werden: 
+ 
+ 
+Programm 28: 
+ 
+     INT PROC fakultaet (INT CONST n): 
+        INT VAR prod :: 1, i; 
+        FOR i FROM 2 UPTO n REP 
+          prod := prod * i 
+        END REP; 
+        prod 
+     END PROC fakultaet 
+ 
+Die Umwandlung von einem rekursiven Programm in ein iteratives ist übrigens 
+immer möglich, jedoch oft nicht so einfach wie in diesem Fall. Beispiel 
+(Ackermann-Funktion): 
+ 
+ 
+Programm 29: 
+ 
+     INT PROC acker (INT CONST m, n): 
+        IF m = 0 
+          THEN n + 1 
+        ELIF n = 0 
+          THEN acker (m-1, 0) 
+          ELSE acker (m - 1, acker (m, n - 1)) 
+        ENDIF 
+     END PROC acker 
+ 
+ 
+Aufgabe (HSG): 
+ 
+     a) Beschreibe die Unterschiede zwischen Iteration und Rekursion. Worauf 
+        muß man bei Rekursionen achten? 
+     b) Wie groß ist der Wert von 'acker (2, 2)'? Hilfreicher Tip: stelle 
+        dabei eine Tabelle auf! 
+     c) Zudem enthält die Programmierung der Ackermann-Funktion (mindestens) 
+        einen Fehler. Welchen? 
+Übungsziel: Umgang mit Rekursion 
+ 
+ 
+Das eigentliche Einsatzgebiet von rekursiven Algorithmen liegt aber bei den 
+'backtrack'-Verfahren. Diese werden eingesetzt, wenn eine exakte algorithmi- 
+sche Lösung nicht bekannt ist oder nicht gefunden werden kann und man ver- 
+schiedene Versuche machen muß, um zu einem Ziel (oder Lösung) zu gelangen. 
+ 
+Als Beispielprogramm zeigen wir das Spiel "Maus sucht Käse". In einem Laby- 
+rinth (realisiert durch eine Reihung von einer Reihung), das mit Hindernis- 
+sen bestückt ist, wurde ein Käse versteckt. Eine sehr dumme Maus sucht 
+systematisch die umliegenden Felder (in allen vier Himmelsrichtungen) nach 
+dem Käse ab. Ist sie auf einem neuen Feld und ist das Feld frei, sucht sie 
+erneut. Felder, auf denen sie bereits war, werden von ihr markiert. Da die 
+Maus sehr kurzsichtig ist und nicht richtig riechen kann, bemerkt sie den 
+Käse erst, wenn sie sozusagen mit allen vier Pfoten in ihm gelandet ist 
+(analog bei Hindernissen, die nicht überklettert werden können). Damit die 
+Maus nicht aus dem Labyrinth entfliehen kann, wird der Rand als Hindernis 
+angesehen. 
+ 
+ 
+(Teil-) Programm 30: 
+ 
+     PROC suche weg (INT CONST x, y): 
+        IF labyrinth [x] [y] = kaese 
+          THEN kaese gefunden 
+        ELIF labyrinth [x] [y] = frei 
+          THEN suche weiter 
+        END IF. 
+ 
+        suche weiter: 
+           labyrinth [x] [y] := markiert; 
+           INT VAR richtung; 
+           FOR richtung FROM osten UPTO sueden REP 
+             versuche diese richtung 
+           END REP; 
+           labyrinth [x] [y] := frei. 
+ 
+        versuche diese richtung: 
+           IF richtung = osten 
+             THEN suche weg (x + 1, y) 
+           ELIF richtung = norden 
+             THEN suche weg (x, y + 1) 
+           ... 
+ 
+ 
+ 
+Dateien 
+ 
+Dateien werden benötigt, wenn 
+ 
+- Daten über die Abarbeitungszeit eines Programms aufbewahrt werden sollen; 
+- der Zeitpunkt oder Ort der Datenerfassung nicht mit dem Zeitpunkt oder Ort 
+  der Datenverarbeitung übereinstimmt; 
+- die gesamte Datenmenge nicht auf einmal in den Zentralspeicher eines 
+  Rechners paßt; 
+- die Anzahl und/oder Art der Daten nicht von vornherein bekannt sind. 
+ 
+Eine Datei ("file") ist eine Zusammenfassung von Daten, die auf Massenspei- 
+chern aufbewahrt wird. Dateien sind in bestimmten Informationsmengen, den 
+Sätzen ("records") organisiert. 
+ 
+In ELAN gibt es zwei Arten von Dateien: 
+ 
+a) FILE: sequentielle Dateien. Die Sätze können nur sequentiell gelesen bzw. 
+   geschrieben werden. Eine Positionierung ist nur zum nächsten Satz möglich. 
+b) DIRFILE: indexsequentielle Dateien. Die Positionierung erfolgt direkt mit 
+   Hilfe eines Schlüssels ("key") oder Index, kann aber auch sequentiell 
+   vorgenommen werden. 
+ 
+   Wichtig: 
+   DIRFILEs sind auf dem EUMEL-System nicht implementiert! Deswegen wird 
+   auf diesen Dateityp hier nicht weiter eingegangen. 
+ 
+Dateien werden normalerweise von dem #ib#Betriebsystem#ie# eines Rechners 
+aufbewahrt und verwaltet. Somit ist eine Verbindung von einem ELAN-Programm, 
+in dem eine Datei unter einem Namen - wie jedes andere Datenobjekt auch - 
+angesprochen werden soll, und dem Betriebsystem notwendig. Dies erfolgt durch 
+sogenannte Assoziierungsprozeduren. Beispiele: 
+ 
+     FILE VAR meine datei :: sequential file (output, "xyz"); 
+     FILE CONST eine andere datei :: sequential file (input, "abc") 
+ 
+Die Assoziierungsprozedur heißt 'sequential file' für FILEs. Der erste 
+Parameter einer Assoziierungsprozedur gibt immer die sogenannte Betriebs- 
+richtung ("TRANSPUTDIRECTION") an. Es gibt folgende Betriebsrichtungen: 
+ 
+   input       nur Lesen der Datei 
+   output      nur Schreiben der Datei 
+ 
+   Anmerkung: 
+   Im EUMEL-System gibt es noch die Betriebsrichtung 'modify', die es er- 
+   laubt, beliebig zu positionieren, Sätze zu löschen und/oder einzufügen 
+   usw. Dafür gibt es keine DIRFILEs. Siehe dazu auch das Kapitel über 
+   Dateien in diesem Benutzerhandbuch. 
+ 
+Der zweite Parameter einer Assoziierungsprozedur gibt an, unter welchem 
+Namen die Datei in dem Betriebsystem bekannt ist. Mit Hilfe dieses Namens 
+wird die Datei an das Datenobjekt gekoppelt, das bei der FILE-Deklaration im 
+Programm erzeugt wurde. 
+ 
+Welche Operationen sind nun für Dateien zugelassen? Wir beschreiben die 
+wichtigsten für die beiden Dateiarten und Betriebsrichtungen getrennt: 
+ 
+a) FILE mit 'input' (nur lesen): 
+ 
+   PROC getline (FILE CONST f, TEXT VAR zeile) 
+   PROC get (FILE CONST f, TEXT VAR t) 
+   PROC get (FILE CONST f, REAL VAR r) 
+   PROC get (FILE CONST f, INT VAR i) 
+   BOOL PROC eof (FILE CONST f) 
+   (* Abfrageprozedur auf das Ende eines FILEs (letzter Satz) *) 
+ 
+   Als Beispiel zeigen wir ein Programm, welches eine Datei liest und auf 
+   dem Ausgabemedium ausgibt. 
+ 
+ 
+   Programm 31: 
+ 
+     FILE CONST f :: sequential file (input, "datei1"); 
+     TEXT VAR satz; 
+     WHILE NOT eof (f) REP 
+        getline (f, satz); 
+        put (satz); line 
+     END REP. 
+ 
+b) FILE mit 'output' (nur schreiben): 
+ 
+   PROC putline (FILE VAR f, TEXT CONST zeile) 
+   PROC put     (FILE VAR f, TEXT CONST t) 
+   PROC put     (FILE VAR f, REAL CONST r) 
+   PROC put     (FILE VAR f, INT  CONST i) 
+   PROC line    (FILE VAR f, INT  CONST zeilenzahl) 
+ 
+ 
+Aufgabe (HSG): 
+ 
+     a) Das Arbeiten mit Dateien ist manchmal notwendig, weil ... 
+     b) Wenn man mit Dateien in ELAN arbeitet, sind Assoziierungsprozeduren 
+        notwendig. 
+        b1) Wie heißen diese? 
+        b2) Was gibt man in diesen an? 
+     c) Welche Betriebsrichtungen gibt es bei FILES und was bewirken sie? 
+Übungsziel: Datei-Begriffe 
+ 
+ 
+Aufgabe (TSW): 
+ 
+     Welche Fehler befinden sich in den folgenden Programmfragmenten? 
+     a) FILE VAR f :: sequential file (input, "MIST"); 
+        TEXT VAR zeile; 
+        REP 
+          getline (f, zeile); 
+          ... 
+        UNTIL eof (f) END REP 
+ 
+     b) FILE VAR f :: sequential file (output, "NOCHMAL"); 
+        TEXT VAR zeile; 
+        REP 
+          getline (f, zeile); 
+          put (zeile) 
+        UNTIL eof (f) END REP 
+ 
+     c) FILE VAR f :: sequential file (input, "VERDAMMT"), 
+                 g :: sequential file (input, "DAEMLICH"); 
+        TEXT VAR zeile; 
+        kopiere g in f. 
+ 
+        kopiere g in f: 
+        FOR i FROM 1 UPTO 100 REP 
+          getline (g, zeile); 
+          putline (f, zeile) 
+        UNTIL eof (g) END REP. 
+Übungsziel: Arbeiten mit Dateien 
+ 
+ 
+ 
+Programmstruktur 1 
+ 
+Bis jetzt haben wir noch nicht vollständig erklärt, wie ein ELAN-Programm 
+formal als Ganzes aufgebaut sein muß, d.h. wie und in welcher Reihenfolge 
+die Anweisungen, Refinements, Prozeduren und Deklarationen geschrieben 
+werden müssen. 
+ 
+Ein ELAN-Programm kann aus mehreren Moduln (Bausteinen) aufgebaut sein, 
+die in ELAN PACKETs genannt werden. Das letzte PACKET wird "main packet" 
+genannt, weil in diesem das eigentliche Benutzerprogramm (Hauptprogramm) 
+enthalten ist. In diesem Abschnitt wollen wir uns nur mit dem Aufbau eines 
+solchen PACKETs beschäftigen. Wir werden dabei nicht alle Möglichkeiten 
+besprechen, sondern nur die wichtigsten Anwendungen beschreiben, mit einer 
+Empfehlung, in welcher Reihenfolge die Elemente geschrieben werden sollten. 
+ 
+Ein "main packet" kann aus folgenden Elementen bestehen: 
+ 
+a) Deklarationen und Anweisungen. Diese müssen nicht in einer bestimmten 
+   Reihenfolge im Programm erscheinen, sondern es ist möglich, erst in dem 
+   Augenblick zu deklarieren, wenn z.B. eine neue Variable benötigt wird. Es 
+   ist jedoch gute Programmierpraxis, die meisten Deklarationen an den 
+   Anfang eines Programms (außer z.B. Datenobjekte, die nur lokal oder 
+   kurzfristig benötigt werden, wie Hilfsvariablen oder Laufvariablen) zu 
+   plazieren. 
+ 
+     <Deklarationen> ; 
+     <Anweisungen> 
+ 
+b) Deklarationen, Refinements und Anweisungen. In diesem Fall ist es notwen- 
+   dig, die Refinements hintereinander zu plazieren. Refinement-Aufrufe 
+   und/oder Anweisungen sollten textuell vorher erscheinen. Die Refinements 
+   werden durch einen Punkt von den Aufrufen getrennt: 
+ 
+     <Deklarationen> ; 
+     <Refinement-Aufrufe und/oder Anweisungen> . 
+     <Refinements> 
+ 
+   Innerhalb der Refinements sind Anweisungen und/oder Deklarationen möglich. 
+ 
+c) Deklarationen, Prozeduren und Anweisungen. Werden Prozeduren vereinbart, 
+   sollte man sie nach den Deklarationen plazieren. Danach sollten die 
+   Anweisungen folgen: 
+ 
+     <Deklarationen> ; 
+     <Prozeduren> ; 
+     <Anweisungen> 
+ 
+   Mehrere (parallele) Prozeduren werden durch ";" voneinander getrennt. In 
+   diesem Fall sind die Datenobjekte aus den Deklarationen außerhalb von 
+   Prozeduren statisch, d.h. während der gesamten Laufzeit des Programm 
+   vorhanden. Solche Datenobjekte werden auch PACKET-Daten genannt.Im 
+   Gegensatz dazu sind die Datenobjekte aus Deklarationen in Prozeduren 
+   dynamische Datenobjekte, die nur während der Bearbeitungszeit der 
+   Prozedur existieren. Innerhalb einer Prozedur dürfen wiederum Refinements 
+   verwendet werden. Ein Prozedur-Rumpf hat also den formalen Aufbau wie 
+   unter a) oder b) geschildert. 
+ 
+   Die Refinements und Datenobjekte, die innerhalb einer Prozedur deklariert 
+   wurden, sind lokal zu dieser Prozedur, d.h. können von außerhalb nicht 
+   angesprochen werden. 
+ 
+d) Deklarationen, Prozeduren, Anweisungen und PACKET-Refinements. 
+   Zusätzlich zu der Möglichkeit c) ist es erlaubt, neben den Anweisungen 
+   außerhalb einer Prozedur auch Refinements zu verwenden: 
+ 
+     <Deklarationen> ; 
+     <Prozeduren> ; 
+     <Anweisungen> . 
+     <Refinements> 
+ 
+   Diese Refinements können nun in Anweisungen außerhalb der Prozeduren 
+   benutzt werden oder auch durch die Prozeduren (im letzteren Fall spricht 
+   man analog zu globalen PACKET-Daten auch von PACKET-Refinements oder 
+   globalen Refinements). In PACKET-Refinements dürfen natürlich keine 
+   Datenobjekte verwandt werden, die lokal zu einer Prozedur sind. 
+ 
+ 
+ 
+Moduln (PACKETs) 
+ 
+PACKETs sind in ELAN eine Zusammenfassung von Datenobjekten, Prozeduren/ 
+Operatoren und Datentypen. Man kann sich ein PACKET als ein 'main packet' 
+mit Zusätzen vorstellen. PACKETs können separat übersetzt werden, so 
+daß der "Zusammenbau" eines umfangreichen Programms aus mehreren PACKETs 
+möglich ist. 
+ 
+Elemente eines PACKETs (Prozeduren/Operatoren, Datentypen) können außerhalb 
+des PACKETs nur angesprochen werden, wenn sie in der Schnittstelle des 
+PACKETs, die auch "interface" genannt wird, aufgeführt wird. Mit anderen 
+Worten: es können alle Elemente eines PACKETs von außen nicht angesprochen 
+werden, sofern sie nicht über die Schnittstelle "nach außen gereicht" wird. 
+Damit wird gewährleistet, daß mehrere Programmierer an einem gemeinsamen 
+Projekt arbeiten können und daß eine gemeinsame Benutzung (oder Störung) von 
+Programmteilen nur über die in den Schnittstellen von PACKETs aufgeführten 
+Objekte erfolgen kann. 
+ 
+Im Gegensatz zu einer Prozedur kann ein PACKET nicht aufgerufen werden (nur 
+die Elemente der Schnittstelle können benutzt werden). Beispiel: 
+ 
+ 
+Programm 32: 
+ 
+     PACKET fuer eine prozedur DEFINES swap: 
+ 
+     PROC swap (INT VAR a, b): 
+        INT CONST x :: a; 
+        b := a; 
+        a := x 
+     END PROC swap 
+ 
+     END PACKET fuer eine prozedur 
+ 
+Dies ist ein PACKET, das eine Tausch-Prozedur für INT-Datenobjekte bereit- 
+stellt. Das PACKET kann übersetzt werden und dem ELAN-Compiler bekannt 
+gemacht werden (EUMEL: "insertieren"). Ist das geschehen, kann man 'swap' 
+wie alle anderen Prozeduren (z.B. 'put', 'get') in einem Programm verwenden. 
+Tatsächlich werden die meisten Prozeduren und Operatoren (aber auch einige 
+Datentypen), die in ELAN zur Verfügung stehen, nicht durch den ELAN-Compiler 
+realisiert, sondern durch solche PACKETs. Um solche Objekte einigermaßen 
+zu standardisieren, wurde in der ELAN-Sprachbeschreibung festgelegt, welche 
+Datentypen, Prozeduren und Operatoren in jedem ELAN-System vorhanden 
+sein müssen. Solche PACKETs werden Standard-Pakete genannt. Jeder Installa- 
+tion - aber auch jedem Benutzer - steht es jedoch frei, zu den Standard- 
+Paketen zusätzliche PACKETs mit in den Compiler aufzunehmen und damit den 
+ELAN-Sprachumfang zu erweitern. 
+ 
+Ein ELAN-PACKET beginnt mit dem PACKET-Schlüsselwort. Danach folgt der Name 
+des PACKETs (der am Ende des PACKETs hinter END PACKET wieder erscheinen 
+muß), gefolgt von der DEFINES-Liste. In dieser Schnittstelle werden die Ob- 
+jekte angegeben, die nachfolgenden PACKETs zur Verfügung gestellt werden 
+sollen. 
+ 
+In der Schnittstelle werden Prozeduren/Operatoren nur mit ihrem Namen ange- 
+geben. Weiterhin können Datentypen und mit CONST vereinbarte Datenobjekte 
+in der Schnittstelle aufgeführt werden, aber keine VAR-Datenobjekte, weil 
+diese sonst über PACKET-Grenzen hinweg verändert werden könnten. 
+ 
+Im obigen Programm 32 haben wir ein PACKET in der Funktion als spracher- 
+weiterndes Instrument gezeigt. Im folgenden Beispiel zeigen wir ein Programm, 
+in dem das PACKET-Konzept verwandt wird, um Datenobjekte vor unbefugten 
+Zugriff zu schützen. 
+ 
+ 
+Programm 33: 
+ 
+     PACKET stack handling DEFINES push, pop, init stack: 
+ 
+     LET max = 1000; 
+     ROW max INT VAR stack; 
+     INT VAR stack pointer; 
+ 
+     PROC init stack: 
+        stack pointer := 0 
+     END PROC init stack; 
+ 
+     PROC push (INT CONST dazu wert): 
+        stack pointer INCR 1; 
+        IF stack pointer > max 
+          THEN errorstop ("stack overflow") 
+          ELSE stack [stack pointer] := dazu wert 
+        END IF 
+     END PROC push; 
+ 
+     PROC pop (INT VAR von wert): 
+        IF stack pointer = 0 
+          THEN errorstop ("stack empty") 
+          ELSE von wert := stack [stack pointer]; 
+               stack pointer DECR 1 
+        END IF 
+     END PROC pop 
+ 
+     END PACKET stack handling; 
+ 
+Nun kann man den Stack über die Prozeduren 'init stack', 'push' und 'pop' 
+benutzen (in einem 'main packet'). 
+ 
+ 
+Programm 34: 
+ 
+     init stack; 
+     werte einlesen und pushen; 
+     werte poppen und ausgeben. 
+ 
+     werte einlesen und pushen: 
+        INT VAR anzahl :: 0, wert; 
+        REP 
+           get (wert); 
+           push (wert); 
+           anzahl INCR 1 
+        UNTIL ende kriterium END REP. 
+ 
+     werte poppen und ausgeben: 
+        INT VAR i; 
+        FOR i FROM 1 UPTO anzahl REP 
+           pop (wert); 
+           put (wert) 
+        END REP. 
+ 
+Die Datenobjekte 'stack' und 'stack pointer' haben nur Gültigkeit innerhalb 
+des PACKETs 'stack handling'. Anweisungen wie z.B. 
+ 
+     put (stack [3]); 
+     stack [27] := 5 
+ 
+außerhalb des PACKETs 'stack handling' sind also verboten und werden vom 
+ELAN-Compiler entdeckt. 
+ 
+Ein PACKET bietet also auch einen gewissen Schutz vor fehlerhafter Verwen- 
+dung von Programmen und Datenobjekten. Wichtig ist weiterhin, daß die Reali- 
+sierung des Stacks ohne weiteres geändert werden kann, ohne daß Benutzer- 
+programme im 'main packet' geändert werden müssen, sofern die Schnittstelle 
+nicht verändert wird. Beispielsweise kann man sich entschließen, den Stack 
+nicht durch eine Reihung, sondern durch eine gekettete Liste zu realisieren. 
+Davon bleibt ein Benutzerprogramm unberührt. 
+ 
+Die letzte Funktion von PACKETs ist die Realisierung von abstrakten Daten- 
+typen. Dazu müssen wir uns aber zuvor die Möglichkeiten anschauen, neue 
+Datentypen zu definieren. 
+ 
+ 
+ 
+Die Definition neuer Datentypen 
+ 
+Im Gegensatz zur LET-Vereinbarung, bei der lediglich ein neuer Name für 
+einen bereits vorhandenen Datentyp eingeführt wurde und bei der somit auch 
+keine neuen Operationen definiert werden müssen (weil die Operationen für 
+den abzukürzenden Datentyp verwandt werden können), wird durch eine TYPE- 
+Vereinbarung ein gänzlich neuer Datentyp eingeführt. Im Gegensatz zu 
+Strukturen und Reihungen stehen für solche Datentypen noch nicht einmal die 
+Zuweisung zur Verfügung. Beispiel: 
+ 
+     TYPE PERSON = STRUCT (TEXT name, vorname, INT alter) 
+ 
+Ein solcher Datentyp kann wie auch alle anderen Datentypen verwandt werden 
+(Deklarationen, Parameter, Werte liefernde Prozeduren, als Komponenten in 
+Reihungen und Strukturen usw.). 
+ 
+Der neudefinierte Datentyp wird abstrakter Datentyp genannt. Er kann mit 
+Hilfe eines PACKETs (vergl. nächsten Abschnitt) anderen Programmteilen zur 
+Verfügung gestellt werden. Die rechte Seite der TYPE-Vereinbarung wird 
+"konkreter Typ", "Realisierung des Datentyps" oder Feinstruktur genannt. 
+ 
+Um neue Operatoren und/oder Prozeduren für einen abstrakten Datentyp zu 
+schreiben, ist es möglich, auf die Komponenten des Datentyps (also auf die 
+Feinstruktur) mit Hilfe des Konkretisierers zuzugreifen. Der Konkretisierer 
+arbeitet ähnlich wie die Subskription oder Selektion: er ermöglicht eine 
+typmäßige Umbetrachtung vom abstrakten Typ zum Datentyp der Feinstruktur. 
+Beispiel: 
+ 
+     TYPE MONAT = INT; 
+ 
+     PROC put (MONAT CONST m): 
+        put ( CONCR (m)) 
+     END PROC put; 
+ 
+Der Konkretisierer ist bei Feinstrukturen notwendig, die von elementarem 
+Datentyp sind. Besteht dagegen die Feinstruktur aus Reihungen oder Struk- 
+turen, dann wird durch eine Selektion oder Subskription eine implizite Kon- 
+kretisierung vorgenommen. Beispiel: 
+ 
+     TYPE LISTE = ROW 100 INT; 
+ 
+     LISTE VAR personal nummer; 
+     ... 
+     personal nummer [3] := ... 
+     (* das gleiche wie *) 
+     CONCR (personal nummer) [3] := ... 
+ 
+Denoter für neudefinierte Datentypen werden mit Hilfe des Konstruktors 
+gebildet: 
+ 
+     TYPE GEHALT = INT; 
+ 
+     GEHALT VAR meins :: GEHALT : (1 000 000); 
+ 
+Besteht die Feinstruktur aus einem Datenverbund, muß der Konstruktor u.U. 
+mehrfach geschachtelt angewandt werden: 
+ 
+     TYPE KOMPLEX = ROW 2 REAL; 
+ 
+     KOMPLEX CONST x :: KOMPLEX : ( ROW 2 REAL : ( 1.0, 2.0)); 
+ 
+ 
+ 
+Abstrakte Datentypen 
+ 
+Auf die Feinstruktur über den Konkretisierer eines neudefinierten Datentyps 
+darf nur in dem PACKET zugegriffen werden, in dem der Datentyp definiert 
+wurde. Der Konstruktor kann ebenfalls nur in dem typdefinierenden PACKET 
+verwandt werden. 
+ 
+Wird der Datentyp über die Schnittstelle des PACKETs anderen Programmteilen 
+zur Benutzung zur Verfügung gestellt, so müssen Operatoren und/oder Proze- 
+duren für den Datentyp ebenfalls "herausgereicht" werden. Da dann der neude- 
+finierte Datentyp genauso wie alle anderen Datentypen verwandt werden kann, 
+aber die Komponenten nicht zugänglich sind, spricht man von abstrakten 
+Datentypen. 
+ 
+Welche Operationen sollten für einen abstrakten Datentyp zur Verfügung 
+stehen? Obwohl das vom Einzelfall abhängt, werden meistens folgende 
+Operationen und Prozeduren definiert: 
+ 
+- 'get'- und 'put'-Prozeduren. 
+- Zuweisung (auch für die Initialisierung notwendig). 
+- Denotierungs-Prozedur (weil kein Konstruktor für den abstrakten Datentyp 
+  außerhalb des definierenden PACKETs zur Verfügung steht) 
+ 
+ 
+Programm 35: 
+ 
+     PACKET widerstaende DEFINES WIDERSTAND, REIHE, PARALLEL, :=, get, put: 
+ 
+     TYPE WIDERSTAND = INT; 
+ 
+     OP := (WIDERSTAND VAR l, WIDERSTAND CONST r): 
+        CONCR (l) := CONCR (r) 
+     END OP :=; 
+ 
+     PROC get (WIDERSTAND VAR w): 
+        INT VAR i; 
+        get (i); 
+        w := WIDERSTAND : (i) 
+     END PROC get; 
+ 
+     PROC put (WIDERSTAND CONST w): 
+        put (CONCR (w)) 
+     END PROC put; 
+ 
+     WIDERSTAND OP REIHE (WIDERSTAND CONST l, r): 
+        WIDERSTAND : ( CONCR (l) + CONCR (r)) 
+     END OP REIHE; 
+ 
+     WIDERSTAND OP PARALLEL (WIDERSTAND CONST l, r): 
+       WIDERSTAND : 
+         ((CONCR (l) * CONCR (r)) DIV (CONCR (l) + CONCR (r))) 
+     END OP PARALLEL 
+ 
+     END PACKET widerstaende 
+ 
+Dieses Programm realisiert den Datentyp WIDERSTAND und mit den Operationen 
+eine Fachsprache, mit dem man nun leicht WIDERSTANDs-Netzwerke berechnen 
+kann, wie z.B. folgendes: 
+ 
+ 
+                              +--- R4 ---+ 
+                              |          | 
+        +--- R1 ---+          +--- R5 ---+ 
+        |          |          |          | 
+     ---+          +--- R3 ---+          +--- 
+        |          |          |          | 
+        +--- R2 ---+          +--- R6 ---+ 
+                              |          | 
+                              +--- R7 ---+ 
+ 
+Zur Berechnung des Gesamtwiderstandes kann nun folgendes Programm 
+geschrieben werden: 
+ 
+     ROW 7 WIDERSTAND VAR r; 
+     widerstaende einlesen; 
+     gesamtwiderstand berechnen; 
+     ergebnis ausgeben. 
+ 
+     widerstaende einlesen: 
+        INT VAR i; 
+        FOR i FROM 1 UPTO 7 REP 
+           put ("bitte widerstand R"); put (i); put (":"); 
+           get (r [i]); 
+        END REP. 
+ 
+     gesamtwiderstand berechnen: 
+        WIDERSTAND CONST rgesamt :: (r [1] PARALLEL r [2]) REIHE 
+          r [3] REIHE (r [4] PARALLEL r [5] PARALLEL r [6] 
+          PARALLEL r [7]). 
+ 
+     ergebnis ausgeben: 
+        line; 
+        put (rgesamt). 
+ 
+ 
+Aufgabe (HSG): 
+ 
+     Was ist ein Modul? Was ist ein Interface? Was ist der Unterschied 
+     zwischen einem PACKET und einer Prozedur? 
+     Die Realisierung von WIDERSTAND durch INTs ist nicht in allen Fällen 
+     befriedigend. Warum? (Beachte besonders die Realisierung des OP 
+     PARALLEL). 
+     Wenn man bei der Typ-Vereinbarung von WIDERSTAND INT gegen REAL 
+     austauschen würde, wo müßte man noch Änderungen vornehmen? Sind 
+     insbesondere Änderungen im Benutzer-Programm (hier im 'main packet') 
+     notwendig? 
+Übungsziel: PACKET-Begriff 
+ 
+ 
+ 
+Programmstruktur 2 
+ 
+Nun können wir auch erklären, wie ein ELAN-Programm mit mehreren PACKETs 
+aussieht. Ein Programm besteht aus einer Folge von PACKETs, dem ein 'main 
+packet' folgt. Es ist auch möglich, PACKETs vorübersetzen zu lassen, so daß 
+es für einen Nutzer so aussieht, als ob er nur ein 'main packet' übersetzen 
+läßt. Tatsächlich sind zumindest die Standard-Packets vorübersetzt vorhanden. 
+
+

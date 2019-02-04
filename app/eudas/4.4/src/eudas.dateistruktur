@@ -1,0 +1,1690 @@
+PACKET eudas dateien
+
+(*************************************************************************)
+(*                                                                       *)
+(*     EUDAS-Dateien als indexsequentielle Dateien                       *)
+(*                                                                       *)
+(*     Version 05                                                        *)
+(*                                                                       *)
+(*     Autor: Thomas Berlage                                             *)
+(*     Stand: 25.04.87                                                   *)
+(*                                                                       *)
+(*************************************************************************)
+
+  DEFINES
+
+  EUDAT,
+(*dump,   Test *)
+  oeffne,
+  satznr,
+  dateiende,
+  saetze,
+  auf satz,
+  weiter,
+  zurueck,
+  satz lesen,
+  satz aendern,
+  satz loeschen,
+  satz einfuegen,
+  feld lesen,
+  feld aendern,
+  feld bearbeiten,
+  felderzahl,
+  feldnamen lesen,
+  feldnamen aendern,
+  notizen lesen,
+  notizen aendern,
+  feldinfo,
+  automatischer schluessel,
+  dezimalkomma,
+  wert berechnen,
+  reorganisiere,
+  sortiere,
+  sortierreihenfolge,
+  unsortierte saetze :
+
+
+LET
+  maxhash = 531,
+  maxindex = 121,
+  maxsatz = 5000,
+  eudat typ = 3243,
+  maxeintrag = 64,
+  dreiviertel maxeintrag = 48;
+
+LET
+  INTVEC = TEXT,
+
+  INDEX = STRUCT
+    (INT vorgaenger, nachfolger,
+    INT eintraege, stelle,
+    INTVEC satzindex),
+
+  EINTRAG = STRUCT
+    (INT vorgaenger, nachfolger, indexblock, attribut,
+    SATZ satz),
+
+  DATEI = STRUCT 
+    (INT felderzahl,
+    SATZ feldnamen,
+    INTVEC feldinfo,
+    TEXT sortierfelder,
+    INT letzter index, indexblocks, erster leerindex,
+    INT erster leersatz, anz satzeintraege,
+    INT anz saetze, satznr,
+    INT indexzeiger, indexstelle, satzzeiger,
+    INT anz unsortierte, schluesselzaehler,
+    ROW 3 TEXT notizen,
+    ROW maxhash INT hashliste,
+    ROW maxindex INDEX index,
+    ROW maxsatz EINTRAG ablage);
+
+TYPE EUDAT = BOUND DATEI;
+
+LET
+  niltext = "";
+
+LET
+  datei ist keine eudas datei =  #201#
+    "Datei ist keine EUDAS-Datei",
+  inkonsistente datei =  #202#
+    "inkonsistente EUDAS-Datei",
+  eudas datei voll =  #203#
+    "EUDAS-Datei voll",
+  nicht erlaubtes dezimalkomma =  #204#
+    "Nicht erlaubtes Dezimalkomma";
+
+TEXT VAR
+   feldpuffer;
+
+TEXT VAR
+  inttext := "  ";
+
+INTVEC CONST
+  blockreservierung := intvec (maxeintrag, 1);
+
+
+(*************************** Test-Dump ***********************************)
+(*
+PROC dump (EUDAT CONST datei, TEXT CONST file) :
+
+  FILE VAR f := sequential file (output, file);
+  idump (CONCR (datei), f)
+
+END PROC dump;
+
+PROC idump (DATEI CONST datei, FILE VAR f) :
+
+  put (f, "Felderzahl:"); put (f, datei. felderzahl); line (f);
+  INT VAR i; putline (f, "feldnamen:");
+  FOR i FROM 1 UPTO felderzahl (datei. feldnamen) REP
+    TEXT VAR feld; feld lesen (datei. feldnamen, i, feld);
+    write (f, feld); write (f, ",")
+  END REP; line (f); putline (f, "feldinfo:");
+  FOR i FROM  1 UPTO length (datei. feldinfo) DIV 2 REP
+    put (f, datei. feldinfo ISUB i)
+  END REP; line (f);
+  put (f, "letzter index:"); put (f, datei. letzter index);
+  put (f, "indexblocks:"); put (f, datei. indexblocks);
+  put (f, "erster leerindex:"); put (f, datei. erster leerindex); line (f);
+  put (f, "erster leersatz:"); put (f, datei. erster leersatz);
+  put (f, "anz satzeintraege:"); put (f, datei. anz satzeintraege); line (f);
+  put (f, "anz saetze:"); put (f, datei. anz saetze);
+  put (f, "satznr:"); put (f, datei.satznr); line (f);
+  put (f, "indexzeiger:"); put (f, datei. indexzeiger);
+  put (f, "indexstelle:"); put (f, datei. indexstelle);
+  put (f, "satzzeiger:"); put (f, datei. satzzeiger); line (f);
+  put (f, "anz unsortierte:"); put (f, datei. anz unsortierte); line (f);
+  ROW 10 INT VAR anzahl ketten;
+  FOR i FROM 1 UPTO 10 REP anzahl ketten (i) := 0 END REP;
+  FOR i FROM 1 UPTO maxhash REP
+    INT VAR laenge := 0;
+    laenge der hashkette bestimmen;
+    IF laenge > 10 THEN laenge := 10 END IF;
+    IF laenge > 0 THEN anzahl ketten (laenge) INCR 1 END IF
+  END REP;
+  put (f, "Hash:");
+  FOR i FROM 1 UPTO 10 REP put (f, anzahl ketten (i)) END REP; line (f);
+  FOR i FROM 1 UPTO datei. indexblocks REP
+    put (f, "INDEX"); put (f, i); put (f, "vor:"); put (f,
+    datei. index (i). vorgaenger); put (f, "nach:"); put (f, 
+    datei. index (i). nachfolger); put (f, "eintraege:"); put (f,
+    datei. index (i). eintraege); line (f); INT VAR j;
+    FOR j FROM 1 UPTO length (datei. index (i). satzindex) DIV 2 REP
+      put (f, datei. index (i). satzindex ISUB j)
+    END REP;
+    line (f)
+  END REP;
+  FOR i FROM 1 UPTO datei. anz satzeintraege REP
+    put (f, "SATZ"); put (f,i); put (f, "vor:"); put (f,
+    datei. ablage (i). vorgaenger); put (f, "nach:"); put (f,
+    datei. ablage (i). nachfolger); put (f, "index:"); put (f,
+    datei. ablage (i). indexblock); put (f, "attr:"); put (f,
+    datei. ablage (i). attribut); line (f);
+    FOR j FROM 1 UPTO felderzahl (datei. ablage (i). satz) REP
+      feld lesen (datei. ablage (i). satz, j, feld); 
+      write (f, feld); write (f, ",")
+    END REP; cout (i);
+    line (f)
+  END REP .
+
+laenge der hashkette bestimmen :
+  INT VAR index := datei. hashliste (i);
+  WHILE index <> 0 REP
+    index := datei. ablage (index). vorgaenger;
+    laenge INCR 1
+  END REP .
+
+END PROC i dump;
+*)
+
+(**************************** INTVEC *************************************)
+
+(* An Stelle von maximal dimensionierten ROW max INT werden an ver-      *)
+(* schiedenen Stellen TEXTe mit eingeschriebenen Integern verwendet.     *)
+(* Auf diese Art und Weise werden auch das Einfuegen und Loeschen, sowie *)
+(* das Aufsplitten und Zusammenfuegen effizienter realisiert.            *)
+
+LET
+  empty intvec = "";
+
+TEXT VAR 
+  buffer;
+
+INTVEC PROC intvec (INT CONST length, value) :
+
+  replace (inttext, 1, value);
+  length * inttext
+
+END PROC intvec;
+
+PROC insert (INTVEC VAR vector, INT CONST pos, value) :
+
+  INT CONST begin := pos + pos - 1;
+  IF begin < 1 THEN
+    subscript underflow
+  ELIF begin > length (vector) + 1 THEN
+    subscript overflow
+  ELSE
+    replace (inttext, 1, value);
+    buffer := subtext (vector, begin);
+    vector := subtext (vector, 1, begin - 1);
+    vector CAT inttext;
+    vector CAT buffer
+  END IF
+
+END PROC insert;
+
+PROC delete (INTVEC VAR vector, INT CONST pos) :
+
+  INT CONST begin := pos + pos - 1;
+  IF begin < 1 THEN
+    subscript underflow
+  ELIF begin >= length (vector) THEN
+    subscript overflow
+  ELSE
+    buffer := subtext (vector, begin + 2);
+    vector := subtext (vector, 1, begin - 1);
+    vector CAT buffer
+  END IF
+
+END PROC delete;
+
+INT PROC pos (INTVEC CONST vector, INT CONST value) :
+
+  replace (inttext, 1, value);
+  INT VAR begin := 1;
+  REP
+    begin := pos (vector, inttext, begin) + 1
+  UNTIL (begin AND 1) = 0 OR begin = 1 END REP;
+  begin DIV 2
+
+END PROC pos;
+
+PROC split up (INTVEC VAR source, dest, INT CONST pos) :
+
+  INT CONST begin := pos + pos - 1;
+  IF begin < 1 THEN
+    subscript underflow
+  ELIF begin > length (source) + 1 THEN
+    subscript overflow
+  ELSE
+    dest := subtext (source, begin);
+    source := subtext (source, 1, begin - 1)
+  END IF
+
+END PROC split up;
+
+PROC split down (INTVEC VAR source, dest, INT CONST pos) :
+
+  INT CONST begin := pos + pos - 1;
+  IF begin < 1 THEN
+    subscript underflow
+  ELIF begin > length (source) + 1 THEN
+    subscript overflow
+  ELSE
+    dest := subtext (source, 1, begin - 1);
+    source := subtext (source, begin)
+  END IF
+
+END PROC split down;
+
+.
+subscript overflow :
+  errorstop (9, niltext) .
+
+subscript underflow :
+  errorstop (10, niltext) .
+
+
+(************************** Datei oeffnen ********************************)
+
+PROC initialisiere eudat (DATEI VAR datei) :
+
+  datei. felderzahl := 0;
+  datei. feldinfo := empty intvec;
+  satz initialisieren (datei. feldnamen);
+  datei. sortierfelder := niltext;
+  datei. letzter index := 1;
+  datei. indexblocks := 1;
+  datei. erster leersatz := 0;
+  datei. erster leerindex := 0;
+  datei. anz saetze := 0;
+  datei. anz satzeintraege := 1;
+  datei. anz unsortierte := 0;
+  datei. notizen (1) := niltext;
+  datei. notizen (2) := niltext;
+  datei. notizen (3) := niltext;
+  datei. satznr := 1;
+  datei. indexzeiger := 1;
+  datei. indexstelle := 1;
+  datei. satzzeiger := 1;
+  datei. index (1). satzindex := blockreservierung;
+  datei. index (1) := INDEX : (0, 0, 1, 1, intvec(1, 1));
+  INT VAR i;
+  FOR i FROM 1 UPTO maxhash REP
+    datei. hashliste (i) := 0
+  END REP;
+  datei. ablage (1) := EINTRAG : (0, 0, 1, 0, leersatz) .
+
+leersatz :
+  datei. feldnamen .
+
+END PROC initialisiere eudat;
+
+PROC oeffne (EUDAT VAR datei, TEXT CONST dateiname) :
+
+  enable stop;
+  IF NOT exists (dateiname) THEN
+    CONCR (datei) := new (dateiname);
+    initialisiere eudat (CONCR (datei));
+    type (old (dateiname), eudat typ)
+  ELIF type (old (dateiname)) = eudat typ THEN
+    CONCR (datei) := old (dateiname)
+  ELSE
+    errorstop (datei ist keine eudas datei)
+  ENDIF
+
+END PROC oeffne;
+
+PROC oeffne (EUDAT VAR datei, DATASPACE CONST ds) :
+
+  IF type (ds) < 0 THEN
+    CONCR (datei) := ds;
+    initialisiere eudat (CONCR (datei));
+    type (ds, eudat typ)
+  ELIF type (ds) = eudat typ THEN
+    CONCR (datei) := ds
+  ELSE
+    errorstop (datei ist keine eudas datei)
+  END IF
+
+END PROC oeffne;
+
+
+(************************* Feldzugriffe **********************************)
+
+PROC feld lesen (EUDAT CONST datei, INT CONST feldnr, TEXT VAR inhalt) :
+
+  feld lesen (aktueller satz, feldnr, inhalt) .
+
+aktueller satz :
+  datei. ablage (datei. satzzeiger). satz .
+
+END PROC feld lesen;
+
+PROC feld aendern (EUDAT VAR datei, INT CONST feldnr, 
+                                    TEXT CONST neuer inhalt) :
+
+  IF nicht hinter letztem satz THEN
+    aktueller satz unsortiert (CONCR (datei));
+    moeglicherweise schluessel aendern;
+    feld aendern (aktueller satz, feldnr, neuer inhalt)
+  END IF .
+
+nicht hinter letztem satz :
+  datei. satzzeiger <> 1 .
+
+moeglicherweise schluessel aendern :
+  IF feldnr = 1 THEN
+    disable stop;
+    schluessel aendern (CONCR (datei), hashindex (neuer inhalt))
+  END IF .
+
+aktueller satz :
+  datei. ablage (datei. satzzeiger). satz .
+
+END PROC feld aendern;
+
+INT PROC felderzahl (EUDAT CONST datei) :
+
+  datei. felderzahl
+
+END PROC felderzahl;
+
+PROC feld bearbeiten (EUDAT CONST datei, INT CONST feldnr,
+                      PROC (TEXT CONST, INT CONST, INT CONST) bearbeite) :
+
+  feld bearbeiten (aktueller satz, feldnr,
+                   PROC (TEXT CONST, INT CONST, INT CONST) bearbeite) .
+
+aktueller satz :
+  datei. ablage (datei. satzzeiger). satz .
+
+END PROC feld bearbeiten;
+
+
+(************************* Feldinformationen *****************************)
+
+(* Jedes Feld der Datei hat einen Namen und eine Typinformation. Die     *)
+(* Anzahl der vorhandenen Felder richtet sich nach dem hoechsten ver-    *)
+(* gebenen Feldnamen. 'feldinfo' kann folgende Werte annehmen :          *)
+(*  -1 : normales Textfeld                                               *)
+(*   0 : Textfeld, das nach DIN-Norm verglichen wird                     *)
+(*   1 : Zahlfeld (alle irrelevanten Zeichen werden ignoriert)           *)
+(*   2 : Datum mit einer Laenge von 8 Zeichen                            *)
+(* Das Feldinfo eines noch nicht eingerichteten Feldes fuehrt zu         *)
+(* einer Fehlermeldung.                                                  *)
+
+PROC feldnamen lesen (EUDAT CONST datei, SATZ VAR namen) :
+
+  namen := datei. feldnamen
+
+END PROC feldnamen lesen;
+
+PROC feldnamen aendern (EUDAT VAR datei, SATZ CONST neue namen) :
+
+  datei. feldnamen := neue namen;
+  INT CONST neue felder := felderzahl (neue namen);
+  IF neue felder > datei. felderzahl THEN
+    feldinfo erweitern;
+    datei. felderzahl := neue felder
+  END IF .
+
+feldinfo erweitern :
+  datei. feldinfo CAT intvec (fehlende zeilen, - 1) .
+
+fehlende zeilen :
+  neue felder - length (datei. feldinfo) DIV 2.
+
+END PROC feldnamen aendern;
+
+INT PROC feldinfo (EUDAT CONST datei, INT CONST feldnr) :
+
+  datei. feldinfo ISUB feldnr
+
+END PROC feldinfo;
+
+PROC feldinfo (EUDAT VAR datei, INT CONST feldnr, zeilen) :
+
+  replace (datei. feldinfo, feldnr, zeilen);
+  IF pos (datei. sortierfelder, code (feldnr)) > 0 THEN
+    datei. anz unsortierte := datei. anz saetze
+  END IF
+
+END PROC feldinfo;
+
+
+(*************************** Positionsabfragen ***************************)
+
+INT PROC satznr (EUDAT CONST datei) :
+
+  datei. satznr
+
+END PROC satznr;
+
+BOOL PROC dateiende (EUDAT CONST datei) :
+
+  datei. satznr > datei. anz saetze
+
+END PROC dateiende;
+
+INT PROC saetze (EUDAT CONST datei) :
+
+  datei. anz saetze
+
+END PROC saetze;
+
+
+(***************************** Positionieren *****************************)
+
+(* Positioniert werden kann nach der Satznummer oder nach dem ersten     *)
+(* Feld. Das erste Feld kann durch eine Hashtabelle schnell gefunden     *)
+(* werden. In der Hashtabelle sind die Saetze nach absoluten Positionen  *)
+(* eingetragen und nicht nach Satznummern. Ueber den Rueckverweis auf    *)
+(* den Indexblock kann die Satznummer zu einem gegebenen Satz gefunden   *)
+(* werden.                                                               *)
+
+PROC neue satzposition (DATEI VAR datei, INT CONST indexzeiger, stelle,
+                                                   satznr) :
+
+  IF indexzeiger < 1 OR indexzeiger > datei. indexblocks COR
+     stelle < 1 OR stelle > datei. index (indexzeiger). eintraege THEN
+    errorstop (inkonsistente datei)
+  END IF;
+  disable stop;
+  datei. indexzeiger := indexzeiger;
+  datei. indexstelle := stelle;
+  datei. satznr := satznr;
+  datei. satzzeiger := datei. index (indexzeiger). satzindex ISUB stelle
+
+END PROC neue satzposition;
+
+PROC auf satz (EUDAT VAR datei, INT CONST nr) :
+
+  INT VAR satznr;
+  IF nr < 1 THEN
+    satznr := 1
+  ELIF nr > datei. anz saetze THEN
+    satznr := datei. anz saetze + 1
+  ELSE
+    satznr := nr
+  END IF;
+  auf satz intern (CONCR (datei), satznr)
+
+END PROC auf satz;
+
+PROC auf satz (EUDAT VAR datei, TEXT CONST muster) :
+
+  auf satz (datei, 1);
+  IF nicht auf erstem satz THEN
+    weiter (datei, muster)
+  END IF .
+
+nicht auf erstem satz :
+  feld lesen (datei, 1, feldpuffer);
+  feldpuffer <> muster .
+
+END PROC auf satz;
+
+PROC auf satz intern (DATEI VAR datei, INT CONST satznr) :
+
+  IF von anfang naeher THEN
+    neue satzposition (datei, 1, 1, 1)
+  END IF;
+  INT VAR
+    indexzeiger := datei. indexzeiger,
+    erreichter satz := datei. satznr - datei. indexstelle;
+  IF satznr > datei. satznr THEN
+    vorwaerts gehen
+  ELSE
+    rueckwaerts gehen
+  END IF;
+  neue satzposition (datei, indexzeiger, stelle, satznr) .
+
+von anfang naeher :
+  satznr + satznr < datei. satznr .
+
+vorwaerts gehen :
+  WHILE noch vor satz REP
+    erreichter satz INCR eintraege;
+    indexzeiger := datei. index (indexzeiger). nachfolger
+  END REP .
+
+noch vor satz :
+  INT CONST eintraege := datei. index (indexzeiger). eintraege;
+  erreichter satz + eintraege < satznr .
+
+rueckwaerts gehen :
+  WHILE noch hinter satz REP
+    indexzeiger := datei. index (indexzeiger). vorgaenger;
+    erreichter satz DECR datei. index (indexzeiger). eintraege
+  END REP .
+
+noch hinter satz :
+  erreichter satz >= satznr .
+
+stelle :
+  satznr - erreichter satz .
+
+END PROC auf satz intern;
+
+PROC weiter (EUDAT VAR datei) :
+
+  weiter intern (CONCR (datei))
+
+END PROC weiter;
+
+PROC weiter intern (DATEI VAR datei) :
+
+  IF nicht dateiende THEN
+    naechster satz
+  END IF .
+
+nicht dateiende :
+  datei. satzzeiger <> 1 .
+
+naechster satz :
+  INT VAR
+    indexzeiger := datei. indexzeiger,
+    stelle := datei. indexstelle;
+
+  IF stelle = index. eintraege THEN
+    indexzeiger := index. nachfolger;
+    stelle := 1
+  ELSE
+    stelle INCR 1
+  END IF;
+  neue satzposition (datei, indexzeiger, stelle, datei. satznr + 1) .
+
+index :
+  datei. index (indexzeiger) .
+
+END PROC weiter intern;
+
+PROC zurueck (EUDAT VAR datei) :
+
+  zurueck intern (CONCR (datei))
+
+END PROC zurueck;
+
+PROC zurueck intern (DATEI VAR datei) :
+
+  IF nicht am anfang THEN
+    voriger satz
+  END IF .
+
+nicht am anfang :
+  datei. satznr <> 1 .
+
+voriger satz :
+  INT VAR
+    indexzeiger := datei. indexzeiger,
+    stelle := datei. indexstelle;
+
+  IF stelle = 1 THEN
+    indexzeiger := indexblock. vorgaenger;
+    stelle := indexblock. eintraege
+  ELSE
+    stelle DECR 1
+  END IF;
+  neue satzposition (datei, indexzeiger, stelle, datei. satznr - 1) .
+
+indexblock :
+  datei. index (indexzeiger) .
+
+END PROC zurueck intern;
+
+PROC weiter (EUDAT VAR datei, TEXT CONST muster) :
+
+  weiter intern (CONCR (datei), muster)
+
+END PROC weiter;
+
+PROC weiter intern (DATEI VAR datei, TEXT CONST muster) :
+
+  stelle in hashkette bestimmen;
+  WHILE noch weitere saetze CAND muster nicht gefunden REP
+    eine stelle weiter
+  END REP;
+  IF noch weitere saetze THEN
+    positioniere intern (datei, stelle)
+  ELSE
+    auf satz intern (datei, datei. anz saetze + 1)
+  END IF .
+
+stelle in hashkette bestimmen :
+  INT VAR dummy, stelle := datei. satzzeiger;
+  IF muster nicht gefunden THEN
+    stelle in hashkette (datei, hashindex (muster), stelle, dummy)
+  ELSE
+    eine stelle weiter
+  END IF .
+
+noch weitere saetze :
+  stelle <> 0 .
+
+muster nicht gefunden :
+  feld lesen (aktueller satz, 1, feldpuffer);
+  feldpuffer <> muster .
+
+aktueller satz :
+  datei. ablage (stelle). satz .
+
+eine stelle weiter :
+  stelle := datei. ablage (stelle). nachfolger .
+
+END PROC weiter intern;
+
+PROC zurueck (EUDAT VAR datei, TEXT CONST muster) :
+
+  zurueck intern (CONCR (datei), muster)
+
+END PROC zurueck;
+
+PROC zurueck intern (DATEI VAR datei, TEXT CONST muster) :
+
+  stelle in hashkette bestimmen;
+  WHILE noch weitere saetze CAND muster nicht gefunden REP
+    eine stelle zurueck
+  END REP;
+  IF noch weitere saetze THEN
+    positioniere intern (datei, stelle)
+  ELSE
+    auf satz intern (datei, 1)
+  END IF .
+
+stelle in hashkette bestimmen :
+  INT VAR stelle := datei. satzzeiger, dummy;
+  IF stelle = 1 OR schluessel stimmt nicht ueberein THEN
+    stelle in hashkette (datei, hashindex (muster), dummy, stelle)
+  END IF .
+
+noch weitere saetze :
+  stelle <> 0 .
+
+muster nicht gefunden :
+  stelle = datei. satzzeiger OR schluessel stimmt nicht ueberein .
+
+schluessel stimmt nicht ueberein :
+  feld lesen (aktueller satz, 1, feldpuffer);
+  feldpuffer <> muster .
+
+aktueller satz :
+  datei. ablage (stelle). satz .
+
+eine stelle zurueck :
+  stelle := datei. ablage (stelle). vorgaenger .
+
+END PROC zurueck intern;
+
+PROC positioniere intern (DATEI VAR datei, INT CONST stelle) :
+
+  INT CONST zielblock := datei. ablage (stelle). indexblock;
+  INT VAR 
+    indexstelle := 1,
+    satznr := 0;
+  WHILE indexstelle <> zielblock REP
+    satznr INCR datei. index (indexstelle). eintraege;
+    indexstelle := datei. index (indexstelle). nachfolger
+  END REP;
+  indexstelle := pos (datei. index (zielblock). satzindex, stelle);
+  satznr INCR indexstelle;
+  neue satzposition (datei, zielblock, indexstelle, satznr) .
+
+END PROC positioniere intern;
+
+
+(************************* Hashverwaltung ********************************)
+
+INT VAR index;
+
+PROC hashindex berechnen (TEXT CONST feld, INT CONST von, bis) :
+
+  INT VAR
+    zeiger := von;
+  index := 0;
+  IF bis - von < 4 THEN
+    mit faktor 4 streuen
+  ELSE
+    mit faktor 2 streuen
+  END IF;
+  index := index MOD maxhash + 1 .
+
+mit faktor 4 streuen :
+  WHILE zeiger <= bis REP
+    index := index * 4;
+    index INCR code (feld SUB zeiger);
+    zeiger INCR 1
+  END REP .
+
+mit faktor 2 streuen :
+  WHILE zeiger <= bis REP
+    index INCR index;
+    index INCR code (feld SUB zeiger);
+    IF index > 16000 THEN index := index MOD maxhash END IF;
+    zeiger INCR 1
+  END REP .
+
+END PROC hashindex berechnen;
+
+INT PROC hashindex (TEXT CONST feld) :
+
+  hashindex berechnen (feld, 1, length (feld));
+  index
+
+END PROC hashindex;
+
+INT PROC hashindex (SATZ CONST satz) :
+
+  feld bearbeiten (satz, 1,
+       PROC (TEXT CONST, INT CONST, INT CONST) hashindex berechnen);
+  index
+
+END PROC hashindex;
+
+PROC stelle in hashkette (DATEI CONST datei, INT CONST hashindex,
+                          INT VAR stelle, vorher) :
+
+  INT VAR indexzeiger := datei. letzter index;
+  vorher := datei. hashliste (hashindex);
+  stelle := 0;
+  BOOL VAR hinter aktuellem satz := TRUE;
+  WHILE hinter aktuellem satz AND vorher <> 0 REP
+    stelle untersuchen;
+    eine stelle weiter
+  END REP .
+
+stelle untersuchen :
+  IF verweis auf aktuellen block THEN
+    ueberpruefe innerhalb block
+  ELSE
+    teste ob aktueller block in indexkette
+  END IF .
+
+verweis auf aktuellen block :
+  datei. ablage (vorher). indexblock = datei. indexzeiger .
+
+ueberpruefe innerhalb block :
+  indexzeiger := datei. indexzeiger;
+  INT CONST stelle in block := pos (satzindex, vorher);
+  IF stelle in block = 0 THEN
+    errorstop (inkonsistente datei)
+  ELIF stelle in block <= aktuelle stelle THEN
+    hinter aktuellem satz := FALSE
+  END IF .
+
+satzindex :
+  datei. index (indexzeiger). satzindex .
+
+aktuelle stelle :
+  datei. indexstelle .
+
+teste ob aktueller block in indexkette :
+  WHILE indexzeiger <> datei. ablage (vorher). indexblock REP
+    IF indexzeiger = datei. indexzeiger THEN
+      hinter aktuellem satz := FALSE;
+      LEAVE stelle untersuchen
+    ELSE
+      indexzeiger := datei. index (indexzeiger). vorgaenger
+    END IF
+  END REP .
+
+eine stelle weiter :
+  IF hinter aktuellem satz THEN
+    stelle := vorher;
+    vorher := datei. ablage (stelle). vorgaenger
+  END IF .
+
+END PROC stelle in hashkette;
+
+PROC hash ausketten (DATEI VAR datei, INT CONST hashindex) :
+
+  disable stop;
+  INT CONST
+    stelle := datei. satzzeiger,
+    vorgaenger := datei. ablage (stelle). vorgaenger,
+    nachfolger := datei. ablage (stelle). nachfolger;
+
+  IF nachfolger <> 0 THEN
+    datei. ablage (nachfolger). vorgaenger := vorgaenger
+  ELSE
+    datei. hashliste (hashindex) := vorgaenger
+  END IF;
+  IF vorgaenger <> 0 THEN
+    datei. ablage (vorgaenger). nachfolger := nachfolger
+  END IF .
+
+END PROC hash ausketten;
+
+PROC hash einketten (DATEI VAR datei, INT CONST hashindex, 
+                                                nachfolger, vorgaenger) :
+
+  disable stop;
+  INT CONST stelle := datei. satzzeiger;
+  datei. ablage (stelle). vorgaenger := vorgaenger;
+  datei. ablage (stelle). nachfolger := nachfolger;
+  IF vorgaenger <> 0 THEN
+    datei. ablage (vorgaenger). nachfolger := stelle
+  END IF;
+  IF nachfolger <> 0 THEN
+    datei. ablage (nachfolger). vorgaenger := stelle
+  ELSE
+    datei. hashliste (hashindex) := stelle
+  END IF
+
+END PROC hash einketten;
+
+
+(************************** Satzzugriffe *********************************)
+
+PROC satz lesen (EUDAT CONST datei, SATZ VAR satz) :
+
+  satz := datei. ablage (datei. satzzeiger). satz
+
+END PROC satz lesen;
+
+PROC satz aendern (EUDAT VAR datei, SATZ CONST neuer satz) :
+
+  IF NOT dateiende (datei) THEN
+    satz wirklich aendern
+  END IF .
+
+satz wirklich aendern :
+  aktueller satz unsortiert (CONCR (datei));
+  disable stop;
+  schluessel aendern (CONCR (datei), hashindex (neuer satz));
+  aktueller satz := neuer satz .
+
+aktueller satz :
+  datei. ablage (datei. satzzeiger). satz .
+
+END PROC satz aendern;
+
+PROC schluessel aendern (DATEI VAR datei, INT CONST neuer hashindex) :
+
+  IF anderer hashindex THEN
+    in neue hashkette
+  END IF .
+
+anderer hashindex :
+  INT CONST alter hashindex := hashindex (aktueller satz);
+  alter hashindex <> neuer hashindex .
+
+in neue hashkette :
+  in alter kette ausketten;
+  in neuer kette einketten .
+
+in alter kette ausketten :
+  hash ausketten (datei, alter hashindex) .
+
+in neuer kette einketten :
+  INT VAR vorgaenger, nachfolger;
+  stelle in hashkette (datei, neuer hashindex, vorgaenger, nachfolger);
+  hash einketten (datei, neuer hashindex, vorgaenger, nachfolger) .
+
+aktueller satz :
+  datei. ablage (datei. satzzeiger). satz .
+
+END PROC schluessel aendern;
+
+PROC satz loeschen (EUDAT VAR datei) :
+
+  IF NOT dateiende (datei) THEN
+    satz wirklich loeschen
+  END IF .
+
+satz wirklich loeschen :
+  disable stop;
+  satzeintrag loeschen (CONCR (datei));
+  indexeintrag loeschen (CONCR (datei));
+  datei. anz saetze DECR 1 .
+
+END PROC satz loeschen;
+
+PROC satzeintrag loeschen (DATEI VAR datei) :
+
+  aktueller satz sortiert (datei);
+  INT CONST stelle := datei. satzzeiger;
+  hash ausketten (datei, hashindex (aktueller satz));
+  datei. ablage (stelle). nachfolger := datei. erster leersatz;
+  datei. erster leersatz := stelle .
+
+aktueller satz :
+  datei. ablage (stelle). satz .
+
+END PROC satzeintrag loeschen;
+
+PROC satz einfuegen (EUDAT VAR datei, SATZ CONST neuer satz) :
+
+  satz einfuegen intern (CONCR (datei), neuer satz)
+
+END PROC satz einfuegen;
+
+PROC satz einfuegen intern (DATEI VAR datei, SATZ CONST neuer satz) :
+
+  INT VAR
+    stelle,
+    vorgaenger,
+    nachfolger;
+
+  enable stop;
+  satzeintrag belegen;
+  ggf schluessel einfuegen;
+  disable stop;
+  datei. anz saetze INCR 1;
+  indexeintrag einfuegen (datei, stelle);
+  INT CONST neuer index := hashindex (feldpuffer);
+  stelle in hashkette (datei, neuer index, nachfolger, vorgaenger);
+  hash einketten (datei, neuer index, nachfolger, vorgaenger);
+  aktueller satz unsortiert (datei) .
+
+satzeintrag belegen :
+  IF datei. erster leersatz <> 0 THEN
+    stelle := datei. erster leersatz;
+    datei. erster leersatz := datei. ablage (stelle). nachfolger
+  ELIF datei. anz satzeintraege = maxsatz THEN
+    errorstop (eudas datei voll)
+  ELSE
+    datei. anz satzeintraege INCR 1;
+    stelle := datei. anz satzeintraege
+  END IF;
+  datei. ablage (stelle). attribut := 0;
+  datei. ablage (stelle). satz := neuer satz .
+
+ggf schluessel einfuegen :
+  feld lesen (neuer satz, 1, feldpuffer);
+  IF datei. schluesselzaehler > 0 THEN
+    IF feldpuffer = "" THEN
+      neuen schluessel erzeugen;
+      feld aendern (datei. ablage (stelle). satz, 1, feldpuffer)
+    END IF
+  END IF .
+
+neuen schluessel erzeugen :
+  feldpuffer := text (datei. schluesselzaehler);
+  feldpuffer := fuehrende nullen + feldpuffer;
+  IF datei. schluesselzaehler > 32000 THEN
+    datei. schluesselzaehler := 1
+  ELSE
+    datei. schluesselzaehler INCR 1
+  END IF .
+
+fuehrende nullen :
+  (4 - length (feldpuffer)) * "0" .
+
+END PROC satz einfuegen intern;
+
+PROC automatischer schluessel (EUDAT VAR eudat, BOOL CONST automatisch) :
+
+  IF automatisch AND eudat. schluesselzaehler < 0 OR
+     NOT automatisch AND eudat. schluesselzaehler > 0 THEN
+    eudat. schluesselzaehler := - eudat. schluesselzaehler
+  END IF
+
+END PROC automatischer schluessel;
+
+BOOL PROC automatischer schluessel (EUDAT CONST eudat) :
+
+  eudat. schluesselzaehler > 0
+
+END PROC automatischer schluessel;
+
+
+(************************* Indexverwaltung *******************************)
+
+(* Die logische Reihenfolge der Saetze wird durch einen Index herge-     *)
+(* stellt. Dieser besteht aus einer Liste von INTVECs. Ein Listenelement *)
+(* nimmt Satzeintraege auf, bis die Maximalgroesse erreicht ist. In      *)
+(* diesem Fall wird ein neues Listenelement eingefuegt. Beim Loeschen    *)
+(* von Eintraegen wird ueberprueft, ob zwei benachbarte Eintraege kom-   *)
+(* biniert werden koennen. Steht fuer eine Anforderung kein Eintrag mehr *)
+(* zur Verfuegung, wird der ganze Index reorganisiert. Es ist garantiert,*)
+(* dass der Index die maximale Anzahl von Satzeintraegen aufnehmen kann. *)
+
+INTVEC VAR indexpuffer;
+
+
+PROC indexeintrag loeschen (DATEI VAR datei) :
+
+  INT CONST
+    indexzeiger := datei. indexzeiger,
+    vorgaenger := index. vorgaenger,
+    nachfolger := index. nachfolger;
+  BOOL VAR moeglich;
+  delete (index. satzindex, datei. indexstelle);
+  index. eintraege DECR 1;
+  indizes zusammenlegen (datei, indexzeiger, nachfolger, moeglich);
+  IF NOT moeglich THEN
+    indizes zusammenlegen (datei, vorgaenger, indexzeiger, moeglich)
+  END IF;
+  indexzeiger justieren (datei) .
+
+index :
+  datei. index (indexzeiger) .
+
+END PROC indexeintrag loeschen;
+
+PROC indizes zusammenlegen (DATEI VAR datei, INT CONST zeiger, folgezeiger,
+                                             BOOL VAR moeglich) :
+
+  moeglich := FALSE;
+  IF zeiger <> 0 AND folgezeiger <> 0 THEN
+    versuche zusammenzulegen
+  END IF .
+
+versuche zusammenzulegen :
+  INT CONST
+    eintraege a := index. eintraege,
+    eintraege b := folgeindex. eintraege;
+  IF zusammenlegbar THEN
+    wirklich zusammenlegen;
+    moeglich := TRUE
+  END IF .
+
+zusammenlegbar:
+  eintraege a + eintraege b <= dreiviertel maxeintrag OR
+  eintraege a = 0 OR eintraege b = 0 .
+
+wirklich zusammenlegen :
+  index. eintraege INCR folgeindex. eintraege;
+  indexverweise aendern (datei, folgeindex. satzindex, zeiger);
+  index. satzindex CAT folgeindex. satzindex;
+  folgeindex ausketten .
+
+folgeindex ausketten :
+  index. nachfolger := folgeindex. nachfolger;
+  IF index. nachfolger <> 0 THEN
+    datei. index (index. nachfolger). vorgaenger := zeiger
+  ELSE
+    datei. letzter index := zeiger
+  END IF;
+  folgeindex. nachfolger := datei. erster leerindex;
+  datei. erster leerindex := folgezeiger .
+
+index :
+  datei. index (zeiger) .
+
+folgeindex :
+  datei. index (folgezeiger) .
+
+END PROC indizes zusammenlegen;
+
+PROC indexzeiger justieren (DATEI VAR datei) :
+
+  INT CONST aktueller satz := datei. satznr;
+  neue satzposition (datei, 1, 1, 1);
+  auf satz intern (datei, aktueller satz)
+
+END PROC indexzeiger justieren;
+
+PROC indexverweise aendern (DATEI VAR datei, INTVEC CONST satzindex,
+                                             INT CONST zeiger) :
+
+  INT VAR i;
+  FOR i FROM 1 UPTO length (satzindex) DIV 2 REP
+    datei. ablage (satzindex ISUB i). indexblock := zeiger
+  END REP
+
+END PROC indexverweise aendern;
+
+PROC indexeintrag einfuegen (DATEI VAR datei, INT CONST eintrag) :
+
+  INT VAR indexzeiger := datei. indexzeiger;
+  IF index. eintraege >= maxeintrag THEN
+    platz schaffen
+  END IF;
+  index. eintraege INCR 1;
+  insert (index. satzindex, datei. indexstelle, eintrag);
+  datei. satzzeiger := eintrag;
+  datei. ablage (eintrag). indexblock := indexzeiger .
+
+platz schaffen :
+  INT VAR neuer index := 0;
+  neuen indexblock besorgen;
+  IF neuer index <> 0 THEN
+    index aufsplitten
+  ELSE
+    index reorganisieren (datei)
+  END IF;
+  indexzeiger justieren (datei);
+  indexzeiger := datei. indexzeiger .
+
+neuen indexblock besorgen :
+  IF datei. erster leerindex <> 0 THEN
+    neuer index := datei. erster leerindex;
+    datei. erster leerindex := folgeindex. nachfolger
+  ELIF datei. indexblocks < maxindex THEN
+    datei. indexblocks INCR 1;
+    neuer index := datei. indexblocks;
+    folgeindex. satzindex := blockreservierung
+  END IF .
+
+index aufsplitten :
+  neuen block einketten;
+  splitpunkt bestimmen;
+  folgeindex. eintraege := index. eintraege - halbe eintraege;
+  split up (index. satzindex, folgeindex. satzindex, halbe eintraege + 1);
+  index. eintraege := halbe eintraege;
+  indexverweise aendern (datei, folgeindex. satzindex, neuer index) .
+
+neuen block einketten :
+  INT CONST alter nachfolger := index. nachfolger;
+  IF alter nachfolger <> 0 THEN
+    datei. index (alter nachfolger). vorgaenger := neuer index
+  ELSE
+    datei. letzter index := neuer index
+  END IF;
+  folgeindex. nachfolger := alter nachfolger;
+  folgeindex. vorgaenger := indexzeiger;
+  index. nachfolger := neuer index .
+
+splitpunkt bestimmen :
+  INT VAR halbe eintraege;
+  IF letzter block THEN
+    halbe eintraege := dreiviertel maxeintrag
+  ELSE
+    halbe eintraege := index. eintraege DIV 2 + 1
+  END IF .
+
+letzter block :
+  alter nachfolger = 0 .
+
+index :
+  datei. index (indexzeiger) .
+
+folgeindex :
+  datei. index (neuer index) .
+ 
+END PROC indexeintrag einfuegen;
+
+PROC index reorganisieren (DATEI VAR datei) :
+
+  INT VAR indexzeiger := 1;
+  REP
+    index auffuellen;
+    zum naechsten index
+  END REP .
+
+index auffuellen :
+  BOOL VAR moeglich;
+  REP
+    INT CONST nachfolger := index. nachfolger;
+    indizes zusammenlegen (datei, indexzeiger, nachfolger, moeglich)
+  UNTIL NOT moeglich END REP;
+  IF nachfolger = 0 THEN
+    LEAVE index reorganisieren
+  ELIF noch platz THEN
+    rest auffuellen
+  END IF .
+
+noch platz :
+  INT CONST platz := dreiviertel maxeintrag - index. eintraege;
+  platz > 0 .
+
+rest auffuellen :
+  split down (folgeindex. satzindex, indexpuffer, platz + 1); 
+  folgeindex. eintraege DECR platz;
+  indexverweise aendern (datei, indexpuffer, indexzeiger);
+  index. satzindex CAT indexpuffer;
+  index. eintraege := dreiviertel maxeintrag .
+
+zum naechsten index :
+  indexzeiger := nachfolger .
+
+index :
+  datei. index (indexzeiger) .
+
+folgeindex :
+  datei. index (nachfolger) .
+
+END PROC index reorganisieren;
+
+
+(************************* Sortierabfragen *******************************)
+
+TEXT VAR dez komma := ",";
+
+LET
+  sortmask = 1;
+
+TEXT PROC dezimalkomma :
+
+  dez komma
+
+END PROC dezimalkomma;
+
+PROC dezimalkomma (TEXT CONST neues komma) :
+
+  IF length (neues komma) <> 1 THEN
+    errorstop (nicht erlaubtes dezimalkomma)
+  ELSE
+    dez komma := neues komma
+  ENDIF
+
+END PROC dezimalkomma;
+
+INT PROC unsortierte saetze (EUDAT CONST datei) :
+
+  datei. anz unsortierte
+
+END PROC unsortierte saetze;
+
+TEXT PROC sortierreihenfolge (EUDAT CONST datei) :
+
+  datei. sortierfelder
+
+END PROC sortierreihenfolge;
+
+PROC aktueller satz unsortiert (DATEI VAR datei) :
+
+  IF sortiert (datei) THEN
+    disable stop;
+    datei. ablage (datei. satzzeiger). attribut INCR sortmask;
+    datei. anz unsortierte INCR 1
+  END IF
+
+END PROC aktueller satz unsortiert;
+
+PROC aktueller satz sortiert (DATEI VAR datei) :
+
+  IF NOT sortiert (datei) THEN
+    disable stop;
+    datei. ablage (datei. satzzeiger). attribut DECR sortmask;
+    datei. anz unsortierte DECR 1
+  END IF
+
+END PROC aktueller satz sortiert;
+
+BOOL PROC sortiert (DATEI CONST datei, INT CONST stelle) :
+
+  (datei. ablage (stelle). attribut AND sortmask) = 0
+
+END PROC sortiert;
+
+BOOL PROC sortiert (DATEI CONST datei) :
+
+  sortiert (datei, datei. satzzeiger)
+
+END PROC sortiert;
+
+
+(************************* Sortieren *************************************)
+
+(* Eine Datei kann in einer beliebigen Feldreihenfolge sortiert werden.  *)
+(* Dabei wird das Feldinfo beachtet. Wurden seit der letzten Sortierung  *)
+(* nur wenige Saetze geaendert (deren Plaetze in 'unsortierte' gespei-   *)
+(* chert sind), werden nur diese Saetze einsortiert.                     *)
+
+INTVEC VAR sortierinfo;
+
+TEXT VAR sortierfelder;
+
+TEXT VAR l, r;
+
+
+PROC sortiere (EUDAT VAR datei) :
+
+  sortierfelder := datei. sortierfelder;
+  IF sortierfelder = niltext THEN
+    standardbelegung
+  END IF;
+  sortiere intern (CONCR (datei)) .
+
+standardbelegung :
+  INT VAR i;
+  FOR i FROM 1 UPTO datei. felderzahl REP
+    sortierfelder CAT code (i)
+  END REP .
+
+END PROC sortiere;
+
+PROC sortiere (EUDAT VAR datei, TEXT CONST felder) :
+
+  sortierfelder := felder;
+  sortiere intern (CONCR (datei))
+
+END PROC sortiere;
+
+PROC sortiere intern (DATEI VAR datei) :
+
+  IF datei. sortierfelder <> sortierfelder THEN
+    datei. sortierfelder := sortierfelder;
+    datei. anz unsortierte := datei. anz saetze + 1
+  ELIF datei. anz unsortierte = 0 THEN
+    LEAVE sortiere intern
+  END IF;
+  sortierinfo := datei. feldinfo;
+  IF mehr als ein drittel THEN
+    komplett sortieren (datei);
+    datei. anz unsortierte := 0
+  ELSE
+    einzeln sortieren (datei)
+  END IF;
+  auf satz intern (datei, 1) .
+
+mehr als ein drittel :
+  datei. anz saetze DIV datei. anz unsortierte < 3 .
+
+END PROC sortiere intern;
+
+PROC komplett sortieren (DATEI VAR datei) :
+
+  INT VAR
+    satzzeiger,
+    satz := 1,
+    satz vorher;
+
+  auf satz intern (datei, 1);
+  aktueller satz sortiert (datei);
+  satzzeiger := datei. satzzeiger;
+  WHILE noch satz vorhanden REP
+    zum naechsten satz;
+    satz richtig einsortieren;
+    cout (satz)
+  END REP;
+  disable stop;
+  index reorganisieren (datei);
+  neue satzposition (datei, 1, 1, 1) .
+
+noch satz vorhanden :
+  satz < datei. anz saetze .
+
+zum naechsten satz :
+  satz INCR 1;
+  auf satz intern (datei, satz);
+  satz vorher := satzzeiger;
+  satzzeiger := datei. satzzeiger .
+
+satz richtig einsortieren :
+  IF satz kleiner als vorgaenger THEN
+    satz einsortieren (datei, satz, satzzeiger);
+    satzzeiger := satz vorher
+  ELSE
+    aktueller satz sortiert (datei)
+  END IF .
+
+satz kleiner als vorgaenger :
+  datei. ablage (satz vorher). satz GROESSER
+  datei. ablage (satzzeiger). satz .
+
+END PROC komplett sortieren;
+
+PROC einzeln sortieren (DATEI VAR datei) :
+
+  INT VAR i;
+  FOR i FROM 1 UPTO datei. anz satzeintraege REP
+    IF NOT sortiert (datei, i) THEN
+      satz einsortieren (datei, datei. anz saetze + 1, i);
+      cout (i)
+    END IF
+  END REP
+
+END PROC einzeln sortieren;
+
+PROC satz einsortieren (DATEI VAR datei, INT CONST satznr, satzzeiger) :
+
+  stelle suchen;
+  an dieser stelle einfuegen .
+
+stelle suchen :
+  INT VAR
+    anfang := 1,
+    ende := satznr - 1,
+    mitte;
+  WHILE stelle nicht gefunden REP
+    intervall in der mitte halbieren;
+    teilintervall auswaehlen
+  END REP .
+
+stelle nicht gefunden :
+  anfang <= ende .
+
+intervall in der mitte halbieren :
+  mitte := (anfang + ende) DIV 2;
+  INT VAR vergleichssatz;
+  auf satz intern (datei, mitte);
+  IF NOT sortiert (datei) THEN
+    passenden vergleichssatz suchen
+  END IF;
+  vergleichssatz := datei. satzzeiger .
+
+passenden vergleichssatz suchen :
+  WHILE datei. satznr < ende REP
+    weiter intern (datei);
+    IF satz richtig THEN LEAVE passenden vergleichssatz suchen END IF
+  END REP;
+  WHILE datei. satznr > anfang REP
+    zurueck intern (datei);
+    IF satz richtig THEN LEAVE passenden vergleichssatz suchen END IF
+  END REP;
+  LEAVE stelle suchen .
+
+satz richtig :
+  sortiert (datei) .
+
+teilintervall auswaehlen :
+  IF zu vergleichender satz GROESSER datei. ablage (satzzeiger). satz THEN
+    ende := mitte - 1
+  ELSE
+    anfang := mitte + 1
+  END IF .
+
+zu vergleichender satz :
+  datei. ablage (vergleichssatz). satz .
+
+an dieser stelle einfuegen :
+  positioniere intern (datei, satzzeiger);
+  IF datei. satznr < anfang THEN anfang DECR 1 END IF;
+  disable stop;
+  aktueller satz sortiert (datei);
+  in hashkette ausketten;
+  indexeintrag loeschen (datei);
+  auf satz intern (datei, anfang);
+  indexeintrag einfuegen (datei, satzzeiger);
+  in hashkette einketten .
+
+in hashkette ausketten :
+  INT CONST h index := hashindex (aktueller satz);
+  hash ausketten (datei, h index) .
+
+in hashkette einketten :
+  INT VAR vorgaenger, nachfolger;
+  stelle in hashkette (datei, h index, vorgaenger, nachfolger);
+  hash einketten (datei, h index, vorgaenger, nachfolger) .
+
+aktueller satz :
+  datei. ablage (satzzeiger). satz .
+
+END PROC satz einsortieren;
+
+BOOL OP GROESSER (SATZ CONST links, rechts) :
+
+  ungleiches feld suchen;
+  sortierrichtung feststellen;
+  SELECT sortierinfo ISUB vergleichsfeld OF
+    CASE 0 : din vergleich
+    CASE 1 : zahl vergleich
+    CASE 2 : datum vergleich
+    OTHERWISE text vergleich
+  END SELECT .
+
+ungleiches feld suchen :
+  INT VAR nr zeiger := 1;
+  WHILE nr zeiger < length (sortierfelder) REP
+    INT CONST vergleichsfeld := code (sortierfelder SUB nr zeiger);
+    feld lesen (links, vergleichsfeld, l);
+    feld lesen (rechts, vergleichsfeld, r);
+    SELECT sortierinfo ISUB vergleichsfeld OF
+      CASE 0 : din gleich
+      CASE 1 : zahl gleich
+      OTHERWISE text gleich
+    END SELECT;
+    nr zeiger INCR 2
+  END REP;
+  LEAVE GROESSER WITH FALSE .
+
+sortierrichtung feststellen :
+  BOOL VAR aufsteigend;
+  IF (sortierfelder SUB (nr zeiger + 1)) = "-" THEN
+    aufsteigend := FALSE
+  ELSE
+    aufsteigend := TRUE
+  END IF .
+
+zahl gleich :
+  REAL VAR l wert, r wert;
+  wert berechnen (l, l wert);
+  wert berechnen (r, r wert);
+  IF l wert <> r wert THEN
+    LEAVE ungleiches feld suchen
+  END IF .
+
+din gleich :
+  IF NOT (l LEXEQUAL r) THEN
+    LEAVE ungleiches feld suchen
+  END IF .
+
+text gleich :
+  IF l <> r THEN
+    LEAVE ungleiches feld suchen
+  END IF .
+
+zahl vergleich :
+  IF aufsteigend THEN
+    l wert > r wert
+  ELSE
+    l wert < r wert
+  END IF .
+
+din vergleich :
+  IF aufsteigend THEN
+    l LEXGREATER r
+  ELSE
+    r LEXGREATER l
+  END IF .
+
+datum vergleich :
+  datum umdrehen (l);
+  datum umdrehen (r);
+  IF aufsteigend THEN
+    l > r
+  ELSE
+    l < r
+  END IF .
+
+textvergleich :
+  IF aufsteigend THEN
+    l > r
+  ELSE
+    l < r
+  END IF .
+
+END OP GROESSER;
+
+PROC wert berechnen (TEXT CONST zahl, REAL VAR wert) :
+
+  LET ziffern = "0123456789";
+  TEXT VAR komma := dez komma, text; 
+  INT VAR stelle;
+  INT CONST laenge := length (zahl); 
+  anfang bestimmen; 
+  WHILE stelle <= laenge REP 
+    zeichen untersuchen; 
+    stelle INCR 1 
+  END REP; 
+  wert := real (text) . 
+ 
+anfang bestimmen : 
+  stelle := pos (zahl, "0", "9", 1); 
+  IF stelle = 0 THEN 
+     wert := 0.0; LEAVE wert berechnen
+  ELIF pos (zahl, "-", 1, stelle) > 0 THEN 
+    text := "-" 
+  ELSE 
+    text := niltext
+  END IF; .
+ 
+zeichen untersuchen: 
+  TEXT CONST char := zahl SUB stelle; 
+  IF pos (ziffern, char) > 0 THEN 
+    text CAT char 
+  ELIF char = komma THEN 
+    text CAT "."; komma := niltext
+  END IF . 
+ 
+END PROC wert berechnen;
+
+PROC datum umdrehen (TEXT VAR datum) :
+
+  IF length (datum) <> 8 THEN
+    datum := niltext
+  ELSE
+    datum := subtext (datum, 7) + subtext (datum, 4, 5) +
+             subtext (datum, 1, 2)
+  END IF
+
+END PROC datum umdrehen;
+
+
+(**************************** Reorganisieren *****************************)
+
+PROC reorganisiere (TEXT CONST dateiname) :
+
+  EUDAT VAR datei 1, datei 2;
+  oeffne (datei 1, dateiname);
+  disable stop;
+  DATASPACE VAR ds := nilspace;
+  oeffne (datei 2, ds);
+  kopiere eudat (CONCR (datei 1), datei 2);
+  IF NOT is error THEN
+    forget (dateiname, quiet);
+    copy (ds, dateiname)
+  END IF;
+  forget (ds)
+
+END PROC reorganisiere;
+
+PROC kopiere eudat (DATEI VAR datei 1, EUDAT VAR datei 2) :
+
+  enable stop;
+  kopiere saetze;
+  kopiere interna (datei 1, CONCR (datei 2)) .
+
+kopiere saetze :
+  auf satz intern (datei 1, 1);
+  auf satz (datei 2, 1);
+  WHILE NOT dateiende REP
+    satz einfuegen (datei 2, kopiersatz);
+    cout (datei 1. satznr);
+    weiter intern (datei 1);
+    weiter (datei 2)
+  END REP .
+
+dateiende :
+  datei 1. satznr > datei 1. anz saetze .
+
+kopiersatz :
+  datei 1. ablage (datei 1. satzzeiger). satz .
+
+END PROC kopiere eudat;
+
+PROC kopiere interna (DATEI VAR datei 1, datei 2) :
+
+  datei 2. felderzahl := datei 1. felderzahl;
+  datei 2. feldnamen := datei 1. feldnamen;
+  datei 2. feldinfo := datei 1. feldinfo;
+  datei 2. sortierfelder := datei 1. sortierfelder;
+  datei 2. notizen (1) := datei 1. notizen (1);
+  datei 2. notizen (2) := datei 1. notizen (2);
+  datei 2. notizen (3) := datei 1. notizen (3)
+
+END PROC kopiere interna;
+
+
+(************************* Notizen ***************************************)
+
+PROC notizen lesen (EUDAT CONST datei, INT CONST nr, TEXT VAR notiztext) :
+
+  notiztext := datei. notizen (nr)
+
+END PROC notizen lesen;
+
+PROC notizen aendern (EUDAT VAR datei, INT CONST nr, TEXT CONST notiztext) :
+
+  datei. notizen (nr) := notiztext
+
+END PROC notizen aendern;
+
+END PACKET eudas dateien;
+

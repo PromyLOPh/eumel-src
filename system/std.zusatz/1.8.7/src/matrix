@@ -1,0 +1,482 @@
+PACKET matrix DEFINES MATRIX, matrix, idn,  (* Stand : 16.06.86 wk   *)
+                      :=, sub,              (* Autor : H.Indenbirken *)
+                      row, column,
+                      COLUMNS,
+                      ROWS,
+                      DET, 
+                      INV, 
+                      TRANSP, 
+                      transp,
+                      replace row, replace column,
+                      replace element,
+                      get, put,
+                      =, <>,
+                      +, -, * :
+
+TYPE MATRIX = STRUCT (INT rows, columns, VECTOR elems);
+TYPE INITMATRIX = STRUCT (INT rows, columns, REAL value, BOOL idn);
+
+MATRIX VAR a :: idn (1);
+INT VAR i;
+
+(****************************************************************************
+PROC dump (MATRIX CONST m) :
+  put line (text (m.rows) + " Reihen, " + text (m.columns) + " Spalten.");
+  dump (m.elems)  .
+
+END PROC dump;
+****************************************************************************)
+
+OP := (MATRIX VAR l, MATRIX CONST r) :
+  CONCR (l) := CONCR (r);
+END OP :=;
+
+OP := (MATRIX VAR l, INITMATRIX CONST r) :
+  l.rows    := r.rows;
+  l.columns := r.columns;
+  l.elems   := vector (r.rows*r.columns, r.value);
+  IF r.idn
+  THEN idn FI  .
+
+idn :
+  INT VAR i;
+  FOR i FROM 1 UPTO r.rows
+  REP replace (l.elems, calc pos (l.columns, i, i), 1.0) PER
+
+END OP :=;
+ 
+INITMATRIX PROC matrix (INT CONST rows, columns, REAL CONST value) :
+  IF rows <= 0
+  THEN errorstop ("PROC matrix : rows <= 0")
+  ELIF columns <= 0
+  THEN errorstop ("PROC matrix : columns <= 0") FI;
+
+  INITMATRIX : (rows, columns, value, FALSE)
+
+END PROC matrix;
+
+INITMATRIX PROC matrix (INT CONST rows, columns) :
+  matrix (rows, columns, 0.0)
+
+END PROC matrix;
+
+INITMATRIX PROC idn (INT CONST size) :
+  IF size <= 0
+  THEN errorstop ("MATRIX PROC idn : size <= 0") FI;
+
+  INITMATRIX : (size, size, 0.0, TRUE)
+
+END PROC idn;
+
+VECTOR PROC row (MATRIX CONST m, INT CONST i) :
+  VECTOR VAR v :: vector (m.columns);
+  INT VAR j, k :: 1, pos :: (i-1) * m.columns;
+  FOR j FROM pos+1 UPTO pos + m.columns
+  REP replace (v, k, m.elems SUB j);
+      k INCR 1
+  PER;
+  v
+
+END PROC row;
+
+VECTOR PROC column (MATRIX CONST m, INT CONST j) :
+  VECTOR VAR v :: vector (m.rows);
+  INT VAR i, k :: j;
+  FOR i FROM 1 UPTO m.rows
+  REP replace (v, i, m.elems SUB k);
+      k INCR m.columns
+  PER;
+  v
+
+END PROC column;
+
+INT OP COLUMNS (MATRIX CONST m) :
+  m.columns
+
+END OP COLUMNS;
+
+INT OP ROWS (MATRIX CONST m) :
+  m.rows
+
+END OP ROWS;
+
+REAL PROC sub (MATRIX CONST a, INT CONST row, column) :
+  a.elems SUB calc pos (a.columns, row, column)
+
+END PROC sub;
+
+PROC replace row (MATRIX VAR m, INT CONST rowindex, VECTOR CONST rowvalue) :
+  test ("PROC replace row : ", "LENGTH rowvalue", "COLUMNS m",
+        LENGTH rowvalue, m.columns);
+  test ("PROC replace row : row ", rowindex, m.rows);
+
+  INT VAR i, pos :: (rowindex-1) * m.columns;
+  FOR i FROM 1 UPTO m.columns
+  REP replace (m.elems, pos+i, rowvalue SUB i) PER
+
+END PROC replace row;
+
+PROC replace column (MATRIX VAR m, INT CONST columnindex,
+                     VECTOR CONST columnvalue) :
+  test ("PROC replace column : ", "LENGTH columnvalue", "ROWS m",
+        LENGTH columnvalue, m.rows);
+  test ("PROC replace column : column ", columnindex, m.columns);
+
+  INT VAR i;
+  FOR i FROM 1 UPTO m.rows
+  REP replace (m.elems, calc pos (m.columns, i, columnindex),
+               columnvalue SUB i) PER
+
+END PROC replace column;
+
+PROC replace element (MATRIX VAR a, INT CONST row, column, REAL CONST x) :
+  test ("PROC replace element : row ", row, a.rows);
+  test ("PROC replace element : column ", column, a.columns);
+  replace (a.elems, calc pos (a.columns, row, column), x)
+
+END PROC replace element;
+
+BOOL OP = (MATRIX CONST l, r) :
+  IF l.rows <> r.rows
+  THEN FALSE
+  ELIF l.columns <> r.columns
+  THEN FALSE
+  ELSE l.elems = r.elems FI
+
+END OP =;
+
+BOOL OP <> (MATRIX CONST l, r) :
+  IF l.rows <> r.rows
+  THEN TRUE
+  ELIF l.columns <> r.columns
+  THEN TRUE
+  ELSE l.elems <> r.elems FI
+
+END OP <>;
+
+INT PROC calc pos (INT CONST columns, z, s) :
+ (z-1) * columns + s
+END PROC calc pos;
+
+MATRIX OP + (MATRIX CONST m) :
+  m
+
+END OP +;
+
+MATRIX OP + (MATRIX CONST l, r) :
+  test ("MATRIX OP + : ", "ROWS l", "ROWS r", l.rows, r.rows);
+  test ("MATRIX OP + : ", "COLUMNS l", "COLUMNS r", l.columns, r.columns);
+
+  a := l;
+  INT VAR i;
+  FOR i FROM 1 UPTO l.rows * l.columns
+  REP replace (a.elems, i, (l.elems SUB i) + (r.elems SUB i))
+  PER;
+  a
+
+END OP +;
+
+MATRIX OP - (MATRIX CONST m) :
+  a := m;
+  INT VAR i;
+  FOR i FROM 1 UPTO m.rows * m.columns
+  REP replace (a.elems, i, -a.elems SUB i)
+  PER;
+  a
+
+END OP -;
+
+MATRIX OP - (MATRIX CONST l, r) :
+  test ("MATRIX OP - : ", "ROWS l", "ROWS r", l.rows, r.rows);
+  test ("MATRIX OP - : ", "COLUMNS l", "COLUMNS r", l.columns, r.columns);
+
+  a := l;
+  INT VAR i;
+  FOR i FROM 1 UPTO l.rows * l.columns
+  REP replace (a.elems, i, (l.elems SUB i) - (r.elems SUB i))
+  PER;
+  a
+
+END OP -;
+
+MATRIX OP * (REAL CONST x, MATRIX CONST m) :
+ m*x
+
+END OP *;
+
+MATRIX OP * (MATRIX CONST m, REAL CONST x) :
+  a := m;
+  INT VAR i;
+  FOR i FROM 1 UPTO m.rows * m.columns
+  REP replace (a.elems, i, x*m.elems SUB i) PER;
+  a
+
+END OP *;
+
+VECTOR OP * (VECTOR CONST v, MATRIX CONST m) :
+  test ("VECTOR OP * : ", "LENGTH v", "ROWS m", LENGTH v, m.rows);
+  VECTOR VAR result :: vector (m.columns);                       (*wk*)
+  INT VAR i;
+  FOR i FROM 1 UPTO m.columns
+  REP replace (result, i, v * column (m, i)) PER;
+  result  .
+
+END OP *;
+
+VECTOR OP * (MATRIX CONST m, VECTOR CONST v) :
+  test ("VECTOR OP * : ", "COLUMNS m", "LENGTH v", COLUMNS m, LENGTH v);
+  VECTOR VAR result :: vector (m.rows);                          (*wk*)
+  INT VAR i;
+  FOR i FROM 1 UPTO m.rows 
+  REP replace (result, i, row (m, i) * v) PER;
+  result  .
+
+END OP *;
+
+MATRIX OP * (MATRIX CONST l, r) :
+  test ("MATRIX OP * : ","COLUMNS l","ROWS r", l.columns, r.rows);
+
+  a.rows := l.rows;
+  a.columns := r.columns;
+  a.elems := vector (a.rows*a.columns)
+  INT VAR i, j;
+  FOR i FROM 1 UPTO a.rows
+  REP FOR j FROM 1 UPTO a.columns
+      REP VECTOR VAR rl :: row (l, i), cr :: column (r, j);
+          replace (a.elems, calc pos (a.columns, i, j), rl * cr)
+      PER
+  PER;
+  a  .
+
+END OP *;
+
+PROC get (MATRIX VAR a, INT CONST rows, columns) :
+ 
+  a := matrix (rows,columns);
+  INT VAR i, j;
+  VECTOR VAR v;
+  FOR i FROM 1 UPTO rows
+  REP get (v, columns);
+      store row
+  PER  .
+
+store row :
+  FOR j FROM 1 UPTO a.columns
+  REP replace (a.elems, calc pos (a.columns, i, j), v SUB j)
+  PER  .
+
+END PROC get;
+
+PROC put (MATRIX CONST a, INT CONST length, fracs) :
+  INT VAR i, j;
+  FOR i FROM 1 UPTO a.rows
+  REP FOR j FROM 1 UPTO a.columns
+      REP put (text (sub (a, i, j), length, fracs)) PER;
+      line (2);
+  PER
+
+END PROC put;
+
+PROC put (MATRIX CONST a) :
+  INT VAR i, j;
+  FOR i FROM 1 UPTO a.rows
+  REP FOR j FROM 1 UPTO a.columns
+      REP TEXT CONST number :: "                 " + text (sub (a, i, j));
+          put (subtext (number, LENGTH number - 15))
+      PER;
+      line (2);
+  PER
+
+END PROC put;
+
+TEXT VAR error :: "";
+PROC test (TEXT CONST proc, l text, r text, INT CONST left, right) :
+  IF left <> right
+  THEN error := proc;
+       error CAT l text;
+       error CAT " (";
+       error CAT text (left);
+       error CAT ") <> ";
+       error CAT r text;
+       error CAT " (";
+       error CAT text (right);
+       error CAT ")";
+       errorstop (error)
+  FI  .
+
+END PROC test;
+
+PROC test (TEXT CONST proc, INT CONST i, n) :
+  IF i < 1
+  THEN error := proc;
+       error CAT "subscript underflow (";
+       error CAT text (i);
+       error CAT ")";
+       errorstop (error)
+  ELIF i > n
+  THEN error := proc;
+       error CAT "subscript overflow (i=";
+       error CAT text (i);
+       error CAT ", max=";
+       IF n <= 0
+       THEN error CAT "undefined"
+       ELSE error CAT text (n) FI;
+       error CAT ")";
+       errorstop (error)
+  FI
+
+END PROC test;
+
+
+MATRIX OP TRANSP (MATRIX CONST m) :
+  MATRIX VAR a :: m;
+  transp (a);
+  a
+
+END OP TRANSP;
+
+PROC transp (MATRIX VAR m) :
+  INT VAR k :: 1, n :: m.rows*m.columns;
+  a := m;
+  FOR i FROM 2 UPTO n
+  REP replace (m.elems, i, a.elems SUB position) PER;
+  a := idn (1);
+  i := m.rows;
+  m.rows := m.columns;
+  m.columns := i  .
+
+position :
+  k INCR m.columns;
+  IF k > n
+  THEN k DECR (n-1) FI;
+  k  .
+END PROC transp;
+
+MATRIX OP INV (MATRIX CONST m) :
+  a := m;
+  ROW 32 INT VAR pivots;
+  INT VAR i, j, k :: ROWS a, n :: COLUMNS a, pos;
+
+  IF n <> k
+  THEN errorstop ("MATRIX OP INV : no square matrix") FI;
+
+  initialisiere die pivotpositionen;
+
+  FOR j FROM 1 UPTO n
+  REP pivotsuche (a, j, pos);
+      IF sub (a, pos, pos) = 0.0
+      THEN errorstop ("MATRIX OP INV : singular matrix") FI;
+      zeilentausch (a, j, pos);
+      merke dir die vertauschung;
+      transformiere die matrix
+  PER;
+
+  spaltentausch;
+  a  .
+
+initialisiere die pivotpositionen :
+  FOR i FROM 1 UPTO n
+  REP pivots [i] := i PER  .
+
+merke dir die vertauschung :
+  IF pos > j
+  THEN INT VAR hi :: pivots [j];
+       pivots [j] := pivots [pos];
+       pivots [pos] := hi
+  FI  .
+
+transformiere die matrix :
+  REAL VAR h := 1.0/sub (a, j, j);
+
+  FOR k FROM 1 UPTO n
+  REP IF k <> j
+      THEN FOR i FROM 1 UPTO n
+           REP IF i <> j
+               THEN replace element (a, i, k, sub (a, i, k) -
+                                     sub (a, i, j)*sub (a, j, k)*h);
+               FI
+           PER;
+       FI
+  PER;
+
+  FOR k FROM 1 UPTO n
+  REP replace element (a, j, k, -h*sub (a, j, k));
+      replace element (a, k, j,  h*sub (a, k, j))
+  PER;
+  replace element (a, j, j, h)  .
+
+spaltentausch :
+  VECTOR VAR v :: vector (n);
+  FOR i FROM 1 UPTO n
+  REP FOR k FROM 1 UPTO n
+      REP replace (v, pivots [k], sub(a, i, k)) PER; 
+      replace row (a, i, v) 
+  PER  .
+
+END OP INV;
+
+REAL OP DET (MATRIX CONST m) :
+  IF COLUMNS m <> ROWS m
+  THEN errorstop ("REAL OP DET : no square matrix") FI;
+
+  a := m;
+  INT VAR i, j, k, n :: COLUMNS m, pos;
+  REAL VAR merker := 1.0; 
+  FOR j FROM 1 UPTO n
+  REP pivotsuche (a, j, pos);
+      IF j<> pos 
+        THEN zeilentausch (a, j, pos);
+             zeilen tausch merken 
+      FI; 
+      transformiere die matrix
+  PER;
+  produkt der pivotelemente  .
+
+transformiere die matrix : 
+  REAL VAR hp := sub(a,j,j); 
+  IF hp = 0.0 
+    THEN LEAVE DET WITH 0.0 
+    ELSE REAL VAR h := 1.0/hp;
+  FI;
+  FOR i FROM j+1 UPTO n
+  REP FOR k FROM j+1 UPTO n
+      REP replace element (a, i, k, sub (a, i, k) -
+                           sub (a, i, j)*h*sub (a, j, k))
+      PER
+  PER  .
+
+produkt der pivotelemente :
+  REAL VAR produkt :: sub (a, 1, 1);
+  FOR j FROM 2 UPTO n
+  REP produkt := produkt * sub (a, j, j) PER;
+  a := idn (1);
+  produkt * merker.
+
+zeilen tausch merken: 
+  merker := merker * (-1.0). 
+ 
+END OP DET;
+
+PROC pivotsuche (MATRIX CONST a, INT CONST start pos, INT VAR pos) :
+  REAL VAR max :: abs (sub (a, start pos, start pos));
+  INT VAR i;
+  pos := start pos;
+
+  FOR i FROM start pos+1 UPTO COLUMNS a
+  REP IF abs (sub (a, i, start pos)) > max
+      THEN max := abs (sub (a, i, start pos));
+           pos := i
+      FI
+  PER  .
+
+END PROC pivotsuche;
+
+PROC zeilentausch (MATRIX VAR a, INT CONST old pos, pos) :
+  VECTOR VAR v := row (a, pos);
+  replace row (a, pos, row (a, old pos));
+  replace row (a, old pos, v)  .
+
+END PROC zeilentausch;
+
+END PACKET matrix;
+

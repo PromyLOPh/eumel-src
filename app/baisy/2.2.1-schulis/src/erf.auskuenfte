@@ -1,0 +1,66 @@
+PACKET erfauskuenfteDEFINES erfassungauskuenfte,sicherungauskunftsname,
+sicherungauskunftstext,zwischenspeicherungdestextes:LET maskenname=
+"mb erf auskuenfte",fnrletztesfeld=5,fnrschluessel=2,fnrmaskenname=3,
+fnrmaskenfeldnr=4,fnrschluesselverzeichnis=5,trenner=" = ",leer="";TEXT VAR 
+auskmaskenname,auskunftsname:="",auskunftstext:="",sicherungdestextes:="";
+INT VAR dateinummer:=0;TAG VAR auskmaske;PROC erfassungauskuenfte(INT CONST 
+proznr):systemdbon;SELECT proznrOF CASE 1:setzeerfassungsparameterCASE 2:
+zeigeschluesselzurbearbeitungCASE 3:pruefeplausibilitaetCASE 4:
+setzewertefuerdbspeicherungCASE 5:setzeidentiobjektfuerobjektlisteCASE 6:
+auskunftlesenCASE 7:auskunftaendernCASE 8:auskunfteinfuegenCASE 9:
+auskunftloeschenENDSELECT ;END PROC erfassungauskuenfte;PROC 
+setzeerfassungsparameter:dateinummer:=dnrausk;setzeerfassungsparameter(
+dateinummer,maskenname,fnrletztesfeld)END PROC setzeerfassungsparameter;PROC 
+zeigeschluesselzurbearbeitung:setzeerfassungsfeld("",fnrmaskenname);
+setzeerfassungsfeld("",fnrmaskenfeldnr);setzeerfassungsfeld(wert(fnrschlverz)
+,fnrschluesselverzeichnis)END PROC zeigeschluesselzurbearbeitung;PROC 
+pruefeplausibilitaet:LET leer="",meldungmaskegibtsnicht=8;INT VAR 
+fehlerstatus;pruefe(2,erfassungsmaske,TEXT PROC (INT CONST )erfassungswert,
+fnrschluessel,1,32000,leer,fehlerstatus);IF fehlerstatus<>0THEN 
+setzefehlerstatus(fehlerstatus);LEAVE pruefeplausibilitaetFI ;auskmaskenname
+:=erfassungswert(fnrmaskenname);IF auskunftsmaskennameangegebenTHEN IF 
+maskegibtes(auskmaskenname)THEN holemaske;ELSE setzefehlerstatus(
+fnrmaskenname);melde(erfassungsmaske,meldungmaskegibtsnicht);LEAVE 
+pruefeplausibilitaetFI ;FI .auskunftsmaskennameangegeben:auskmaskenname<>"".
+holemaske:initmaske(auskmaske,auskmaskenname).END PROC pruefeplausibilitaet;
+PROC setzewertefuerdbspeicherung:IF sicherungdestextes=""THEN putwert(
+fnrauskunftstext,auskunftstext)ELSE restoretupel(dnrausk,sicherungdestextes);
+FI ;putwert(fnrauskunftsname,erfassungswert(fnrschluessel));putwert(
+fnrschlverz,erfassungswert(fnrschluesselverzeichnis));END PROC 
+setzewertefuerdbspeicherung;PROC setzeidentiobjektfuerobjektliste:LET 
+trennsymbolfuerobli="$";TEXT VAR identizeile:="";identizeile:=wert(
+fnrauskunftsname)+trenner;identizeileCAT wert(fnrauskunftstext);INT VAR 
+feldlaenge:=maxidentizeilenlaenge;setzeidentiwert(
+identizeilemitschluesselanhang).identizeilemaxlang:subtext(identizeile,1,
+feldlaenge,"�","�",TRUE ).identizeilemitschluesselanhang:identizeilemaxlang+
+trennsymbolfuerobli+wert(fnrauskunftsname).END PROC 
+setzeidentiobjektfuerobjektliste;PROC auskunftlesen:INT VAR fehlerstatus;
+pruefe(2,erfassungsmaske,TEXT PROC (INT CONST )erfassungswert,fnrschluessel,1
+,32000,leer,fehlerstatus);IF fehlerstatus=0THEN inittupel(dnrausk);putwert(
+fnrauskunftsname,erfassungswert(fnrschluessel));search(dnrausk,TRUE );IF 
+dbstatus=okTHEN saveupdateposition(dnrausk)FI ;auskunftstext:=wert(
+fnrauskunftstext);auskunftsname:=erfassungswert(fnrschluessel);ELSE dbstatus(
+notfound)FI ENDPROC auskunftlesen;TEXT PROC sicherungauskunftsname:
+auskunftsnameENDPROC sicherungauskunftsname;TEXT PROC sicherungauskunftstext:
+auskunftstextENDPROC sicherungauskunftstext;PROC zwischenspeicherungdestextes
+(TEXT CONST text):putwert(fnrauskunftstext,text);savetupel(dnrausk,
+sicherungdestextes)ENDPROC zwischenspeicherungdestextes;PROC auskunftaendern:
+restoreupdateposition(dnrausk);update(dnrausk);logbucheintrag("geändert");
+sicherungdestextes:="";IF dbstatus=okAND auskmaskenname<>""THEN 
+auskunftanmaskeanknuepfenFI END PROC auskunftaendern;PROC auskunfteinfuegen:
+insert(dnrausk);logbucheintrag("eingefügt");IF dbstatus=okAND auskmaskenname
+<>""THEN auskunftanmaskeanknuepfenFI ;sicherungdestextes:="";END PROC 
+auskunfteinfuegen;PROC auskunftloeschen:delete(dnrausk);logbucheintrag(
+"gelöscht");sicherungdestextes:="";END PROC auskunftloeschen;PROC 
+logbucheintrag(TEXT CONST logergaenzung):TEXT VAR eintrag:="Auskunft ";
+eintragCAT schluessel;eintragCAT " ";eintragCAT logergaenzung;logeintrag(
+eintrag)END PROC logbucheintrag;TEXT PROC schluessel:erfassungswert(
+fnrschluessel)END PROC schluessel;PROC auskunftanmaskeanknuepfen:INT VAR ug:=
+int(subtext(erfassungswert(fnrmaskenfeldnr),1,3)),og:=int(subtext(
+erfassungswert(fnrmaskenfeldnr),4,6)),ab:=int(subtext(erfassungswert(
+fnrmaskenfeldnr),7,8));INT VAR ifnr;IF og=0THEN og:=ug;ab:=1ELSE IF ab=0THEN 
+ab:=1FI ;FI ;ifnr:=ug;WHILE ifnr<=ogREP IF fieldexists(auskmaske,ifnr)THEN 
+auskunftsnr(auskmaske,ifnr,int(schluessel))FI ;ifnrINCR abPER ;setzemaske(
+auskmaske);maskespeichern(auskmaskenname);END PROC auskunftanmaskeanknuepfen;
+END PACKET erfauskuenfte
+

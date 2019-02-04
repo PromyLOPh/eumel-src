@@ -1,0 +1,325 @@
+(* ------------------- VERSION 4     14.05.86 ------------------- *)
+PACKET scanner DEFINES                 (* Autor: J.Liedtke        *)
+ 
+       scan , 
+       continue scan ,
+       next symbol :
+ 
+ 
+LET tag     = 1 ,
+    bold    = 2 , 
+    number  = 3 ,
+    text    = 4 ,
+    operator= 5 ,
+    delimiter = 6 , 
+    end of file = 7 , 
+    within comment = 8 ,
+    within text    = 9 ;
+
+LET digit 0       = 48 ,
+    digit 9       = 57 ,
+    upper case a  = 65 ,
+    upper case z  = 90 ,
+    lower case a  = 97 ,
+    lower case z  = 122;
+
+
+TEXT VAR line := "" , 
+         char := "" ,
+         chars:= "" ;
+ 
+INT VAR  position  := 0 ,
+         comment depth ;
+BOOL VAR continue text ;
+ 
+ 
+PROC scan (TEXT CONST scan text) : 
+ 
+  comment depth := 0 ;
+  continue text := FALSE ;
+  continue scan (scan text)
+ 
+ENDPROC scan ;
+ 
+PROC continue scan (TEXT CONST scan text) :
+ 
+  line := scan text ;
+  position  := 0 ;
+  nextchar 
+ 
+ENDPROC continue scan ;
+
+PROC next symbol (TEXT VAR symbol) : 
+ 
+  INT VAR type ;
+  next symbol (symbol, type) 
+ 
+ENDPROC next symbol ;
+ 
+PROC next symbol (TEXT VAR symbol, INT VAR type) : 
+ 
+  skip blanks ;
+  IF   is begin comment          THEN process comment
+  ELIF comment depth > 0         THEN comment depth DECR 1 ;
+                                      process comment
+  ELIF is quote OR continue text THEN process text 
+  ELIF is lower case letter      THEN process tag 
+  ELIF is upper case letter      THEN process bold 
+  ELIF is digit                  THEN process number
+  ELIF is delimiter              THEN process delimiter
+  ELIF is niltext                THEN eof
+  ELSE process operator 
+  FI . 
+ 
+ 
+process comment :
+  read comment ;
+  IF comment depth = 0
+    THEN next symbol (symbol, type)
+    ELSE type := within comment ;
+         symbol := ""
+  FI .
+ 
+process tag : 
+  type := tag ;
+  assemble chars (lower case a, lower case z) ;
+  symbol := chars ;
+  REP 
+    skip blanks ;
+    IF is lower case letter
+      THEN assemble chars (lower case a, lower case z)
+    ELIF is digit
+      THEN assemble chars (digit 0, digit 9)
+    ELSE   LEAVE process tag
+    FI ;
+    symbol CAT chars
+  PER ;
+  nextchar .
+ 
+process bold : 
+  type := bold ;
+  assemble chars (upper case a, upper case z) ;
+  symbol := chars .
+ 
+process number :
+  type := number ;
+  assemble chars (digit 0, digit 9) ;
+  symbol := chars ;
+  IF char = "." AND ahead char is digit
+    THEN process fraction ;
+         IF char = "e"
+           THEN process exponent
+         FI
+  FI .
+
+ahead char is digit :
+  digit 0 <= code (ahead char) AND code (ahead char) <= digit 9 .
+
+process fraction :
+  symbol CAT char ;
+  nextchar ;
+  assemble chars (digit 0, digit 9) ;
+  symbol CAT chars .
+
+process exponent :
+  symbol CAT char ;
+  nextchar ;
+  IF char = "+" OR char = "-"
+    THEN symbol CAT char ;
+         nextchar
+  FI ;
+  assemble chars (digit 0, digit 9) ;
+  symbol CAT chars .
+ 
+process text : 
+  type := text ;
+  symbol := "" ;
+  IF continue text
+    THEN continue text := FALSE
+    ELSE next char
+  FI ;
+  WHILE not end of text REP 
+    assemble chars (35, 254) ;
+    symbol CAT chars ;
+    IF NOT is quote
+      THEN symbol CAT char ;
+           nextchar
+    FI
+  ENDREP . 
+ 
+not end of text : 
+  IF is niltext 
+    THEN continue text := TRUE ; type := within text ; FALSE
+  ELIF is quote 
+    THEN end of text or exception
+  ELSE TRUE 
+  FI . 
+ 
+end of text or exception :
+  next char ;
+  IF is quote
+    THEN get quote ;        TRUE
+  ELIF is digit
+    THEN get special char ; TRUE
+  ELSE   FALSE
+  FI .
+ 
+get quote :
+  symbol CAT char ;
+  nextchar .
+
+get special char :
+  assemble chars (digit 0, digit 9) ;
+  symbol CAT code (int (chars) ) ;
+  nextchar .
+ 
+process delimiter : 
+  type := delimiter ;
+  symbol := char ;
+  nextchar . 
+ 
+process operator : 
+  type := operator ; 
+  symbol := char ;
+  nextchar ;
+  IF symbol = ":" 
+    THEN IF char = "=" OR char = ":" 
+           THEN symbol := ":=" ;
+                nextchar 
+           ELSE type := delimiter 
+         FI 
+  ELIF is relational double char 
+    THEN symbol CAT char ;
+         nextchar 
+  ELIF symbol = "*" AND char = "*" 
+    THEN symbol := "**" ; 
+         next char 
+  FI .
+ 
+eof : 
+  type := end of file ;
+  symbol := "" .
+ 
+is lower case letter : 
+     lower case a <= code (char) AND code (char) <= lower case z . 
+ 
+is upper case letter : 
+     upper case a <= code (char) AND code (char) <= upper case z .
+ 
+is digit :
+     digit 0 <= code (char) AND code (char) <= digit 9 . 
+ 
+is delimiter : pos ( "()[].,;" , char ) > 0 . 
+ 
+is relational double char : 
+  TEXT VAR double := symbol + char ; 
+  double = "<>" OR double = "<=" OR double = ">=" . 
+ 
+is quote : char = """" .
+ 
+is niltext : char = "" . 
+ 
+is begin comment : char = "{" OR char = "(" AND ahead char = "*" .
+ 
+ENDPROC next symbol ;
+ 
+PROC next char : 
+ 
+  position INCR 1 ;
+  char := line SUB position
+ 
+ENDPROC next char ;
+ 
+PROC skip blanks :
+ 
+  position := pos (line, ""33"", ""254"", position) ;
+  IF position = 0
+    THEN position := LENGTH line + 1
+  FI ;
+  char := line SUB position .
+
+ENDPROC skip blanks ;
+ 
+TEXT PROC ahead char : 
+ 
+  line SUB position+1 
+ 
+ENDPROC ahead char ; 
+
+PROC assemble chars (INT CONST low, high) :
+
+  INT CONST begin := position ;
+  position behind valid text ;
+  chars := subtext (line, begin, position-1) ;
+  char := line SUB position .
+
+position behind valid text :
+  position := pos (line, ""32"", code (low-1), begin) ;
+  IF position = 0
+    THEN position := LENGTH line + 1
+  FI ;
+  INT CONST higher pos := pos (line, code (high+1), ""254"", begin) ;
+  IF higher pos <> 0 AND higher pos < position
+    THEN position := higher pos
+  FI .
+
+ENDPROC assemble chars ;
+
+ 
+PROC read comment : 
+ 
+  TEXT VAR last char ; 
+  comment depth INCR 1 ;
+  REP 
+    last char := char ; 
+    nextchar ; 
+    IF is begin comment
+      THEN read comment
+    FI ;
+    IF char = ""
+      THEN LEAVE read comment
+    FI
+  UNTIL is end comment PER ; 
+  comment depth DECR 1 ;
+  next char ;
+  skip blanks .
+ 
+is end comment :
+  char = "}" OR char = ")" AND last char = "*" .
+ 
+is begin comment :
+  char = "{" OR char = "(" AND ahead char = "*" .
+ 
+ENDPROC read comment ;
+ 
+
+PROC scan (FILE VAR f) :
+
+  getline (f, line) ;
+  scan (line)
+
+ENDPROC scan ; 
+
+PROC next symbol (FILE VAR f, TEXT VAR symbol) :
+
+  INT VAR type ;
+  next symbol (f, symbol, type)
+
+ENDPROC next symbol ;
+
+TEXT VAR scanned ;
+
+PROC next symbol (FILE VAR f, TEXT VAR symbol, INT VAR type) :
+
+  next symbol (symbol, type) ;
+  WHILE type >= 7 AND NOT eof (f) REP
+    getline (f, line) ;
+    continue scan (line) ;
+    next symbol (scanned, type) ;
+    symbol CAT scanned
+  PER .
+
+ENDPROC next symbol ;
+
+ENDPACKET scanner ;
+

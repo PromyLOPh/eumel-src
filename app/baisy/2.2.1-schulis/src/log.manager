@@ -1,0 +1,126 @@
+PACKET logmanagerDEFINES logmanager:LET zeilenwahl=10000,spaltenwahl=70;LET 
+maxzeilenprologdatei=4000;INT CONST logdateien:=max(2,zeilenwahlDIV 
+maxzeilenprologdatei+sign(zeilenwahlMOD maxzeilenprologdatei)),
+zeilenprologdatei:=zeilenwahlDIV logdateien,logzeilen:=zeilenprologdatei*
+logdateien,logspalten:=spaltenwahl,kritischelogzeilenanzahl:=(logzeilenDIV 5)
+*4;LET eintragfileorder=200,eintragtextorder=201,readloglimitsorder=202,
+logholenorder=301,gesichertvermerk=306,loeschenorder=307,ack=0,logack=7,
+letzteslogack=8,kritischegrenzeerreichtack=9,dateiexistiertnichtack=10,
+dateinichtgesichertack=11,meldungloggeloescht=" gelöscht",
+seitenwechselanweisung="",niltext="",zeilenproseite=60,nureinzeiligereintrag=
+1,maxlogdateien=8,vaterallerprivtasks="anwendung",logmanagername="LOG",
+lognamepre="logbuch.",lognamedatumzeittrenner="/",vonbistrenner="-",taskpre=
+", Task: ",terminalname=" Term.";BOUND TEXT VAR msg;FILE VAR logfile;
+DATASPACE VAR ds;INT CONST laengeseitenwechselanweisung:=LENGTH 
+seitenwechselanweisung;INT VAR seitenzeile,zeiger,ersteslog,letzteslog,
+benutztelogzeilen;TEXT VAR eintragssatz;INT VAR terminalnr;BOOL VAR 
+datumneuinlogschreiben:=TRUE ;LET LLIMITS =STRUCT (INT zeilen,zeilenbenutzt,
+zeilenkritisch),LDATEN =STRUCT (REAL von,bis,BOOL gesichert,INT zeilen),
+LOGBUCH =STRUCT (LDATEN daten,DATASPACE inhalt);ROW maxlogdateienLOGBUCH VAR 
+log;BOUND LLIMITS VAR loggrenzenmsg;PROC logmanager:enablestop;IF name(myself
+)<>logmanagernameTHEN renamemyself(logmanagername)END IF ;taskpassword("-");
+benutztelogzeilen:=0;initpacket;globalmanager(PROC (DATASPACE VAR ,INT CONST 
+,INT CONST ,TASK CONST )logmanagerfaenger).END PROC logmanager;PROC 
+logmanagerfaenger(DATASPACE VAR ds,INT CONST order,phase,TASK CONST ordertask
+):disablestop;logmanager(ds,order,phase,ordertask);trageggffehlermeldungein;
+enablestop.trageggffehlermeldungein:IF iserrorTHEN logeintrag(fehlermeldung)
+END IF .fehlermeldung:"Fehler: "+errormessage+" in Zeile "+text(errorline).
+END PROC logmanagerfaenger;PROC logmanager(DATASPACE VAR ds,INT CONST order,
+phase,TASK CONST ordertask):enablestop;IF order=eintragfileorderTHEN 
+nimmdateieintragvorELIF order=eintragtextorderTHEN nimmtexteintragvorELSE IF 
+istberechtigt(ordertask)THEN SELECT orderOF CASE readloglimitsorder:
+leseloggrenzenCASE logholenorder:logverschicken(ordertask)CASE 
+gesichertvermerk:vermerkesicherungCASE loeschenorder:loeschelogOTHERWISE 
+logeintrag(ordertask,"Falscher Auftrag für Task ""LOG"" von Task: "+name(
+ordertask))END SELECT ELSE logeintrag(ordertask,
+"Unberechtigter Logbuchzugriff von Task: "+name(ordertask))FI FI .
+nimmdateieintragvor:FILE VAR eintrag:=sequentialfile(input,ds);logeintrag(
+eintrag,ordertask);meldeeintrag.meldeeintrag:IF logbuchgroessekritischTHEN 
+send(ordertask,kritischegrenzeerreichtack,ds)ELSE send(ordertask,ack,ds)END 
+IF .logbuchgroessekritisch:benutztelogzeilen>=kritischelogzeilenanzahl.
+nimmtexteintragvor:msg:=ds;logeintrag(ordertask,CONCR (msg));meldeeintrag.
+vermerkesicherung:msg:=ds;zeiger:=ersteslog;WHILE logname(log[zeiger])<>
+CONCR (msg)AND zeiger<>letzteslogREP zeiger:=next(zeiger)PER ;IF logname(log[
+zeiger])<>CONCR (msg)THEN send(ordertask,dateiexistiertnichtack,ds)ELSE log[
+zeiger].daten.gesichert:=TRUE ;send(ordertask,ack,ds)FI .loeschelog:msg:=ds;
+zeiger:=ersteslog;WHILE logname(log[zeiger])<>CONCR (msg)AND zeiger<>
+letzteslogREP zeiger:=next(zeiger)PER ;IF logname(log[zeiger])<>CONCR (msg)
+THEN send(ordertask,dateiexistiertnichtack,ds)ELIF NOT log[zeiger].daten.
+gesichertTHEN send(ordertask,dateinichtgesichertack,ds)ELSE TEXT CONST 
+eintragstext:=logname(log[zeiger])+meldungloggeloescht;logbuchdateiloeschen(
+zeiger);logeintrag(ordertask,eintragstext);send(ordertask,ack,ds)FI .
+leseloggrenzen:forget(ds);ds:=nilspace;loggrenzenmsg:=ds;loggrenzenmsg.zeilen
+:=logzeilen;loggrenzenmsg.zeilenbenutzt:=benutztelogzeilen;loggrenzenmsg.
+zeilenkritisch:=kritischelogzeilenanzahl;send(ordertask,ack,ds).END PROC 
+logmanager;PROC logeintrag(FILE VAR eintrag,TASK CONST ordertask):
+bereiteeintragvor;schreibeeintrag.bereiteeintragvor:logeintragvorbereiten(
+ordertask,lines(eintrag));logeintragsimple(taskpre+name(ordertask),TRUE ).
+schreibeeintrag:WHILE nocheintragssaetzeREPEAT schreibeeintragssatzEND 
+REPEAT .nocheintragssaetze:NOT eof(eintrag).schreibeeintragssatz:getline(
+eintrag,eintragssatz);logeintragsimple(eintragssatz,FALSE ).END PROC 
+logeintrag;PROC seitenwechsel:seitenzeile:=0;putline(logfile,
+seitenwechselanweisung).END PROC seitenwechsel;PROC zeilenwechsel:seitenzeile
+INCR 1;line(logfile).END PROC zeilenwechsel;PROC logeintragvorbereiten(TASK 
+CONST task,INT CONST eintrzeilen):terminalnr:=channel(task);
+wechseledateiseiteoderzeile;IF date(logb.daten.bis)<>dateOR 
+datumneuinlogschreibenTHEN datumneuinlogschreiben:=FALSE ;zeilenwechsel;
+logeintragsimple(kennungen,FALSE )FI .wechseledateiseiteoderzeile:INT CONST 
+zeilen:=eintrzeilen+evtldatumszeile;IF dateiwechselerforderlichTHEN 
+wechseledateiELIF seitenwechselerforderlichTHEN bereiteseitenwechselvorEND 
+IF .dateiwechselerforderlich:zeilen+lines(logfile)>zeilenprologdatei.
+evtldatumszeile:IF date(logb.daten.bis)<>dateOR datumneuinlogschreibenTHEN 1
+ELSE 0FI .wechseledatei:logdateiwechsel.seitenwechselerforderlich:INT CONST 
+restzeilen:=zeilenproseite-seitenzeile;(zeilen>restzeilenCAND restzeilen<=5).
+bereiteseitenwechselvor:seitenwechsel.kennungen:date.END PROC 
+logeintragvorbereiten;PROC logeintragsimple(TEXT CONST eintragssatz,BOOL 
+CONST mitkennung):wechseleggfseiteoderzeile;nimmeintragvor;
+bringelogdatenaufneuestenstand.wechseleggfseiteoderzeile:IF seitenzeile=
+zeilenproseiteTHEN seitenwechselELIF seitenzeile>0THEN zeilenwechselELSE 
+seitenzeile:=1END IF .nimmeintragvor:put(logfile,subtext(ggfkennung+
+eintragssatz,1,logspalten)).ggfkennung:IF mitkennungTHEN timeofday+
+terminalname+text(terminalnr)+" "ELSE niltextEND IF .
+bringelogdatenaufneuestenstand:logb.daten.gesichert:=FALSE ;logb.daten.bis:=
+clock(1);logb.daten.zeilenINCR 1;benutztelogzeilenINCR 1.END PROC 
+logeintragsimple;PROC logeintrag(TEXT CONST zeile):logeintrag(myself,zeile).
+END PROC logeintrag;PROC logeintrag(TASK CONST task,TEXT CONST zeile):
+logeintragvorbereiten(task,nureinzeiligereintrag);logeintragsimple(zeile,
+TRUE ).END PROC logeintrag;PROC initpacket:initlogs;initlogdaten.initlogs:
+FOR zeigerFROM 1UPTO maxlogdateienREPEAT loesche(log[zeiger])END REPEAT .
+initlogdaten:ersteslog:=1;letzteslog:=1;logfileoeffnen;logeintrag(
+"Logbuch gestartet").END PROC initpacket;BOOL PROC istberechtigt(TASK CONST 
+ordertask):ordertask</vaterallerprivtasksEND PROC istberechtigt;PROC 
+logverschicken(TASK CONST ordertask):FILE VAR f;INT VAR reply:=0;
+verschickeersteslog;verschickealleweiterenlogs.verschickeersteslog:zeiger:=
+ersteslog;forget(ds);ds:=log[zeiger].inhalt;f:=sequentialfile(modify,ds);
+headline(f,logname(log[zeiger]));send(ordertask,letztesds,ds).
+verschickealleweiterenlogs:IF zeiger<>letzteslogTHEN REP zeiger:=next(zeiger)
+;forget(ds);ds:=log[zeiger].inhalt;f:=sequentialfile(modify,ds);headline(f,
+logname(log[zeiger]));call(ordertask,letztesds,ds,reply)UNTIL zeiger=
+letzteslogPER FI .letztesds:IF zeiger=letzteslogTHEN letzteslogackELSE logack
+END IF .END PROC logverschicken;PROC logbuchdateiloeschen(INT CONST zeiger):
+INT VAR vorgänger,nachfolger;benutztelogzeilenDECR log[zeiger].daten.zeilen;
+IF zeiger=letzteslogTHEN loesche(log[zeiger]);datumneuinlogschreiben:=TRUE ;
+logfileoeffnenELIF zeiger=ersteslogTHEN loesche(log[zeiger]);ersteslog:=next(
+ersteslog)ELSE vorgänger:=zeiger;REP nachfolger:=vorgänger;vorgänger:=prev(
+nachfolger);forget(log[nachfolger].inhalt);log[nachfolger]:=log[vorgänger];
+UNTIL vorgänger=ersteslogPER ;ersteslog:=nachfolger;forget(log[vorgänger].
+inhalt);log[vorgänger].inhalt:=nilspace;log[vorgänger].daten.von:=clock(1);
+log[vorgänger].daten.bis:=clock(1);log[vorgänger].daten.gesichert:=FALSE ;log
+[vorgänger].daten.zeilen:=0FI END PROC logbuchdateiloeschen;PROC loesche(
+LOGBUCH VAR log):forget(log.inhalt);log.inhalt:=nilspace;log.daten.von:=clock
+(1);log.daten.bis:=clock(1);log.daten.gesichert:=FALSE ;log.daten.zeilen:=0.
+END PROC loesche;PROC logdateiwechsel:vervollstaendigealteslog;starteneueslog
+;datumneuinlogschreiben:=TRUE .vervollstaendigealteslog:logb.daten.zeilen:=
+lines(logfile).starteneueslog:letzteslog:=next(letzteslog);IF letzteslog=
+ersteslogTHEN ersteslog:=next(ersteslog);benutztelogzeilenDECR logb.daten.
+zeilenEND IF ;loesche(logb);logfileoeffnen.END PROC logdateiwechsel;PROC 
+logfileoeffnen:logfile:=sequentialfile(output,logb.inhalt);maxlinelength(
+logfile,logspalten+laengeseitenwechselanweisung+1);seitenzeile:=lines(logfile
+)MOD zeilenproseite.END PROC logfileoeffnen;INT PROC next(INT CONST zeiger):
+zeigerMOD logdateien+1.END PROC next;INT PROC prev(INT CONST zeiger):IF 
+zeiger=1THEN logdateienELSE zeiger-1FI END PROC prev;TEXT PROC logname(
+LOGBUCH CONST aktuelleslog):lognamepre+date(aktuelleslog.daten.von)+
+lognamedatumzeittrenner+timeofday(aktuelleslog.daten.von)+vonbistrenner+date(
+aktuelleslog.daten.bis)+lognamedatumzeittrenner+timeofday(aktuelleslog.daten.
+bis).END PROC logname;.logb:log[letzteslog].END PACKET logmanager
+

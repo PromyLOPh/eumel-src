@@ -1,0 +1,692 @@
+PACKET stundenplanschnittstelleDEFINES tagstunde,stundenplanhalbjahrsetzen,
+stundenplanbasisundstundenplanerstellen,stundenplanerstellen,
+stundenplanbasisundstundenplanholen,stundenplanbasissichern,
+stundenplansichern,stundenplandatenvorhanden,
+stundenplanbasisundstundenplanloeschen,stundenplanloeschen,
+stundenplanreorganisierenundsichern,bezeichnungzulaessig,datenzurlv,
+beteiligteschuelergruppen,schuelergruppenschnittbeizeit,
+schuelergruppenschnittallezeiten,gemeinsameschuelergruppen,
+lvderschuelergruppe,allelvmit,lvgeplant,geplantelvfuer,allezeitenvon,
+datenderzeit,planeintraglesen,planeintragvornehmen,planeintragloeschen,
+erstellungszeitderdatenraeume:LET maxdatenraumeintraege=4000,
+maxlehrveranstaltungen=2500,erstestunde=1,letztestunde=66,stdprotag=12,
+samstagstd=6,schultage=6,stuplanverwalter="stundenplan server",sgnull=
+"Stundenplan-0 ",sgeins="Stundenplan-1 ",lvnull="Stundenplan-2 ",lveins=
+"Stundenplan-3 ",stuplan="Stundenplan-4 ",aenderungakt="aktuell",
+aenderunggepl="geplant",maxsugruppen=30,laengelv=8,laengekopplung=8,
+laengeparaphe=4,laengeraum=4,laengezeit=2,laengejgst=2,laengefachkennung=6,
+laengesugruppe=6,laengeklagruppe=4,laengewochenstd=2,laengestuplaneintrag=24,
+stuplanposjgst=1,stuplanposkopplung=9,stuplanposparaphe=17,stuplanposraum=21,
+erstellzeittag=1,erstellzeitmonat=4,erstellzeitjahr=7,erstellzeitstdmin=10,
+beginnlvjgst=1,beginnlvbez=1,beginnlvkopplung=9,beginnlvparaphe=17,
+beginnlvwochenstd=21,beginnlvraumgr1=23,beginnlvraumgr2=27;INT CONST 
+endelvbez:=beginnlvbez+laengelv-1,endelvkopplung:=beginnlvkopplung+
+laengekopplung-1,endelvparaphe:=beginnlvparaphe+laengeparaphe-1,
+endelvwochenstd:=beginnlvwochenstd+laengewochenstd-1,endelvraumgr1:=
+beginnlvraumgr1+laengeraum-1,endelvraumgr2:=beginnlvraumgr2+laengeraum-1;LET 
+leistenlaenge=8,bits=16,jgstnull=0,jgstfuenf=5,jgstdreizehn=13,anzklst=9,
+trenner="�",klstjgst="�05�5�06�6�07�7�08�8�09�9�10�11�12�13�",
+zeitrastersperre="x",dbraeume="c02 raeume",dbaenderung=
+"c02 aenderungsvermerk",dbaenderungakt="aktuell",dbaenderunggepl="geplant",
+halbj="Schulhalbjahr",fehlerzeichen="$",blank=" ",punkt=".",null="0",eins="1"
+,leereraumangabe="    ",kennunglv="L",kennungkopplung="K",kennungparaphe="P",
+kennungraum="R",kennungzeit="ZA",kennungzugelassenezeit="ZZ",kennungsugruppe=
+"S",kennungwochenstd="W",kennungwunschraum="RW",kennungersatzraum="RE";LET 
+kennungmo="Mo ",kennungdi="Di ",kennungmi="Mi ",kennungdo="Do ",kennungfr=
+"Fr ",kennungsa="Sa ",kennungmontag="Montag ",kennungdienstag="Dienstag ",
+kennungmittwoch="Mittwoch ",kennungdonnerstag="Donnerstag ",kennungfreitag=
+"Freitag ",kennungsamstag="Samstag ";TYPE BITLEISTE =ROW leistenlaengeINT ;
+BITLEISTE VAR sugrupurleiste,sugrupleiste;BOUND ROW maxlehrveranstaltungen
+BITLEISTE VAR lvbitleisten;BOUND ROW maxdatenraumeintraegeBITLEISTE VAR 
+sgbitleisten;ROW maxsugruppenBITLEISTE VAR sugruppenstack;DATASPACE VAR dslv,
+dssugrup,dsstdpl;FILE VAR lvdatei,sugrupdatei,stuplandatei;TEXT VAR gewschulj
+:="",gewhalbj:="",halbjplausizeit:="",dateieintrag,ergebnis,dserstellungszeit
+,behandeltesugruppen:=trenner,letztedbzeit,lvzeile,sugruppeneinerklgr:="",
+plausiparaphen:=trenner,plausizeiten:="",plausiklgr:=trenner,plausiraeume:=
+trenner;INT VAR i,j,k,zz,anzbitleisten:=0,lowbit,anzsugrup,anzsugrupundklgr,
+anzlv,lvjgstnullanfang,lvjgstnullende,lvsugrupjgstanfang,lvsugrupjgstende,
+letzteposstuplanzeile,letzterzugrifflv0:=1;BOOL VAR klgreintrag;TEXT PROC 
+tagstunde(INT CONST anwstdnr,BOOL CONST mitkurzform):INT VAR stdnr:=
+konvertierezeit(anwstdnr);TEXT VAR std;IF stdnr<erstestundeCOR stdnr>
+letztestundeTHEN ""ELSE std:=text((stdnr-1)MOD stdprotag+1);IF mitkurzform
+THEN SELECT (stdnr-1)DIV stdprotagOF CASE 0:kennungmo+stdCASE 1:kennungdi+std
+CASE 2:kennungmi+stdCASE 3:kennungdo+stdCASE 4:kennungfr+stdCASE 5:kennungsa+
+stdOTHERWISE ""END SELECT ELSE SELECT (stdnr-1)DIV stdprotagOF CASE 0:
+kennungmontag+stdCASE 1:kennungdienstag+stdCASE 2:kennungmittwoch+stdCASE 3:
+kennungdonnerstag+stdCASE 4:kennungfreitag+stdCASE 5:kennungsamstag+std
+OTHERWISE ""END SELECT FI FI END PROC tagstunde;PROC 
+stundenplanhalbjahrsetzen(TEXT CONST anwhalbj,anwschulj):gewschulj:=anwschulj
+;gewhalbj:=anwhalbj;plausizeiten:=""END PROC stundenplanhalbjahrsetzen;PROC 
+stundenplanbasisundstundenplanerstellen(INT VAR fehlerstatus):IF gewschulj=""
+THEN fehlerstatus:=1ELSE hilfsdatenerstellen(fehlerstatus);IF fehlerstatus=0
+THEN schreibeerstellungszeitFI ;FI .END PROC 
+stundenplanbasisundstundenplanerstellen;PROC stundenplanerstellen(TEXT CONST 
+zeit,INT VAR fehlerstatus):commanddialogue(FALSE );IF gewschulj=""THEN 
+fehlerstatus:=1;forget(stuplandatenraum)ELSE forget(stuplandatenraum);#
+dsstdpl:=new(stuplandatenraum);forget(dsstdpl);#commanddialogue(TRUE );
+stuplandatei:=sequentialfile(modify,stuplandatenraum);FOR iFROM erstestunde
+UPTO letztestunde+1REP insertrecord(stuplandatei)PER ;schreibzeitinstdpl;
+fehlerstatus:=0FI .schreibzeitinstdpl:toline(stuplandatei,letztestunde+1);
+writerecord(stuplandatei,zeit).END PROC stundenplanerstellen;PROC 
+stundenplanbasissichern(INT VAR fehlerstatus):TASK VAR server;disablestop;
+server:=task(stuplanverwalter);IF iserrorTHEN clearerror;fehlerstatus:=2;
+ELIF gewschulj=""THEN fehlerstatus:=1;ELIF NOT exists(lvnulldatenraum)COR 
+NOT exists(lveinsdatenraum)COR NOT exists(sgnulldatenraum)COR NOT exists(
+sgeinsdatenraum)THEN fehlerstatus:=3ELSE commanddialogue(FALSE );save(
+lvnulldatenraum,server);save(lveinsdatenraum,server);save(sgnulldatenraum,
+server);save(sgeinsdatenraum,server);commanddialogue(TRUE );fehlerstatus:=0
+FI ;enablestopEND PROC stundenplanbasissichern;PROC stundenplansichern(INT 
+VAR fehlerstatus):TASK VAR server;disablestop;server:=task(stuplanverwalter);
+IF iserrorTHEN clearerror;fehlerstatus:=2;ELIF gewschulj=""THEN fehlerstatus
+:=1ELIF NOT exists(stuplandatenraum)THEN fehlerstatus:=3ELSE commanddialogue(
+FALSE );save(stuplandatenraum,server);commanddialogue(TRUE );fehlerstatus:=0;
+FI ;enablestopEND PROC stundenplansichern;PROC 
+stundenplanbasisundstundenplanholen(INT VAR fehlerstatus):TASK VAR server;
+disablestop;server:=task(stuplanverwalter);IF iserrorTHEN clearerror;
+fehlerstatus:=2;ELIF gewschulj=""THEN fehlerstatus:=1ELIF NOT exists(
+lvnulldatenraum,server)COR NOT exists(lveinsdatenraum,server)COR NOT exists(
+sgnulldatenraum,server)COR NOT exists(sgeinsdatenraum,server)COR NOT exists(
+stuplandatenraum,server)THEN fehlerstatus:=3;ELSE commanddialogue(FALSE );
+fetch(stuplandatenraum,server);fetch(lvnulldatenraum,server);fetch(
+lveinsdatenraum,server);fetch(sgnulldatenraum,server);fetch(sgeinsdatenraum,
+server);datenraeumeankoppeln;commanddialogue(TRUE );IF 
+stundenplanbasisaktuell(fehlerstatus)THEN anzsugrupundklgr:=lines(sugrupdatei
+)-anzklst;anzsugrup:=anzsugrupundklgr-int(records(dnrklassengruppen));anzlv:=
+lines(lvdatei);fehlerstatus:=0;ELSE IF fehlerstatus=9THEN 
+aenderungsvermerkderdbsetzen;FI ;stundenplanbasiserstellen(fehlerstatus);IF 
+fehlerstatus=0THEN stundenplanbasissichern(fehlerstatus);IF fehlerstatus=0
+THEN stundenplansichern(fehlerstatus);fehlerstatus:=8FI FI FI FI ;enablestop.
+aenderungsvermerkderdbsetzen:IF gewhalbj=schulkenndatum(halbj)THEN 
+aenderungsvermerksetzen(aenderungakt)ELSE aenderungsvermerksetzen(
+aenderunggepl)FI .END PROC stundenplanbasisundstundenplanholen;BOOL PROC 
+stundenplandatenvorhanden:TASK VAR server;IF NOT existstask(stuplanverwalter)
+THEN FALSE ELIF gewschulj=""THEN FALSE ELSE server:=task(stuplanverwalter);
+exists(lvnulldatenraum,server)COR exists(lveinsdatenraum,server)COR exists(
+sgnulldatenraum,server)COR exists(sgeinsdatenraum,server)COR exists(
+stuplandatenraum,server)FI END PROC stundenplandatenvorhanden;PROC 
+stundenplanbasisundstundenplanloeschen(INT VAR fehlerstatus):TASK VAR server;
+IF NOT existstask(stuplanverwalter)THEN fehlerstatus:=2ELIF gewschulj=""THEN 
+fehlerstatus:=1;ELSE server:=task(stuplanverwalter);commanddialogue(FALSE );
+erase(stuplandatenraum,server);erase(lvnulldatenraum,server);erase(
+lveinsdatenraum,server);erase(sgnulldatenraum,server);erase(sgeinsdatenraum,
+server);commanddialogue(TRUE );fehlerstatus:=0;FI END PROC 
+stundenplanbasisundstundenplanloeschen;PROC stundenplanloeschen(INT VAR 
+fehlerstatus):IF gewschulj=""THEN fehlerstatus:=1ELIF NOT exists(
+stuplandatenraum)THEN fehlerstatus:=3;ELSE forget(stuplandatenraum,quiet);
+fehlerstatus:=0FI END PROC stundenplanloeschen;PROC 
+stundenplanreorganisierenundsichern(INT VAR fehlerstatus):INT VAR kanal;IF 
+gewschulj=""THEN fehlerstatus:=1ELIF NOT exists(stuplandatenraum)THEN 
+fehlerstatus:=3ELSE kanal:=channel(myself);break(quiet);reorganize(
+stuplandatenraum);continue(kanal);modify(stuplandatei);stundenplansichern(
+fehlerstatus)FI END PROC stundenplanreorganisierenundsichern;TEXT PROC 
+erstellungszeitderdatenraeume:IF exists(stuplandatenraum)THEN toline(
+stuplandatei,letztestunde+1);readrecord(stuplandatei,dserstellungszeit);
+dserstellungszeitELSE fehlerzeichenFI END PROC erstellungszeitderdatenraeume;
+BOOL PROC bezeichnungzulaessig(TEXT CONST kennung,kennungstext):TEXT VAR 
+sicherung;INT VAR zeit,alterdbstatus;IF kennung=kennunglvTHEN lv0eintrag(text
+(kennungstext,laengelv))<>""ELIF kennung=kennungkopplungTHEN kopplunginlv0(
+text(kennungstext,laengekopplung))ELIF kennung=kennungparapheTHEN IF 
+plausiparaphen=trennerTHEN alterdbstatus:=dbstatus;savetupel(dnrlehrer,
+sicherung);statleseschleife(dnrlehrer,"","",fnrlparaphe,fnrlparaphe,PROC 
+paraphencat);restoretupel(dnrlehrer,sicherung);dbstatus(alterdbstatus)FI ;pos
+(plausiparaphen,trenner+text(kennungstext,laengeparaphe)+trenner)>0ELIF 
+kennung=kennungsugruppeTHEN sg0eintrag(text(kennungstext,laengesugruppe))
+ELIF kennung=kennungraumTHEN IF plausiraeume=trennerTHEN alterdbstatus:=
+dbstatus;savetupel(dnrschluessel,sicherung);statleseschleife(dnrschluessel,
+dbraeume,"",fnrschlsachgebiet,fnrschlschluessel,PROC raumcat);restoretupel(
+dnrschluessel,sicherung);dbstatus(alterdbstatus)FI ;pos(plausiraeume,trenner+
+text(kennungstext,laengeraum)+trenner)>0ELIF kennung=kennungzeitTHEN IF real(
+kennungstext)<1000.0THEN konvertierezeit(int(kennungstext))<>0ELSE FALSE FI 
+ELIF kennung=kennungzugelassenezeitTHEN IF real(kennungstext)>1000.0THEN 
+LEAVE bezeichnungzulaessigWITH FALSE FI ;IF plausizeiten=""COR gewhalbj<>
+halbjplausizeitTHEN halbjplausizeit:=gewhalbj;plausizeiten:=letztestunde*"0";
+inittupel(dnrzeitraster);alterdbstatus:=dbstatus;savetupel(dnrzeitraster,
+sicherung);statleseschleife(dnrzeitraster,gewschulj,gewhalbj,fnrzrsj,fnrzrhj,
+PROC erstelleplausizeiten);restoretupel(dnrzeitraster,sicherung);dbstatus(
+alterdbstatus)FI ;zeit:=konvertierezeit(int(kennungstext));IF zeit<>0THEN (
+plausizeitenSUB zeit)="0"ELSE FALSE FI ELSE FALSE FI END PROC 
+bezeichnungzulaessig;TEXT PROC datenzurlv(TEXT CONST kennung,
+lehrveranstaltung):lvzeile:=lv0eintrag(text(lehrveranstaltung,laengelv));IF 
+lvzeile<>""THEN IF kennung=kennungparapheTHEN paraphederlv(lvzeile)ELIF 
+kennung=kennungkopplungTHEN kopplungderlv(lvzeile)ELIF kennung=
+kennungwochenstdTHEN wochenstdderlv(lvzeile)ELIF kennung=kennungwunschraum
+THEN wunschraumderlv(lvzeile)ELIF kennung=kennungersatzraumTHEN 
+ersatzraumderlv(lvzeile)ELSE fehlerzeichenFI ELSE ungueltigesergebnis(kennung
+)FI END PROC datenzurlv;TEXT PROC beteiligteschuelergruppen(TEXT CONST 
+kennung,kennungstext):BITLEISTE VAR bitleiste;IF kennung=kennunglvTHEN IF 
+lv0eintrag(text(kennungstext,laengelv))=""THEN ungueltigesergebnis(
+kennungsugruppe)ELSE sugruppenausbitleiste(lv1eintrag(zugriffszeilelv0))FI 
+ELIF kennung=kennungkopplungTHEN sammlebitleisten(text(kennungstext,
+laengekopplung),beginnlvkopplung,bitleiste);sugruppenausbitleiste(bitleiste)
+ELSE ungueltigesergebnis(kennungsugruppe)FI END PROC 
+beteiligteschuelergruppen;TEXT PROC schuelergruppenschnittallezeiten(TEXT 
+CONST kennung,anwkennungstext1):BITLEISTE VAR bitleiste,stdplbitleiste;TEXT 
+VAR allestdpllv:="",gesamtlv:="",jgst:="",kopplung:="",stdpllv:="",stdplkopp
+:="",stdpljgst:="",schuelergruppen:="",jgstzurnull:=trenner,verfplan:="",
+schgrjgst:="",fehler:=letztestunde*fehlerzeichen;TEXT VAR kennungstext1:="";
+INT VAR zeit,anfangeintrag,laengeallestdpllv,ij,schgrindex;BOOL VAR schnitt:=
+FALSE ;IF kennung=kennunglvTHEN kennungstext1:=text(anwkennungstext1,laengelv
+);gesamtlv:=lv0eintrag(kennungstext1);IF gesamtlv=""THEN LEAVE 
+schuelergruppenschnittallezeitenWITH fehlerELSE jgst:=text(gesamtlv,
+laengejgst);kopplung:=kopplungderlv(gesamtlv);bitleiste:=lv1eintrag(
+zugriffszeilelv0);FI ELIF kennung=kennungkopplungTHEN kennungstext1:=text(
+anwkennungstext1,laengekopplung);jgst:=jgstzukopplung(kennungstext1);kopplung
+:=kennungstext1;IF jgst=""THEN LEAVE schuelergruppenschnittallezeitenWITH 
+fehlerELSE sammlebitleisten(kennungstext1,beginnlvkopplung,bitleiste)FI ELSE 
+LEAVE schuelergruppenschnittallezeitenWITH fehlerFI ;IF jgst="00"THEN 
+bildejgstzurnullFI ;FOR zeitFROM erstestundeUPTO letztestundeREP allestdpllv
+:=stuplanzeile(zeit);laengeallestdpllv:=length(allestdpllv);IF 
+laengeallestdpllv>laengejgstTHEN schnitt:=FALSE ;
+pruefeallestdplanlvaufschnitt;IF schnittTHEN verfplanCAT einsELSE verfplan
+CAT nullFI ;ELSE verfplanCAT nullFI ;PER ;verfplan.bildejgstzurnull:
+schuelergruppen:=beteiligteschuelergruppen(kennung,kennungstext1);FOR ijFROM 
+1UPTO length(schuelergruppen)DIV laengesugruppeREP schgrindex:=(ij-1)*
+laengesugruppe;schgrjgst:=subtext(schuelergruppen,schgrindex+1,schgrindex+2);
+IF pos(jgstzurnull,trenner+schgrjgst+trenner)=0THEN jgstzurnullCAT schgrjgst;
+jgstzurnullCAT trennerFI PER ;IF length(jgstzurnull)=4THEN jgst:=subtext(
+jgstzurnull,2,3);jgstzurnull:=""FI .pruefeallestdplanlvaufschnitt:
+anfangeintrag:=0;WHILE anfangeintrag<laengeallestdpllvREP stdpllv:=subtext(
+allestdpllv,anfangeintrag+beginnlvjgst,anfangeintrag+endelvbez);stdpljgst:=
+text(stdpllv,laengejgst);IF kennung=kennunglvTHEN IF jgstgleichCAND stdpllv<>
+kennungstext1THEN stdplkopp:=subtext(allestdpllv,anfangeintrag+
+beginnlvkopplung,anfangeintrag+endelvkopplung);IF kopplungsbezunterschiedlich
+THEN IF lv0eintrag(stdpllv)<>""THEN stdplbitleiste:=lv1eintrag(
+zugriffszeilelv0);IF bitleistenschnittTHEN schnitt:=TRUE ;LEAVE 
+pruefeallestdplanlvaufschnittFI ELSE LEAVE schuelergruppenschnittallezeiten
+WITH fehlerFI ;FI ;FI ;ELSE IF jgstgleichTHEN stdplkopp:=subtext(allestdpllv,
+anfangeintrag+beginnlvkopplung,anfangeintrag+endelvkopplung);IF 
+kopplungsbezunterschiedlichTHEN IF lv0eintrag(stdpllv)<>""THEN stdplbitleiste
+:=lv1eintrag(zugriffszeilelv0);IF bitleistenschnittTHEN schnitt:=TRUE ;LEAVE 
+pruefeallestdplanlvaufschnittFI ELSE LEAVE schuelergruppenschnittallezeiten
+WITH fehlerFI ;FI ;FI ;FI ;anfangeintrag:=anfangeintrag+laengestuplaneintrag
+PER .jgstgleich:jgst=stdpljgstCOR stdpljgst="00"COR pos(jgstzurnull,trenner+
+stdpljgst+trenner)>0.kopplungsbezunterschiedlich:kopplung<>stdplkopp.
+bitleistenschnitt:gibtesgemeinsamesugruppen(bitleiste,stdplbitleiste).END 
+PROC schuelergruppenschnittallezeiten;BOOL PROC schuelergruppenschnittbeizeit
+(INT CONST anwzeit,TEXT CONST kennung,anwkennungstext1,anwkennungstext2):
+BITLEISTE VAR bitleiste,stdplbitleiste;TEXT VAR allestdpllv:="",gesamtlv:="",
+jgst:="",kopplung:="",stdpllv:="",stdplkopp:="",stdpljgst:="",schgrjgst:="",
+schuelergruppen:="",jgstzurnull:=trenner;TEXT VAR kennungstext1:="",
+kennungstext2:="";INT VAR zeit:=konvertierezeit(anwzeit),anfangeintrag,
+laengeallestdpllv,ij,schgrindex;IF zeit=0THEN LEAVE 
+schuelergruppenschnittbeizeitWITH TRUE ELIF kennung=kennunglvTHEN 
+kennungstext1:=text(anwkennungstext1,laengelv);IF anwkennungstext2<>""THEN 
+kennungstext2:=text(anwkennungstext2,laengelv)FI ;gesamtlv:=lv0eintrag(
+kennungstext1);IF gesamtlv=""THEN LEAVE schuelergruppenschnittbeizeitWITH 
+TRUE ELSE jgst:=text(gesamtlv,laengejgst);kopplung:=kopplungderlv(gesamtlv);
+bitleiste:=lv1eintrag(zugriffszeilelv0);FI ELIF kennung=kennungkopplungTHEN 
+kennungstext1:=text(anwkennungstext1,laengekopplung);jgst:=jgstzukopplung(
+kennungstext1);kopplung:=kennungstext1;IF jgst=""THEN LEAVE 
+schuelergruppenschnittbeizeitWITH TRUE ELSE sammlebitleisten(kennungstext1,
+beginnlvkopplung,bitleiste)FI ELSE LEAVE schuelergruppenschnittbeizeitWITH 
+TRUE FI ;allestdpllv:=stuplanzeile(zeit);laengeallestdpllv:=length(
+allestdpllv);IF laengeallestdpllv<laengejgstTHEN LEAVE 
+schuelergruppenschnittbeizeitWITH FALSE FI ;IF jgst="00"THEN bildejgstzurnull
+FI ;anfangeintrag:=0;WHILE anfangeintrag<laengeallestdpllvREP stdpllv:=
+subtext(allestdpllv,anfangeintrag+beginnlvjgst,anfangeintrag+endelvbez);
+stdpljgst:=text(stdpllv,laengejgst);IF kennung=kennunglvTHEN IF jgstgleich
+CAND stdpllv<>kennungstext1CAND stdpllv<>kennungstext2THEN stdplkopp:=subtext
+(allestdpllv,anfangeintrag+beginnlvkopplung,anfangeintrag+endelvkopplung);IF 
+kopplungsbezunterschiedlichTHEN IF lv0eintrag(stdpllv)<>""THEN stdplbitleiste
+:=lv1eintrag(zugriffszeilelv0);IF bitleistenschnittTHEN LEAVE 
+schuelergruppenschnittbeizeitWITH TRUE FI ELSE LEAVE 
+schuelergruppenschnittbeizeitWITH TRUE FI ;FI ;FI ;ELSE IF jgstgleichTHEN 
+stdplkopp:=subtext(allestdpllv,anfangeintrag+beginnlvkopplung,anfangeintrag+
+endelvkopplung);IF kopplungsbezunterschiedlichTHEN IF lv0eintrag(stdpllv)<>""
+THEN stdplbitleiste:=lv1eintrag(zugriffszeilelv0);IF bitleistenschnittTHEN 
+LEAVE schuelergruppenschnittbeizeitWITH TRUE FI ELSE LEAVE 
+schuelergruppenschnittbeizeitWITH TRUE FI ;FI ;FI ;FI ;anfangeintrag:=
+anfangeintrag+laengestuplaneintragPER ;FALSE .bildejgstzurnull:
+schuelergruppen:=beteiligteschuelergruppen(kennung,kennungstext1);FOR ijFROM 
+1UPTO length(schuelergruppen)DIV laengesugruppeREP schgrindex:=(ij-1)*
+laengesugruppe;schgrjgst:=subtext(schuelergruppen,schgrindex+1,schgrindex+2);
+IF pos(jgstzurnull,trenner+schgrjgst+trenner)=0THEN jgstzurnullCAT schgrjgst;
+jgstzurnullCAT trennerFI PER ;IF length(jgstzurnull)=4THEN jgst:=subtext(
+jgstzurnull,2,3);jgstzurnull:=""FI .jgstgleich:jgst=stdpljgstCOR stdpljgst=
+"00"COR pos(jgstzurnull,trenner+stdpljgst+trenner)>0.
+kopplungsbezunterschiedlich:kopplung<>stdplkopp.bitleistenschnitt:
+gibtesgemeinsamesugruppen(bitleiste,stdplbitleiste).END PROC 
+schuelergruppenschnittbeizeit;BOOL PROC schuelergruppenschnittbeizeit(INT 
+CONST anwzeit,TEXT CONST kennung,anwkennungstext1,anwkennungstext2,TEXT VAR 
+lv,sugruppen):BITLEISTE VAR bitleiste,stdplbitleiste;TEXT VAR allestdpllv,
+gesamtlv,jgst,kopplung,stdpllv,stdplkopp,stdpljgst:="",schgrjgst:="",
+schuelergruppen:="",jgstzurnull:=trenner;TEXT VAR kennungstext1:="",
+kennungstext2:="";INT VAR zeit:=konvertierezeit(anwzeit),anfangeintrag,
+laengeallestdpllv,ij,schgrindex;lv:="";sugruppen:="";IF zeit=0THEN LEAVE 
+schuelergruppenschnittbeizeitWITH TRUE ELIF kennung=kennunglvTHEN 
+kennungstext1:=text(anwkennungstext1,laengelv);IF anwkennungstext2<>""THEN 
+kennungstext2:=text(anwkennungstext2,laengelv)FI ;gesamtlv:=lv0eintrag(
+kennungstext1);IF gesamtlv=""THEN LEAVE schuelergruppenschnittbeizeitWITH 
+TRUE ELSE jgst:=text(gesamtlv,laengejgst);kopplung:=kopplungderlv(gesamtlv);
+bitleiste:=lv1eintrag(zugriffszeilelv0);FI ELIF kennung=kennungkopplungTHEN 
+kennungstext1:=text(anwkennungstext1,laengekopplung);jgst:=jgstzukopplung(
+kennungstext1);kopplung:=kennungstext1;IF jgst=""THEN LEAVE 
+schuelergruppenschnittbeizeitWITH TRUE ELSE sammlebitleisten(kennungstext1,
+beginnlvkopplung,bitleiste)FI ELSE LEAVE schuelergruppenschnittbeizeitWITH 
+TRUE FI ;allestdpllv:=stuplanzeile(zeit);laengeallestdpllv:=length(
+allestdpllv);IF laengeallestdpllv<laengejgstTHEN LEAVE 
+schuelergruppenschnittbeizeitWITH FALSE FI ;IF jgst="00"THEN bildejgstzurnull
+FI ;anfangeintrag:=0;WHILE anfangeintrag<laengeallestdpllvREP stdpllv:=
+subtext(allestdpllv,anfangeintrag+beginnlvjgst,anfangeintrag+endelvbez);
+stdpljgst:=text(stdpllv,laengejgst);IF kennung=kennunglvTHEN IF jgstgleich
+CAND stdpllv<>kennungstext1CAND stdpllv<>kennungstext2THEN stdplkopp:=subtext
+(allestdpllv,anfangeintrag+beginnlvkopplung,anfangeintrag+endelvkopplung);IF 
+kopplungsbezunterschiedlichTHEN IF lv0eintrag(stdpllv)<>""THEN stdplbitleiste
+:=lv1eintrag(zugriffszeilelv0);IF bitleistenschnittTHEN lv:=stdpllv;sugruppen
+:=sugruppenausbitleiste(bitleistegemeinsamesugruppen(stdplbitleiste,bitleiste
+));LEAVE schuelergruppenschnittbeizeitWITH TRUE FI ELSE LEAVE 
+schuelergruppenschnittbeizeitWITH TRUE FI ;FI ;FI ;ELSE IF jgstgleichTHEN 
+stdplkopp:=subtext(allestdpllv,anfangeintrag+beginnlvkopplung,anfangeintrag+
+endelvkopplung);IF kopplungsbezunterschiedlichTHEN IF lv0eintrag(stdpllv)<>""
+THEN stdplbitleiste:=lv1eintrag(zugriffszeilelv0);IF bitleistenschnittTHEN lv
+:=stdpllv;sugruppen:=sugruppenausbitleiste(bitleistegemeinsamesugruppen(
+stdplbitleiste,bitleiste));LEAVE schuelergruppenschnittbeizeitWITH TRUE FI 
+ELSE LEAVE schuelergruppenschnittbeizeitWITH TRUE FI ;FI ;FI ;FI ;
+anfangeintrag:=anfangeintrag+laengestuplaneintragPER ;FALSE .bildejgstzurnull
+:schuelergruppen:=beteiligteschuelergruppen(kennung,kennungstext1);FOR ij
+FROM 1UPTO length(schuelergruppen)DIV laengesugruppeREP schgrindex:=(ij-1)*
+laengesugruppe;schgrjgst:=subtext(schuelergruppen,schgrindex+1,schgrindex+2);
+IF pos(jgstzurnull,trenner+schgrjgst+trenner)=0THEN jgstzurnullCAT schgrjgst;
+jgstzurnullCAT trennerFI PER ;IF length(jgstzurnull)=4THEN jgst:=subtext(
+jgstzurnull,2,3);jgstzurnull:=""FI .jgstgleich:jgst=stdpljgstCOR stdpljgst=
+"00"COR pos(jgstzurnull,trenner+stdpljgst+trenner)>0.
+kopplungsbezunterschiedlich:kopplung<>stdplkopp.bitleistenschnitt:
+gibtesgemeinsamesugruppen(bitleiste,stdplbitleiste).END PROC 
+schuelergruppenschnittbeizeit;BOOL PROC gemeinsameschuelergruppen(TEXT CONST 
+kennung1,akennungstext1,kennung2,akennungstext2):BITLEISTE VAR bitleiste1,
+bitleiste2;TEXT VAR kennungstext1:="",kennungstext2:="";IF kennung1=kennunglv
+THEN kennungstext1:=text(akennungstext1,laengelv);IF lv0eintrag(kennungstext1
+)=""THEN LEAVE gemeinsameschuelergruppenWITH TRUE ELSE bitleiste1:=lv1eintrag
+(zugriffszeilelv0)FI ELIF kennung1=kennungkopplungTHEN kennungstext1:=text(
+akennungstext1,laengekopplung);sammlebitleisten(kennungstext1,
+beginnlvkopplung,bitleiste1);ELSE LEAVE gemeinsameschuelergruppenWITH TRUE 
+FI ;IF kennung2=kennunglvTHEN kennungstext2:=text(akennungstext2,laengelv);
+IF lv0eintrag(kennungstext2)=""THEN LEAVE gemeinsameschuelergruppenWITH TRUE 
+ELSE bitleiste2:=lv1eintrag(zugriffszeilelv0)FI ELIF kennung2=kennungkopplung
+THEN kennungstext2:=text(akennungstext2,laengekopplung);sammlebitleisten(
+kennungstext2,beginnlvkopplung,bitleiste2);ELSE LEAVE 
+gemeinsameschuelergruppenWITH TRUE FI ;gibtesgemeinsamesugruppen(bitleiste1,
+bitleiste2)END PROC gemeinsameschuelergruppen;TEXT PROC lvderschuelergruppe(
+TEXT CONST anwsugrup):INT VAR i,folgejgst:=5;TEXT VAR lvmitsugrup:="",
+aufberjgst:=formatjgst(anwsugrup),sugrup:=text(anwsugrup,laengesugruppe);
+BITLEISTE VAR bitleiste:=sugrupurleiste;IF pos(klstjgst,trenner+compress(
+sugrup)+trenner)>0COR aufberjgst="00"COR schuelergruppeTHEN betrachtelvELSE 
+ungueltigesergebnis(kennunglv)FI .betrachtelv:bitleiste:=sg1eintrag(sugrup);
+lvjgstnullanfang:=1;lvjgstnullende:=-1;WHILE lvjgstnullende=-1CAND folgejgst<
+14REP lvjgstnullende:=erstezeileindatei(lvdatei,formatjgst(text(folgejgst)),1
+,beginnlvjgst)-1;folgejgstINCR 1PER ;IF formatjgst(anwsugrup)<>"00"THEN 
+lvsugrupjgstanfang:=erstezeileindatei(lvdatei,aufberjgst,1,beginnlvjgst);IF 
+int(sugrup)=jgstdreizehnTHEN lvsugrupjgstende:=anzlv;ELSE lvsugrupjgstende:=
+erstezeileindatei(lvdatei,formatjgst(text(int(sugrup)+1)),lvsugrupjgstanfang,
+beginnlvjgst);FI ;IF lvsugrupjgstanfang=0THEN lvsugrupjgstanfang:=
+lvsugrupjgstende+1FI ELSE lvsugrupjgstanfang:=1;lvsugrupjgstende:=0FI ;FOR i
+FROM lvjgstnullanfangUPTO lvjgstnullendeREP IF 
+bitleistenvergleichgemeinsamesugruppenTHEN lvmitsugrupCAT text(lv0eintrag(i),
+laengelv)FI PER ;FOR iFROM lvsugrupjgstanfangUPTO lvsugrupjgstendeREP IF 
+bitleistenvergleichgemeinsamesugruppenTHEN lvmitsugrupCAT text(lv0eintrag(i),
+laengelv)FI PER ;lvmitsugrup.bitleistenvergleichgemeinsamesugruppen:
+gibtesgemeinsamesugruppen(bitleiste,lv1eintrag(i)).schuelergruppe:toline(
+sugrupdatei,1);col(sugrupdatei,1);WHILE NOT eof(sugrupdatei)REP downety(
+sugrupdatei,sugrup);IF col(sugrupdatei)=1THEN LEAVE schuelergruppeWITH TRUE 
+ELSE positionierenFI ;PER ;FALSE .positionieren:col(sugrupdatei,col(
+sugrupdatei)+1).END PROC lvderschuelergruppe;TEXT PROC allelvmit(TEXT CONST 
+kennung,anwkennungstext):TEXT VAR lvmit:="",lv:="",kennungstext:="";INT VAR 
+richtigepos;IF kennung=kennungparapheTHEN kennungstext:=text(anwkennungstext,
+laengeparaphe);richtigepos:=stuplanposparapheELIF kennung=kennungkopplung
+THEN kennungstext:=text(anwkennungstext,laengekopplung);richtigepos:=
+stuplanposkopplungELSE LEAVE allelvmitWITH ungueltigesergebnis(kennunglv)FI ;
+toline(lvdatei,1);col(lvdatei,1);WHILE NOT eof(lvdatei)REP downety(lvdatei,
+kennungstext);IF col(lvdatei)=richtigeposCAND NOT eof(lvdatei)THEN readrecord
+(lvdatei,lv);lvmitCAT text(lv,laengelv)FI ;positionierenPER ;lvmit.
+positionieren:col(lvdatei,col(lvdatei)+1).END PROC allelvmit;BOOL PROC 
+lvgeplant(INT CONST zeit,TEXT CONST lehrveranstaltung):INT CONST std:=
+konvertierezeit(zeit);TEXT VAR eintrag:="";IF std=0THEN TRUE ELSE eintrag:=
+stuplanzeile(std);instuplanzeile(eintrag,text(lehrveranstaltung,laengelv),
+stuplanposjgst,letzteposstuplanzeile)FI END PROC lvgeplant;TEXT PROC 
+geplantelvfuer(INT CONST zeit,TEXT CONST kennung,anwkennungstext):INT VAR std
+:=konvertierezeit(zeit),poslv,richtigepos;TEXT VAR kennungstext:="";IF std=0
+THEN LEAVE geplantelvfuerWITH ungueltigesergebnis(kennunglv)ELIF kennung=
+kennungparapheTHEN kennungstext:=text(anwkennungstext,laengeparaphe);
+richtigepos:=stuplanposparapheELIF kennung=kennungraumTHEN kennungstext:=text
+(anwkennungstext,laengeraum);richtigepos:=stuplanposraumELSE LEAVE 
+geplantelvfuerWITH ungueltigesergebnis(kennunglv)FI ;IF instuplanzeile(
+stuplanzeile(std),kennungstext,richtigepos,letzteposstuplanzeile)THEN 
+holentsprlvELSE ""FI .holentsprlv:poslv:=letzteposstuplanzeile-richtigepos+1;
+subtext(stuplanzeile(std),poslv,poslv+laengelv-1).END PROC geplantelvfuer;
+TEXT PROC allezeitenvon(TEXT CONST kennung,anwkennungstext):INT VAR i,
+richtigepos;TEXT VAR verfplan:="",kennungstext:="";IF kennung=kennungparaphe
+THEN kennungstext:=text(anwkennungstext,laengeparaphe);richtigepos:=
+stuplanposparapheELIF kennung=kennunglvTHEN kennungstext:=text(
+anwkennungstext,laengelv);richtigepos:=stuplanposjgstELIF kennung=kennungraum
+THEN kennungstext:=text(anwkennungstext,laengeraum);richtigepos:=
+stuplanposraumELIF kennung=kennungkopplungTHEN kennungstext:=text(
+anwkennungstext,laengekopplung);richtigepos:=stuplanposkopplungELSE LEAVE 
+allezeitenvonWITH letztestunde*fehlerzeichenFI ;FOR iFROM erstestundeUPTO 
+letztestundeREP IF instuplanzeile(stuplanzeile(i),kennungstext,richtigepos,
+letzteposstuplanzeile)THEN verfplanCAT einsELSE verfplanCAT nullFI PER ;
+verfplanEND PROC allezeitenvon;TEXT PROC datenderzeit(INT CONST zeit,TEXT 
+CONST kennung):INT VAR std:=konvertierezeit(zeit),poseintrag,laengeeintrag,
+objektlaenge,objektbeginn;TEXT VAR eintrag:="",ausgabe:="";IF kennung=
+kennunglvTHEN objektlaenge:=laengelv;objektbeginn:=stuplanposjgstELIF kennung
+=kennungkopplungTHEN objektlaenge:=laengekopplung;objektbeginn:=
+stuplanposkopplungELIF kennung=kennungparapheTHEN objektlaenge:=laengeparaphe
+;objektbeginn:=stuplanposparapheELIF kennung=kennungraumTHEN objektlaenge:=
+laengeraum;objektbeginn:=stuplanposraumELSE LEAVE datenderzeitWITH 
+fehlerzeichenFI ;IF std=0THEN LEAVE datenderzeitWITH ungueltigesergebnis(
+kennung)FI ;toline(stuplandatei,std);readrecord(stuplandatei,eintrag);ausgabe
+:="";poseintrag:=objektbeginn;laengeeintrag:=length(eintrag);WHILE poseintrag
+<laengeeintragREP ausgabeCAT subtext(eintrag,poseintrag,poseintrag+
+objektlaenge-1);poseintrag:=poseintrag+laengestuplaneintragPER ;ausgabeEND 
+PROC datenderzeit;PROC planeintraglesen(INT CONST zeit,TEXT CONST kennung,
+anwkennungstext,TEXT VAR lehrveranstaltung,raum,paraphe):INT VAR std:=
+konvertierezeit(zeit),poslv,richtigepos,stackpos,anfangeintrag,
+laengeallestdpllv;TEXT VAR kennungstext:="",stdpllv,allestdpllv,jgstdersugrup
+,jgstderlv;BITLEISTE VAR sugrupbitleiste,stdplbitleiste;IF std=0THEN 
+lehrveranstaltung:=ungueltigesergebnis(kennunglv);raum:="";paraphe:="";LEAVE 
+planeintraglesenELIF kennung=kennunglvTHEN kennungstext:=text(anwkennungstext
+,laengelv);richtigepos:=stuplanposjgstELIF kennung=kennungparapheTHEN 
+kennungstext:=text(anwkennungstext,laengeparaphe);richtigepos:=
+stuplanposparapheELIF kennung=kennungraumTHEN kennungstext:=text(
+anwkennungstext,laengeraum);richtigepos:=stuplanposraumELIF kennung=
+kennungsugruppeTHEN jgstdersugrup:=jgstaufber(text(anwkennungstext,laengejgst
+));kennungstext:=text(jgstdersugrup+subtext(anwkennungstext,laengejgst+1),
+laengesugruppe)ELSE fehlerbehandlungFI ;lehrveranstaltung:="";raum:="";
+paraphe:="";IF kennung<>kennungsugruppeTHEN IF instuplanzeile(stuplanzeile(
+std),kennungstext,richtigepos,letzteposstuplanzeile)THEN holentsprlvFI ELSE 
+holelvderzeit;ermittlebitleiste;vergleichelvmitbitleisteFI .holentsprlv:poslv
+:=letzteposstuplanzeile-richtigepos+1;lehrveranstaltung:=subtext(stuplanzeile
+(std),poslv,poslv+laengestuplaneintrag-1);raum:=subtext(lehrveranstaltung,
+stuplanposraum);paraphe:=subtext(lehrveranstaltung,stuplanposparaphe,
+stuplanposparaphe+laengeparaphe-1);lehrveranstaltung:=text(lehrveranstaltung,
+laengelv).ermittlebitleiste:stackpos:=pos(behandeltesugruppen,trenner+
+kennungstext+trenner);IF bitleistenochzuermittelnTHEN sugrupbitleiste:=
+sg1eintrag(kennungstext);IF anzbitleisten<maxsugruppenTHEN sugruppenstack(
+anzbitleisten+1):=sugrupbitleiste;behandeltesugruppenCAT kennungstext;
+behandeltesugruppenCAT trenner;anzbitleistenINCR 1FI ELSE sugrupbitleiste:=
+sugruppenstack((stackpos+6)DIV 7)FI .bitleistenochzuermitteln:stackpos=0.
+holelvderzeit:allestdpllv:=stuplanzeile(std);laengeallestdpllv:=length(
+allestdpllv);IF laengeallestdpllv<laengejgstTHEN LEAVE planeintraglesenFI .
+vergleichelvmitbitleiste:anfangeintrag:=0;WHILE anfangeintrag<
+laengeallestdpllvREP stdpllv:=subtext(allestdpllv,anfangeintrag+beginnlvjgst,
+anfangeintrag+endelvbez);jgstderlv:=text(stdpllv,laengejgst);IF 
+jgstgleichodernullnullTHEN IF lv0eintrag(stdpllv)<>""THEN stdplbitleiste:=
+lv1eintrag(zugriffszeilelv0);IF bitleistenschnittTHEN lehrveranstaltungCAT 
+stdpllv;raumCAT subtext(allestdpllv,anfangeintrag+stuplanposraum,
+anfangeintrag+laengestuplaneintrag);parapheCAT subtext(allestdpllv,
+anfangeintrag+stuplanposparaphe,anfangeintrag+stuplanposraum-1)FI FI ;FI ;
+anfangeintrag:=anfangeintrag+laengestuplaneintragPER .jgstgleichodernullnull:
+jgstdersugrup=jgstderlvCOR jgstderlv="00".bitleistenschnitt:
+gibtesgemeinsamesugruppen(sugrupbitleiste,stdplbitleiste).fehlerbehandlung:
+lehrveranstaltung:=ungueltigesergebnis(kennunglv);raum:="";paraphe:="";LEAVE 
+planeintraglesen.END PROC planeintraglesen;PROC planeintragvornehmen(INT 
+CONST zeit,TEXT CONST anwlehrveranstaltung,anwraum,BOOL VAR ok):INT VAR std:=
+konvertierezeit(zeit);TEXT VAR lv,eintrag,neuereintrag,lehrveranstaltung:=
+text(anwlehrveranstaltung,laengelv),raum:=text(anwraum,laengeraum);IF std=0
+THEN ok:=FALSE ;LEAVE planeintragvornehmenFI ;IF raum<>leereraumangabeAND (
+NOT bezeichnungzulaessig(kennungraum,raum))THEN ok:=FALSE ;LEAVE 
+planeintragvornehmenFI ;lv:=lv0eintrag(lehrveranstaltung);IF lv=""THEN ok:=
+FALSE ;ELIF instuplanzeile(stuplanzeile(std),lehrveranstaltung,stuplanposjgst
+,letzteposstuplanzeile)THEN holstuplaneintrag;substituierelvELSE 
+holstuplaneintrag;erweitereumlvFI .holstuplaneintrag:ok:=TRUE ;toline(
+stuplandatei,std);readrecord(stuplandatei,eintrag).erweitereumlv:eintragCAT 
+text(lv,laengelv+laengekopplung+laengeparaphe);eintragCAT text(raum,
+laengeraum);writerecord(stuplandatei,eintrag).substituierelv:neuereintrag:=
+text(eintrag,letzteposstuplanzeile-1);neuereintragCAT text(lv,laengelv+
+laengekopplung+laengeparaphe);neuereintragCAT text(raum,laengeraum);
+neuereintragCAT subtext(eintrag,letzteposstuplanzeile+laengestuplaneintrag);
+writerecord(stuplandatei,neuereintrag).END PROC planeintragvornehmen;PROC 
+planeintragloeschen(INT CONST zeit,TEXT CONST lehrveranstaltung,BOOL VAR ok):
+INT VAR std:=konvertierezeit(zeit);TEXT VAR eintrag,neuereintrag;IF std=0
+THEN ok:=FALSE ELIF instuplanzeile(stuplanzeile(std),text(lehrveranstaltung,
+laengelv),stuplanposjgst,letzteposstuplanzeile)THEN holstuplaneintrag;
+loescheeintragELSE ok:=FALSE FI .holstuplaneintrag:ok:=TRUE ;toline(
+stuplandatei,std);readrecord(stuplandatei,eintrag).loescheeintrag:
+neuereintrag:=text(eintrag,letzteposstuplanzeile-1);neuereintragCAT subtext(
+eintrag,letzteposstuplanzeile+laengestuplaneintrag);writerecord(stuplandatei,
+neuereintrag).END PROC planeintragloeschen;PROC resetbitleiste(BITLEISTE VAR 
+bitleiste):FOR iFROM 1UPTO leistenlaengeREP FOR jFROM 0UPTO bits-1REP 
+resetbit(bitleiste(i),j)PER PER ;END PROC resetbitleiste;PROC 
+loeschdatenraeume:forget(lvnulldatenraum,quiet);forget(sgnulldatenraum,quiet)
+;forget(lveinsdatenraum,quiet);forget(sgeinsdatenraum,quiet)END PROC 
+loeschdatenraeume;OP :=(BITLEISTE VAR eins,BITLEISTE CONST zwei):INT VAR i;
+FOR iFROM 1UPTO leistenlaengeREP eins(i):=zwei(i)PER END OP :=;PROC 
+schreibesugrupundklgrinds:zz:=0;positioniersugrup;holsugrupdaten;IF zz=0THEN 
+LEAVE schreibesugrupundklgrindsFI ;anzsugrup:=zz;positionierklgr;holklgrdaten
+;IF anzsugrup=-1THEN LEAVE schreibesugrupundklgrindsFI ;anzsugrupundklgr:=zz;
+FOR iFROM jgstfuenfUPTO jgstdreizehnREP toline(sugrupdatei,lines(sugrupdatei)
++1);schreibjgstindateiPER .positioniersugrup:inittupel(dnraktschuelergruppen)
+;putwert(fnrsgrpsj,gewschulj);putwert(fnrsgrphj,gewhalbj);putintwert(
+fnrsgrpjgst,0).positionierklgr:inittupel(dnrklassengruppen);first(
+dnrklassengruppen).holsugrupdaten:IF records(dnraktschuelergruppen)=0.0THEN 
+LEAVE schreibesugrupundklgrindsFI ;statleseschleife(dnraktschuelergruppen,
+gewschulj,gewhalbj,fnrsgrpsj,fnrsgrphj,PROC sugrupinds).holklgrdaten:IF 
+records(dnrklassengruppen)=0.0THEN LEAVE holklgrdatenFI ;statleseschleife(
+dnrklassengruppen,"","",fnrkgklassengrp,fnrkgschuelergrp,PROC klgrinds).
+schreibjgstindatei:putds(sugrupdatei,text(formatjgst(text(i)),laengesugruppe)
+);schreibbitleisteinds.schreibbitleisteinds:sugrupleiste:=sugrupurleiste;
+ermittlebitleistejgstodersugrupklgr(formatjgst(text(i,laengejgst)));
+sgbitleisten(zz+1):=sugrupleiste;zzINCR 1.END PROC schreibesugrupundklgrinds;
+PROC schreibelvinds:anzlv:=0;sucheerstensatz;schreibsugrupleiste;IF zz<>0
+THEN anzlv:=zz-1FI .sucheerstensatz:IF records(dnrlehrveranstaltungen)=0.0
+THEN LEAVE schreibelvindsFI ;inittupel(dnrlehrveranstaltungen);putwert(
+fnrlvsj,gewschulj);putwert(fnrlvhj,gewhalbj);putintwert(fnrlvjgst,jgstnull);
+putwert(fnrlvfachkennung,"");search(dnrlehrveranstaltungen,FALSE ).
+schreibsugrupleiste:zz:=0;statleseschleife(dnrlehrveranstaltungen,gewschulj,
+gewhalbj,fnrlvsj,fnrlvhj,PROC sugrupleisteinds).END PROC schreibelvinds;PROC 
+sugrupleisteinds(BOOL VAR b):IF wert(fnrlvsj)=gewschuljCAND wert(fnrlvhj)=
+gewhalbjCAND dbstatus=0CAND zz<2499THEN klgreintrag:=FALSE ;sugrupleiste:=
+sugrupurleiste;analysiereklgreinerlv(fnrlvklgrp1);IF anzsugrup=-1THEN b:=
+TRUE ;LEAVE sugrupleisteindsELSE analysiereklgreinerlv(fnrlvklgrp2);IF 
+anzsugrup=-1THEN b:=TRUE ;LEAVE sugrupleisteindsELSE analysiereklgreinerlv(
+fnrlvklgrp3);IF anzsugrup=-1THEN b:=TRUE ;LEAVE sugrupleisteindsELSE 
+analysiereklgreinerlv(fnrlvklgrp4);FI ;FI ;FI ;IF NOT klgreintragTHEN 
+ermittlebitleistejgst(wert(fnrlvjgst));FI ;schreiblvindatei;
+schreibsugrupleisteindsELSE b:=TRUE FI .schreiblvindatei:dateieintrag:="";
+dateieintragCAT formatjgst(wert(fnrlvjgst));dateieintragCAT text(wert(
+fnrlvfachkennung),laengefachkennung);dateieintragCAT text(wert(fnrlvkopplung)
+,laengekopplung);dateieintragCAT text(wert(fnrlvparaphe),laengeparaphe);
+dateieintragCAT text(wert(fnrlvwochenstd),laengewochenstd);dateieintragCAT 
+text(wert(fnrlvraumgrp1),laengeraum);dateieintragCAT text(wert(fnrlvraumgrp2)
+,laengeraum);putds(lvdatei,dateieintrag).schreibsugrupleisteinds:lvbitleisten
+(zz+1):=sugrupleiste;zzINCR 1;.END PROC sugrupleisteinds;PROC 
+analysiereklgreinerlv(INT CONST lvklgrfeld):IF wert(lvklgrfeld)<>""THEN IF 
+istjgst(wert(lvklgrfeld))THEN ermittlebitleistejgst(wert(lvklgrfeld));ELIF 
+istklgr(wert(lvklgrfeld))THEN ermittlebitleistejgstodersugrupklgr(wert(
+lvklgrfeld));ELSE ermittlebitleistejgstodersugrupklgr(formatjgst(wert(
+fnrlvjgst))+wert(lvklgrfeld));IF anzsugrup=-1THEN LEAVE analysiereklgreinerlv
+FI ;FI ;klgreintrag:=TRUE FI ;END PROC analysiereklgreinerlv;PROC sugrupinds(
+BOOL VAR b):IF wert(fnrsgrpsj)=gewschuljCAND wert(fnrsgrphj)=gewhalbjCAND 
+dbstatus=0THEN sugrupleiste:=sugrupurleiste;putds(sugrupdatei,formatjgst(wert
+(fnrsgrpjgst))+text(wert(fnrsgrpkennung),laengeklagruppe));IF zz<127THEN 
+schreibesugrupleisteFI ;sgbitleisten(zz+1):=sugrupleiste;zzINCR 1;ELIF wert(
+fnrsgrpsj)>gewschuljCOR wert(fnrsgrphj)>gewhalbjCOR dbstatus<>0COR zz=127
+THEN b:=TRUE FI .schreibesugrupleiste:setzebit(zz).END PROC sugrupinds;PROC 
+klgrinds(BOOL VAR b):IF dbstatus=0THEN toline(sugrupdatei,lines(sugrupdatei)+
+1);plausiklgrCAT wert(fnrkgklassengrp)+trenner;putds(sugrupdatei,text(wert(
+fnrkgklassengrp),laengesugruppe));analysieresugrupen;sgbitleisten(zz+1):=
+sugrupleiste;zzINCR 1ELSE b:=TRUE FI .analysieresugrupen:sugrupleiste:=
+sugrupurleiste;sugruppeneinerklgr:=wert(fnrkgschuelergrp);FOR kFROM 1UPTO 
+LENGTH sugruppeneinerklgrDIV laengesugruppeREP 
+ermittlebitleistejgstodersugrupklgr(subtext(sugruppeneinerklgr,(k-1)*
+laengesugruppe+1,k*laengesugruppe));IF anzsugrup=-1THEN b:=TRUE ;LEAVE 
+klgrindsFI ;PER .END PROC klgrinds;PROC ermittlebitleistejgstodersugrupklgr(
+TEXT CONST klgrteil):TEXT VAR compklgrteil:=compress(klgrteil);IF istjgst(
+compklgrteil)THEN stellebitleistenjgstELSE stellebitleistesugrupoderklgrFI .
+stellebitleistesugrupoderklgr:IF istklgr(compklgrteil)THEN toline(sugrupdatei
+,anzsugrup);ELSE toline(sugrupdatei,1);FI ;col(sugrupdatei,1);downety(
+sugrupdatei,compklgrteil);IF NOT eof(sugrupdatei)THEN oderbitleisten;LEAVE 
+stellebitleistesugrupoderklgrELSE anzsugrup:=-1;LEAVE 
+ermittlebitleistejgstodersugrupklgrFI .stellebitleistenjgst:toline(
+sugrupdatei,1);col(sugrupdatei,1);WHILE NOT eof(sugrupdatei)REP downety(
+sugrupdatei,formatjgst(klgrteil));IF col(sugrupdatei)=1CAND lineno(
+sugrupdatei)<=anzsugrupTHEN oderbitleistenFI ;positionierenPER .positionieren
+:col(sugrupdatei,col(sugrupdatei)+1).oderbitleisten:BITLEISTE VAR bitleiste:=
+sgbitleisten(lineno(sugrupdatei));FOR jFROM 1UPTO leistenlaengeREP 
+sugrupleiste(j):=sugrupleiste(j)OR bitleiste(j)PER .END PROC 
+ermittlebitleistejgstodersugrupklgr;PROC ermittlebitleistejgst(TEXT CONST 
+klgrteil):stellebitleistenjgst.stellebitleistenjgst:toline(sugrupdatei,
+anzsugrupundklgr);col(sugrupdatei,1);WHILE NOT eof(sugrupdatei)REP downety(
+sugrupdatei,formatjgst(klgrteil));IF col(sugrupdatei)=1THEN oderbitleistenFI 
+;positionierenPER .positionieren:col(sugrupdatei,col(sugrupdatei)+1).
+oderbitleisten:BITLEISTE VAR bitleiste:=sgbitleisten(lineno(sugrupdatei));
+FOR jFROM 1UPTO leistenlaengeREP sugrupleiste(j):=sugrupleiste(j)OR bitleiste
+(j)PER .END PROC ermittlebitleistejgst;BOOL PROC stundenplanbasisaktuell(INT 
+VAR fehlerstatus):dserstellungszeit:="";letztedbzeit:="";ermittledszeit;
+ermittledbzeit;vergleichezeit;IF fehlerstatus=0THEN TRUE ELSE FALSE FI .
+ermittledszeit:dserstellungszeit:=erstellungszeitderdatenraeume.
+ermittledbzeit:IF gewhalbj=schulkenndatum(halbj)THEN inittupel(dnrschluessel)
+;putwert(fnrschlschluessel,dbaenderungakt);ELSE inittupel(dnrschluessel);
+putwert(fnrschlschluessel,dbaenderunggepl);FI ;putwert(fnrschlsachgebiet,
+dbaenderung);search(dnrschluessel,TRUE );IF dbstatus<>okTHEN fehlerstatus:=9;
+LEAVE stundenplanbasisaktuellWITH FALSE ELSE letztedbzeit:=wert(
+fnrschllangtext)FI .vergleichezeit:IF dsjahr=dbjahrTHEN pruefmonatELIF dsjahr
+>dbjahrTHEN fehlerstatus:=0ELSE fehlerstatus:=1FI .pruefmonat:IF dsmonat=
+dbmonatTHEN prueftagELIF dsmonat>dbmonatTHEN fehlerstatus:=0ELSE fehlerstatus
+:=1FI .prueftag:IF dstag=dbtagTHEN pruefzeitELIF dstag>dbtagTHEN fehlerstatus
+:=0ELSE fehlerstatus:=1FI .pruefzeit:IF dszeit>=dbzeitTHEN fehlerstatus:=0
+ELSE fehlerstatus:=1FI .dsjahr:subtext(dserstellungszeit,erstellzeitjahr,
+erstellzeitjahr+1).dbjahr:subtext(letztedbzeit,erstellzeitjahr,
+erstellzeitjahr+1).dsmonat:subtext(dserstellungszeit,erstellzeitmonat,
+erstellzeitmonat+1).dbmonat:subtext(letztedbzeit,erstellzeitmonat,
+erstellzeitmonat+1).dstag:text(dserstellungszeit,erstellzeittag+1).dbtag:text
+(letztedbzeit,erstellzeittag+1).dszeit:subtext(dserstellungszeit,
+erstellzeitstdmin).dbzeit:subtext(letztedbzeit,erstellzeitstdmin).END PROC 
+stundenplanbasisaktuell;PROC stundenplanbasiserstellen(INT VAR fehlerstatus):
+hilfsdatenerstellen(fehlerstatus);IF fehlerstatus=0THEN toline(stuplandatei,
+letztestunde+1);writerecord(stuplandatei,date+blank+timeofday);FI .END PROC 
+stundenplanbasiserstellen;PROC hilfsdatenerstellen(INT VAR fehlerstatus):
+inithilfsdateien;schreibesugrupundklgrinds;IF anzsugrup=-1THEN fehlerstatus:=
+9;forget(sgnulldatenraum,quiet);forget(sgeinsdatenraum,quiet)ELIF anzsugrup=0
+THEN fehlerstatus:=4ELIF anzsugrup>127THEN fehlerstatus:=5;loeschdatenraeume
+ELSE schreibelvinds;IF anzsugrup=-1THEN fehlerstatus:=9;loeschdatenraeume
+ELIF anzlv=0THEN fehlerstatus:=6;loeschdatenraeumeELIF anzlv>2499THEN 
+fehlerstatus:=7;loeschdatenraeumeELSE fehlerstatus:=0FI ;FI .inithilfsdateien
+:commanddialogue(FALSE );loeschdatenraeume;commanddialogue(TRUE );#dslv:=new(
+lvnulldatenraum);dssugrup:=new(sgnulldatenraum);commanddialogue(FALSE );
+forget(dslv);forget(dssugrup);commanddialogue(TRUE );#lvdatei:=sequentialfile
+(modify,lvnulldatenraum);sugrupdatei:=sequentialfile(modify,sgnulldatenraum);
+lvbitleisten:=new(lveinsdatenraum);sgbitleisten:=new(sgeinsdatenraum);
+resetbitleiste(sugrupurleiste).END PROC hilfsdatenerstellen;PROC 
+datenraeumeankoppeln:IF exists(lvnulldatenraum)THEN lvdatei:=sequentialfile(
+modify,old(lvnulldatenraum))FI ;IF exists(sgnulldatenraum)THEN sugrupdatei:=
+sequentialfile(modify,old(sgnulldatenraum))FI ;IF exists(stuplandatenraum)
+THEN stuplandatei:=sequentialfile(modify,old(stuplandatenraum))FI ;IF exists(
+lveinsdatenraum)THEN lvbitleisten:=old(lveinsdatenraum);FI ;IF exists(
+sgeinsdatenraum)THEN sgbitleisten:=old(sgeinsdatenraum);FI END PROC 
+datenraeumeankoppeln;INT PROC zugriffszeilelv0:letzterzugrifflv0END PROC 
+zugriffszeilelv0;TEXT PROC lv0eintrag(TEXT CONST lv):TEXT VAR dateieintrag:=
+"";letzterzugrifflv0:=0;dateieintrag:="";toline(lvdatei,1);col(lvdatei,1);
+WHILE NOT eof(lvdatei)REP downety(lvdatei,lv);IF col(lvdatei)=beginnlvbez
+CAND NOT eof(lvdatei)THEN readrecord(lvdatei,dateieintrag);letzterzugrifflv0
+:=lineno(lvdatei);LEAVE lv0eintragWITH dateieintragELSE positionierenFI ;PER 
+;"".positionieren:col(lvdatei,col(lvdatei)+1).END PROC lv0eintrag;TEXT PROC 
+lv0eintrag(INT CONST index):TEXT VAR dateieintrag:="";toline(lvdatei,index);
+col(lvdatei,1);IF eof(lvdatei)THEN ""ELSE readrecord(lvdatei,dateieintrag);
+dateieintragFI END PROC lv0eintrag;BOOL PROC kopplunginlv0(TEXT CONST 
+kopplung):toline(lvdatei,1);col(lvdatei,1);WHILE NOT eof(lvdatei)REP downety(
+lvdatei,kopplung);IF col(lvdatei)=beginnlvkopplungCAND NOT eof(lvdatei)THEN 
+LEAVE kopplunginlv0WITH TRUE ELSE positionierenFI ;PER ;FALSE .positionieren:
+col(lvdatei,col(lvdatei)+1).END PROC kopplunginlv0;BOOL PROC sg0eintrag(TEXT 
+CONST sg):toline(sugrupdatei,1);col(sugrupdatei,1);WHILE NOT eof(sugrupdatei)
+REP downety(sugrupdatei,sg);IF col(sugrupdatei)=1CAND NOT eof(sugrupdatei)
+CAND lineno(sugrupdatei)<=anzsugrupTHEN LEAVE sg0eintragWITH TRUE ELSE 
+positionierenFI ;PER ;FALSE .positionieren:col(sugrupdatei,col(sugrupdatei)+1
+).END PROC sg0eintrag;TEXT PROC sg0eintrag(INT CONST index):dateieintrag:="";
+toline(sugrupdatei,index);col(sugrupdatei,1);IF eof(sugrupdatei)THEN ""ELSE 
+readrecord(sugrupdatei,dateieintrag);text(dateieintrag,laengesugruppe)FI END 
+PROC sg0eintrag;BITLEISTE PROC sg1eintrag(TEXT CONST anwsugrup):TEXT VAR 
+sugrup:=text(anwsugrup,laengesugruppe);toline(sugrupdatei,1);col(sugrupdatei,
+1);WHILE NOT eof(sugrupdatei)REP downety(sugrupdatei,sugrup);IF col(
+sugrupdatei)=1CAND NOT eof(sugrupdatei)THEN LEAVE sg1eintragWITH sgbitleisten
+(lineno(sugrupdatei))ELSE positionierenFI ;PER ;sugrupurleiste.positionieren:
+col(sugrupdatei,col(sugrupdatei)+1).END PROC sg1eintrag;BITLEISTE PROC 
+lv1eintrag(INT CONST index):lvbitleisten(index)END PROC lv1eintrag;TEXT PROC 
+sugruppenausbitleiste(BITLEISTE CONST bitleiste):sugruppeneinerklgr:="";FOR j
+FROM 1UPTO leistenlaengeREP lowbit:=lowestset(bitleiste(j));IF lowbit<>-1
+THEN FOR kFROM lowbitUPTO bits-1REP IF bit(bitleiste(j),k)THEN 
+sugruppeneinerklgrCAT sg0eintrag(k+(j-1)*bits+1)FI PER ;FI ;PER ;
+sugruppeneinerklgrEND PROC sugruppenausbitleiste;BITLEISTE PROC 
+bitleisteallesugruppen(BITLEISTE VAR v,BITLEISTE CONST c):BITLEISTE VAR b:=
+sugrupurleiste;FOR jFROM 1UPTO leistenlaengeREP b(j):=v(j)OR c(j)PER ;bEND 
+PROC bitleisteallesugruppen;BITLEISTE PROC bitleistegemeinsamesugruppen(
+BITLEISTE CONST v,c):BITLEISTE VAR b:=sugrupurleiste;FOR jFROM 1UPTO 
+leistenlaengeREP b(j):=v(j)AND c(j)PER ;bEND PROC 
+bitleistegemeinsamesugruppen;BOOL PROC gibtesgemeinsamesugruppen(BITLEISTE 
+CONST v,c):BITLEISTE VAR b:=sugrupurleiste;FOR jFROM 1UPTO leistenlaengeREP b
+(j):=v(j)AND c(j);lowbit:=lowestset(b(j));IF lowbit<>-1THEN LEAVE 
+gibtesgemeinsamesugruppenWITH TRUE FI ;PER ;FALSE END PROC 
+gibtesgemeinsamesugruppen;BITLEISTE PROC bitleistenichtgemeinsamesugruppen(
+BITLEISTE CONST v,c):BITLEISTE VAR b:=sugrupurleiste;FOR jFROM 1UPTO 
+leistenlaengeREP b(j):=v(j)XOR c(j)PER ;bEND PROC 
+bitleistenichtgemeinsamesugruppen;PROC sammlebitleisten(TEXT CONST 
+kennungstext,INT CONST richtigepos,BITLEISTE VAR bitleiste):resetbitleiste(
+bitleiste);toline(lvdatei,1);col(lvdatei,1);WHILE NOT eof(lvdatei)REP downety
+(lvdatei,kennungstext);IF col(lvdatei)=richtigeposCAND NOT eof(lvdatei)THEN 
+bitleiste:=bitleisteallesugruppen(bitleiste,lv1eintrag(lineno(lvdatei)));FI ;
+positionieren;PER .positionieren:col(lvdatei,col(lvdatei)+1).END PROC 
+sammlebitleisten;TEXT PROC jgstzukopplung(TEXT CONST kennungstext):TEXT VAR 
+lv:="";toline(lvdatei,1);col(lvdatei,1);WHILE NOT eof(lvdatei)REP downety(
+lvdatei,kennungstext);IF col(lvdatei)=beginnlvkopplungCAND NOT eof(lvdatei)
+THEN readrecord(lvdatei,lv);LEAVE jgstzukopplungWITH text(lv,laengejgst)FI ;
+positionieren;PER ;"".positionieren:col(lvdatei,col(lvdatei)+1).END PROC 
+jgstzukopplung;TEXT PROC ungueltigesergebnis(TEXT CONST kennung):IF kennung=
+kennunglvTHEN ergebnis:=laengelv*fehlerzeichenELIF kennung=kennungzeitOR 
+kennung=kennungzugelassenezeitTHEN ergebnis:=laengezeit*fehlerzeichenELIF 
+kennung=kennungparapheTHEN ergebnis:=laengeparaphe*fehlerzeichenELIF kennung=
+kennungkopplungTHEN ergebnis:=laengekopplung*fehlerzeichenELIF kennung=
+kennungsugruppeTHEN ergebnis:=laengesugruppe*fehlerzeichenELIF kennung=
+kennungraumOR kennung=kennungwunschraumOR kennung=kennungersatzraumTHEN 
+ergebnis:=laengeraum*fehlerzeichenELIF kennung=kennungwochenstdTHEN ergebnis
+:=laengewochenstd*fehlerzeichenELSE ergebnis:=fehlerzeichenFI ;ergebnisEND 
+PROC ungueltigesergebnis;PROC raumcat(BOOL VAR b):IF wert(fnrschlsachgebiet)=
+dbraeumeTHEN plausiraeumeCAT text(wert(fnrschlschluessel),laengeraum)+trenner
+;ELIF wert(fnrschlsachgebiet)>dbraeumeCOR dbstatus<>0THEN b:=TRUE FI END 
+PROC raumcat;PROC paraphencat(BOOL VAR b):IF dbstatus<>0THEN b:=TRUE ELSE 
+plausiparaphenCAT text(wert(dnrlehrer+1),laengeparaphe);plausiparaphenCAT 
+trennerFI END PROC paraphencat;PROC erstelleplausizeiten(BOOL VAR b):IF wert(
+fnrzrsj)>gewschuljCOR wert(fnrzrhj)<>gewhalbjCOR dbstatus<>0THEN b:=TRUE 
+ELSE IF wert(fnrzrkennungteil)=zeitrastersperreTHEN replace(plausizeiten,
+intwert(fnrzrtagstunde),"1")FI ;FI END PROC erstelleplausizeiten;TEXT PROC 
+stuplanzeile(INT CONST zeit):INT VAR std:=konvertierezeit(zeit);TEXT VAR 
+eintrag:="";IF std=0THEN laengestuplaneintrag*fehlerzeichenELSE toline(
+stuplandatei,std);eintrag:="";readrecord(stuplandatei,eintrag);eintragFI END 
+PROC stuplanzeile;BOOL PROC instuplanzeile(TEXT CONST quelle,muster,INT 
+CONST richtigepos,INT VAR findpos):INT VAR suchab:=1,aktpos;WHILE pos(quelle,
+muster,suchab)<>0REP aktpos:=pos(quelle,muster,suchab);IF aktposMOD 
+laengestuplaneintrag=richtigeposTHEN findpos:=aktpos;LEAVE instuplanzeile
+WITH TRUE ELSE suchab:=aktpos+1FI PER ;FALSE END PROC instuplanzeile;INT 
+PROC erstezeileindatei(FILE VAR datei,TEXT CONST muster,INT CONST suchab,
+richtigepos):toline(datei,suchab);col(datei,1);WHILE NOT eof(datei)REP 
+downety(datei,muster);IF col(datei)=richtigeposTHEN LEAVE erstezeileindatei
+WITH lineno(datei)FI ;positionierenPER ;0.positionieren:col(datei,col(datei)+
+1).END PROC erstezeileindatei;PROC schreibeerstellungszeit:INT VAR 
+fehlerstatus;IF NOT exists(stuplandatenraum)THEN stundenplanerstellen(date+
+blank+timeofday,fehlerstatus)FI END PROC schreibeerstellungszeit;INT PROC 
+konvertierezeit(INT CONST tagstd):IF tagstd<1THEN 0ELIF tagstd<=letztestunde
+THEN tagstdELIF tagstd>schultage*100+samstagstdTHEN 0ELIF tagstdMOD 100>
+stdprotagTHEN 0ELIF tagstdMOD 100=0THEN 0ELSE ((tagstdDIV 100)-1)*stdprotag+(
+tagstdMOD 100)FI END PROC konvertierezeit;PROC setzebit(INT CONST bitnr):IF 
+bitnrDIV bits+1>leistenlaengeTHEN LEAVE setzebitFI ;setbit(sugrupleiste(bitnr
+DIV bits+1),bitnrMOD bits)END PROC setzebit;BOOL PROC istjgst(TEXT CONST t):
+pos(klstjgst,trenner+t+trenner)>0END PROC istjgst;BOOL PROC istklgr(TEXT 
+CONST t):pos(plausiklgr,trenner+t+trenner)>0END PROC istklgr;PROC putds(FILE 
+VAR file,TEXT CONST t):insertrecord(file);writerecord(file,t);down(file);END 
+PROC putds;TEXT PROC formatjgst(TEXT CONST t):subtext("0"+compress(text(t,
+laengejgst)),length("0"+compress(text(t,laengejgst)))-1)END PROC formatjgst;
+TEXT PROC lvnulldatenraum:lvnull+gewhalbj+punkt+gewschuljEND PROC 
+lvnulldatenraum;TEXT PROC lveinsdatenraum:lveins+gewhalbj+punkt+gewschuljEND 
+PROC lveinsdatenraum;TEXT PROC sgnulldatenraum:sgnull+gewhalbj+punkt+
+gewschuljEND PROC sgnulldatenraum;TEXT PROC sgeinsdatenraum:sgeins+gewhalbj+
+punkt+gewschuljEND PROC sgeinsdatenraum;TEXT PROC stuplandatenraum:stuplan+
+gewhalbj+punkt+gewschuljEND PROC stuplandatenraum;TEXT PROC bezderlv(TEXT 
+CONST lvzeile):subtext(lvzeile,beginnlvbez,endelvbez)END PROC bezderlv;TEXT 
+PROC kopplungderlv(TEXT CONST lvzeile):subtext(lvzeile,beginnlvkopplung,
+endelvkopplung)END PROC kopplungderlv;TEXT PROC paraphederlv(TEXT CONST 
+lvzeile):subtext(lvzeile,beginnlvparaphe,endelvparaphe)END PROC paraphederlv;
+TEXT PROC wochenstdderlv(TEXT CONST lvzeile):subtext(lvzeile,
+beginnlvwochenstd,endelvwochenstd)END PROC wochenstdderlv;TEXT PROC 
+wunschraumderlv(TEXT CONST lvzeile):subtext(lvzeile,beginnlvraumgr1,
+endelvraumgr1)END PROC wunschraumderlv;TEXT PROC ersatzraumderlv(TEXT CONST 
+lvzeile):subtext(lvzeile,beginnlvraumgr2,endelvraumgr2)END PROC 
+ersatzraumderlv;END PACKET stundenplanschnittstelle
+

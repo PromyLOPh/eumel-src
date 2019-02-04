@@ -1,0 +1,936 @@
+                      EUMEL-Benutzerhandbuch 
+ 
+                    TEIL 9: Standard-Datentypen                     
+ 
+1. VECTOR und MATRIX 
+ 
+Vektoren und Matrizen enthalten Elemente vom Datentyp REAL. Für beide Daten- 
+typen sind die üblichen Operatoren definiert. Im Unterschied zu "normalen" 
+'ROW n REAL' bzw. 'ROW n ROW m REAL' brauchen die Anzahl der Elemente, die 
+sich in einem Vektor bzw. in einer Matrix befinden, nicht bereits zur Über- 
+setzungszeit deklariert, sondern können "dynamisch" zur Laufzeit eines ELAN- 
+Programms festgelegt werden. Somit ist es möglich, eine zur Übersetzungszeit 
+noch unbekannte Anzahl von REAL-Elementen zu bearbeiten und dabei nur soviel 
+Speicherplatz wie notwendig zu verwenden. Bei beiden Datentypen ist die 
+maximale Anzahl von Elementen jeweils 4 000. 
+ 
+Bei VECTOR und MATRIX ist auf die üblichen Rundungsfehler bei der Verwendung 
+von REALs zu achten, die bei umfangreicheren Rechnungen unvermeidlich ent- 
+stehen. Rundungsfehler durch Ein- bzw. Ausgaberoutinen können z.Zt. im 
+EUMEL-System jedoch nicht vorkommen, weil REAL-Werte dezimal im Rechner 
+abgespeichert werden (13 Stellen, von denen jedoch nur 7 ausgegeben werden). 
+ 
+ 
+ 
+VECTOR 
+ 
+Folgende VECTOR-Operationen stehen zur Verfügung: 
+ 
+vector         Erzeugung eines VECTOR-Objekts 
+get            Eingabe der Elemente vom Terminal 
+put            Ausgabe der Elemente auf das Terminal 
+replace        Ersetzung eines Elementes eines VECTORs 
+SUB            Zugriff auf ein REAL-Element eines VECTORs 
+LENGTH         Anzahl der Elemente eines VECTORs 
+length         dito 
+NORM           Euklidische Norm 
+ + 
+ - 
+ * 
+ / 
+ := 
+ = 
+ <> 
+ 
+ 
+ 
+Beschreibung der VECTOR-Operationen 
+ 
+Aus Optimierungsgründen (Heapbelastung) wurde der Datentyp INITVECTOR ge- 
+schaffen. Dieser wird im VECTOR-Paket intern gehalten (wird nicht über das 
+Interface herausgereicht) und kann somit nicht in einer Deklaration benutzt 
+werden. INITVECTOR wird nur für die Operationen 
+ 
+     := 
+     vector 
+ 
+verwendet. Bei Verwendung eines Datenobjekts vom Datentyp INITVECTOR wird 
+nicht soviel Speicherplatz wie bei einem Objekt vom Datentyp VECTOR benötigt. 
+ 
+= 
+     BOOL OP = (VECTOR CONST a, b) 
+     Zweck: Vergleich zweier Vektoren. Der Operator liefert FALSE, wenn die 
+            Anzahl der Elemente von 'a' und 'b' ungleich ist oder wenn zwei 
+            Elemente mit gleichem Index ungleich sind. Beispiel: 
+ 
+                 VECTOR VAR x :: vector (10, 1.0), 
+                            y :: vector (15, 2.0), 
+                            z :: vector (10, 1.0); 
+                 ... x = y ... (* FALSE *) 
+                 ... x = z ... (* TRUE  *) 
+ 
+<> 
+    BOOL OP <> (VECTOR CONST a, b) 
+     Zweck: Vergleich zweier Vektoren auf Ungleichheit (NOT (a = b)). 
+ 
+:= 
+     OP := (VECTOR VAR ziel, VECTOR CONST quelle) 
+     Zweck: Zuweisung. Nach der Zuweisung gilt auch 
+ 
+                 length (quelle) = length (ziel) 
+ 
+            d.h. der linke Operand besitzt nach der Zuweisung genauso viele 
+            Elemente wie 'quelle', unabhängig davon, ob 'ziel' vor der Zu- 
+            weisung mehr oder weniger Elemente als 'quelle' besaß. Beispiel: 
+ 
+                 VECTOR VAR y :: vector (10, 1.0), 
+                            z :: vector (15, 2.0); 
+                 ... 
+                 y := z; (* length (y) liefert nun 15 ! *) 
+ 
+     OP := (VECTOR VAR ziel, INITVECTOR CONST quelle) 
+     Zweck: Dient zur Initialisierung eines VECTORs. Beispiel: 
+ 
+                 VECTOR VAR x :: vector (17); 
+ 
+            'vector' erzeugt ein Objekt vom Datentyp INITVECTOR. Dieses 
+            Objekt braucht nicht soviel Speicherplatz wie ein VECTOR-Objekt. 
+            Dadurch wird vermieden, daß nach erfolgter Zuweisung nicht ein 
+            durch 'vector' erzeugtes Objekt auf dem Heap unnötig Speicher- 
+            platz verbraucht. 
+ 
++ 
+     VECTOR OP + (VECTOR CONST a) 
+     Zweck: Monadisches '+' für VECTOR. Keine Auswirkung. 
+ 
+     VECTOR OP + (VECTOR CONST a, b) 
+     Zweck: Elementweise Addition der Vektoren 'a' und 'b'. Beispiel: 
+ 
+                 VECTOR VAR x, (* 'x' hat undefinierte Laenge *) 
+                            a :: vector (10, 1.0), 
+                            b :: vector (10, 2.0); 
+                 ... 
+                 x := a + b; (* 'x' hat nun 10 Elemente mit Werten '3.0' *) 
+     Fehlerfall: 
+          * VECTOR OP + : LENGTH a <> LENGTH b 
+            'a' und 'b' haben nicht die gleiche Anzahl von Elementen. 
+ 
+- 
+     VECTOR OP - (VECTOR CONST a) 
+     Zweck: Monadisches '-'. 
+ 
+     VECTOR OP - (VECTOR CONST a, b) 
+     Zweck: Elementweise Subtraktion der Vektoren 'a' und 'b'. 
+     Fehlerfall: 
+          * VECTOR OP - : LENGTH a <> LENGTH b 
+            'a' und 'b' haben nicht die gleiche Anzahl von Elementen. 
+ 
+* 
+     REAL OP * (VECTOR CONST a, b) 
+     Zweck: Skalarprodukt zweier Vektoren. Liefert die Summe der element- 
+            weisen Multiplikation der Vektoren 'a' und 'b'. Beachte even- 
+            tuelle Rundungsfehler! Beispiel: 
+ 
+                 REAL VAR a; 
+                 VECTOR VAR b :: vector (10, 2.0), 
+                            c :: vector (10, 2.0); 
+                 ... 
+                 a := b * c; (* 40.0 *) 
+     Fehlerfall: 
+          * REAL OP * : LENGTH a <> LENGTH b 
+            'a' und 'b' haben nicht die gleiche Anzahl von Elementen. 
+ 
+     VECTOR OP * (VECTOR CONST a, REAL CONST s) 
+     Zweck: Multiplikation des Vektors 'a' mit dem Skalar 's'. 
+ 
+     VECTOR OP * (REAL CONST s, VECTOR CONST a) 
+     Zweck: Multiplikation des Skalars 's' mit dem Vektor 'a'. 
+ 
+/ 
+     VECTOR OP / (VECTOR CONST a, REAL CONST s) 
+     Zweck: Division des Vektors 'a' durch den Skalar 's'. Beispiel: 
+ 
+                VECTOR VAR a, (* 'a' hat undefinierte Laenge *) 
+                           b :: vector (10, 4.0); 
+                ... 
+                a := b / 2.0; 
+                (* 'a' hat nun 10 Elemente mit Werten '2.0' *) 
+ 
+get 
+     PROC get (VECTOR VAR a, INT CONST l) 
+     Zweck: Einlesen der Elemente von 'a' vom Terminal, wobei 'l' die Anzahl 
+            der Elemente angibt. 
+     Fehlerfall: 
+          * PROC get : size <= 0 
+            Die angeforderte Elementanzahl 'l' muß > 0 sein. 
+ 
+length 
+     INT PROC length (VECTOR CONST a) 
+     Zweck: Liefert die Anzahl der Elemente von 'a'. Beispiel: 
+ 
+                 VECTOR VAR a :: vector (10, 1.0), 
+                            b :: vector (15, 2.0); 
+                 ... 
+                 ... length (a) ... (* 10 *) 
+                 ... length (b) ... (* 15 *) 
+ 
+LENGTH 
+     INT OP LENGTH (VECTOR CONST a) 
+     Zweck: Liefert die Anzahl der Elemente von 'a'. 
+ 
+NORM 
+     REAL OP NORM (VECTOR CONST v) 
+     Zweck: Euklidische Norm (Wurzel aus der Summe der Quadrate der Elemente). 
+ 
+put 
+     PROC put (VECTOR CONST v) 
+     Zweck: Ausgabe der Werte der Elemente von 'v' auf dem Terminal. 
+ 
+replace 
+     PROC replace (VECTOR VAR v, INT CONST i, REAL CONST r) 
+     Zweck: Zuweisung des i-ten Elementes von 'v' mit dem Wert von 'r'. 
+            Beispiel: 
+ 
+                 VECTOR VAR v :: ...; 
+                 ... 
+                 replace (v, 13, 3.14); 
+                 (* Das 13. Element von 'v' bekommt den Wert '3.14' *) 
+     Fehlerfälle: 
+          * PROC replace : subscript overflow 
+            Der Index 'i' mit dem Wert 'm' liegt außerhalb des Vektors (i > 
+            LENGTH v). 
+          * PROC replace : subscript underflow 
+            Der Index 'i' mit dem Wert 'm' liegt außerhalb des Vektors 
+            (i < 1). 
+ 
+SUB 
+     REAL OP SUB (VECTOR CONST v, INT CONST i) 
+     Zweck: Liefert das 'i'-te Element von 'v'. 
+     Fehlerfälle: 
+          * OP SUB : subscript overflow 
+            Der Index 'i' mit dem Wert 'm' liegt außerhalb des Vektors (i > 
+            LENGTH v). 
+          * OP SUB : subscript underflow 
+            Der Index 'i' mit dem Wert 'm' liegt außerhalb des Vektors 
+            (i < 1). 
+ 
+vector 
+     INITVECTOR PROC vector (INT CONST l) 
+     Zweck: Erzeugen eines Vektors mit 'l' Elementen. Ein INITVECTOR-Objekt 
+            benötigt nicht soviel Speicherplatz wie ein VECTOR-Objekt. Die 
+            Elemente werden mit dem Wert '0.0' initialisiert. 
+     Fehlerfall: 
+          * PROC vector : size <= 0 
+            Die angeforderte Elementanzahl 'l' muß > 0 sein. 
+ 
+     INITVECTOR PROC vector (INT CONST l, REAL CONST value): 
+     Zweck: Erzeugen eines Vektors mit 'l' Elementen. Ein INITVECTOR-Objekt 
+            benötigt nicht soviel Speicherplatz wie ein VECTOR-Objekt. Die 
+            Elemente werden mit dem Wert 'value' initialisiert. Beispiel: 
+ 
+                 VECTOR VAR v := vector (17, 3.14159); 
+                 (* 'v' hat 17 Elemente mit den Wert '3.14159' *) 
+      Fehlerfall: 
+          * PROC vector : size <= 0 
+            Die angeforderte Elementanzahl 'l' muß > 0 sein. 
+ 
+ 
+ 
+MATRIX 
+ 
+Folgende Operationen stehen für MATRIX zur Verfügung: 
+ 
+matrix           Erzeugung eines MATRIX-Objekts 
+idn              Erzeugung einer Einheitsmatrix 
+put              Ausgabe der MATRIX auf dem Terminal 
+get              Eingabe der Matrix vom Terminal 
+replace row      Ersetzung einer Zeile 
+replace column   Ersetzung einer Spalte 
+replace element  Ersetzung eines Elements 
+row              Liefert einen VECTOR (Zeile einer MATRIX) 
+column           Liefert einen VECTOR (Spalte einer MATRIX) 
+sub              Liefert ein REAL-Elemement 
+COLUMNS          Anzahl Spalten 
+ROWS             Anzahl Zeilen 
+INV              Inverse 
+DET              Determinante 
+TRANSP           Transponierte 
+transp           Transponierte (speicherfreundlich) 
+ + 
+ - 
+ * 
+ := 
+ = 
+ <> 
+ 
+ 
+ 
+Beschreibung der MATRIX-Operationen 
+ 
+Aus Optimierungsgründen (Heapbelastung) wurde der Datentyp INITMATRIX 
+geschaffen. Dieser wird im MATRIX-Paket intern gehalten (wird nicht über das 
+Interface herausgereicht) und kann somit nicht in einer Deklaration benutzt 
+werden. INITMATRIX wird nur für die Operationen 
+ 
+     := 
+     idn 
+     matrix 
+ 
+verwendet. Bei Verwendung eines Objekts vom Datentyp INITMATRIX wird nicht 
+der Speicherplatz für eine MATRIX benötigt. 
+ 
++ 
+     MATRIX OP + (MATRIX CONST m) 
+     Zweck: Monadisches '+'. Keine Auswirkungen. 
+ 
+     MATRIX OP + (MATRIX CONST l, r) 
+     Zweck: Addition zweier Matrizen. Die Anzahl der Reihen und der Spalten 
+            muß gleich sein. Beispiel: 
+ 
+                MATRIX VAR a :: matrix (3, 43, 1.0), 
+                            b :: matrix (3, 43, 2.0), 
+                            summe; 
+                summe := a + b; 
+                (* Alle Elemente haben den Wert '3.0' *) 
+     Fehlerfälle: 
+          * MATRIX OP + : COLUMNS l <> COLUMNS r 
+            Die Anzahl der Spalten von 'l' und 'r' sind nicht gleich. 
+          * MATRIX OP + : ROWS l <> ROWS r 
+            Die Anzahl der Zeilen von 'l' und 'r' sind nicht gleich. 
+ 
+- 
+     MATRIX OP - (MATRIX CONST m) 
+     Zweck: Monadisches Minus. Beispiel: 
+ 
+                 MATRIX VAR a :: matrix (3, 4, 10.0) 
+                 a := - a; (* Alle Elemente haben den Wert '-10.0' *) 
+ 
+     MATRIX OP - (MATRIX CONST l, r) 
+     Zweck: Subtraktion zweier Matrizen. Die Anzahl der Reihen und Spalten 
+            muß gleich sein. 
+     Fehlerfälle: 
+          * MATRIX OP - : COLUMNS l <> COLUMNS r 
+            Die Anzahl der Spalten von 'l' und 'r' sind nicht gleich. 
+          * MATRIX OP - : ROWS l <> ROWS r 
+            Die Anzahl der Zeilen von 'l' und 'r' sind nicht gleich. 
+ 
+* 
+     MATRIX OP * (REAL CONST r, MATRIX CONST m) 
+     Zweck: Multiplikation einer Matrix 'm' mit einem Skalar 'r'. Beispiel: 
+ 
+                 MATRIX VAR a :: matrix (3, 4, 2.0); 
+                 ... 
+                 a := 3 * a; (* Alle Elemente haben den Wert '6.0' *) 
+ 
+     MATRIX OP * (MATRIX CONST m, REAL CONST r) 
+     Zweck: Multiplikation einer Matrix 'm' mit einem Skalar 'r'. 
+ 
+     MATRIX OP * (MATRIX CONST l, r) 
+     Zweck: Multiplikation zweier Matrizen. Die Anzahl der Spalten von 'l' 
+            und die Anzahl der Zeilen von 'r' müssen gleich sein. Beispiel: 
+ 
+                 MATRIX VAR a :: matrix (3, 4, 2.0), 
+                            b :: matrix (4, 2, 3.0), 
+                            produkt; 
+                 produkt := a * b; 
+                 (* Alle Elemente haben den Wert '24.0' *) 
+     Fehlerfall: 
+          * MATRIX OP * : COLUMNS l <> ROWS r 
+            Die Anzahl der Spalten von 'l' muß mit der Anzahl der Zeilen 
+            von 'r' übereinstimmen. 
+ 
+     VECTOR OP * (VECTOR CONST v, MATRIX CONST m) 
+     Zweck: Multiplikation des Vektors 'v' mit der Matrix 'm'. 
+     Fehlerfall: 
+          * VECTOR OP * : LENGTH v <> ROWS m 
+            Die Anzahl der Elemente von 'v' stimmt nicht mit den Anzahl der 
+            Zeilen von 'm' überein. 
+ 
+     VECTOR OP * (MATRIX CONST m, VECTOR CONST v) 
+     Zweck: Multiplikation der Matrix 'm' mit dem Vektor 'v'. 
+     Fehlerfall: 
+          * VECTOR OP * : COLUMNS m <> LENGTH v 
+            Die Anzahl der Spalten von 'm' stimmt nicht mit der Anzahl der 
+            Elementen von 'v' überein. 
+ 
+= 
+     BOOL OP = (MATRIX CONST l, r) 
+     Zweck: Vergleich zweier Matrizen. Der Operator '=' liefert FALSE, wenn 
+            die Anzahl Spalten oder Reihen der Matrizen 'l' und 'r' ungleich 
+            ist und wenn mindestens ein Element mit gleichen Indizes der zwei 
+            Matrizen ungleiche Werte haben. Beispiel: 
+ 
+                 MATRIX VAR a :: matrix (3, 3), 
+                            b :: matrix (3, 3, 1.0), 
+                            c :: matrix (4, 4); 
+                 ... a = b ... 
+                 (* FALSE wegen ungleicher Werte   *) 
+                 ... a = c ... 
+                 (* FALSE wegen ungleicher Groesse *) 
+                 ... b = c ... 
+                 (* FALSE wegen ungleicher Groesse *) 
+ 
+<> 
+     BOOL OP <> (MATRIX CONST l, r) 
+     Zweck: Vergleich der Matrizen 'l' und 'r' auf Ungleichheit. 
+ 
+:= 
+     OP := (MATRIX VAR l, MATRIX CONST r) 
+     Zweck: Zuweisung von 'r' auf 'l'. Die MATRIX 'l' bekommt u.U. eine neue 
+            Anzahl von Elementen. Beispiel: 
+ 
+                 MATRIX VAR a :: matrix (3, 4, 0.0), 
+                            b :: matrix (5, 5, 3.0); 
+                 ... 
+                 a := b; (* 'a' hat jetzt 5 x 5 Elemente *) 
+ 
+     OP := (MATRIX VAR l, INITMATRIX CONST r) 
+     Zweck: Dient zur Initialisierung einer Matrix. Beispiel: 
+ 
+                 MATRIX VAR x :: matrix (17, 4); 
+ 
+            'matrix' erzeugt ein Objekt vom Datentyp INITMATRIX. Dieses 
+            Objekt braucht nicht soviel Speicherplatz wie ein MATRIX-Objekt. 
+            Dadurch wird vermieden, daß nach erfolgter Zuweisung nicht ein 
+            durch 'matrix' erzeugtes Objekt auf dem Heap unnötig Speicher- 
+            platz verbraucht. 
+ 
+column 
+     VECTOR PROC column (MATRIX CONST m, INT CONST i) 
+     Zweck: Die 'i'-te Spalte von 'm' wird als VECTOR mit 'ROWS m' Elementen 
+            geliefert. Beispiel: 
+ 
+                 MATRIX CONST a :: matrix (3, 4); 
+                 VECTOR VAR b   :: column (a, 1); 
+               (* 'b' hat drei Elemente mit den Werten '0.0' *) 
+     Fehlerfälle: 
+          * PROC column : subscript overflow 
+            Der Index 'i' liegt außerhalb der Matrix 'm' (i > COLUMNS m). 
+          * PROC column : subscript underflow 
+            Der Index 'i' liegt außerhalb der Matrix 'm' (i < 1). 
+ 
+COLUMNS 
+     INT OP COLUMNS (MATRIX CONST m) 
+     Zweck: Liefert die Anzahl der Spalten von 'm'. Beispiel: 
+ 
+                 MATRIX VAR a :: matrix (3, 4), 
+                            b :: matrix (7, 10); 
+                 put (COLUMNS a); (* 4 *) 
+                 put (COLUMNS b); (* 10 *) 
+ 
+DET 
+     REAL OP DET (MATRIX CONST m) 
+     Zweck: Es wird der Wert der Determinanten von 'm' geliefert. 
+     Fehlerfall: 
+          * OP DET : no square matrix 
+            Die Matrix ist nicht quadratisch, d.h. ROWS m <> COLUMNS m 
+ 
+get 
+     PROC get (MATRIX VAR m, INT CONST rows, columns) 
+     Zweck: Einlesen von Werten für die Matrix 'm' vom Terminal mit 'rows'- 
+            Zeilen und 'columns'-Spalten. 
+ 
+idn 
+     INITMATRIX PROC idn (INT CONST size) 
+     Zweck: Erzeugen einer Einheitsmatrix vom Datentyp INITMATRIX. Beispiel: 
+ 
+                 MATRIX VAR a :: idn (10); 
+                 (* Erzeugt eine Matrix mit 10 x 10 Elementen, 
+                    deren Werte '0.0' sind, mit der Ausnahme der 
+                    Diagonalelemente, die den Wert '1.0' haben. *) 
+     Fehlerfall: 
+          * PROC idn : size <= 0 
+            Die angeforderte 'size' Anzahl Spalten oder Zeilen muß > 0 sein. 
+ 
+INV 
+     MATRIX OP INV (MATRIX CONST m) 
+     Zweck: Liefert als Ergebnis die Inverse von 'm' (Achtung: starke Run- 
+            dungsfehler möglich). 
+     Fehlerfälle: 
+          * OP INV : no square matrix 
+            Die Matrix 'm' ist nicht quadratisch, d.h. ROWS m <> COLUMNS m 
+          * OP INV : singular matrix 
+            Die Matrix ist singulär. 
+ 
+matrix 
+     INITMATRIX PROC matrix (INT CONST rows, columns) 
+     Zweck: Erzeugen eines Datenobjekts vom Datentyp INITMATRIX mit 'rows' 
+            Zeilen und 'columns' Spalten. Alle Elemente werden mit dem Wert 
+            '0.0' initialisiert. Beispiel: 
+ 
+                MATRIX CONST :: matrix (3, 3); 
+     Fehlerfälle: 
+          * PROC matrix : rows <= 0 
+            Die angeforderte Zeilenanzahl 'rows' muß > 0 sein. 
+          * PROC matrix : columns <= 0 
+            Die angeforderte Spaltenanzahl 'columns' muß > 0 sein. 
+ 
+     INITMATRIX PROC matrix (INT CONST rows, columns, REAL CONST value) 
+     Zweck: Erzeugen eines Datenobjekts vom Datentyp MATRIX mit 'rows' 
+            Zeilen und 'columns' Spalten. Alle Elemente der erzeugten MATRIX 
+            werden mit dem Wert 'value' initialisiert. Beispiel: 
+ 
+                 MATRIX CONST :: matrix (3, 3, 3.14); 
+     Fehlerfälle: 
+          * PROC matrix : rows <= 0 
+            Die angeforderte Zeilenanzahl 'rows' muß > 0 sein. 
+          * PROC matrix : columns <= 0 
+            Die angeforderte Spaltenanzahl 'columns' muß > 0 sein. 
+ 
+put 
+     PROC put (MATRIX CONST m) 
+     Zweck: Ausgabe der Werte einer Matrix auf dem Terminal. 
+ 
+replace column 
+     PROC replace column (MATRIX VAR m, INT CONST column index, 
+                          VECTOR CONST column value) 
+     Zweck: Ersetzung der durch 'column index' definierten Spalte in der 
+            MATRIX 'm' durch den VECTOR 'column value'. Beispiel: 
+ 
+                 MATRIX VAR a :: matrix (3, 5, 1.0); 
+                 VECTOR VAR b :: vector (3, 2.0); 
+                 ... 
+                 replace column (a, 2, b); 
+                 (* Die zweite Spalte von 'a' wird durch die Werte von 'b' 
+                 ersetzt *) 
+     Fehlerfälle: 
+          * PROC replace column : LENGTH columnvalue <> ROWS m 
+            Die Anzahl der Zeilen der MATRIX 'm' stimmt nicht mit der Anzahl 
+            der Elemente von 'columnvalue' überein. 
+          * PROC replace column : column subscript overflow 
+            Der Index 'columnindex' liegt außerhalb von 'm' 
+            (columnindex > COLUMNS m). 
+          * PROC sub : column subscript underflow 
+            Der Index 'columnindex' liegt außerhalb von 'm' 
+            (columnindex < 1). 
+ 
+replace element 
+     PROC replace element (MATRIX VAR m , INT CONST row, column, 
+                           REAL CONST value) 
+     Zweck: Ersetzung eines Elementes von 'm' in der 'row'-ten Zeile und 
+            'column'-ten Spalte durch den Wert 'value'. Beispiel: 
+ 
+                 MATRIX VAR a :: matrix (5, 5); 
+                 ... 
+                 replace element (1, 1, 3.14159); 
+     Fehlerfälle: 
+          * PROC replace element : row subscript overflow 
+            Der Index 'row' liegt außerhalb von 'm' (row > ROWS m). 
+          * PROC replace element : row subscript underflow 
+            Der Index 'row' liegt außerhalb von 'm' (row < 1). 
+          * PROC replace element : column subscript overflow 
+            Der Index 'column' liegt außerhalb von 'm' (column > COLUMNS m). 
+          * PROC replace element : row subscript underflow 
+            Der Index 'column' liegt außerhalb von 'm' (column < 1). 
+ 
+replace row 
+     PROC replace row (MATRIX VAR m, INT CONST rowindex, 
+                       VECTOR CONST rowvalue) 
+     Zweck: Ersetzung der Reihe 'rowindex' in der MATRIX 'm' durch den 
+            VECTOR 'rowvalue'. Beispiel: 
+ 
+                 MATRIX VAR a :: matrix (3, 5, 1.0); 
+                 VECTOR VAR b :: vector (5, 2.0); 
+                 ... 
+                 replace row (a, 2, b); 
+                 (* Die 2. Reihe von 'a' wird durch Werte von 'b' ersetzt *) 
+     Fehlerfälle: 
+          * PROC replace row : LENGTH rowvalue <> COLUMNS m 
+            Die Anzahl der Spalten der MATRIX 'm' stimmt nicht mit der Anzahl 
+            der Elemente von 'rowvalue' überein. 
+          * PROC replace row : row subscript overflow 
+            Der Index 'rowindex' liegt außerhalb von 'm'  (rowindex > ROWS m). 
+          * PROC sub : row subscript underflow 
+            Der Index 'rowindex' liegt außerhalb von 'm' (rowindex < 1). 
+ 
+row 
+     VECTOR PROC row (MATRIX CONST m, INT CONST i) 
+     Zweck: Die 'i'-te Reihe von 'm' wird als VECTOR mit 'COLUMNS m' 
+            Elementen geliefert. Beispiel: 
+ 
+                 MATRIX CONST a :: matrix (3, 4); 
+                 VECTOR VAR b   :: row (a, 1); 
+               (* 'b' hat vier Elemente mit den Werten '0.0'*) 
+     Fehlerfälle: 
+          * PROC row : subscript overflow 
+            Der Index 'i' liegt außerhalb der Matrix 'm' (i > ROWS m). 
+          * PROC row : subscript underflow 
+            Der Index 'i' liegt außerhalb der Matrix 'm' (i < 1). 
+ 
+ROWS 
+     INT OP ROWS (MATRIX CONST m) 
+     Zweck: Liefert die Anzahl der Zeilen von 'm'. Beispiel: 
+ 
+                 MATRIX VAR a :: matrix (3, 4), 
+                            b :: matrix (7, 10); 
+                 ... 
+                 put (ROWS a); (* 3 *) 
+                 put (ROWS b); (* 7 *) 
+ 
+sub 
+     REAL PROC sub (MATRIX CONST m, INT CONST row, column) 
+     Zweck: Liefert den Wert eines Elementes von 'm', welches durch die 
+            Indizes 'row' und 'column' bestimmt wird. Beispiel: 
+ 
+                 MATRIX VAR m :: matrix (5, 10, 1.0); 
+                 put (sub (m, 3, 7)); 
+     Fehlerfälle: 
+          * PROC sub : row subscript overflow 
+            Der Index 'row' liegt außerhalb von 'm' (row > ROWS m). 
+          * PROC sub : row subscript underflow 
+            Der Index 'row' liegt außerhalb von 'm' (row < 1). 
+          * PROC sub : column subscript overflow 
+            Der Index 'column' liegt außerhalb von 'm' (column > ROWS m). 
+          * PROC sub : row subscript underflow 
+            Der Index 'column' liegt außerhalb von 'm' (column < 1). 
+ 
+TRANSP 
+     MATRIX OP TRANSP (MATRIX CONST m) 
+     Zweck: Liefert als Ergebnis die transponierte Matrix 'm'. 
+ 
+transp 
+     PROC transp (MATRIX VAR m) 
+     Zweck: Transponieren der Matrix 'm', wobei kaum zusätzlicher Speicher- 
+            platz benötigt wird. 
+ 
+ 
+ 
+2. COMPLEX 
+ 
+Das COMPLEX-Paket ist im ausgelieferten Standard-System noch nicht vorüber- 
+setzt, sondern wird im Quellcode ausgeliefert und kann so bei Bedarf von 
+jeder EUMEL-Installation in die implementationsabhängigen Standard-Pakete 
+aufgenommen werden. 
+ 
+Folgende Operationen stehen für COMPLEX zur Verfügung: 
+ 
+put             Ausgabe auf dem Terminal 
+get             Eingabe auf dem Terminal 
+complex zero    Denotierungsprozedur 
+complex one     dito 
+complex i       dito 
+complex         dito 
+real part       Realteil eines komplexen Werts 
+imag part       Imaginärteil eines komplexen Werts 
+phi             Winkel in der Polardarstellung (Radiant) 
+dphi            dito, in Winkelgrad 
+CONJ            Konjugiert komplexer Wert 
+sqrt            Wurzelfunktion 
+ + 
+ - 
+ * 
+ / 
+ := 
+ = 
+ <> 
+ 
+ 
+ 
+Beschreibung der COMPLEX-Operationen 
+ 
+= 
+     BOOL OP = (COMPLEX CONST a, b) 
+     Zweck: Vergleich von 'a' und 'b' auf Gleichheit. 
+ 
+:= 
+     OP := (COMPLEX VAR a, COMPLEX CONST b) 
+     Zweck: Zuweisung. 
+ 
+<> 
+     BOOL OP <> (COMPLEX CONST a, b) 
+     Zweck: Vergleich von 'a' und 'b' auf Ungleichheit. 
+ 
++ 
+     COMPLEX OP + (COMPLEX CONST a, b) 
+     Zweck: Summe von 'a' und 'b'. 
+ 
+- 
+     COMPLEX OP - (COMPLEX CONST a, b) 
+     Zweck: Differenz von 'a' und 'b'. 
+ 
+* 
+     COMPLEX OP * (COMPLEX CONST a, b) 
+     Zweck: Multiplikation von 'a' mit 'b'. 
+ 
+/ 
+     COMPLEX OP / (COMPLEX CONST a, b) 
+     Zweck: Division von 'a' mit 'b'. 
+ 
+ABS 
+     REAL OP ABS (COMPLEX CONST x) 
+     Zweck: REAL-Betrag von 'x'. 
+ 
+complex 
+     COMPLEX PROC complex (REAL CONST re, im) 
+     Zweck: Denotierungsprozedur. Angabe in kartesischen Koordinaten. 
+ 
+complex i 
+     COMPLEX PROC complex i 
+     Zweck: Denotierungsprozedur für den komplexen Wert '0.0 + i 1.0'. 
+ 
+complex one 
+     COMPLEX PROC complex one 
+     Zweck: Denotierungsprozedur für den komplexen Wert '1.0 + i 0.0'. 
+ 
+complex zero 
+     COMPLEX PROC complex zero 
+     Zweck: Denotierungsprozedur für den komplexen Wert '0.0 + i 0.0'. 
+ 
+CONJ 
+     COMPLEX OP CONJ (COMPLEX CONST number) 
+     Zweck: Liefert den konjugiert komplexen Wert von 'number'. 
+ 
+dphi 
+     REAL PROC dphi (COMPLEX CONST x) 
+     Zweck: Winkel von 'x' (Polardarstellung). 
+ 
+get 
+     PROC get (COMPLEX VAR a) 
+     Zweck: Einlesen eines komplexen Wertes vom Bildschirm in der Form 
+            zweier REAL-Denoter. Die Eingabe kann editiert werden. 
+ 
+imag part 
+     REAL PROC imag part (COMPLEX CONST number) 
+     Zweck: Liefert den Imaginärteil des komplexen Wertes 'number'. 
+ 
+phi 
+     REAL PROC phi (COMPLEX CONST x) 
+     Zweck: Winkel von 'x' (Polardarstellung) in Radiant. 
+ 
+put 
+     PROC put (COMPLEX CONST a) 
+     Zweck: Ausgabe eines komplexen Wertes auf dem Bildschirm in Form zweier 
+            REAL-Werte. Hinter jedem REAL-Wert wird ein Leerzeichen angefügt. 
+            
+real part 
+     REAL PROC real part (COMPLEX CONST number) 
+     Zweck: Liefert den Real-Teil des komplexen Wertes 'number'. 
+ 
+sqrt 
+     COMPLEX PROC sqrt (COMPLEX CONST x) 
+     Zweck: Wurzelfunktion für komplexe Werte. 
+ 
+ 
+ 
+3. LONGINT 
+ 
+LONGINT ist ein Datentyp, für den (fast) alle Prozeduren und Operatoren des 
+Datentyps INT implementiert wurden. LONGINT unterscheidet sich von INT 
+dadurch, daß erheblich größere Werte darstellbar sind. 
+ 
+Für den Datentyp LONGINT stehen folgende Operationen zur Verfügung: 
+ 
+get              Eingabe vom Terminal 
+put              Ausgabe vom Terminal 
+ABS, abs         Absolutbetrag 
+INCR, DECR       Addition und Zuweisung bzw. Subtraktion und Zuweisung 
+DIV              Division ohne Rest 
+int, text        Konvertierungen 
+longint          dito 
+max, min         Maximum bzw. Minimum zweier LONGINTs 
+MOD              Modulo-Funktion 
+random           Zufallszahlen 
+sign             Vorzeichen 
+ < 
+ > 
+ <= 
+ <> 
+ = 
+ - 
+ + 
+ * 
+ ** 
+ 
+ 
+ 
+Beschreibung der LONGINT-Operationen 
+ 
+< 
+     BOOL OP < (LONGINT CONST left, right) 
+     Zweck: Vergleichen zweier LONGINTs auf kleiner. 
+ 
+> 
+     BOOL OP > (LONGINT CONST left, right) 
+     Zweck: Vergleichen zweier LONGINTs auf größer. 
+ 
+<= 
+     BOOL OP <= (LONGINT CONST left, right) 
+     Zweck: Vergleichen zweier LONGINTs auf kleiner gleich. 
+ 
+>= 
+     BOOL OP >= (LONGINT CONST left, right) 
+     Zweck: Vergleichen zweier LONGINTs auf größer gleich. 
+ 
+<> 
+     BOOL OP <> (LONGINT CONST left, right) 
+     Zweck: Vergleichen zweier LONGINTs auf Ungleichheit. 
+ 
+= 
+     BOOL OP = (LONGINT CONST left, right) 
+     Zweck: Vergleichen zweier LONGINTs auf Gleichheit. 
+ 
+- 
+     LONGINT OP - (LONGINT CONST argument) 
+     Zweck: Vorzeichenumkehrung. 
+ 
+     LONGINT OP - (LONGINT CONST left, right) 
+     Zweck: Subtraktion zweier LONGINTs. 
+ 
++ 
+     LONGINT OP + (LONGINT CONST argument) 
+     Zweck: Monadischer Operator. Ohne Wirkung. 
+ 
+     LONGINT OP + (LONGINT CONST left, right) 
+     Zweck: Addition zweier LONGINTs. 
+ 
+* 
+     LONGINT OP * (LONGINT CONST left, right) 
+     Zweck: Multiplikation von zwei LONGINTs. 
+ 
+** 
+     LONGINT OP ** (LONGINT CONST argument, exponent) 
+     Zweck: Exponentiation zweier LONGINTs mit positivem Exponenten. 
+     Fehlerfälle : 
+          * LONGINT OP ** : negative exponent 
+            Der 'exponent' muß >= 0 sein. 
+          * 0 ** 0 is not defined 
+            'argument' und 'exponent' dürfen nicht gleich 0 sein. 
+ 
+ 
+     LONGINT OP ** (LONGINT CONST argument, INT CONST exponent) 
+     Zweck: Exponentiation eines LONGINT mit positiven INT Exponenten. 
+     Fehlerfälle : 
+          * LONGINT OP ** : negative exponent 
+            Der 'exponent' muß >= 0 sein. 
+          * 0 ** 0 is not defined 
+           'argument' und 'exponent' dürfen nicht gleich 0 sein. 
+ 
+ABS 
+     LONGINT OP ABS (LONGINT CONST argument) 
+     Zweck: Absolutbetrag eines LONGINT. 
+ 
+abs 
+     LONGINT PROC abs (LONGINT CONST argument) 
+     Zweck: Absolutbetrag eines LONGINT. 
+ 
+DECR 
+     OP DECR (LONGINT VAR resultat, LONGINT CONST ab) 
+     Zweck: resultat := resultat - ab 
+ 
+DIV 
+     LONGINT OP DIV (LONGINT CONST left, right) 
+     Zweck: Division zweier LONGINTs. 
+     Fehlerfall : 
+          * divide by zero 
+            'right' muß <> 0 sein. 
+ 
+get 
+     PROC get (LONGINT VAR zahl) 
+     Zweck: Eingabe eines LONGINTs vom Terminal. 
+ 
+     PROC get (FILE VAR file, LONGINT VAR zahl) 
+     Zweck: Einlesen von 'zahl' aus der sequentiellen Datei 'file'. Die 
+            Datei muß mit 'input' assoziiert sein (vergl. 'sequential file'). 
+     Fehlerfälle : 
+          * file not open 
+            Die Datei 'file' ist gegenwärtig nicht assoziiert. 
+          * input after end of file 
+            Es wurde versucht, über die letzte Zeile einer Datei zu lesen. 
+          * input access to output file 
+            Es wurde versucht, von einem mit 'output' assoziierten FILE zu 
+            lesen. 
+ 
+INCR 
+     LONGINT OP INCR (LONGINT VAR resultat, LONGINT CONST dazu) 
+     Zweck: resultat := resultat + dazu 
+ 
+int 
+     INT PROC int (LONGINT CONST longint) 
+     Zweck: Konvertierung von LONGINT nach INT. 
+     Fehlerfall : 
+          * integer overflow 
+            'longint' ist größer als 'maxint'. 
+ 
+longint 
+     LONGINT PROC longint (INT CONST int) 
+     Zweck: Konvertierung von 'int' nach LONGINT. 
+ 
+     LONGINT PROC longint (TEXT CONST text) 
+     Zweck: Konvertierung von 'text' nach LONGINT. 
+ 
+max 
+     LONGINT PROC max (LONGINT CONST left, right) 
+     Zweck: Liefert das Maximum zweier LONGINTs. 
+ 
+min 
+     LONGINT PROC min (LONGINT CONST left, right) 
+     Zweck: Liefert das Minimum zweier LONGINTs. 
+ 
+MOD 
+     LONGINT OP MOD (LONGINT CONST left, right) 
+     Zweck: Modulo-Funktion für LONGINTs. Der Rest einer LONGINT-Division 
+            wird ermittelt. 
+     Fehlerfall : 
+          * text (left) + 'MOD 0' 
+            'right' muß ungleich null sein. 
+ 
+put 
+     PROC put (LONGINT CONST longint) 
+     Zweck: Ausgabe eines LONGINTs auf dem Bildschirm. Anschließend wird 
+            ein Leerzeichen ausgegeben. Hardwareabhängig sind die Aktionen, 
+            wenn eine Ausgabe über die Bildschirmzeilengrenze vorgenommen 
+            wird. Meist wird jedoch die Ausgabe auf der nächsten Zeile fort- 
+            gesetzt. 
+ 
+     PROC put (FILE VAR file, LONGINT CONST zahl) 
+     Zweck: Ausgabe von 'zahl' in die sequentielle Datei 'file'. 'file' muß 
+            mit 'output' assoziiert sein. 
+     Fehlerfälle : 
+          * file not open 
+            Die Datei 'file' ist gegenwärtig nicht assoziiert. 
+          * output access to input file 
+            Es wurde versucht, auf einem mit 'input' assoziierten FILE zu 
+            schreiben. 
+ 
+random 
+     LONGINT PROC random (LONGINT CONST lower bound, upper bound) 
+     Zweck: Pseudo-Zufallszahlen-Generator im Intervall 'lower bound' und 
+            'upper bound' einschließlich. Es handelt sich hier um den 
+            'LONGINT Random Generator'. 
+ 
+SIGN 
+     INT OP SIGN (LONGINT CONST longint) 
+     Zweck: Feststellen des Vorzeichens von 'longint'. Liefert: 
+ 
+                      0 wenn 'longint' = 0, 
+                      1 wenn 'longint' > 0, 
+                     -1 wenn 'longint' < 0. 
+ 
+sign 
+     INT PROC sign (LONGINT CONST longint) 
+     Zweck: Feststellen des Vorzeichens von 'longint'. Liefert: 
+ 
+                      0 wenn 'longitt' = 0, 
+                      1 wenn 'longint' > 0, 
+                     -1 wenn 'longint' < 0. 
+ 
+text 
+     TEXT PROC text (LONGINT CONST longint) 
+     Zweck: Konvertierung von 'longint' nach TEXT. 
+ 
+     TEXT PROC text (LONGINT CONST longint, INT CONST laenge) 
+     Zweck: Konvertierung von 'longint' nach TEXT. Die Anzahl der Zeichen 
+            soll 'laenge' betragen. Für 
+ 
+                LENGTH (text (longint)) < laenge 
+ 
+            werden die Zeichen rechtsbündig in einen Text mit der Länge 
+            'laenge' eingetragen. Ist der daraus entstehende TEXT kleiner 
+            als 'laenge', werden die an 'laenge' fehlenden Zeichen im TEXT 
+            mit Leerzeichen aufgefüllt. Für 
+ 
+                 LENGTH (text (longint)) > length 
+ 
+            wird ein Text mit der Länge 'length' geliefert, der mit 
+            '*'-Zeichen gefüllt ist. 
+

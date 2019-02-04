@@ -1,0 +1,369 @@
+PACKET dos fat DEFINES                      (* Copyright (C) 1985, 86, 87 *)
+                                            (* Frank Klapper              *)
+                                            (* 11.09.87                   *)
+  read fat,
+  write fat,
+  first fat block ok,
+  clear fat ds,
+  format fat,
+
+  fat entry,
+  last fat chain entry,
+  is last fat chain entry,
+  erase fat chain,
+  available fat entry:
+
+  (* Referenz: 4. *)
+
+LET fat size                = 16 384, (* maximal 64 Sektoren a 512 Byte (256 Worte) *)
+    max anzahl fat sektoren = 64;
+
+LET FAT = BOUND STRUCT (ALIGN dummy,
+                        ROW 256 INT block row,      (* für Kopie des 1. Fatsektors *)
+                        ROW fat size INT fat row); 
+
+DATASPACE VAR fat ds;
+INITFLAG  VAR fat ds used := FALSE;
+FAT       VAR fat struktur;
+
+.fat: fat struktur.fat row.
+
+REAL VAR erster moeglicher freier eintrag;
+
+BOOL VAR kleines fat format;
+
+PROC read fat:
+  fat ds initialisieren;
+  fat bloecke lesen;
+  fat format bestimmen;
+  erster moeglicher freier eintrag := 2.0.
+
+fat ds initialisieren:
+  clear fat ds;
+  fat struktur := fat ds.
+
+fat bloecke lesen:
+  LET kein testblock = FALSE;
+  INT VAR block no;
+  FOR block no FROM 0 UPTO fat sectors - 1 REP
+     fat block lesen (block no, kein testblock)
+  PER.
+
+fat format bestimmen:
+  IF fat entrys <= 4086
+    THEN kleines fat format := TRUE
+    ELSE kleines fat format := FALSE
+  FI.
+
+END PROC read fat;
+
+PROC write fat:
+  disable stop;
+  INT VAR block nr;
+  FOR block nr FROM 0 UPTO fat sectors - 1 REP
+    fat block schreiben (block nr)
+  PER.
+
+END PROC write fat;
+
+BOOL PROC first fat block ok:
+  (* überprüft, ob der erste Block der Fat auf Diskette und im Speicher
+     gleich ist                                                        *)
+  enable stop;
+  LET testblock = TRUE;
+  fat block lesen (0, testblock);
+  INT VAR i;
+  FOR i FROM 1 UPTO 256 REP
+    vergleiche woerter
+  PER; 
+  TRUE.
+
+vergleiche woerter:
+  IF fat [i] <> fat struktur.block row [i] 
+    THEN LEAVE first fat block ok WITH FALSE
+  FI. 
+
+END PROC first fat block ok;
+
+PROC clear fat ds:
+  IF initialized (fat ds used)
+    THEN forget (fat ds)
+  FI;
+  fat ds := nilspace.
+
+END PROC clear fat ds;
+
+PROC format fat:
+  fat ds initialisieren;
+  fat format bestimmen;
+  erster moeglicher freier eintrag := 2.0;
+  write first four fat bytes;
+  write other fat bytes;
+  vermerke schreibzugriffe;
+  write fat.
+
+fat ds initialisieren:
+  clear fat ds;
+  fat struktur := fat ds.
+
+fat format bestimmen:
+  IF fat entrys <= 4086
+    THEN kleines fat format := TRUE
+    ELSE kleines fat format := FALSE
+  FI.
+
+write first four fat bytes:
+  fat [1] := word (media descriptor, 255);
+  IF kleines fat format
+    THEN fat [2] := word (255, 0)
+    ELSE fat [2] := word (255, 255)
+  FI.
+
+write other fat bytes:
+  INT VAR i;
+  FOR i FROM 3 UPTO 256 * fat sectors REP
+    fat [i] := 0
+  PER.
+
+vermerke schreibzugriffe:
+  FOR i FROM 0 UPTO fat sectors - 1 REP
+    schreibzugriff (i)
+  PER.
+
+END PROC format fat;
+
+(*-------------------------------------------------------------------------*)
+
+REAL PROC fat entry (REAL CONST real entry no):
+  (* 0 <= entry no <= 22 000 *)
+  INT CONST entry no :: int (real entry no);
+  IF kleines fat format
+    THEN construct 12 bit value
+    ELSE dint (fat [entry no + 1], 0)
+  FI.
+
+construct 12 bit value:
+  INT CONST first byte no := entry no + entry no DIV 2;
+  IF entry no MOD 2 = 0
+    THEN real ((right byte MOD 16) * 256 + left byte)
+    ELSE real (right byte * 16 + left byte DIV 16)
+  FI.
+
+left byte:
+  fat byte (first byte no).
+
+right byte:
+  fat byte (first byte no + 1).
+
+END PROC fat entry;
+
+TEXT VAR convert buffer := "12";
+
+INT PROC fat byte (INT CONST no): 
+  replace (convert buffer, 1, word); 
+  IF even byte no
+    THEN code (convert buffer SUB 1)
+    ELSE code (convert buffer SUB 2)
+  FI. 
+ 
+even byte no:
+  no MOD 2 = 0.
+
+word: 
+  fat [no DIV 2 + 1]. 
+
+END PROC fat byte; 
+ 
+PROC fat entry (REAL CONST real entry no, real value):
+  (* 0 <= entry no <= 22 000 *)
+  INT CONST entry no :: int (real entry no),
+            value    :: low word (real value);
+  IF kleines fat format
+    THEN write 12 bit value
+    ELSE fat [entry no + 1] := value;
+         schreibzugriff (entry no DIV 256)
+  FI;
+  update first possible available entry.
+
+write 12 bit value:
+  INT CONST first byte no :: entry no + entry no DIV 2;
+  schreibzugriff (fat block of first  byte);
+  schreibzugriff (fat block of second byte);
+  write value.
+
+fat block of first byte:
+  first byte no DIV 512.
+
+fat block of second byte:
+  second byte no DIV 512.
+
+write value:
+  IF even entry no
+    THEN write fat byte (first  byte no, value MOD 256);
+         write fat byte (second byte no,
+                        (right byte DIV 16) * 16 + value DIV 256)
+    ELSE write fat byte (first byte no,
+                         (left byte MOD 16) + 16 * (value MOD 16));
+         write fat byte (second byte no, value DIV 16)
+  FI.
+
+even entry no:
+  entry no MOD 2 = 0.
+
+second byte no:
+  first byte no + 1.
+
+left byte:
+  fat byte (first byte no).
+
+right byte:
+  fat byte (second byte no).
+
+update first possible available entry:
+  IF value = 0
+    THEN erster moeglicher freier eintrag :=
+         min (erster moeglicher freier eintrag, real entry no)
+  FI.
+
+END PROC fat entry; 
+
+PROC write fat byte (INT CONST byte no, new value):
+  read old word;
+  change byte;
+  write new word.
+
+read old word: 
+  replace (convert buffer, 1, word).
+
+write new word:
+  word := convert buffer ISUB 1.
+
+word:
+  fat [byte no DIV 2 + 1].
+
+change byte:
+  replace (convert buffer, byte pos, code (new value)).
+
+byte pos:
+  byte no MOD 2 + 1.
+
+END PROC write fat byte;
+
+REAL PROC last fat chain entry:
+  IF kleines fat format
+    THEN  4 088.0
+    ELSE 65 528.0
+  FI.
+
+END PROC last fat chain entry;
+
+BOOL PROC is last fat chain entry (REAL CONST value):
+  value >= last fat chain entry
+
+END PROC is last fat chain entry;
+
+PROC erase fat chain (REAL CONST first entry no):
+  REAL VAR next entry no := first entry no,
+           act  entry no := 0.0;
+  WHILE next entry exists REP
+    act entry no  := next entry no;
+    next entry no := fat entry (act entry no);
+    fat entry (act entry no, 0.0)
+  PER.
+
+next entry exists:
+  NOT is last fat chain entry (next entry no).
+
+END PROC erase fat chain; 
+
+REAL PROC available fat entry:
+  (* da die fat weniger als 22 000 Einträge umfaßt, kann ich diese als
+     INTEGER berechnen                                                   *)
+  INT VAR i;
+  REAL VAR real i := erster moeglicher freier eintrag;
+  FOR i FROM int (erster moeglicher freier eintrag) UPTO fat entrys - 1 REP
+    IF fat entry (real i) = 0.0
+      THEN erster moeglicher freier eintrag := real i;
+           LEAVE available fat entry WITH erster moeglicher freier eintrag
+    FI;
+    real i INCR 1.0
+  PER;
+  close work;
+  error stop ("MS-DOS Datentraeger voll");
+  1.0e99.
+
+END PROC available fat entry;
+
+(*-------------------------------------------------------------------------*)
+
+PROC fat block lesen (INT CONST block nr, BOOL CONST test block):
+  (* 0 <= block nr <= fat sectors - 1 *)
+  disable stop;
+  IF NOT test block
+    THEN kein schreibzugriff (block nr)
+  FI;
+  INT VAR kopie nr;
+  FOR kopie nr FROM 0 UPTO fat copies - 1 REP
+    clear error;
+    read disk block (fat ds, ds seiten nr, disk block nr)
+    UNTIL NOT is error
+  PER;
+  IF is error
+    THEN close work
+  FI.
+
+ds seiten nr:
+  IF test block
+    THEN 2
+    ELSE block nr + 2 + 1
+  FI.
+
+disk block nr:
+  begin of fat (kopie nr) + block nr.
+
+END PROC fat block lesen;
+
+PROC fat block schreiben (INT CONST block nr):
+  IF war schreibzugriff (block nr)
+    THEN wirklich schreiben
+  FI.
+
+wirklich schreiben:
+  disable stop;
+  INT VAR kopie nr;
+  FOR kopie nr FROM 0 UPTO fat copies - 1 REP
+    write disk block and close work if error (fat ds, ds seiten nr, disk block nr)
+  PER;
+  kein schreibzugriff (block nr).
+
+ds seiten nr:
+  block nr + 2 + 1.
+
+disk block nr:
+  begin of fat (kopie nr) + block nr.
+
+END PROC fat block schreiben;
+
+(*-------------------------------------------------------------------------*)
+
+ROW max anzahl fat sektoren BOOL VAR schreib zugriff tabelle;
+
+PROC schreibzugriff (INT CONST fat sektor):
+  schreibzugriff tabelle [fat sektor + 1] := TRUE
+
+END PROC schreibzugriff;
+
+PROC kein schreibzugriff (INT CONST fat sektor):
+  schreibzugriff tabelle [fat sektor + 1] := FALSE
+
+END PROC kein schreibzugriff;
+
+BOOL PROC war schreibzugriff (INT CONST fat sektor):
+  schreibzugriff tabelle [fat sektor + 1]
+
+END PROC war schreibzugriff;
+
+(*-------------------------------------------------------------------------*)
+
+END PACKET dos fat;
+

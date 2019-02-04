@@ -1,0 +1,107 @@
+PACKET eu disk DEFINES                       (* Copyright (C) 1986, 87 *)
+                                             (* Frank Klapper          *)
+                                             (* 05.01.87               *)
+  load shard interface table,
+  open eu disk,
+  eu size,
+  eu heads,
+  eu tracks,
+  eu first sector,
+  eu last sector:
+
+LET table length = 15,
+ 
+    size field         = 1,
+    head field         = 2,
+    track field        = 3,
+    first sector field = 4,
+    last  sector field = 5;
+
+ROW table length ROW 5 INT VAR format table;
+
+INT VAR table top := 0,
+        table pointer;
+
+PROC open eu disk:
+  enable stop;
+  init check rerun;
+  IF hd version
+    THEN LEAVE open eu disk
+  FI;
+  INT CONST blocks := archive blocks;
+  IF blocks <= 0
+    THEN error stop ("keine Diskette eingelegt")
+  FI;
+  search format table entry.
+
+search format table entry:
+  IF table top < 1
+    THEN error stop ("SHard-Interfacetabelle nicht geladen")
+  FI;
+  table pointer := 1;
+  WHILE format table [table pointer][size field] <> blocks REP
+    table pointer INCR 1;
+    IF table pointer > table top
+      THEN error stop ("Diskettenformat nicht implementiert")
+    FI
+  PER.
+
+END PROC open eu disk;
+
+PROC load shard interface table:
+  FILE VAR f := sequential file (input, "shard interface");
+  TEXT VAR line;
+  table top := 0;
+  WHILE NOT eof (f) REP
+    get line (f, line);
+    IF (line SUB 1) <> ";"
+      THEN load line
+    FI
+  PER.
+
+load line:
+  table top INCR 1;
+  IF table top > table length
+    THEN error stop ("Shard Interface Tabelle zu groß")
+  FI;
+  INT VAR blank pos := 1;
+  format table [table top][size field]         := next int;
+  format table [table top][head field]         := next int;
+  format table [table top][track field]        := next int; 
+  format table [table top][first sector field] := next int;
+  format table [table top][last  sector field] := next int.
+
+next int:
+  line := compress (subtext (line, blank pos)) + " ";
+  blank pos := pos (line, " ");
+  int (subtext (line, 1, blank pos - 1)).
+
+END PROC load shard interface table;
+ 
+INT PROC eu size:
+  format table [table pointer][size field]
+
+END PROC eu size;
+
+INT PROC eu heads:
+  format table [table pointer][head field]
+
+END PROC eu heads;
+
+INT PROC eu tracks:
+  format table [table pointer][track field]
+
+END PROC eu tracks;
+
+INT PROC eu first sector:
+  format table [table pointer][first sector field]
+
+END PROC eu first sector;
+
+INT PROC eu last sector:
+  format table [table pointer][last sector field]
+
+END PROC eu last sector;
+
+END PACKET eu disk;
+

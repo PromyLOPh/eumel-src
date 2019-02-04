@@ -1,0 +1,2218 @@
+(************************************************************************)
+(*                                                                      *)
+(*  DDDD   IIIII   SSSS  K  K      3333       666       /  M     M      *)
+(*  D   D    I    S      K K           3     6         /   MM   MM      *)
+(*  D   D    I     SSS   KK         333      6666     /    M M M M      *)
+(*  D   D    I        S  K K           3     6   6   /     M  M  M      *)
+(*  DDDD   IIIII  SSSS   K  K      3333   O   666   /      M     M      *)
+(*                                                                      *)
+(************************************************************************)
+(*                                                                      *)
+(* Diskettenmonitor   Version 3.6 Multi                                 *)
+(*                                                                      *)
+(* Autor : Ingo Siekmann unter freundlicher Mithilfe von Stefan Haase,  *)
+(*                                Nils Ehnert, APu und Frank Lenniger   *)
+(*                                                                      *)
+(* Stand : Montag, den 09. Februar 1987                                 *)
+(*                                                                      *)
+(* Lauffähig ab EUMEL Version 1.8.1 /M in Systemtasks                   *)
+(*                                                                      *)
+(*                                                                      *)
+(* (c) 1987 by ULES c/o Ingo Siekmann & Nils Ehnert                     *)
+(*                                                                      *)
+(************************************************************************)
+(*                                                                      *)
+(* Softwareaenderungen und Softwareneuerungen :                         *)
+(*                                                                      *)
+(* 03.01.1986 3.3.2.8 : Block- Asciieditor ueberarbeitet, neuer Header- *)
+(*                      editor (V1.3), Helpfunktion, gib kommando,      *)
+(*                      Fileaccess auch fuer 16-Files                   *)
+(* 15.01.1986 3.3.2.9 : Vorbereitung fuer den Suchmodus in 3.3.3.0,     *)
+(*                      Notbremse ins globalmenue mit ctrl g, byte ops  *)
+(*                      ueberarbeitet, pic dienste in vorbereitung      *)
+(*                      Headereditor (V1.4)                             *)
+(* 16.01.1986         : halt from terminal --> ctrl g := true           *)
+(* 16.01.1886 3.3.3.0 : Suchmodus ins Blockmenue (TEST), Blockeditor    *)
+(*                      Byteposops fuer Suchmodus einbauen              *)
+(* 21.01.1986         : inchar in get char umgewandelt                  *)
+(* 28.01.1986         : lernmodus eingebaut (???)                       *)
+(* 31.01.1986 3.3.3.1 : Suchmodus und Lernmodus wieder ausgebaut        *)
+(*                      beim Datenraumschreiben nur belegte Bloecke raus*)
+(* 14.02.1986 3.3.3.2 : Fehler Überarbeitet                             *)
+(* 20.02.1986         : Suchmodus vorbereitet (2. Versuch ?)            *)
+(* 06.03.1986 3.3.3.3 : Suchmodus eingebaut (Test)                      *)
+(* 10.03.1986         : Softwaretrennung zwischen Single und Multi      *)
+(* 12.03.1986         : read next block cmd ins blockmenu eingebaut     *)
+(*                      Fehler überarbeitet, Vorbereitung für besseren  *)
+(*                      Suchmodus                                       *)
+(* 17.03.1986 3.3.3.4 : configurator menü -> einstellen von disk type,  *)
+(*                      i/o channel, disk info. TEXT/HEX search.       *)
+(* 02.04.1986         : urflop ops mit versatzops                       *)
+(* 08.04.1986         : urflop menue mit versatz                        *)
+(* 30.04.1986 3.3.3.5 : Fehler ueberarbeitet                            *)
+(* 30.04.1986 3.3.3.6 : lab read/write ins space menue                  *)
+(* 05.05.1986 3.3.3.7 : hex / dez - get für alles, block editor über-   *)
+(*                      arbeitet, fehler überarbeitet. auslieferung für *)
+(*                      HRZ !                                           *)
+(* 06.06.1986 3.4     : Fehler im search und menue monitor behoben      *)
+(* 12.06.1986         : Fehler im Space/Header-Menue behoben            *)
+(* 16.11.1986 3.5     : Fehler im Urflopmenue behoben                   *)
+(* 09.02.1987 3.6     : Doktormenu eingebaut                            *)
+(* 28.04.90   3.7     : Optimierungen CL                                *)
+(*                                                                      *)
+(*       A C H T U N G  : Keine weitere Entwicklung von Version 3 !!    *)
+(*                                                                      *)
+(*            Bielefeld, den 08.02.1987        ULES                     *)
+(*                                                                      *)
+(*                      Ingo Siekmann                                   *)
+(*                                                                      *)
+(* Version disk 3.6/s teilt nur mit, daß es sie nicht gibt !            *)
+(************************************************************************)
+
+PACKET byte operations and disk monitor version 36 multi
+
+       DEFINES  WORD,          { BYTE in WORD umbenannt cl 8.2.89 }
+                CATHEX,        { HEX  in CATHEX                         }
+                CATASCII,      { ASCII in CATASCII  umbenannt cl 28.04.90 }
+                DECRL,
+                DECRH,
+                INCRL,
+                INCRH,
+                :=,
+                -,
+                +,
+                $,
+                hint,
+                zu byte,
+                lower byte,
+                higher byte,
+                set lower byte,
+                set higher byte,
+                nil byte,
+                put,
+                get,
+
+                block in,
+                block out,
+
+                HEADER,
+                header,
+                nil header,
+                is start header,
+                is end header,
+                is file header,
+                name,
+                date,
+                type,
+                pass,
+                header edit,
+
+                show first,
+                show second,
+                block edit,
+                ascii edit,
+
+                set ctrl g,
+                reset ctrl g,
+
+                set channel,
+                read block,
+                write block,
+                seek space,
+                seek block,
+                read space,
+                write space,
+                check archive error,
+
+                space nr,
+                header nr,
+
+                urlader lesen,
+                urlader schreiben,
+                urlader lesen auf seite,
+                urlader schreiben von seite,
+
+                heap lesen,
+                search,
+                io control,
+
+                central disk monitor process :
+
+
+LET start of volume = 1000,
+    end of volume   =    1,
+    file header     =    3;
+
+LET global info line  = "** GLOBAL : b / s / a / c / u / d / q     # stop --> ctrl g, help --> ""?"" **",
+    block info line   = "** BLOCK  : r / w / e / k / s / n / q     # stop --> ctrl g, help --> ""?"" **",
+    search info line  = "** SEARCH : a -> ascii / h -> hex / q -> quit / ctrl g -> stop            **",
+    editor info line  = "** EDITOR : f / s / d / e / k / p / q     # stop --> ctrl g, help --> ""?"" **",
+    space info line   = "** SPACE  : r, R, w, W, e, E, s, l, k, q  # stop --> ctrl g, help --> ""?"" **",
+    space header info = "** SPACE / HEADER : s -> read space / h -> read header / q -> quit        **",
+    archiv info line  = "** ARCHIV : a / r / l / f / s / k / q     # stop --> ctrl g, help --> ""?"" **",
+    urflop info line  = "** URFLOP : r / R / w / W / l / k / q     # stop --> ctrl g, help --> ""?"" **",
+    conf info line    = "** CONFIGURATOR : c / t / i / k / q       # stop --> ctrl g, help --> ""?"" **",
+    doctor info line  = "** DOCTOR : a / e / r / h / k / q         # stop --> ctrl g, help --> ""?"" **",
+    first mon line    = "̊̊̊̊̊̊̊̊̊̊̊̊̊̊̊̊̊̊̊̊̊̊̊̊̊̊̊̊̊̊̊̊̊̊̊̊̊̊̊̊̊̊̊̊̊̊̊̊̊̊̊̊̊̊̊̊̊̊̊̊̊̊̊̊̊̊̊̊̊̊̊̊̊̊̊̊";
+
+LET global chars = "bsacuqk?d"7"",
+    block chars  = "rweqksn?"7"",
+    search chars = "ahdq"7"",
+    editor chars = "fsdeqk?"7"p",
+    space chars  = "rRwWesqEkl?"7"",
+    archiv chars = "arlfsqk?"7"",
+    urflop chars = "rRwWlqk?"7"",
+    conf chars   = "ctikq?"7"",
+    doctor chars = "aerhkq?"7"";
+
+LET info line x pos    =    1,
+    info line y pos    =   20,
+    command line x pos =    1,
+    command line y pos =   21,
+    error line x pos   =    1,
+    error line y pos   =   22,
+
+    file type          = 1003,
+    file type 16       = 1002,
+
+    block 0            =    0,
+
+    std archive channel =  31,
+
+    type mode          =    1,
+    size mode          =    5,
+    std disk type      =    0;
+
+LET software stand      = "Montag, den 09.02.1987",
+    software version    = "Version  3.6 /Multi",
+    software bemerkung  = "Doktormenue eingebaut,",
+    software bemerkung1 = "*** Ende der Entwicklung der Version 3 ! ***";
+
+LET eumel 0 start block        = 10,
+    eumel 0 end block          = 65,
+    eumel 0 end block pic      = 62,
+    eumel 0 end block 1758     = 67,
+
+(*  pic char table start block = 63,
+    pic char table end block   = 65,
+    pic shard start block      =  0,
+    pic shard end block        = 79,  *)
+
+    read write impossible error = 101,
+    read error                  = 102,
+    write error                 = 103,
+    block number error          = 104,
+    undef archive error         = 105;
+
+LET ibm 720 format 5            = 1440,
+    ibm 360 format 5            =  720,
+    pic 400 format 5            = 1600,
+    soft sd 8                   = 1232,
+    soft dd 8                   = 2464,
+    hard ss sd                  =  616,
+    hard ds sd                  = 1232;
+
+LET home                = ""1"",
+    left                = ""8"",
+    right               = ""2"",
+    up                  = ""3"",
+    down                = ""10"",
+    return              = ""13"",
+    tab                 = ""9"",
+    esc                 = ""27"",
+    cl eol              = ""5"",
+    cl eop              = ""4"";
+
+LET hex chars  = "0123456789ABCDEF",
+    hex marker = "h";
+
+LET start pos      = 479,
+    heap page nr   =   2;
+
+TYPE HEADER = STRUCT (TEXT name, date, INT type, TEXT pass);
+TYPE WORD = STRUCT (INT lower byte, higher byte);
+
+HEADER CONST nil header := HEADER : ("", "", 0, "");
+BOUND HEADER VAR bound header;
+BOUND TEXT VAR bound text;
+
+INITFLAG VAR this packet := false;
+
+ROW 256 WORD VAR block;
+ROW 32 TEXT VAR text block;
+ROW 256 INT VAR block int;
+
+DATASPACE VAR ds :: nilspace; forget (ds);
+DATASPACE VAR afds :: nilspace; forget (afds);
+DATASPACE VAR lds :: nilspace; forget (lds);
+DATASPACE VAR uds :: nilspace; forget (uds);
+DATASPACE VAR blkinds :: nilspace; forget (blkinds);
+
+FILE VAR af, f, lf;
+
+INT VAR command index, block nummer, space nummer, x, y, i, i1, xx, yy,
+        archive channel := std archive channel, user channel, error answer,
+        header nummer, first sp block, integer, error, block nr,
+        stpos, s, e, fb, fp, cx, cy, disk type := std disk type, ver, last file;
+
+TEXT VAR tc, t, archive name, dummy,
+         stb1, stb2, own command line;
+
+REAL VAR po;
+
+BOOL VAR first := true, ende, list file ok, block shown, ctrl g, result;
+
+
+(********************** PACKET bytes ok :       ****************************)
+
+WORD PROC nil byte :
+  WORD : (0,0)
+END PROC nil byte;
+
+OP := (WORD VAR byte, WORD CONST old byte) :
+  byte.lower byte  := old byte.lower byte;
+  byte.higher byte := old byte.higher byte.
+END OP :=;
+
+OP := (WORD VAR byte, INT CONST int byte) :
+  byte.lower byte  := int byte MOD 256;
+  byte.higher byte := (int byte AND -256) DIV 256 AND 255.
+END OP :=;
+
+OP := (ROW 256 WORD VAR byte, ROW 256 INT CONST int byte) :
+  INT VAR i;
+  FOR i FROM 1 UPTO 256 REP
+    byte [i] := int byte [i]
+  PER.
+END OP :=;
+
+OP := (ROW 256 INT VAR int byte, ROW 256 WORD CONST byte) :
+  INT VAR i;
+  FOR i FROM 1 UPTO 256 REP
+    int byte [i] := byte [i]
+  PER.
+END OP :=;
+
+WORD OP + (WORD VAR byte, INT CONST int byte) :
+  byte.lower byte := byte.lower byte + lower byte (int byte);
+  byte.higher byte := byte.higher byte + higher byte (int byte);
+  byte.
+END OP +;
+
+WORD OP - (WORD VAR byte, INT CONST int byte) :
+  byte.lower byte := byte.lower byte - lower byte (int byte);
+  byte.higher byte := byte.higher byte - higher byte (int byte);
+  byte.
+END OP -;
+
+OP := (INT VAR int byte, WORD CONST byte) :
+  IF byte.higher byte > 127
+    THEN int byte := minus * 255 + minus + byte.lower byte
+    ELSE int byte := byte.higher byte * 256 + byte.lower byte
+  FI
+
+.minus : byte.higher byte - 256.
+END OP :=;
+
+OP INCRL (WORD VAR byte, INT CONST lower) :
+  byte.lower byte INCR lower
+END OP INCRL;
+
+OP INCRH (WORD VAR byte, INT CONST high) :
+  byte.higher byte INCR high
+END OP INCRH;
+
+OP DECRL (WORD VAR byte, INT CONST lower) :
+  byte.higher byte DECR lower
+END OP DECRL;
+
+OP DECRH (WORD VAR byte, INT CONST high) :
+  byte.higher byte DECR high
+END OP DECRH;
+
+INT PROC lower byte (WORD CONST byte) :
+  byte.lower byte.
+END PROC lower byte;
+
+INT PROC higher byte (WORD CONST byte) :
+  byte.higher byte.
+END PROC higher byte;
+
+INT PROC lower byte (INT CONST int byte) :
+  int byte MOD 256.
+END PROC lower byte;
+
+INT PROC higher byte (INT CONST int byte) :
+  (int byte AND -256) DIV 256 AND 255.
+END PROC higher byte;
+
+PROC set lower byte (WORD VAR byte, INT CONST lower byte) :
+  byte.lower byte := lower byte
+END PROC set lower byte;
+
+PROC set higher byte (WORD VAR byte, INT CONST higher byte) :
+  byte.higher byte := higher byte
+END PROC set higher byte;
+
+OP CATHEX (TEXT VAR insert line, WORD CONST byte) :
+   insert line CAT (hex chars SUB (byte.lower byte  DIV 16 + 1));
+   insert line CAT (hex chars SUB (byte.lower byte  MOD 16 + 1));
+   insert line CAT " ";
+   insert line CAT (hex chars SUB (byte.higher byte DIV 16 + 1));
+   insert line CAT (hex chars SUB (byte.higher byte MOD 16 + 1));
+   insert line CAT " ".
+END OP CATHEX;
+
+OP CATASCII (TEXT VAR insert line, WORD CONST byte) :
+  insert line CAT ascii (byte.lower byte );
+  insert line CAT ascii (byte.higher byte).
+END OP CATASCII;
+
+TEXT PROC ascii (INT CONST half byte) :
+(*IF half byte >  31 AND half byte < 127 COR
+     half byte > 213 AND half byte < 219 COR
+     half byte = 251                             8.2.89 cl  *)
+  IF half byte > 18 CAND half byte < 255
+    THEN code (half byte)
+    ELSE "."
+  FI.
+END PROC ascii;
+
+PROC block in (ROW 256 WORD VAR block bytes, INT CONST type, block nr) :
+  ROW 256 INT VAR block;
+  reset block io;
+  block in (block, type, block nr, error answer);
+  block bytes := block;
+  check archive error (error answer, true).
+END PROC block in;
+
+PROC block out (ROW 256 WORD CONST bytes, INT CONST disk type, block nr) :
+  ROW 256 INT VAR int bytes := bytes;
+  reset block io;
+  block out (int bytes, disk type, block nr, error answer);
+  check archive error (error answer, true).
+END PROC block out;
+
+PROC put (WORD CONST byte) :
+  put ("LOW :");
+  put (text (byte.lower byte));
+  put ("HIGH :");
+  put (text (byte.higher byte))
+END PROC put;
+
+PROC get (WORD VAR byte) :
+  get (integer);
+  byte := integer.
+END PROC get;
+
+PROC zu byte (ROW 256 WORD VAR bytes, TEXT CONST byte kette, INT CONST stelle) :
+  INT VAR lower, higher;
+  lower := pos (hex chars, (byte kette SUB 1)) * 16 +
+           pos (hex chars, (byte kette SUB 2)) - 17;
+  higher:= pos (hex chars, (byte kette SUB 4)) * 16 +
+           pos (hex chars, (byte kette SUB 5)) - 17;
+  IF higher > 127
+    THEN bytes [stelle] := minus * 255 + minus + lower
+    ELSE bytes [stelle] := higher * 256 + lower
+  FI.
+
+minus : higher - 256.
+END PROC zu byte;
+
+WORD OP $ (TEXT CONST hex) :
+    TEXT VAR byte kette :: "";
+    FOR i FROM 1 UPTO 4 REP
+       IF (hex SUB i) = ""
+         THEN byte kette CAT "0"
+       ELIF (hex SUB i) <> " "
+         THEN byte kette CAT (hex SUB i)
+       FI;
+    PER;
+    WORD VAR byte;
+    INT VAR lower, higher, i;
+    lower := pos (hex chars, (byte kette SUB 1)) * 16 +
+             pos (hex chars, (byte kette SUB 2)) - 17;
+    higher:= pos (hex chars, (byte kette SUB 3)) * 16 +
+             pos (hex chars, (byte kette SUB 4)) - 17;
+    IF higher > 127
+      THEN byte := minus * 255 + minus + lower
+      ELSE byte := higher * 256 + lower
+    FI;
+    byte.
+
+minus : higher - 256.
+END OP $;
+
+INT PROC hint (TEXT CONST he) :
+  INT VAR laenge :: length (he),
+          stelle,
+          ziffer,
+          ergebnis :: 0;
+
+  TEXT VAR h :: he;
+
+  FOR stelle FROM 65 UPTO 70 REP
+    change all (h, code (stelle + 32), code (stelle))
+  PER;
+
+  FOR stelle FROM laenge DOWNTO 1 REP
+    ziffer := pos ("0123456789ABCDEF", h SUB stelle) - 1;
+    IF ziffer < 0
+      THEN errorstop ("Unerlaubtes Zeichen in Hexadezimalzahl")
+    FI;
+    ergebnis INCR ziffer * 16 ** (laenge - stelle)
+  PER;
+  ergebnis
+END PROC hint;
+
+
+(********************** PACKET header operations ***************************)
+
+OP := (HEADER VAR dest, HEADER CONST source) :
+    CONCR (dest) := CONCR (source).
+END OP :=;
+
+HEADER PROC header (TEXT CONST name, date, INT CONST type, TEXT CONST pass) :
+    HEADER : (name, date, type, pass).
+END PROC header;
+
+BOOL PROC is start header (HEADER CONST header) :
+    CONCR (header).type = start of volume.
+END PROC is start header;
+
+BOOL PROC is end header (HEADER CONST header) :
+    CONCR (header).type = end of volume.
+END PROC is end header;
+
+BOOL PROC is file header (HEADER CONST header) :
+    CONCR (header).type = file header.
+END PROC is file header;
+
+PROC name (HEADER VAR header, TEXT CONST new name) :
+    CONCR (header).name := new name.
+END PROC name;
+
+TEXT PROC name (HEADER CONST header) :
+    CONCR (header).name.
+END PROC name;
+
+PROC date (HEADER VAR header, TEXT CONST new date) :
+    CONCR (header).date := new date.
+END PROC date;
+
+TEXT PROC date (HEADER CONST header) :
+    CONCR (header).date.
+END PROC date;
+
+PROC type (HEADER VAR header, INT CONST new type) :
+    CONCR (header).type := new type.
+END PROC type;
+
+INT PROC type (HEADER CONST header) :
+    CONCR (header).type.
+END PROC type;
+
+PROC pass (HEADER VAR header, TEXT CONST new pass) :
+    CONCR (header).pass := new pass.
+END PROC pass;
+
+TEXT PROC pass (HEADER CONST header) :
+    CONCR (header).pass.
+END PROC pass;
+
+
+(**********************   Header-Editor V1.4    ****************************)
+
+PROC header edit (HEADER VAR header, TEXT CONST msg) :
+    TEXT VAR head :: ""15"HEADER - EDITOR V1.4" + (25 - LENGTH msg) * "." + msg +
+                     5 * "." + " "14"";
+    disable stop;
+    REP
+      out (home);
+      out (16 * (cl eol + down));
+      cursor (6, 6);
+      putline (head);
+      cursor (6, 7);
+      put (""15"TEXT name : "14"");
+      edit get (CONCR (header).name, max text length, 38);
+      IF is error
+        THEN clear error;
+             CONCR (header).name := "";
+             cursor (6, 7);
+             put (""15"TEXT name : "14"");
+             edit get (CONCR (header).name, max text length, 38)
+      FI;
+      cursor (6, 8);
+      put (""15"TEXT date : "14"");
+      edit get (CONCR (header).date, max text length, 38);
+      IF is error
+        THEN clear error;
+             CONCR (header).date := "";
+             cursor (6, 8);
+             put (""15"TEXT date : "14"");
+             edit get (CONCR (header).date, max text length, 38)
+      FI;
+      cursor (6, 9);
+      put (""15"INT type  : "14"");
+      TEXT VAR d :: text (CONCR (header).type);
+      edit get (d, max text length, 38);
+      CONCR (header).type := int (d);
+      cursor (6, 10);
+      put (""15"TEXT pass : "14"");
+      edit get (CONCR (header).pass, max text length, 38);
+      IF is error
+        THEN clear error;
+             CONCR (header).pass := "";
+             cursor (6, 10);
+             put (""15"TEXT pass : "14"");
+             edit get (CONCR (header).pass, max text length, 38)
+      FI;
+      cursor (6, 13);
+    UNTIL NOT no (""15"header ok. "14"") PER
+END PROC header edit;
+
+
+(********************** PACKET block editor     ****************************)
+
+PROC show first (ROW 256 WORD CONST block) :
+    out (home);
+    po := 1.0;
+    first := true;
+    FOR i FROM 1 UPTO 16 REP
+      text block [i] := text ((i - 1) * 16, 4);
+      text block [i] CAT " � ";
+(*    get cursor (x, y); *)
+      FOR i1 FROM 1 UPTO 8 REP
+         text block [i] CATHEX block [(i-1) * 8 + i1]
+      PER;
+      text block [i] CAT "  �";
+      FOR i1 FROM 1 UPTO 8 REP
+         text block [i] CATASCII block [(i - 1) * 8 + i1]
+      PER;
+      text block [i] CAT "�";
+(*    cursor (x, y);    *)
+      putline (text block [i])
+    PER.
+END PROC show first;
+
+PROC show second (ROW 256 WORD CONST block) :
+    out (home);
+    po := 129.0;
+    first := false;
+    FOR i FROM 17 UPTO 32 REP
+      text block [i] := text ((i - 1) * 16, 4);
+      text block [i] CAT " � ";
+(*    get cursor (x,y);  *)
+      FOR i1 FROM 1 UPTO 8 REP
+         text block [i] CATHEX block [(i - 1) * 8 + i1]
+      PER;
+      text block [i] CAT "  �";
+      FOR i1 FROM 1 UPTO 8 REP
+         text block [i] CATASCII block [(i - 1) * 8 + i1]
+      PER;
+      text block [i] CAT "�";
+(*    cursor (x, y);     *)
+      putline (text block [i])
+    PER.
+END PROC show second;
+
+PROC block edit (ROW 256 WORD VAR block, INT CONST st) :
+    IF st > 0
+      THEN IF st > 255
+             THEN push (255 * right)
+             ELSE push (st * right)
+           FI
+    FI;
+    BOOL VAR low :: TRUE;
+    edit info;
+    cursor (8, 1);
+(*  get cursor (x, y); *)
+    po := 1.0;
+    REP
+      get cursor (x, y);
+      cursor (x, y);
+  (*  inchar (t);  *)
+      get char (t);
+      IF (t = right OR t = " ") AND x < 53
+        THEN cursor (x + 3, y); po INCR 0.5
+      ELIF (t = right OR t = " ") AND  x > 52 AND y < 16
+        THEN cursor (8, y + 1); po INCR 0.5
+      ELIF t = up AND y > 1
+        THEN cursor (x, y - 1); po DECR 8.0
+      ELIF t = left AND x > 8
+        THEN cursor (x - 3, y); po DECR 0.5
+      ELIF t = left AND x = 8 AND y <> 1
+        THEN cursor (53, y - 1); po DECR 0.5
+      ELIF t = down AND y < 16
+        THEN cursor (x, y + 1); po INCR 8.0
+      ELIF t = tab
+        THEN IF first
+               THEN show first (block)
+               ELSE show second (block)
+             FI;
+             ascii edit (block, first);
+             IF first
+               THEN show first (block)
+               ELSE show second (block)
+             FI;
+             IF t <> return
+               THEN edit info;
+                    cursor (8, 1);
+             FI
+      ELIF t = ""7""
+        THEN set ctrl g
+      FI;
+      get cursor (x, y);
+      cursor (x, y);
+      IF code (t) > 47 AND code (t) < 58 OR
+         code (t) > 96 AND code (t) < 103
+        THEN IF code (t) > 96 CAND code (t) < 103
+               THEN t := code (code (t) - 32)
+             FI;
+             out (left + "-" + 2 * right + "-" + 3 * left + t);
+             REP
+           (*  inchar (tc);  *)
+               get char (tc);
+             UNTIL code (tc) > 47 AND code (tc) < 58 OR
+                   code (tc) > 96 AND code (tc) < 103   PER;
+             IF code (tc) > 96 CAND code (tc) < 103
+               THEN tc := code (code (tc) - 32)
+             FI;
+             out (tc + " " + 4 * left + " ");
+             cursor (x, y);
+             t CAT tc;
+             INT VAR bp :: int (po);
+             IF po MOD real (bp) = 0.0
+               THEN low := TRUE
+               ELSE low := FALSE
+             FI;
+             IF NOT first               (* ONE : 17.06.85 *)
+               THEN bp INCR 128
+             FI;
+             IF low
+               THEN set lower byte (block [bp], hint (t))
+               ELSE set higher byte (block [bp], hint (t))
+             FI;
+      FI;
+      info;
+    UNTIL t = return COR ctrl g PER;
+    IF first
+      THEN show first (block)
+      ELSE show second (block)
+    FI;
+    cursor (1, 17).
+
+info :
+  get cursor (x, y);
+  cursor (xx, yy);
+  IF po MOD real (int(po)) = 0.0
+    THEN put ("LOW")
+    ELSE put ("HIGH")
+  FI;
+  cursor (x,y).
+
+edit info :
+  cursor (1, 23);
+  put (cl eol + "Block-Editor : Hexmodus,");
+  IF first
+    THEN put ("First Block")
+    ELSE put ("Second Block")
+  FI;
+  put (",");
+  get cursor (xx, yy).
+END PROC block edit;
+
+PROC ascii edit (ROW 256 WORD VAR block, BOOL CONST first) :
+    edit info;
+    cursor (59, 1);
+    x := 1;
+    y := 1;
+    po := 1.0;
+    REP
+      get char (t);
+      IF po < 1.0 AND first
+        THEN po := 1.0
+      FI;
+      IF po < 129.0 AND NOT first
+        THEN po := 129.0
+      FI;
+      IF po > 128.5 AND first
+        THEN po := 128.5
+      FI;
+      IF po > 256.5 AND NOT first
+        THEN po := 256.5
+      FI;
+      SELECT pos (""9""8""2""3""10""13""7"", t) OF
+        CASE 1, 6 : quit ascii edit
+        CASE 2    : IF x > 1 COR (x = 1 AND y > 1)
+                      THEN x DECR 1; po DECR 0.5
+                    FI
+        CASE 3    : IF x < 16 COR (x = 16 AND y <> 16)
+                      THEN x INCR 1; po INCR 0.5
+                    FI
+        CASE 4    : IF y > 1
+                      THEN y DECR 1;
+                           po DECR 8.0
+                    FI
+        CASE 5    : IF y < 16
+                      THEN y INCR 1;
+                           po INCR 8.0
+                    FI
+        CASE 7    : set ctrl g
+       OTHERWISE IF code (t) >= 32 AND code (t) <= 126
+                   THEN set char; push (""2"")
+                 FI
+      END SELECT;
+      IF x < 1 AND y = 1
+        THEN x := 1
+      ELIF x < 1 AND y > 1
+        THEN x := 16;
+             y DECR 1
+      ELIF x > 16 AND y = 16
+        THEN x := 16;
+      ELIF x > 16 AND y < 16
+        THEN x := 1;
+             y INCR 1
+      ELIF y < 1
+        THEN y := 1
+      ELIF y > 16
+        THEN y := 16
+      FI;
+      info;
+    UNTIL ctrl g PER.
+
+quit ascii edit :
+  x := 8;
+  y := 1;
+  cursor (x, y);
+  po := 1.0;
+  LEAVE ascii edit.
+
+set char :
+  out (t);
+  INT VAR bp :: int (po);
+  IF x MOD 2 = 0
+    THEN set higher byte (block [bp], code (t))
+    ELSE set lower  byte (block [bp], code (t))
+  FI.
+
+info :
+  cursor (xx, yy);
+  IF po MOD real (int (po)) = 0.0
+    THEN put ("LOW")
+    ELSE put ("HIGH")
+  FI;
+  cursor (58 + x, y).
+
+edit info :
+  cursor (1, 23);
+  put (""5"Block-Editor : Asciimodus,");
+  IF first
+    THEN put ("First Block")
+    ELSE put ("Second Block")
+  FI;
+  put (",");
+  get cursor (xx, yy).
+END PROC ascii edit;
+
+
+(********************** PACKET block i/o :      ****************************)
+
+PROC set channel (INT CONST channel) :
+    archive channel := channel.
+END PROC set channel;
+
+PROC read block (ROW 256 WORD VAR block byte, INT CONST block nummer) :
+    user channel := channel;
+    enable stop;
+    continue (archive channel);
+    disable stop;
+    block in (block int, disk type, block nummer, error answer);
+    IF is error
+      THEN clear error
+    FI;
+    break (quiet);
+    continue (user channel);
+    enable stop;
+    check archive error (error answer, true);
+    block byte := block int.
+END PROC read block;
+
+PROC write block (ROW 256 WORD VAR block byte, INT CONST block nummer) :
+    user channel := channel;
+    enable stop;
+    block int := block byte;
+    continue (archive channel);
+    disable stop;
+    block out (block int, disk type, block nummer, error answer);
+    IF is error
+      THEN clear error
+    FI;
+    break (quiet);
+    continue (user channel);
+    enable stop;
+    check archive error (error answer, false).
+END PROC write block;
+
+PROC read block (ROW 256 INT VAR block int, INT CONST block nummer) :
+    user channel := channel;
+    enable stop;
+    continue (archive channel);
+    disable stop;
+    block in (block int, disk type, block nummer, error answer);
+    IF is error
+      THEN clear error
+    FI;
+    break (quiet);
+    continue (user channel);
+    enable stop;
+    check archive error (error answer, true).
+END PROC read block;
+
+PROC write block (ROW 256 INT VAR block int, INT CONST block nummer) :
+    user channel := channel;
+    enable stop;
+    continue (archive channel);
+    disable stop;
+    block out (block int, disk type, block nummer, error answer);
+    IF is error
+      THEN clear error
+    FI;
+    break (quiet);
+    continue (user channel);
+    enable stop;
+    check archive error (error answer, false).
+END PROC write block;
+
+
+(********************** PACKET space i/o :      ****************************)
+
+PROC seek space (INT CONST space) :
+    user channel := channel;
+    enable stop;
+    rewind;
+    INT VAR i;
+    continue (archive channel);
+    disable stop;
+    FOR i FROM 1 UPTO space REP
+      skip dataspace
+    UNTIL is error PER;
+    break (quiet);
+    continue (user channel).
+END PROC seek space;
+
+PROC seek block (INT CONST block nr) :
+    seek (block nr).
+END PROC seek block;
+
+PROC read space (DATASPACE VAR ds) :
+    user channel := channel;
+    enable stop;
+    continue (archive channel);
+    disable stop;
+    read (ds);
+    break (quiet);
+    continue (user channel).
+END PROC read space;
+
+PROC read space (DATASPACE VAR ds, INT VAR max pages,
+                      BOOL CONST errors) :
+    user channel := channel;
+    enable stop;
+    continue (archive channel);
+    disable stop;
+    read (ds, max pages, errors);
+    break (quiet);
+    continue (user channel).
+END PROC read space;
+
+PROC write space (DATASPACE CONST ds) :
+    user channel := channel;
+    enable stop;
+    continue (archive channel);
+    disable stop;
+    write (ds);
+    break (quiet);
+    continue (user channel).
+END PROC write space;
+
+PROC check archive error (INT CONST code, BOOL CONST read) :
+    enable stop;
+    IF read
+      THEN SELECT code OF
+             CASE 0 :
+             CASE 1 : error stop (read write impossible error,
+                                  "Lesen unmoeglich (1)")
+             CASE 2 : error stop (read error,
+                                  "Lesefehler (2)")
+             CASE 3 : error stop (block number error,
+                                  "Blocknummer zu hoch (3)")
+            OTHERWISE error stop (undef archive error,
+                                  "Archivfehler unbekannt ("+ text (code) +")")
+           END SELECT
+      ELSE SELECT code OF
+             CASE 0 :
+             CASE 1 : error stop (read write impossible error,
+                                  "Schreiben unmoeglich (1)")
+             CASE 2 : error stop (write error,
+                                  "Schreibfehler (2)")
+             CASE 3 : error stop (block number error,
+                                  "Blocknummer zu hoch (3)")
+            OTHERWISE error stop (undef archive error,
+                                  "Archivfehler unbekannt ("+ text (code) +")")
+           END SELECT
+    FI.
+END PROC check archive error;
+
+
+(********************** PACKET menue monitor :  ****************************)
+
+PROC fehler behandeln :
+    IF is error CAND error message <> ""
+      THEN IF is halt from terminal
+             THEN set ctrl g
+             ELSE cursor (error line x pos, error line y pos);
+                  clear error;
+                  put (cl eol +"Fehler : "+ error message)
+           FI
+    FI.
+END PROC fehler behandeln;
+
+PROC set ctrl g :
+    ctrl g := true.
+END PROC set ctrl g;
+
+PROC reset ctrl g :
+    ctrl g := false.
+END PROC reset ctrl g;
+
+PROC fehler loeschen :
+    INT VAR x, y;
+    get cursor (x, y);
+    cursor (1, 22);
+    out (cl eol);
+    cursor (1, 18);
+    out (cl eol);
+    cursor (1, 23);
+    out (cl eol);
+    cursor (x, y).
+END PROC fehler loeschen;
+
+
+(**********************     Global-Menue        ****************************)
+
+PROC global menue :
+    ende := false;
+    user channel := channel;
+    disable stop;
+    REP
+      menue monitor (global info line, global chars, command index);
+      fehler loeschen;
+      SELECT command index OF
+        CASE  1 : block menue
+        CASE  2 : space menue
+        CASE  3 : archive menue
+        CASE  4 : configurator menue
+        CASE  5 : urflop menue
+        CASE  6 : out ("uit");ende := true;
+        CASE  7 : get and do one command; block shown := false
+        CASE  8 : global menue help; block shown := false
+        CASE  9 : doctor menue
+        CASE 10 : set ctrl g
+      END SELECT;
+      fehler behandeln;
+    UNTIL ende COR ctrl g PER;
+    reset ctrl g;
+    ende := false.
+END PROC global menue;
+
+PROC doctor menue :
+    DATASPACE VAR head ds := nilspace; forget (head ds);
+    BOUND HEADER VAR head;
+    TEXT VAR new archive name;
+    disable stop;
+    REP
+      menue monitor (doctor info line, doctor chars, command index);
+      fehler loeschen;
+      SELECT command index OF
+        CASE 1 : neuer archiv start header
+        CASE 2 : neuer archiv end header
+        CASE 3 : rette eine datei
+        CASE 4 : heap auslutschen
+        CASE 5 : get and do one command; block shown := false
+        CASE 6 : LEAVE doctor menue
+        CASE 7 : doctor menue help; block shown := false
+        CASE 8 : set ctrl g
+      END SELECT;
+      fehler behandeln;
+    UNTIL ende COR ctrl g PER.
+
+neuer archiv start header :
+  cursor (2, 21);
+  forget (head ds);
+  head ds := nilspace;
+  head := head ds;
+  out ("gib neuen Archivnamen : ");
+  getline (new archive name);
+  head := nil header;
+  name (head, new archive name);
+  type (head, 1000);
+  date (head, "0.0");
+  seek space (0);
+  write space (head ds).
+
+neuer archiv end header :
+  cursor (2, 21);
+  forget (head ds);
+  head ds := nilspace;
+  head := head ds;
+  out ("Nach der wievielten Datei soll das Ende geschrieben werden : ");
+  get (last file);
+  name (head, "");
+  date (head, "");
+  type (head, 1);
+  pass (head, "");
+  cursor (1, 22); out (""5"");
+  IF yes ("Neues Archivende nach der "+ text (last file) +
+          " Datei schreiben")
+    THEN seek space ((last file * 2) + 1);
+         write space (head ds)
+  FI.
+
+rette eine datei :
+  cursor (2, 21);
+  out ("Die wievielte Datei soll gerettet werden : ");
+  get (filenr);
+  seek space (file nr * 2);
+  forget (head ds);
+  head ds := nilspace;
+  read space (head ds);
+  rename file.
+
+rename file :
+  TEXT VAR new name := "";
+  IF type (head ds) = 1003
+    THEN f := sequential file (input, head ds);
+         new name := head line (f);
+         close (f);
+         IF no ("soll die gerettete Datei """+ new name +""" heissen")
+           THEN get command ("gib Dateinamen :", new name)
+         FI;
+    ELSE IF yes ("soll die Datei einen bestimmten Namen bekommen")
+           THEN get command ("gib Dateinamen :", new name)
+         FI
+  FI;
+  copy (head ds, new name).
+
+heap auslutschen :
+  INT VAR h start, h end, file nr;
+  TEXT VAR h dat;
+  cursor (2, 21);
+  out ("Heap lesen ab Block : ");
+  get (h start);
+  cursor (2, 21);
+  out ("Heap lesen ab Block "); put (h start); put ("bis Block :");
+  get (h end);
+  cursor (1, 22);
+  out ("in Datei : ");
+  getline (h dat);
+  cursor (60, 22);
+  out ("Block : ");
+  heap lesen (h start, h end, archive channel, h dat).
+
+END PROC doctor menue;
+
+
+(**********************     Block-Menue         ****************************)
+
+PROC block menue :
+    disable stop;
+    REP
+      menue monitor (block info line, block chars, command index);
+      fehler loeschen;
+      SELECT command index OF
+       CASE 1 : read one block
+       CASE 2 : write one block
+       CASE 3 : edit block menue
+       CASE 4 : LEAVE block menue
+       CASE 5 : get and do one command
+       CASE 6 : search menue
+       CASE 7 : read next block
+       CASE 8 : block menue help; block shown := false
+       CASE 9 : set ctrl g
+     END SELECT;
+     show first three ints;
+     display info line;
+     fehler behandeln
+   UNTIL ctrl g PER.
+
+read one block :
+  out ("ead Block : ");
+  x get (block nummer);
+  IF NOT is error
+    THEN reset block io;
+         read block (block, block nummer)
+  FI;
+  IF NOT is error
+    THEN show first (block); block shown := true
+  FI.
+
+write one block :
+  out ("rite");
+  IF yes ("write auf Block "+ text (block nummer))
+    THEN reset block io;
+         write block (block, block nummer)
+  ELIF yes ("write auf einen anderen Block")
+    THEN out (" auf Block : ");
+         x get (block nummer);
+         IF NOT is error
+           THEN reset block io;
+                write block (block, block nummer)
+         FI
+  FI.
+
+read next block :
+  put (""8"read Block :");
+  block nummer INCR 1;
+  out (text (block nummer));
+  reset block io;
+  read block (block, block nummer);
+  IF NOT is error
+    THEN show first (block); block shown := true
+  FI.
+
+END PROC block menue;
+
+
+(**********************     Search-Menue        ****************************)
+
+PROC search menue :
+    disable stop;
+    menue monitor (search info line, search chars, command index);
+    fehler loeschen;
+    SELECT command index OF
+       CASE 1 : ascii search
+       CASE 2 : hex search
+       CASE 3 : dez search
+       CASE 4 : LEAVE search menue
+       CASE 5 : set ctrl g
+     END SELECT;
+     display info line;
+     fehler behandeln.
+
+ascii search :
+  cursor (command line x pos + 1, command line y pos);
+  put ("Suchtext :"); getline (t);
+  cursor (command line x pos + 1, command line y pos);
+  put ("suchen nach """+ t +""" von Block :");
+  x get (s);
+  cursor (command line x pos + 1, command line y pos);
+  put ("suchen nach """+ t +""" von Block");
+  put (s); put ("bis Block :"); x get (e);
+  search (t, s, e, fb, fp);
+  out (""13"");
+  IF fp > 0
+    THEN put (cl eol +"Gefunden auf Block"); put (fb);
+         put (", Position"); put (fp);
+         read block (block, fb);
+         IF fp < 256
+           THEN show first (block)
+           ELSE show second (block)
+         FI;
+         block shown := true;
+         st pos := (fp MOD 256) - 1;
+         block nummer := fb;
+    ELSE put ("Nicht gefunden !!");
+  FI.
+
+hex search :
+  cursor (command line x pos + 1, command line y pos);
+  put ("Suchhex :"); getline (t);
+  cursor (command line x pos + 1, command line y pos);
+  put ("suchen nach """+ t +""" von Block :");
+  x get (s);
+  cursor (command line x pos + 1, command line y pos);
+  put ("suchen nach """+ t +""" von Block");
+  put (s); put ("bis Block :"); x get (e);
+  change all (t, " ", "");
+  TEXT VAR such hex := "";
+  i := 1;
+  REP
+    such hex CAT code (hint (subtext (t, i, i + 1)));
+    i INCR 2
+  UNTIL i >= length (t) PER;
+  search (such hex, s, e, fb, fp);
+  out (""13"");
+  IF fp > 0
+    THEN put (cl eol +"Gefunden auf Block"); put (fb);
+         put (", Position"); put (fp);
+         read block (block, fb);
+         IF fp < 256
+           THEN show first (block)
+           ELSE show second (block)
+         FI;
+         block shown := true;
+         st pos := (fp MOD 256) - 1;
+         block nummer := fb;
+    ELSE put ("Nicht gefunden !!");
+  FI.
+
+dez search :
+  error stop ("gibt es noch nicht !").
+END PROC search menue;
+
+
+(**********************  Block-Editor-Menue     ****************************)
+
+PROC edit block menue :
+    INT VAR command index;
+    disable stop;
+    REP
+      fehler loeschen;
+      show first three ints;
+      menue monitor (editor info line, editor chars, command index);
+      SELECT command index OF
+        CASE 1 : out ("irst");
+                 show first (block);
+                 block shown := true
+        CASE 2 : out ("econd");
+                 show second (block);
+                 block shown := true
+        CASE 3 : out ("ump");
+                 show first (block); block edit (block, stpos);
+                 show second (block); block edit (block, stpos);
+                 block shown := true;
+        CASE 4 : IF NOT block shown
+                   THEN IF first
+                          THEN show first (block)
+                          ELSE show second (block)
+                        FI;
+                        block shown := true
+                 FI;
+              (* IF first AND stpos >= 256
+                   THEN show second (block);
+                        block shown := true
+                 ELIF NOT first AND stpos <= 256
+                   THEN show first (block);
+                        block shown := true
+                 FI;                            *) (* ??? *)
+                 block edit (block, stpos)
+        CASE 5 : LEAVE edit block menue
+        CASE 6 : get and do one command; block shown := false
+        CASE 7 : block editor menue help;  block shown := false
+        CASE 8 : set ctrl g
+        CASE 9 : INT VAR old st pos := st pos;
+                 out ("os auf Byte : ");
+                 x get (st pos);
+                 IF st pos < 0 OR st pos > 513
+                   THEN st pos := old st pos;
+                        error stop ("Zahl nicht ok")
+                 FI
+      END SELECT;
+      fehler behandeln
+    UNTIL ctrl g PER.
+
+END PROC edit block menue;
+
+
+(**********************     Space-Menue         ****************************)
+
+PROC space menue :
+    disable stop;
+    REP
+      menue monitor (space info line, space chars, command index);
+      fehler loeschen;
+      rewind;
+      SELECT command index OF
+        CASE  1 : read one space
+        CASE  2 : bit map read
+        CASE  3 : write one space
+        CASE  4 : bit map write
+        CASE  5 : edit one space
+        CASE  6 : copy one space
+        CASE  7 : LEAVE space menue
+        CASE  8 : new edit
+        CASE  9 : get and do one command
+        CASE 10 : load one space
+        CASE 11 : space menue help
+        CASE 12 : set ctrl g
+      END SELECT;
+      fehler behandeln;
+      display info line;
+    UNTIL ctrl g PER.
+
+load one space :
+  out ("aden aus Datei : ");
+  getline (dummy);
+  forget (ds);
+  ds := nilspace;
+  ds := old (dummy).
+
+read one space :
+  cursor (info line x pos, info line y pos);
+  out (space header info);
+  cursor (command line x pos + 2, command line y pos);
+  out ("ead ");
+  REP
+    get char (dummy)
+  UNTIL pos ("shq"7"", dummy) > 0 PER;
+  IF dummy = "s"
+    THEN out ("Space : "); read one s
+  ELIF dummy = "h"
+    THEN out ("Header : "); read one h
+  ELIF dummy = ""7""
+    THEN set ctrl g
+  FI.
+
+read one s :
+  x get (space nummer);
+  IF NOT is error
+    THEN seek space (space nummer);
+         first sp block := block number + 1;
+         forget (ds);
+         ds := nilspace;
+         read space (ds)
+  FI.
+
+read one h :
+  x get (header nummer);
+  space nummer := space nr (header nummer);
+  IF NOT is error
+    THEN seek space (space nummer);
+         first sp block := block number + 1;
+         forget (ds);
+         ds := nilspace;
+         read space (ds)
+  FI.
+
+bit map read :
+  out ("ead Space ab Block : ");
+  x get (s);
+  cursor (command line x pos + 1, command line y pos);
+  out ("Read Space ab Block "+ text (s) +" Max. Bloecke : ");
+  x get (e);
+  seek block (s);
+  IF e = 0
+    THEN e := 32000
+  FI;
+  forget (ds);
+  ds := nilspace;
+  IF yes ("bei Lesefehlern abbrechen")
+    THEN read space (ds, e, true)
+    ELSE read space (ds, e, false)
+  FI.
+
+write one space :
+  out ("rite");
+  IF yes ("write auf Space "+ text (space nummer))
+    THEN seek space (space nummer);
+         write space (ds)
+  ELIF yes ("write auf einen anderen Space")
+    THEN out (" auf Space : ");
+         x get (space nummer);
+         IF NOT is error
+           THEN seek space (space nummer);
+                write space (ds)
+         FI
+  FI.
+
+bit map write :
+  out ("rite Space ab Block : ");
+  x get (s);
+  seek block (s);
+  write space (ds).
+
+edit one space :
+  IF type (ds) = file type 16
+    THEN change to 17;
+         f := sequential file (modify, ds);
+         edit (f, 1, 1, x size - 2, 16);
+         block shown := false
+  ELIF type (ds) = file type
+    THEN f := sequential file (modify, ds);
+         edit (f, 1, 1, x size - 2, 16);
+         block shown := false
+  ELIF ds pages (ds) = 1 CAND type (ds) = 0
+    THEN edit header;
+         block shown := false
+  FI.
+
+change to 17 :
+  TEXT VAR t := "";
+  REP
+    t CAT "­"
+  UNTIL NOT exists (t) PER;
+  copy (ds, t);
+  reorganize (t);
+  forget (ds);
+  ds := nilspace;
+  ds := old (t);
+  forget (t, quiet).
+
+copy one space :
+  put ("ave in Datei : ");
+  getline (t);
+  copy (ds, t).
+
+edit header :
+  bound header := ds;
+  cursor (1, 23);
+  out (cl eol +"Header-Editor : ");
+  IF is start header (bound header)
+    THEN out ("Header ist ein Archiv-Startheader.")
+  ELIF is file header (bound header)
+    THEN out ("Header ist ein File-Header.")
+  ELIF is end header (bound header)
+    THEN out ("Header ist ein Archiv-Endheader.")
+    ELSE out ("Header ist unbekannt (Headertype = "+ text (type (bound header)) +").")
+  FI;
+  header edit (bound header, "Headernummer : "+ text (header nr) + " ").
+
+new edit :
+  out (left +"new edit ");
+  block shown := false;
+  IF yes ("Neuen Headerspace erstellen")
+    THEN create new header
+    ELSE create new file
+  FI.
+
+create new header :
+  forget (ds);
+  ds := nilspace;
+  bound header := ds;
+  bound header := nil header;
+  cursor (1, 23);
+  out (cl eol +"Header-Editor : ");
+  put ("Neuen Header erstellen");
+  header edit (bound header, "Neuen Header erstellen").
+
+create new file :
+  forget (ds);
+  ds := nilspace;
+  f := sequential file (modify, ds);
+  edit (f, 1, 1, x size - 2, 16).
+END PROC space menue;
+
+
+(**********************   Configurator-Menu     ****************************)
+
+PROC configurator menue :
+    disable stop;
+    REP
+      display conf info;
+      menue monitor (conf info line, conf chars, command index);
+      fehler loeschen;
+      SELECT command index OF
+        CASE  1 : put ("hannel :"); x get (archive channel);
+        CASE  2 : put (left +"disktype :"); x get (disk type);
+        CASE  3 : disk info
+        CASE  4 : get and do one command
+        CASE  5 : LEAVE configurator menue
+        CASE  6 : conf menue help
+        CASE  7 : set ctrl g
+      END SELECT;
+      fehler behandeln;
+      display info line;
+    UNTIL ctrl g PER.
+
+display conf info :
+  cursor (1, 19);
+  put (cl eol +"I/O Channel :"); put (archive channel); put (",");
+  put ("Disktype :"); put (disk type); put (",");
+  put ("Operatorchannel :"); put (channel);
+  cursor (1, 18);
+  put ("Zeit :"); put (time of day); put (", Datum :"); put (date);
+  INT VAR x size, x used;
+  storage (x size, x used);
+  put (","); put (x used); put ("K von");
+  put (int (real (x size + 24) * 64.0 / 63.0));
+  put ("K sind belegt !").
+
+disk info :
+  INT VAR size, io, error;
+  io control (archive channel, io, size, error);
+  out (home + 16 * (cl eol + down));
+  out (home + down);
+  putline ("Diskinfo :");
+  putline (first mon line);
+  put ("Disksize :"); put (size); put ("Blocks,");
+  put (size DIV 2); put ("kB.");
+  line;
+  put ("Disktype :");
+  IF size = ibm 720 format 5
+    THEN putline ("5 1/4 Zoll, IBM-720 kB Format, 80 Tracks,");
+         putline ("           double sided/double density, softsectored")
+  ELIF size = ibm 360 format 5
+    THEN putline ("5 1/4 Zoll, IBM-360 kB Format, 40 Tracks,");
+         putline ("           single sided/double density, softsectored")
+  ELIF size = pic 400 format 5
+    THEN putline ("5 1/4 Zoll, PIC400 Format, 80 Tracks,");
+         putline ("           double sided/double density, softsectored")
+  ELIF size = soft sd 8
+    THEN putline ("8 Zoll, EUMEL-Format, 77 Tracks,");
+         putline ("           single sided/double density, softsectored")
+  ELIF size = soft dd 8
+    THEN putline ("8 Zoll, EUMEL-Format, 77 Tracks,");
+         putline ("           double sided/double density, softsectored")
+  ELIF size = hard ss sd
+    THEN putline ("8 Zoll, EUMEL-Format, 32 Tracks,");
+         putline ("           single sided/single density, hardsectored")
+  ELIF size = hard ds sd
+    THEN putline ("8 Zoll, EUMEL-Format, 32 Tracks,");
+         putline ("           double sided/single density, hardsectored")
+    ELSE putline ("Unbekannter Disktype"); line
+  FI;
+  putline (first mon line).
+END PROC configurator menue;
+
+
+(**********************   Header/Space Ops.     ****************************)
+
+INT PROC header nr :
+  IF space nummer = 0
+    THEN 0
+    ELSE (space nummer + 1) DIV 2
+  FI.
+END PROC header nr;
+
+INT PROC space nr (INT CONST header nummer) :
+  IF header nummer = 0 COR header nummer = 1
+    THEN header nummer
+    ELSE header nummer * 2 - 1
+  FI
+END PROC space nr;
+
+
+(**********************     Archiv-Menue        ****************************)
+
+PROC archive menue :
+    archive (archive name);
+    disable stop;
+    REP
+      menue monitor (archiv info line, archiv chars, command index);
+      fehler loeschen;
+      SELECT command index OF
+        CASE 1 : archive anmelden
+        CASE 2 : out ("elease (archive)");
+                 release (archive); archivename := ""
+        CASE 3 : out ("ist (archive)");
+                 list archive;
+                 block shown := false
+        CASE 4 : out ("etch (SOME archive, archive)");
+                 fetch (SOME archive, archive);
+                 block shown := false
+        CASE 5 : out ("ave (SOME all, archive)");
+                 save (SOME all, archive);
+                 block shown := false
+        CASE 6 : release (archive);
+                 LEAVE archive menue
+        CASE 7 : get and do one command;
+                 block shown := false
+        CASE 8 : archiv menue help;
+                 block shown := false
+        CASE 9 : set ctrl g
+      END SELECT;
+      fehler behandeln
+    UNTIL ctrl g PER.
+
+archive anmelden :
+  put ("rchivename : ");
+  getline (archivename);
+  archive (archivename).
+
+list archive :
+  IF NOT (list file ok) COR no (""13"Alte Archiveliste zeigen")
+    THEN forget (af ds);
+         af ds := nilspace;
+         af := sequential file (output, af ds);
+         list (af, archive);
+         list file ok := true
+  FI;
+  edit (af, 1, 1, xsize - 2, 16).
+END PROC archive menue;
+
+
+(**********************     Urflop-Menue        ****************************)
+
+PROC urflop menue :
+    INT VAR s, e;
+    disable stop;
+    REP
+      menue monitor (urflop info line, urflop chars, command index);
+      fehler loeschen;
+      SELECT command index OF
+        CASE 1 : read
+        CASE 2 : x read
+        CASE 3 : write
+        CASE 4 : x write
+        CASE 5 : list task;
+                 block shown := false
+        CASE 6 : LEAVE urflop menue
+        CASE 7 : get and do one command;
+                 block shown := false
+        CASE 8 : urflop menue help;
+                 block shown := false
+        CASE 9 : set ctrl g
+      END SELECT;
+      fehler behandeln
+    UNTIL ctrl g PER.
+
+list task :
+  forget (l ds);
+  l ds := nilspace;
+  lf := sequential file (output, l ds);
+  list (lf);
+  edit (lf, 1, 1, xsize - 2, 16).
+
+write :
+  out ("rite Datenraumname : ");
+  getline (t);
+  IF yes ("Urlader schreiben wie gelesen")
+    THEN urlader schreiben (t, eumel 0 start block,
+                               -1)
+  ELIF yes ("Urlader für PIC 400 (Shard 6.xx) schreiben")
+    THEN urlader schreiben (t, eumel 0 start block,
+                               eumel 0 end block pic)
+  ELIF yes ("Urlader für PIC 400 (Shard 7.xx, u. Bicos Masch.) schreiben")
+    THEN urlader schreiben (t, eumel 0 start block,
+                               eumel 0 end block)
+  ELIF yes ("Urlader für PIC 400 (ab Shard 7.13 für EUMEL Ver. 1758) schreiben")
+    THEN urlader schreiben (t, eumel 0 start block,
+                               eumel 0 end block 1758)
+  FI.
+
+x write :
+  out ("rite Datenraumname : ");
+  getline (t);
+  cursor (command line x pos, command line y pos);
+  out (">Write Datenraum """+ t +""" von Block : ");
+  x get (s);
+  cursor (command line x pos, command line y pos);
+  out (">Write Datenraum """+ t +""" von Block "+ text (s) + " bis : ");
+  x get (e);
+  cursor (command line x pos, command line y pos);
+  out (">Write Datenraum """+ t +""" von Block "+ text (s) + " bis"+
+       " Block "+ text (e));
+  IF yes ("mit Versatz")
+    THEN cursor (command line x pos, command line y pos);
+         out (">Write Datenraum """+ t +""" von Block "+ text (s) + " bis"+
+              " Block "+ text (e) +" Versatz : ");
+         x get (ver);
+         cursor (command line x pos, command line y pos);
+         out (">Write Datenraum """+ t +""" von Block "+ text (s) + " bis"+
+              " Block "+ text (e) +" Ver. "+ text (ver) + " --> ");
+         urlader schreiben (t, s, e, ver)
+    ELSE cursor (command line x pos, command line y pos);
+         out (">Write Datenraum """+ t +""" von Block "+ text (s) + " bis"+
+              " Block "+ text (e) +" --> ");
+         urlader schreiben (t, s, e)
+  FI.
+
+read :
+  out ("ead Datenraumname : ");
+  getline (t);
+  IF yes ("Urlader für PIC 400 (Shard 6.xx) lesen")
+    THEN urlader lesen (t, eumel 0 start block,
+                           eumel 0 end block pic)
+  ELIF yes ("Urlader für PIC 400 (Shard 7.xx, u. Bicos Masch.) lesen")
+    THEN urlader lesen (t, eumel 0 start block,
+                           eumel 0 end block)
+  ELIF yes ("Urlader für PIC 400 (Shard 7.xx für EUMEL Ver. 1758) lesen")
+    THEN urlader lesen (t, eumel 0 start block,
+                           eumel 0 end block 1758)
+  FI.
+
+x read :
+  out ("ead Datenraumname : ");
+  getline (t);
+  cursor (command line x pos, command line y pos);
+  out (">Read Datenraum """+ t +""" von Block : ");
+  x get (s);
+  cursor (command line x pos, command line y pos);
+  out (">Read Datenraum """+ t +""" von Block "+ text (s) + " bis : ");
+  x get (e);
+  IF yes ("mit Versatz")
+    THEN cursor (command line x pos, command line y pos);
+         out (">Read Datenraum """+ t +""" von Block "+ text (s) + " bis"+
+              " Block "+ text (e) +" Versatz : ");
+         x get (ver);
+         cursor (command line x pos, command line y pos);
+         out (">Read Datenraum """+ t +""" von Block "+ text (s) + " bis"+
+              " Block "+ text (e) +" Ver. "+ text (ver) + " --> ");
+         urlader lesen (t, s, e, ver)
+    ELSE cursor (command line x pos, command line y pos);
+         out (">Read Datenraum """+ t +""" von Block "+ text (s) + " bis"+
+              " Block "+ text (e) +" --> ");
+         urlader lesen (t, s, e)
+  FI.
+END PROC urflop menue;
+
+
+(**********************  Disk - Monitor Call    ****************************)
+
+PROC central disk monitor process :
+    archive ("disk");
+    release (archive);
+    space nummer := -1;
+    block nummer := -1;
+    header nummer := -1;
+    first sp block := -1;
+    st pos := 0;
+    archive name := "";
+    list file ok := false;
+    block shown := false;
+    reset ctrl g;
+    page;
+    line (3);
+    putline ("D I S K  -  M O N I T O R");
+    putline ("=========================");
+    line;
+    putline ("Autor : Ingo Siekmann");
+    putline ("Stand : "+ software stand);
+    putline (software version);
+    putline ("Bem.  : "+ software bemerkung);
+    putline ("        "+ software bemerkung1);
+    line;
+    putline ("(c) 1986 by ULES c/o Ingo Siekmann & Nils Ehnert");
+    line;
+    initialize if necessary;
+    global menue;
+    line;
+    unblock (archive);
+    IF archive name <> "" CAND NOT ctrl g
+      THEN archive (archive name)
+    FI.
+END PROC central disk monitor process;
+
+
+(**********************     Unterprogramme      ****************************)
+
+THESAURUS OP SOME (THESAURUS CONST thesaurus) :
+    DATASPACE VAR edit space :: nilspace;
+    THESAURUS VAR result := empty thesaurus;
+    FILE VAR file := sequential file (output, edit space);
+    file FILLBY thesaurus;
+    modify (file);
+    edit (file, 1, 1, xsize - 2, 16);
+    input (file);
+    result FILLBY file;
+    forget (edit space);
+    result.
+END OP SOME;
+
+THESAURUS OP SOME (TASK CONST dest task) :
+    SOME ALL dest task.
+END OP SOME;
+
+PROC display info line :
+    INT VAR x, y;
+    get cursor (x, y);
+    cursor (1, 24);
+    put (cl eol +"Block : "); put (block nummer);
+    put (", Space : "); put (space nummer);
+    put (", First Sp Block : "); put (first sp block);
+    put (", Header : "); put (header nummer);
+    cursor (x, y).
+END PROC display info line;
+
+PROC show first three ints :
+  INT VAR i, ih;
+  cursor (1, 18);
+  out (cleol);
+  FOR i FROM 1 UPTO 3 REP
+    out (text (i));
+    put (". INT:");
+    dummy := ""; dummy CATHEX block [i];
+    put (dummy);
+    put ("/");
+    ih := block [i];
+    out (text (ih));
+    out (",  ")
+  PER
+END PROC show first three ints;
+
+PROC x get (INT VAR i) :
+    enable stop;
+    get (dummy);
+    IF (dummy SUB length (dummy)) = hex marker
+      THEN i := hint (text (dummy, length (dummy) - 1))
+      ELSE i := int (dummy)
+    FI;
+    IF NOT last conversion ok
+      THEN error stop ("Zahl ist nicht korrekt")
+    FI.
+END PROC x get;
+
+
+(**********************     Urflop - Ops.       ****************************)
+
+PROC urlader lesen (TEXT CONST urname, INT CONST start, end) :
+    urlader lesen (urname, start, end, 0).
+END PROC urlader lesen;
+
+PROC urlader schreiben (TEXT CONST urname, INT CONST start, end) :
+    urlader schreiben (urname, start, end, 0).
+END PROC urlader schreiben;
+
+PROC urlader lesen auf seite (TEXT CONST urname, INT CONST start, end,
+                                   auf) :
+    urlader lesen (urname, start, end, auf - start).
+END PROC urlader lesen auf seite;
+
+PROC urlader schreiben von seite (TEXT CONST urname, INT CONST start,
+                                       end, von) :
+    urlader schreiben (urname, start, end, von - start).
+END PROC urlader schreiben von seite;
+
+PROC urlader lesen (TEXT CONST urname, INT CONST start, end, ver) :
+    IF exists (urname)
+      THEN error stop (""""+ urname +""" gibt es schon")
+    FI;
+    forget (uds);
+    uds := nilspace;
+    reset block io;
+    reset ctrl g;
+    FOR block nr FROM start UPTO end REP
+      continue (archive channel);
+      disable stop;
+      block in (uds, block nr + ver, disk type, block nr, error);
+      continue (user channel);
+      enable stop;
+      check archive error (error, true);
+      cout (block nr);
+      dummy := incharety;
+      IF dummy = ""7""
+        THEN set ctrl g
+      FI
+    UNTIL dummy = esc COR ctrl g PER;
+    IF NOT ctrl g
+      THEN copy (uds, urname);
+    FI;
+    forget (uds).
+END PROC urlader lesen;
+
+PROC urlader schreiben (TEXT CONST urname, INT CONST start, end, ver) :
+    forget (uds);
+    uds := old (urname);
+    reset ctrl g;
+    reset block io;
+    block nr := start;
+    IF block nr = -1
+      THEN block nr := next ds page (uds, block nr)
+    FI;
+    WHILE block nr <> -1 REP
+      continue (archive channel);
+      disable stop;
+      block out (uds, block nr + ver, disk type, block nr, error);
+      break (quiet);
+      continue (user channel);
+      enable stop;
+      check archive error (error, false);
+      cout (block nr);
+      dummy := incharety;
+      IF dummy = ""7""
+        THEN set ctrl g
+      FI;
+      IF end = -1 COR start = -1
+        THEN block nr := next ds page (uds, block nr)
+      ELIF block nr = end
+        THEN block nr := -1
+        ELSE block nr INCR 1
+      FI
+    UNTIL dummy = esc COR ctrl g PER;
+    forget (uds).
+END PROC urlader schreiben;
+
+
+(**********************     Unterprogramme      ****************************)
+
+PROC reset block io :
+    user channel := channel;
+    INT VAR i, s, e;
+    io control (archive channel, i, s, e);
+    check archive error (e, true).
+END PROC reset block io;
+
+PROC get and do one command :
+    initialize if necessary;
+    cursor (1, 21);
+    out (cl eop);
+    get command ("gib ein EUMEL-Kommando : ", own command line);
+    do (own command line).
+END PROC get and do one command ;
+
+PROC io control (INT VAR io, size, error) :
+    ROW 256 INT VAR block;
+    control (type mode, 0, 0, io);
+    control (size mode, 0, 0, size);
+    block in (block, std disk type, block 0, error).
+END PROC io control;
+
+PROC io control (INT CONST io channel, INT VAR io, size, error) :
+    INT VAR op channel :: channel;
+    continue (io channel);
+    io control (io, size, error);
+    break (quiet);
+    continue (op channel).
+END PROC io control;
+
+
+(**********************    Menue - Help Ops     ****************************)
+
+PROC doctor menue help :
+    out (home + cl eop);
+    line;
+    putline ("Help für das Doktor-Menue : ");
+    line;
+    putline ("a --> Neuen Archivnamen (Archivanfang) schreiben");
+    putline ("e --> Neues Archivende schreiben");
+    line;
+    putline ("r --> Eine Datei von der Archiv-Diskette retten");
+    line;
+    putline ("h --> Heapteil einer Datei auf der Diskette lesen");
+    line;
+    putline ("k --> Möglichkeit, ein EUMEL/ELAN - Kommando zu geben (gib kommando :)");
+    line;
+    putline ("q --> Verlassen des Diskettenmonitors (quit wie im Editor)");
+END PROC doctor menue help;
+
+PROC global menue help :
+    out (home + cl eop);
+    line;
+    putline ("Help für das Global-Menue : ");
+    line;
+    putline ("b --> Aufruf des Block-Menüs (direkter Block i/o)");
+    putline ("s --> Aufruf des Space-Menüs (direkter Space- und Header i/o)");
+    putline ("a --> Aufruf des Archiv-Menüs (normale Archivoperationen)");
+    putline ("u --> Aufruf des Urflop-Menüs (Urlader/Datenraum <-> Floppy)");
+    putline ("c --> Aufruf des Konfigurator-Menüs");
+    putline ("d --> Aufruf des Doktor-Menüs");
+    putline ("k --> Möglichkeit, ein EUMEL/ELAN - Kommando zu geben (gib kommando :)");
+    line;
+    putline ("q --> Verlassen des Diskettenmonitors (quit wie im Editor)");
+END PROC global menue help;
+
+PROC block menue help :
+    out (home + cl eop);
+    line;
+    putline ("Help für das Block-Menü : ");
+    line;
+    putline ("r --> Lesen eines Blockes (block in)");
+    putline ("n --> Lesen des nächsten Blockes");
+    putline ("w --> Schreiben eines Blockes (block out)");
+    line;
+    putline ("s --> Suchen nach einem Text");
+    line;
+    putline ("e --> Aufruf des Blockeditor-Menüs");
+    line;
+    putline ("k --> Möglichkeit, ein EUMEL/ELAN - Kommando zu geben (gib kommando :)");
+    line;
+    putline ("q --> Verlassen des Block-Menüs (Rückkehr ins Global-Menü)");
+END PROC block menue help;
+
+PROC block editor menue help :
+    out (home + cl eop);
+    line;
+    putline ("Help für das Blockeditor-Menü : ");
+    line;
+    putline ("f --> Zeigen der ersten 256 Bytes des aktuellen Blockes");
+    putline ("s --> Zeigen der zweiten 256 Bytes des aktuellen Blockes");
+    line;
+    putline ("e --> Editieren des aktuellen Teilblockes");
+    putline ("d --> Editieren des ersten und zweiten Teilblockes");
+    line;
+    putline ("p --> Position setzen, auf der der Editor beginnen soll");
+    line;
+    putline ("k --> Möglichkeit, ein EUMEL/ELAN - Kommando zu geben (gib kommando :)");
+    line;
+    putline ("q --> Verlassen des Blockeditor-Menüs (Rückkehr ins Block-Menü)");
+END PROC block editor menue help;
+
+PROC space menue help :
+    out (home + cl eop);
+    line;
+    putline ("Help für das Space-Menü : ");
+    line;
+    putline ("r --> Lesen eines Datenraums bzw. eines Headers");
+    putline ("R --> Lesen eines Datenraums ab Block x");
+    putline ("w --> Schreiben eines Datenraums bzw. eines Headers");
+    putline ("W --> Schreiben eines Datenraums ab Block x");
+    line;
+    putline ("e --> Editieren des aktuellen Datenraums (Datei o. Header)");
+    putline ("E --> Editieren einer neuen Datei oder eines Header");
+    line;
+    putline ("s --> Kopieren des aktuellen Datenraums in einen benannten Datenraum");
+    putline ("l --> Kopieren eines benannten Datenraums in den aktuellen Datenraum");
+    line;
+    putline ("k --> Möglichkeit, ein EUMEL/ELAN - Kommando zu geben (gib kommando :)");
+    putline ("q --> Verlassen des Space-Menüs (Rückkehr ins Global-Menü)");
+END PROC space menue help;
+
+PROC archiv menue help :
+    out (home + cl eop);
+    line;
+    putline ("Help für das Archiv-Menü : ");
+    line;
+    putline ("a --> Archiv anmelden");
+    putline ("r --> Archiv abmelden");
+    line;
+    putline ("f --> Einige Dateien vom Archiv in die Task laden");
+    putline ("s --> Einige Dateien der Task auf das Archiv schreiben");
+    putline ("l --> Dateiliste des Archives zeigen");
+    line;
+    putline ("k --> Möglichkeit, ein EUMEL/ELAN - Kommando zu geben (gib kommando :)");
+    line;
+    putline ("q --> Verlassen des Archiv-Menüs (Rückkehr ins Global-Menü)");
+END PROC archiv menue help;
+
+PROC urflop menue help :
+    out (home + cl eop);
+    line;
+    putline ("Help für das Urflop-Menü : ");
+    line;
+    putline ("r --> Lesen der Blöcke 10 bis 62 in einen benannten Datenraum");
+    putline ("R --> Lesen der Blöcke x bis y in einen benannten Datenraum");
+    line;
+    putline ("w --> Schreiben der Blöcke 10 bis 62 aus einem benannten Datenraum");
+    putline ("W --> Schreiben der Blöcke x bis y aus einem benannten Datenraum");
+    line;
+    putline ("l --> Dateiliste der Task zeigen (list)");
+    line;
+    putline ("k --> Möglichkeit, ein EUMEL/ELAN - Kommando zu geben (gib kommando :)");
+    line;
+    putline ("q --> Verlassen des Urflop-Menüs (Rückkehr ins Global-Menü)");
+END PROC urflop menue help;
+
+PROC conf menue help :
+    out (home + cl eop);
+    line;
+    putline ("Help für das Configurator-Menü :");
+    line;
+    putline ("c --> Einstellen des Kanals, auf dem der Block i/o abläuft");
+    putline ("t --> Einstellen des Diskettentypes (EUMEL, CPM etc)");
+    line;
+    putline ("i --> Disketteninfo");
+    line;
+    putline ("k --> Möglichkeit, ein EUMEL/ELAN - Kommando zu geben (gib kommando :)");
+    line;
+    putline ("q --> Verlassen des Konfigurator-Menüs (Rückkehr ins Global-Menü)");
+END PROC conf menue help;
+
+BOOL PROC is halt from terminal :
+    is error CAND error code = 1
+END PROC is halt from terminal;
+
+PROC block in (TEXT VAR block, INT CONST block nr, disk type,
+                    INT VAR error) :
+    initialize if necessary;
+    block in (blkinds, heap page nr, disk type, block nr, error);
+    block := subtext (bound text, start pos, LENGTH bound text);
+END PROC block in;
+
+PROC initialize if necessary :
+    IF NOT initialized (this packet)
+      THEN forget (blkinds);
+           blkinds := nilspace;
+           bound text := blkinds;
+           bound text := (start pos + 511) * " ";
+           own command line := "";
+           archive channel := std archive channel;
+           disk type := std disk type
+    FI.
+END PROC initialize if necessary;
+
+BOOL PROC yes (TEXT CONST msg) :
+    get cursor (cx, cy);
+    cursor (command line x pos + 1, command line y pos + 1);
+    result := NOT no (msg);
+    cursor (cx, cy);
+    result.
+END PROC yes;
+(*
+INT OP $ (TEXT CONST hex) :
+    INT VAR laenge := length (hex), stelle, ziffer, ergebnis := 0;
+    FOR stelle FROM laenge DOWNTO 1 REP
+      ziffer := pos ("0123456789ABCDEF", hex SUB stelle) - 1;
+      IF ziffer < 0
+        THEN error stop ("Ist keine Hexzahl")
+      FI;
+      ergebnis INCR ziffer * 16 ** (laenge - stelle)
+    PER;
+    ergebnis.
+END OP $;
+*)
+PROC search (TEXT CONST st, INT CONST start block, end block,
+                  INT VAR fbnr, fpos) :
+    enable stop;
+    INT CONST l := LENGTH st - 1;
+    reset ctrl g;
+    reset block io;
+    FOR fbnr FROM start block UPTO end block REP
+      cout (fbnr);
+      continue (archive channel);
+      block in (stb1, fbnr, disk type, error);
+      IF error = 0
+        THEN block in (stb2, fbnr + 1, disk type, error)
+      FI;
+      break (quiet);
+      continue (user channel);
+      check archive error (error, true);
+      stb1 CAT text (stb2, l);
+    UNTIL pos (stb1, st) > 0 COR incharety = ""27"" PER;
+    fpos := pos (stb1, st)
+END PROC search;
+
+PROC heap lesen (INT CONST start block, end block, channel nr,
+                      TEXT CONST output filename) :
+
+    FILE VAR f;
+    ROW 256 INT VAR block;
+    INT VAR i, j;
+    TEXT VAR t;
+    IF exists (output filename)
+      THEN error stop (""""+ output filename +""" gibt es schon")
+    FI;
+    f := sequential file (output, output filename);
+    max line length (f, 100);
+    t := "";
+    reset ctrl g;
+    set channel (channel nr);
+    FOR i FROM start block UPTO end block REP
+      c out (i);
+      read block (block, i);
+      j := 1;
+      REP
+        IF lower byte (block [j]) = 255 COR higher byte (block [j]) = 255
+          THEN putline (f, t);
+               t := ""; hihi;
+               j INCR 1
+        FI;
+        IF j < 257
+          THEN IF lower byte (block [j]) = 220 COR
+                  lower byte (block [j]) = 221
+                 THEN t CAT code (lower byte (block [j]))
+                 ELSE t CAT ascii (lower byte (block [j]));
+               FI;
+               IF higher byte (block [j]) = 220 COR
+                  higher byte (block [j]) = 221
+                 THEN t CAT code (higher byte (block [j]))
+                 ELSE t CAT ascii (higher byte (block [j]));
+               FI
+        FI;
+        j INCR 1;
+      UNTIL j >= 255 PER;
+    UNTIL incharety = ""27"" PER.
+
+hihi :
+  REP
+    j INCR 1;
+    IF j > 256
+     THEN LEAVE hihi
+    FI
+  UNTIL lower byte (block [j]) <> 255 CAND
+        higher byte (block [j]) <> 255 PER.
+
+END PROC heap lesen;
+
+END PACKET byte operations and disk monitor version 36 multi;
+

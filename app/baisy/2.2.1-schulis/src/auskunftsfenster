@@ -1,0 +1,126 @@
+PACKET auskunftsfensterDEFINES WINDOW ,:=,=,shrink,grow,open,startwindow,
+auskunfterteilung,encode,subtext,textschonmalzeigen:LET zeilenlimit=200,#
+maxauskfeld=6,##editorfenster=78,#eol="�",stop="�",hop="�",#cr="",#up="�",
+down="
+",esc="�",right="�",left="�";#escape=27,frage="?",halt="h",vor="+",
+zurueck="-",cleol="�";#LET cshrink=45,cgrow=43;TYPE WINDOW =STRUCT (INT lux,
+luy,rox,roy);BOOL VAR fuereditor:=FALSE ;BOOL OP =(WINDOW CONST v,w):((v.lux=
+w.lux)AND (v.luy=w.luy))AND ((v.rox=w.rox)AND (v.roy=w.roy))END OP =;OP :=(
+WINDOW VAR v,WINDOW CONST w):CONCR (v):=CONCR (w)END OP :=;WINDOW PROC 
+startwindow(INT CONST u,v,w,x):WINDOW :(u,v,w,x)END PROC startwindow;PROC 
+grow(WINDOW VAR w):INT VAR nx1,ny1,nx2,ny2;IF (w.lux)<=2THEN nx1:=w.lux;ELSE 
+nx1:=w.lux-2FI ;IF (w.rox)>=77THEN nx2:=w.rox;ELSE nx2:=w.rox+2FI ;IF (w.luy)
+=24THEN ny1:=w.luy;ELSE ny1:=w.luy+1FI ;IF (w.roy)=1THEN ny2:=w.roy;ELSE ny2
+:=w.roy-1FI ;WINDOW VAR v:=WINDOW :(nx1,ny1,nx2,ny2);w:=vEND PROC grow;PROC 
+shrink(WINDOW VAR w):INT VAR nx1,ny1,nx2,ny2;IF (w.roy+3)>=w.luyTHEN ny1:=w.
+luy;ny2:=w.roy;ELSE ny1:=w.luy-1;ny2:=w.roy+1;FI ;IF (w.lux+7)>=w.roxTHEN nx1
+:=w.lux;nx2:=w.roxELSE nx1:=w.lux+2;nx2:=w.rox-2FI ;WINDOW VAR v:=WINDOW :(
+nx1,ny1,nx2,ny2);erase(w);loeschespalte(w.rox-1,w);loeschespalte(w.lux+1,w);
+loeschespalte(w.rox+1,w);w:=vEND PROC shrink;PROC erase(WINDOW CONST w):
+loeschespalte(w.lux,w);loeschespalte(w.rox+2,w);loeschezeile(w.roy,w);
+loeschezeile(w.luy,w);END PROC erase;PROC open(WINDOW CONST w):INT VAR x1:=w.
+lux,y1:=w.luy,x2:=w.rox,y2:=w.roy;oeffnefenster(x1,y1,x2,y2)END PROC open;
+PROC unterlegung(INT CONST i,j):TEXT VAR grund;IF fuereditorTHEN cursor(j,i);
+grund:=(editorunterlegung(i)SUB j);IF grund=""THEN grund:=" "FI ;out(grund)
+ELSE reorganizescreen(i,j,j)FI END PROC unterlegung;PROC loeschespalte(INT 
+CONST col,WINDOW CONST w):INT VAR from,to;from:=w.roy;to:=w.luy;INT VAR i;
+FOR iFROM fromUPTO toREP unterlegung(i,col)PER END PROC loeschespalte;PROC 
+loeschezeile(INT CONST row,WINDOW CONST w):INT VAR from,to,lg,geslg;from:=w.
+lux;to:=w.rox;IF fuereditorTHEN cursor(from,row);TEXT CONST grund:=subtext(
+editorunterlegung(row),from,to+1);lg:=to-from+2;geslg:=length(grund);IF geslg
+<lgTHEN out(text(grund,lg))ELSE out(grund)FI ELSE reorganizescreen(row,from,
+to+1)FI END PROC loeschezeile;BOOL VAR nurschau:=FALSE ;PROC 
+textschonmalzeigen(TEXT CONST t,WINDOW VAR w,BOOL CONST editorwunsch):TEXT 
+VAR ausk:=t;nurschau:=TRUE ;auskunfterteilung(ausk,w,editorwunsch);nurschau:=
+FALSE END PROC textschonmalzeigen;PROC auskunfterteilung(TEXT VAR auskunft,
+WINDOW CONST v,BOOL CONST editorwunsch):initialisiere;
+auskunfterteilunganbenutzer;liefereevtlgewaehltenzeilenausschnitt.
+auskunfterteilunganbenutzer:REP warteaufreaktion;IF NOT nochinteresseTHEN 
+LEAVE auskunfterteilunganbenutzerFI ;zeigefensterPER .zeigefenster:
+bestimmeneuecursorposition;IF ausbereichgeratenTHEN bauefensterneuaufFI .
+bauefensterneuauf:IF seitenwechselCAND (interesse=down)THEN IF bottom>=lTHEN 
+LEAVE zeigefensterFI ;ELIF (interesse=down)THEN IF (bottom>=l)THEN LEAVE 
+zeigefensterFI ;seitenanfang:=aktuellezeile-zeilenzahl+2;zeigersetzen;ELSE 
+initialisiereseiteneu;IF seitenwechselCAND (interesse=up)THEN IF seitenanfang
+=1THEN LEAVE zeigefensterFI ;seitenanfang:=max(1,seitenanfang-zeilenzahl);
+zeigersetzenELIF (interesse=up)THEN IF seitenanfang=1THEN LEAVE zeigefenster
+FI ;seitenanfang:=seitenanfang-1;zeigersetzenELIF (interesse=hop)THEN 
+seitenanfang:=1;zeigersetzenELSE bereitefenstervor;zeigersetzenFI ;FI ;
+trageinfensterein;.initialisiereseiteneu:seitenanfang:=aktuellezeile-
+zeilenzahl+1.trageinfensterein:FOR iFROM 1UPTO zeilenzahlREP formatierezeile;
+schreibzeileinfensterPER ;cursor(posx,posy).zeigersetzen:bottom:=
+zeilenanfaenge(seitenanfang);aktuellezeile:=seitenanfang-1.initialisiere:
+WINDOW VAR w:=v;BOOL VAR ausbereichgeraten;INT VAR bottom:=1,top:=1,
+seitenanfang:=1;INT VAR aktuellezeile:=0;ROW zeilenlimitINT VAR 
+zeilenanfaenge;INT VAR i;BOOL VAR seitenwechsel:=TRUE ;TEXT VAR interesse:=
+down;INT VAR posy:=w.roy+1;INT VAR posx:=w.lux+3;fuereditor:=editorwunsch;
+bereitefenstervor;trageinfensterein;IF nurschauTHEN LEAVE auskunfterteilung
+FI .bestimmeneuecursorposition:cursor(w,interesse,seitenwechsel,posx,posy,
+ausbereichgeraten).bereitefenstervor:INT VAR x1:=w.lux,y1:=w.luy,x2:=w.rox,y2
+:=w.roy;INT CONST zeilenzahl:=y1-y2-1,spaltenzahl:=x2-x1-5;INT CONST l:=
+length(auskunft);TEXT CONST blankzeile:=spaltenzahl*" ";limito:=w.roy+1;
+limitu:=w.luy-1;limitr:=w.rox-2;limitl:=w.lux+3;.nochinteresse:(interesse<>
+esc).warteaufreaktion:seitenwechsel:=FALSE ;inchar(interesse);evtlschieben;
+IF geschobenTHEN open(w)FI ;IF hopbeginnTHEN seitenwechsel:=TRUE ;REP inchar(
+interesse)UNTIL erlaubtCOR hopbeginnPER ;FI .evtlschieben:BOOL VAR geschoben
+:=FALSE ;REP SELECT code(interesse)OF CASE cshrink:shrink(w)CASE cgrow:grow(w
+)OTHERWISE LEAVE evtlschiebenEND SELECT ;interesse:=incharety(2);geschoben:=
+TRUE PER .erlaubt:(interesse=up)COR (interesse=down)COR (interesse=left)COR (
+interesse=right).hopbeginn:interesse=hop.
+liefereevtlgewaehltenzeilenausschnitt:berechnezeilenincrement;IF NOT amanfang
+THEN berechnerelativzeile;TEXT VAR einkopiertext:=subtext(zeile,1,
+zeilenincrement);IF editorwunschTHEN type(einkopiertext)ELSE 
+inaktuellesmaskenfeld(einkopiertext)FI ELSE inaktuellesmaskenfeld("")FI .
+berechnezeilenincrement:INT VAR zeilenincrement:=posx-limitl;.amanfang:
+zeilenincrement=0.berechnerelativzeile:INT VAR relativzeile:=posy-limito+1;
+initialisiereseiteneu;zeigersetzen;FOR iFROM 1UPTO relativzeileREP 
+formatierezeilePER ;zeile:=text(zeile,spaltenzahl).formatierezeile:TEXT VAR 
+zeile:="";IF NOT blankbeabsichtigtTHEN bottomsuchenFI ;IF bottom>=lTHEN zeile
+:=blankzeileELSE top:=min(bottom+spaltenzahl-1,l);zeile:=subtext(auskunft,
+bottom,top,eol,stop,TRUE );topINCR 1FI ;aktuellezeileINCR 1;zeilenanfaenge(
+aktuellezeile):=bottom;bottom:=top.blankbeabsichtigt:subtext(auskunft,bottom-
+1,bottom-1)=stop.bottomsuchen:TEXT VAR bottomvergleich;WHILE (bottom<=l)REP 
+bottomvergleich:=subtext(auskunft,bottom,bottom);IF (bottomvergleich=" ")COR 
+(bottomvergleich=eol)THEN bottomINCR 1ELSE LEAVE bottomsuchenFI PER .
+schreibzeileinfenster:zeile:=text(zeile,spaltenzahl);cursor(x1+3,y2+i);out(
+zeile).END PROC auskunfterteilung;INT VAR limito,limitu,limitr,limitl;PROC 
+cursor(WINDOW CONST w,TEXT CONST interesse,BOOL CONST seitenwechsel,INT VAR 
+posx,posy,BOOL VAR ausbereichgeraten):limitssetzen;neueposition.limitssetzen:
+limito:=w.roy+1;limitu:=w.luy-1;limitr:=w.rox-2;limitl:=w.lux+3;
+ausbereichgeraten:=FALSE .neueposition:IF seitenwechselTHEN IF (interesse=
+left)THEN anzeilenanfangELSE IF (interesse=right)THEN anzeilenendeELSE IF (
+interesse=down)THEN eineseitevorELSE IF (interesse=up)THEN eineseitezurueck
+FI FI FI FI ELSE IF interesse=leftTHEN nachlinksELSE IF interesse=rightTHEN 
+nachrechtsELSE IF (interesse=down)THEN einezeilenachuntenELSE IF (interesse=
+up)THEN einezeilenachobenELSE cursornachlo;ausbereichgeraten:=TRUE FI FI FI 
+FI FI ;cursor(posx,posy).nachlinks:IF posx>limitlTHEN posxDECR 1FI .
+nachrechts:IF posx<limitrTHEN posxINCR 1FI .anzeilenanfang:posx:=limitl.
+anzeilenende:posx:=limitr.einezeilenachunten:IF posy<limituTHEN posyINCR 1
+ELSE cursornachlu;ausbereichgeraten:=TRUE FI .einezeilenachoben:IF posy>
+limitoTHEN posyDECR 1ELSE cursornachlo;ausbereichgeraten:=TRUE FI .
+eineseitevor:IF posy<limituTHEN posy:=limituELSE cursornachlu;
+ausbereichgeraten:=TRUE FI .eineseitezurueck:IF posy>limitoTHEN posy:=limito
+ELSE cursornachlo;ausbereichgeraten:=TRUE FI .cursornachlo:posx:=limitl;posy
+:=limito.cursornachlu:posx:=limitl;posy:=limitu.END PROC cursor;TEXT PROC 
+encode(TEXT CONST t):INT CONST max:=length(t);TEXT CONST vergleich:=subtext(t
+,max,max);IF vergleich=" "THEN subtext(t,1,max-1)+stopELSE t+eolFI END PROC 
+encode;TEXT PROC subtext(TEXT VAR auskunft,INT CONST bottom,INT VAR top,TEXT 
+CONST loe,TEXT CONST stp,BOOL CONST infenster):LET b=" ";TEXT VAR oberster;
+INT VAR lastblank;INT VAR i;TEXT VAR t,vergleich;konstruieret;t.konstruieret:
+FOR iFROM bottomUPTO topREP vergleich:=subtext(auskunft,i,i);IF vergleich=loe
+THEN IF NOT infensterTHEN t:=subtext(auskunft,bottom,i-1);top:=i;LEAVE 
+konstruieretFI ;replace(auskunft,i,b);lastblank:=iELIF vergleich=stpTHEN t:=
+subtext(auskunft,bottom,i-1);IF NOT infensterTHEN t:=t+bFI ;top:=i;LEAVE 
+konstruieretELIF vergleich=bTHEN lastblank:=iFI ;PER ;oberster:=subtext(
+auskunft,top+1,top+1);IF (lastblank<>top)CAND ((oberster<>b)CAND (oberster<>
+loe)CAND (oberster<>stp))THEN top:=lastblankFI ;t:=subtext(auskunft,bottom,
+top).END PROC subtext;PROC oeffnefenster(INT VAR x1,y1,x2,y2):
+zeichnegrundseite;zeichnezwischenlinien;zeichneunterseite.zeichnegrundseite:
+ermittlegrundkoordinaten;malepunkte.ermittlegrundkoordinaten:INT VAR x,y;x:=
+x1;y:=y2.malepunkte:INT VAR fensterbreite;fensterbreite:=x2-x1-1;cursor(x,y);
+out("");fensterbreite+2TIMESOUT " ";out("�").zeichnezwischenlinien:INT VAR 
+j,fensterlaenge;fensterbreiteDECR 2;fensterlaenge:=y1-y2;FOR jFROM 1UPTO 
+fensterlaenge-1REP yINCR 1;cursor(x,y);out(sp);fensterbreiteTIMESOUT " ";out(
+ep);PER .sp:" ".ep:" �".zeichneunterseite:yINCR 1;cursor(x,y);malepunkte.
+END PROC oeffnefenster;END PACKET auskunftsfenster
+

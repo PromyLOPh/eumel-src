@@ -1,0 +1,381 @@
+PACKET operator DEFINES                       (* Autor: Thomas Berlage *)
+                                              (* Stand: 15.01.88       *)
+  operator : 
+ 
+ 
+ 
+LET
+  p neuer taskname =  #2001#
+    "Weitermachen in Bereich:",
+  p name vater =  #2002#
+    "Unter welchem Vater:",
+  t bereich =  #2003#
+    ""15"Bereich "14"",
+  t datum =  #2004#
+    ""15"Datum "14"",
+  f ganz abkoppeln =  #2005#
+    "Arbeitsbereich ganz abkoppeln",
+  f arbeitsbereich neu einrichten =  #2006#
+    "Arbeitsbereich existiert nicht. Neu einrichten",
+  f trotzdem abschalten =  #2007#
+    "Nicht auf Terminal 1. Trotzdem abschalten",
+  kb von =  #2008#
+    " KB von ",
+  sind belegt =  #2009#
+    " KB sind belegt.",
+  p taskname =  #2010#
+    "Name des Arbeitsbereichs:",
+  existiert nicht als task =  #2011#
+    " ist kein Name eines Bereiches",
+  t loeschen =  #2012#
+    " löschen",
+  t speicher =  #2013#
+    "Speicher:",
+  t cpu zeit =  #2014#
+    " KB      CPU-Zeit : ",
+  t zustand =  #2015#
+    "Zustand :  ",
+  t prio =  #2016#
+    "      Priorität: ",
+  t kanal =  #2017#
+    "      Kanal: ",
+  t busy =  #2018#
+    "Arbeit",
+  t io =  #2019#
+    "EinAus",
+  t wait =  #2020#
+    "Warten",
+  t busy blocked =  #2021#
+    "B(Arb)",
+  t io blocked =  #2022#
+    "B(E/A)",
+  t wait blocked =  #2023#
+    "B(Wrt)",
+  t dead =  #2024#
+    ">>TOT<",
+  t gestoppt =  #2025#
+    "Druckertreiber gestoppt.",
+  t gestartet =  #2026#
+    "Druckertreiber gestartet.",
+  t angehalten =  #2027#
+    "Druckertreiber angehalten.",
+  f auf anhalten warten =  #2028#
+    "Auf Anhalten des Treibers warten",
+  t drucker =  #2029#
+    ""15"Drucker "14"",
+  p neuer printer =  #2030#
+    "Welche Druckertask soll eingestellt werden:",
+  t bitte warten =  #2031#
+    "Bitte warten .. ";
+
+
+FENSTER VAR links, rechts;
+fenster initialisieren (links);;
+fenstergroesse setzen (links, 1, 2, 16, 22);
+fenster initialisieren (rechts);
+fenstergroesse setzen (rechts, 17, 2, 63, 22);
+dialogfenster (rechts);
+
+TEXT VAR
+  druckertask := "PRINTER";
+
+
+PROC operator : 
+ 
+  TASK VAR letzte task;
+  TEXT VAR neuer name := "";
+  continue (niltask); 
+  REP 
+    letzte task := continued from;
+    page; bildschirm neu;
+    disable stop;
+    operatormenue; 
+    umschalten auf letzte task
+  END REP .
+
+operatormenue :
+  menue anbieten (ROW 6 TEXT :
+    ("OPERATOR.Abschalten", "OPERATOR.Systemzustand", "OPERATOR.Drucker",
+     "OPERATOR.Netz", "OPERATOR.Konfiguration", ""),
+     links, TRUE, PROC (INT CONST, INT CONST) op interpreter) .
+
+umschalten auf letzte task :
+  BOOL VAR first try;
+  IF exists (letzte task) CAND NOT (letzte task = supervisor) THEN
+    first try := TRUE;
+    continue (letzte task)
+  ELSE
+    first try := FALSE
+  END IF;
+  IF is error OR NOT first try THEN
+    REP
+      IF is error THEN fehler ausgeben END IF;
+      nach neuer task fragen;
+      zurueck in task
+    UNTIL NOT is error END REP
+  END IF .
+
+nach neuer task fragen :
+  REP
+    editget (p neuer taskname, neuer name, "", "GET/neuer taskname");
+  UNTIL taskname akzeptiert END REP .
+
+taskname akzeptiert :
+  IF neuer name = "" THEN
+    ganz abkoppeln
+  ELSE
+    exists task (neuer name) COR neu einrichten
+  END IF .
+
+zurueck in task :
+  IF neuer name = "" THEN
+    continue (niltask)
+  ELIF exists task (neuer name) THEN
+    continue (task (neuer name))
+  ELSE
+    TEXT VAR vater := "";
+    editget (p name vater, vater, "", "GET/name vatertask");
+    begin (neuer name, vater);
+    continue (task (neuer name))
+  END IF .
+
+ganz abkoppeln :
+  ja (f ganz abkoppeln, "JA/ganz") .
+
+neu einrichten :
+  ja (f arbeitsbereich neu einrichten, "JA/task einrichten") .
+
+END PROC operator;
+
+PROC op interpreter (INT CONST menue nr, f nr) :
+
+  enable stop;
+  SELECT menuenr OF
+  CASE 0 : sperren setzen
+  CASE 1 : abschalten inter
+  CASE 2 : systemzustand inter
+  CASE 3 : drucker inter
+  CASE 4 : netz inter
+  CASE 5 : konfiguration inter
+  END SELECT;
+  IF f nr = -1 THEN dialogfenster loeschen END IF .
+
+sperren setzen :
+  fusszeile (t bereich, "", 35, t datum, 64);
+  fussteil (1, name (myself));
+  fussteil (3, date) .
+
+abschalten inter :
+  SELECT f nr OF
+  CASE 1 : abschalten
+  CASE 2 : (* nach DOS *) ni
+  CASE 3 : page; bildschirm neu; set date; dialogfenster loeschen
+  CASE 4 : page; bildschirm neu; save system
+  END SELECT .
+
+abschalten :
+  IF channel = 1 COR trotzdem abschalten THEN
+    page;
+    cursor (20, 11); out (t bitte warten);
+    cursor (20, 13);
+    shutup;
+    fenster veraendert (links);
+    push (""27"q")
+  END IF .
+
+trotzdem abschalten :
+  ja (f trotzdem abschalten, "JA/trotz shutup") .
+
+systemzustand inter :
+  SELECT f nr OF
+  CASE 1 : bereichsuebersicht
+  CASE 2 : speicherbelegung
+  CASE 3 : fremder taskstatus
+  CASE 4 : zustandsuebersicht
+  CASE 5 : task loeschen
+  END SELECT .
+
+bereichsuebersicht :
+  bitte warten;
+  disable stop;
+  DATASPACE VAR list ds := nilspace;
+  FILE VAR f := sequential file (output, list ds);
+  task info (1, f);
+  IF NOT is error THEN
+    show (f); bildschirm neu
+  END IF;
+  forget (list ds);
+  enable stop;
+  dialogfenster loeschen .
+
+speicherbelegung :
+  INT VAR size, used;
+  storage (size, used);
+  size := int (real (size + 24) * 64.0 / 63.0);
+  dialog (text (used) + kb von + text (size) + sind belegt) .
+
+fremder taskstatus :
+  TEXT VAR taskname := "";
+  editget (p taskname, taskname, "GET/Taskname", "");
+  TASK VAR status task := task (task name);
+  IF exists (status task) THEN
+    task zustand (status task)
+  ELSE
+    errorstop ("""" + taskname + """" + existiert nicht als task)
+  END IF .
+
+zustandsuebersicht :
+  bitte warten; task info (3); bildschirm neu; dialogfenster loeschen .
+
+task loeschen :
+  taskname := "";
+  editget (p taskname, taskname, "GET/Taskname", "");
+  IF ja ("""" + taskname + """" + t loeschen,
+         "JA/Task loeschen", FALSE) THEN
+    end (task (taskname))
+  END IF . 
+ 
+drucker inter :
+  SELECT f nr OF
+  CASE 0 : druckertask in fuss
+  CASE 1 : start (task (druckertask)); dialog (t gestartet)
+  CASE 2 : stop (task (druckertask)); dialog (t gestoppt)
+  CASE 3 : halt kommando
+  CASE 4 : list (task (druckertask)); bildschirm neu; dialogfenster loeschen
+  CASE 5 : first (task (druckertask))
+  CASE 6 : killer (task (druckertask))
+  CASE 7 : druckertask setzen
+  OTHERWISE ggf druckertask aus fuss
+  END SELECT .
+
+druckertask in fuss :
+  fussteil (2, t drucker, druckertask) .
+
+halt kommando :
+  IF ja (f auf anhalten warten, "JA/halt warten", FALSE) THEN
+    wait for halt (task (druckertask))
+  ELSE
+    halt (task (druckertask))
+  END IF;
+  dialog (t angehalten) .
+
+druckertask setzen :
+  TEXT VAR neuer printer := druckertask;
+  editget (p neuer printer, neuer printer, "", "GET/neuer printer");
+  TASK CONST dummy := task (neuer printer);
+  druckertask := neuer printer;
+  fussteil (2, druckertask) .
+
+ggf druckertask aus fuss :
+  IF f nr = -1 THEN
+    fussteil (2, "", "")
+  END IF .
+
+netz inter :
+  SELECT f nr OF
+  CASE 1 : (* start *) ni
+  CASE 2 : (* stop *) ni
+  CASE 3 : (* zustand *) ni
+  CASE 4 : (* list (net.io) *) ni
+  END SELECT .
+
+konfiguration inter :
+  SELECT f nr OF
+  CASE 1 : konfigurieren
+  CASE 2 : (* drucker installieren *) ni
+  CASE 3 : (* netz installieren *) ni
+  CASE 4 : (* anwendung installieren *) ni
+  CASE 5 : (* systemprogramm installieren *) ni
+  END SELECT .
+
+konfigurieren :
+  THESAURUS VAR conf := ALL /"configurator";
+  page; bildschirm neu;
+  forget quiet (conf);
+  fetch (conf, /"configurator");
+  configurate;
+  line;
+  save ("configuration", /"configurator");
+  forget quiet (conf);
+  dialogfenster loeschen .
+
+END PROC op interpreter;
+
+PROC task zustand (TASK CONST status task) :
+
+  dialog (t speicher + speicher + t cpu zeit + cpu zeit);
+  out (t zustand); out status; out (t prio); out prio;
+  out (t kanal); out kanal .
+
+speicher :
+  text (storage (status task), 5) .
+
+cpu zeit :
+  disable stop;
+  TEXT VAR result := subtext (time (clock (status task), 12), 1, 10);
+  IF is error THEN
+    clear error; result := "**********"
+  END IF;
+  result .
+
+out status :
+  SELECT status (status task) OF
+  CASE 0 : out (t busy)
+  CASE 1 : out (t io)
+  CASE 2 : out (t wait)
+  CASE 4 : out (t busy blocked)
+  CASE 5 : out (t io blocked)
+  CASE 6 : out (t wait blocked)
+  OTHERWISE out (t dead)
+  END SELECT .
+
+out prio :
+  out (text (pcb (status task, 6))) .
+
+out kanal :
+  IF channel (status task) = 0 THEN
+    out (" -")
+  ELSE
+    out (text (channel (status task), 2))
+  END IF .
+
+END PROC task zustand;
+
+PROC forget quiet (TEXT CONST datei) :
+  forget (datei, quiet)
+END PROC forget quiet;
+
+PROC forget quiet (THESAURUS CONST t) :
+  do (PROC (TEXT CONST) forget quiet, t)
+END PROC forget quiet;
+
+PROC bitte warten :
+
+  cursor (1, 1);
+  out (t bitte warten);
+  out (""5"")
+
+END PROC bitte warten;
+
+PROC ni :
+
+  dialog ("Zur Zeit nicht implementiert.")
+
+END PROC ni;
+
+END PACKET operator;
+
+PACKET operator monitor
+
+  DEFINES
+
+  monitor :
+
+
+PROC monitor :
+  disable stop;
+  operator
+END PROC monitor;
+
+END PACKET operator monitor;
+

@@ -1,0 +1,265 @@
+(* -------------------   STAND :        23.10.85 --------------------*)
+PACKET integer DEFINES text, int, MOD,
+                       sign, SIGN, abs, ABS, **, min, max, minint, maxint,
+                       random, initialize random ,
+                       last conversion ok, set conversion :
+ 
+INT PROC minint : -32767 - 1 ENDPROC minint ;
+
+INT PROC maxint : 32767 ENDPROC maxint ;
+ 
+ 
+TEXT PROC text (INT CONST number) : 
+ 
+  IF   number =  minint THEN "-32768"
+  ELIF number <  0      THEN "-" + text(-number) 
+  ELIF number <= 9      THEN code (number + 48) 
+                        ELSE text (number DIV 10) + digit 
+  FI . 
+ 
+digit : 
+  code ( number MOD 10 + 48 ) . 
+ 
+ENDPROC text ;
+ 
+TEXT PROC text (INT CONST number, length) : 
+ 
+  TEXT VAR result := text (number) ;
+  INT CONST number length := LENGTH result ;
+  IF number length < length 
+    THEN (length - number length) * " " + result 
+  ELIF number length > length 
+    THEN length * "*" 
+  ELSE   result 
+  FI 
+ 
+ENDPROC text ;
+ 
+INT PROC int (TEXT CONST number) : 
+ 
+  skip blanks and sign ;
+  get value ;
+  result . 
+ 
+skip blanks and sign : 
+  BOOL VAR number is positive ;
+  INT VAR pos := 1 ;
+  skip blanks ;
+  IF (number SUB pos) = "-"
+    THEN number is positive := FALSE ;
+         pos INCR 1
+  ELIF (number SUB pos) = "+"
+    THEN number is positive := TRUE ;
+         pos INCR 1
+  ELSE   number is positive := TRUE
+  FI . 
+ 
+get value : 
+  INT VAR value ;
+  get first digit ;
+  WHILE is digit REP 
+    value := value * 10 + digit ; 
+    pos INCR 1 
+  PER ;
+  set conversion ok result .
+
+get first digit :
+  IF is digit
+    THEN value := digit ;
+         pos INCR 1
+    ELSE set conversion (FALSE) ;
+         LEAVE int WITH 0
+  FI .
+ 
+is digit : 0 <= digit AND digit <= 9 . 
+ 
+digit : code (number SUB pos) - 48 .
+ 
+result : 
+  IF number is positive
+    THEN   value 
+    ELSE - value 
+  FI .
+ 
+set conversion ok result :
+  skip blanks ;
+  conversion ok := (pos > LENGTH number) .
+ 
+skip blanks :
+  WHILE (number SUB pos) = " " REP
+    pos INCR 1
+  PER .
+ 
+ENDPROC int ;
+ 
+INT OP MOD (INT CONST left, right) : 
+ 
+  EXTERNAL 43
+ 
+ENDOP MOD ;
+
+INT PROC sign (INT CONST argument) : 
+ 
+  IF argument < 0 THEN -1 
+  ELIF argument > 0 THEN 1 
+  ELSE 0 
+  FI 
+ 
+ENDPROC sign ; 
+ 
+INT OP SIGN (INT CONST argument) : 
+  sign (argument) 
+ENDOP SIGN ;
+ 
+INT PROC abs (INT CONST argument) : 
+ 
+  IF argument > 0 THEN argument 
+  ELSE - argument 
+  FI 
+ 
+ENDPROC abs ;
+ 
+INT OP ABS (INT CONST argument) : 
+  abs (argument) 
+ENDOP ABS ;
+ 
+INT OP ** (INT CONST arg, exp) : 
+ 
+  INT VAR x := arg , z := 1 ,
+          counter := exp ;
+ 
+  IF exp = 0 
+    THEN LEAVE ** WITH 1
+  ELIF exp < 0
+    THEN LEAVE ** WITH 1 DIV arg
+  FI ;
+ 
+  WHILE counter >= 2 REP 
+    calculate new x and z ;
+    counter := counter DIV 2 ;
+  ENDREP ;
+  z * x . 
+ 
+calculate new x and z : 
+  IF counter is not even 
+    THEN z := z * x 
+  FI ;
+  x := x * x . 
+ 
+counter is not even : 
+  counter MOD 2 = 1 . 
+ 
+ENDOP ** ;
+ 
+INT PROC min (INT CONST first, second) : 
+ 
+  IF first < second THEN first ELSE second FI 
+ 
+ENDPROC min ;
+ 
+INT PROC max (INT CONST first, second) : 
+ 
+  IF first > second THEN first ELSE second FI 
+ 
+ENDPROC max ; 
+ 
+ 
+ 
+BOOL VAR conversion ok := TRUE ;
+ 
+BOOL PROC last conversion ok :
+  conversion ok
+ENDPROC last conversion ok ;
+ 
+PROC set conversion (BOOL CONST success) :
+  conversion ok := success
+ENDPROC set conversion ;
+ 
+ 
+ 
+(*******************************************************************)
+(*                                                                 *)
+(*                                        Autor: A. Flammenkamp    *)
+(*       RANDOM GENERATOR                                          *)
+(*                                                                 *)
+(*                         x    :=  4095 * x  MOD (4095*4096+4093) *)
+(*                          n+1             n                      *)
+(*                                                                 *)
+(*                         Periode: 2**24-4  >  16.0e6             *)
+(*                                                                 *)
+(*       Beachte:  x = 4096 * x1 + x0,  0 <= x0,x1 < 4096          *)
+(*                                                                 *)
+(*******************************************************************)
+
+
+INT VAR high := 1, low := 0 ;
+
+PROC initialize random (INT CONST start) :
+
+  low := start MOD 4096 ;
+  IF start < 0
+    THEN high := 256 + 16 + start DIV 4096 ;
+         IF low <> 0 THEN high DECR 1 FI
+    ELSE high := 256 + start DIV 4096
+  FI
+
+ENDPROC initialize random ;
+
+INT PROC random (INT CONST lower bound, upper bound) :
+
+  compute new random value ;
+  normalize high ;
+  normalize low ;
+  map into interval .
+
+compute new random value :
+  (*  (high,low) := (low-high , 3*high-low) *)
+  high := low - high ;
+  low INCR low - 3 * high .
+
+normalize high :
+  IF high < 0
+    THEN high INCR 4096 ; low DECR 3
+  FI .
+
+normalize low :
+  (*  high INCR low DIV 4096 ;
+      low := low MOD 4096
+  *)
+  IF low >= 4096 THEN low overflow
+  ELIF low < 0   THEN low underflow
+  FI .
+
+low overflow :
+  IF low >= 8192
+    THEN low DECR 8192 ; high INCR 2
+    ELSE low DECR 4096 ; high INCR 1 ; post normalization
+  FI .
+
+post normalization :
+  (*  IF (high,low) >= (4095,4093)
+        THEN (high,low) DECR (4095,4093)
+      FI
+  *)
+  IF high >= 4095
+    THEN IF    low >= 4093 THEN high DECR 4095 ; low DECR 4093
+         ELIF high  = 4096 THEN high := 0      ; low INCR 3
+         FI
+  FI .
+
+low underflow :
+  low INCR 4096 ; high DECR 1 .
+
+map into interval :
+  INT VAR number := high MOD 16 - 8 ;
+  number INCR 4095 * number + low ;
+  IF lower bound <= upper bound
+    THEN lower bound + number MOD (upper bound - lower bound + 1)
+    ELSE upper bound + number MOD (lower bound - upper bound + 1)
+  FI .
+
+ENDPROC random ;
+
+
+ENDPACKET integer ;
+

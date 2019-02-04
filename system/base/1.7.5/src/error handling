@@ -1,0 +1,142 @@
+
+PACKET error handling DEFINES
+ 
+    enable stop ,
+    disable stop ,
+    is error ,
+    clear error ,
+    errormessage ,
+    error code ,
+    error line ,
+    put error ,
+    errorstop ,
+    stop :
+ 
+ 
+LET cr lf            = ""13""10"" ,
+    line nr field    = 1 ,
+    error line field = 2 ,
+    error code field = 3 ,
+    syntax error code= 100 ,
+
+    error pre        = ""7""13""10""5"FEHLER : " ;
+
+
+TEXT VAR errortext := "" ;
+ 
+ 
+PROC enable stop :
+  EXTERNAL 75
+ENDPROC enable stop ;
+
+PROC disable stop :
+  EXTERNAL 76
+ENDPROC disable stop ;
+
+PROC set error stop (INT CONST code) :
+  EXTERNAL 77
+ENDPROC set error stop ;
+ 
+BOOL PROC is error : 
+  EXTERNAL 78
+ENDPROC is error ; 
+ 
+PROC clear error :
+  EXTERNAL 79
+ENDPROC clear error ;
+
+PROC select error message :
+
+  SELECT error code OF
+    CASE 1 : error text := "'halt' vom Terminal"
+    CASE 2 : error text := "Stack-Ueberlauf"
+    CASE 3 : error text := "Heap-Ueberlauf"
+    CASE 4 : error text := "INT-Ueberlauf"
+    CASE 5 : error text := "DIV durch 0"
+    CASE 6 : error text := "REAL-Ueberlauf"
+    CASE 7 : error text := "TEXT-Ueberlauf"
+    CASE 8 : error text := "zu viele DATASPACEs"
+    CASE 9 : error text := "Ueberlauf bei Subskription"
+    CASE 10: error text := "Unterlauf bei Subskription"
+    CASE 11: error text := "falscher DATASPACE-Zugriff"
+    CASE 12: error text := "INT nicht initialisiert"
+    CASE 13: error text := "REAL nicht initialisiert"
+    CASE 14: error text := "TEXT nicht initialisiert"
+    CASE 15: error text := "nicht implementiert"
+    CASE 16: error text := "Block unlesbar"
+    CASE 17: error text := "Codefehler"
+  END SELECT 
+
+ENDPROC select error message ;
+
+TEXT PROC error message : 
+ 
+  select error message ;
+  error text
+ 
+ENDPROC error message ;
+ 
+INT PROC error code :
+
+  pcb (error code field) 
+
+ENDPROC error code ;
+
+INT PROC error line :
+ 
+  IF is error
+    THEN pcb (error line field)
+    ELSE 0
+  FI
+ 
+ENDPROC error line ;
+ 
+PROC syntax error (TEXT CONST message) :
+
+  INTERNAL 259 ;
+  errorstop (syntax error code, message) .
+
+ENDPROC syntax error ;
+
+PROC errorstop (TEXT CONST message) :
+
+  errorstop (0, message) ;
+
+ENDPROC errorstop ;
+
+PROC errorstop (INT CONST code, TEXT CONST message) :
+
+  IF NOT is error
+    THEN error text := message ;
+         set error stop (code)
+  FI
+
+ENDPROC errorstop ;
+ 
+PROC put error :
+ 
+  IF is error
+    THEN select error message ;
+         IF error text <> ""
+           THEN put error message
+         FI
+  FI .
+ 
+put error message :
+  out (error pre) ;
+  out (error text) ;
+  IF error line > 0
+    THEN out (" bei Zeile "); out (text (error line)) ;
+  FI ; 
+  out (cr lf) .
+
+ENDPROC put error ;
+ 
+PROC stop :
+
+  errorstop ("stop")
+
+ENDPROC stop ;
+
+ENDPACKET error handling ;
+

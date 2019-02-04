@@ -1,0 +1,142 @@
+PACKET erfabmeldedatenDEFINES suabmeldedatenbearbeiten,
+suabmeldedatenspeichern,suausgesuchteabmeldedatenbearbeiten,
+schuelerlistezeigen,pruefungschuelerab:LET maskennameeingang=
+"ms schuelerangabe",maskenstammname="ms erf abmeldedaten",aktbestand="ls",
+bestandschulen="Schulen",fnrname=2,fnrrufname=3,fnrgebdatum=4,fnrjgst=5,
+fnrzug=6,fnrabdatum=7,fnrabgrund=8,fnrneueschule=9,fnrabschluss=10,
+meldunglistenerstellung=7,meldungspeicherung=50,pruefemeldung=57,
+meldungkeineaenderung=63,meldungletzter=67,meldungkeineliste=68,
+meldunggibtsnicht=71,meldungspeicherungfehlerhaft=73,meldungfalschesdatum=157
+;LET leer="",oblitrenner="$";LET anzschluessel=3;#A nzahlderamP 
+rimärschlüselbeteiligtenF elder#BOOL VAR falschesdatum:=FALSE ;FILE VAR f;
+ROW anzschluesselTEXT VAR schluessel;#24.03.87#TAG VAR maske;TEXT VAR 
+dateiname:="Schülerliste",schuelertid:="";TEXT VAR abdatumsicherung,
+abgrundsicherung,abschlusssicherung;LET logtextbeginn=
+"Anw. 1.3.1 Änderung """;PROC bearbeitunginitialisieren:forget(dateiname,
+quiet).END PROC bearbeitunginitialisieren;PROC suabmeldedatenbearbeiten:BOOL 
+VAR sudatenexistieren;falschesdatum:=FALSE ;systemdboff;reinitparsing;
+bearbeitunginitialisieren;schluessel(1):=standardmaskenfeld(fnrname);
+schluessel(2):=standardmaskenfeld(fnrrufname);schluessel(3):=
+datumrekonversion(standardmaskenfeld(fnrgebdatum));pruefeobsudatenexistieren(
+sudatenexistieren);IF NOT falschesdatumTHEN IF sudatenexistierenTHEN 
+schluessel(1):=wert(fnrsufamnames);schluessel(2):=wert(fnrsurufnames);
+schluessel(3):=datumrekonversion(wert(fnrsugebdatums));standardstartproc(
+maskenstammname);bereiteaenderungvor;standardnproc;ELSE standardmeldung(
+meldunggibtsnicht,"");return(1)FI ;ELSE return(1)FI .END PROC 
+suabmeldedatenbearbeiten;PROC bereiteaenderungvor:saveupdateposition(
+dnrschueler);schuelertid:=gettid;holedbwerteinmaske;abdatumsicherung:=wert(
+fnrsuabgdats);abgrundsicherung:=wert(fnrsuabggrund);abschlusssicherung:=wert(
+fnrsuabschluss);infeld(fnrname);standardfelderausgeben;infeld(fnrabdatum).
+END PROC bereiteaenderungvor;PROC holedbwerteinmaske:standardmaskenfeld(wert(
+fnrsufamnames),fnrname);standardmaskenfeld(wert(fnrsurufnames),fnrrufname);
+standardmaskenfeld(datumrekonversion(wert(fnrsugebdatums)),fnrgebdatum);
+standardmaskenfeld(jgstaufber(wert(fnrsusgrpjgst)),fnrjgst);
+standardmaskenfeld(wert(fnrsusgrpzugtut),fnrzug);standardmaskenfeld(
+datumrekonversion(wert(fnrsuabgdats)),fnrabdatum);standardmaskenfeld(wert(
+fnrsuabggrund),fnrabgrund);standardmaskenfeld(wert(fnrsuskennnschule),
+fnrneueschule);standardmaskenfeld(wert(fnrsuabschluss),fnrabschluss)END PROC 
+holedbwerteinmaske;PROC pruefeobsudatenexistieren(BOOL VAR suexist):TEXT VAR 
+datenbankwerte,schluesselwerte;inittupel(dnrschueler);maskenwerteindatenbank;
+IF NOT falschesdatumTHEN search(ixsustatfamrufgeb);IF dbstatus=okTHEN 
+datenbankwerte:=wert(fnrsurufnames)+datumrekonversion(wert(fnrsugebdatums));
+schluesselwerte:=schluessel(2)+schluessel(3);suexist:=(wert(fnrsufamnames)=
+schluessel(1)CAND ((schluessel(2)=leerAND schluessel(3)=leer)OR (pos(
+datenbankwerte,schluesselwerte)=1)))ELSE suexist:=FALSE FI FI .END PROC 
+pruefeobsudatenexistieren;PROC maskenwerteindatenbank:putwert(fnrsufamnames,
+schluessel(1));putwert(fnrsurufnames,schluessel(2));disablestop;initmaske(
+maske,maskennameeingang);putwert(fnrsugebdatums,datumskonversion(schluessel(3
+)));IF iserrorTHEN clearerror;standardmeldung(meldungfalschesdatum,"");infeld
+(fnrgebdatum);falschesdatum:=TRUE ;enablestop;ELSE enablestop;putwert(
+fnrsustatuss,aktbestand);FI ;END PROC maskenwerteindatenbank;PROC 
+suabmeldedatenspeichern(BOOL CONST zuspeichern):IF zuspeichernTHEN 
+bereitespeicherungvorELSE standardmeldung(meldungkeineaenderung,"");
+vorbereitendernaechstendatenbehandlungFI .bereitespeicherungvor:INT VAR 
+fehlerstatus:=0;pruefeplausibilitaet(fehlerstatus);IF datenfehlerfreiTHEN 
+datenschreiben;vorbereitendernaechstendatenbehandlungELSE fehlerbehandeln;
+return(1)FI .datenfehlerfrei:fehlerstatus=0.fehlerbehandeln:infeld(
+fehlerstatus).datenschreiben:meldespeicherung;datenindatenbankspeichern.
+meldespeicherung:standardmeldung(meldungspeicherung,"").
+datenindatenbankspeichern:logeintragvornehmen;setzedbwerte;
+abmeldedatenschreiben.logeintragvornehmen:TEXT VAR eintrag:=logtextbeginn;
+eintragCAT schluessel(1);eintragCAT ", ";eintragCAT schluessel(2);eintragCAT 
+", ";eintragCAT datumskonversion(schluessel(3));eintragCAT """";logeintrag(
+eintrag).setzedbwerte:putwert(fnrsuabggrund,standardmaskenfeld(fnrabgrund));
+putwert(fnrsuskennnschule,standardmaskenfeld(fnrneueschule));putwert(
+fnrsuabschluss,standardmaskenfeld(fnrabschluss));putwert(fnrsuabgdats,
+datumskonversion(standardmaskenfeld(fnrabdatum)));.abmeldedatenschreiben:IF 
+abdatumsicherung<>wert(fnrsuabgdats)THEN restoreupdateposition(dnrschueler);
+selupdate(dnrschueler);ELSE replace(dnrschueler,schuelertid)FI ;IF dbstatus<>
+0THEN standardmeldung(meldungspeicherungfehlerhaft,"")#dr11.05.88ELIF 
+grundgeaendertTHEN grundinstatraumaendernELIF abschlussgeaendertTHEN 
+abschlussinstatraumaendern#FI .#drgrundgeaendert:11.05.88abgrundsicherung<>
+wert(fnrsuabggrund).abschlussgeaendert:abschlusssicherung<>wert(
+fnrsuabschluss).grundinstatraumaendern:kuerzelaendern(statnrabgrund,
+abgrundsicherung,wert(fnrsuabggrund)).abschlussinstatraumaendern:
+kuerzelaendern(statnrabschluss,abschlusssicherung,wert(fnrsuabschluss)).#END 
+PROC suabmeldedatenspeichern;PROC vorbereitendernaechstendatenbehandlung:IF 
+exists(dateiname)THEN holenaechstenschluesselauslisteELSE enter(2)FI .
+holenaechstenschluesselausliste:BOOL VAR ok,kannbearbeitetwerden:=FALSE ;
+holenaechstenmehrtlgschluesselausdatei(ok);WHILE okREP 
+pruefeobsudatenexistieren(ok);IF okTHEN kannbearbeitetwerden:=TRUE ;ok:=
+FALSE ELSE holenaechstenmehrtlgschluesselausdatei(ok)FI PER ;IF 
+kannbearbeitetwerdenTHEN bereiteaenderungvor;return(1)ELSE 
+behandleendederthesaurusabarbeitungFI .behandleendederthesaurusabarbeitung:
+standardmeldung(meldungletzter,"");enter(3).END PROC 
+vorbereitendernaechstendatenbehandlung;PROC schuelerlistezeigen:BOOL VAR 
+keineliste;schluessel(1):=standardmaskenfeld(fnrname);schluessel(2):=
+standardmaskenfeld(fnrrufname);schluessel(3):=datumrekonversion(
+standardmaskenfeld(fnrgebdatum));falschesdatum:=FALSE ;systemdboff;
+parsenooffields(5);maskenwerteindatenbank;IF NOT falschesdatumTHEN 
+objektlistestarten(ixsustatfamrufgeb,schluessel(1),fnrsufamnames,TRUE ,
+keineliste);IF keinelisteTHEN reinitparsing;standardmeldung(meldungkeineliste
+,"");return(1)ELSE standardmeldung(meldunglistenerstellung,"");
+datensatzlistenausgabe(PROC (INT CONST )suerfassungschueler,TRUE ,BOOL PROC 
+pruefungschuelerab)FI ELSE return(1)FI END PROC schuelerlistezeigen;BOOL 
+PROC pruefungschuelerab:wert(fnrsustatuss)=aktbestandEND PROC 
+pruefungschuelerab;PROC suausgesuchteabmeldedatenbearbeiten:BOOL VAR ok,
+kannbearbeitetwerden:=FALSE ;bearbeitunginitialisieren;objektlistebeenden(
+dateiname,TRUE );reinitparsing;holeerstenmehrtlgschluesselausdatei(ok);WHILE 
+okREP pruefeobsudatenexistieren(ok);IF okTHEN kannbearbeitetwerden:=TRUE ;ok
+:=FALSE ELSE holenaechstenmehrtlgschluesselausdatei(ok)FI PER ;IF 
+kannbearbeitetwerdenTHEN standardstartproc(maskenstammname);
+bereiteaenderungvor;standardnprocELSE enter(2)FI .END PROC 
+suausgesuchteabmeldedatenbearbeiten;PROC holeerstenmehrtlgschluesselausdatei(
+BOOL VAR ok):IF NOT exists(dateiname)THEN ok:=FALSE ;LEAVE 
+holeerstenmehrtlgschluesselausdateiFI ;f:=sequentialfile(input,dateiname);
+holenaechstenmehrtlgschluesselausdatei(ok);END PROC 
+holeerstenmehrtlgschluesselausdatei;PROC 
+holenaechstenmehrtlgschluesselausdatei(BOOL VAR ok):TEXT VAR thesaurustext:=
+"";INT VAR schluesselbeginn:=0;INT VAR schluesseltrennung:=0;INT VAR i:=1,
+anzschlfelder:=anzkey(dnrschueler);IF eof(f)THEN ok:=FALSE ;
+loeschedieerstellteobjektlisteELSE getline(f,thesaurustext);
+bestimmeschluesselausthesaurustext;ok:=TRUE FI .
+bestimmeschluesselausthesaurustext:schluesselbeginn:=pos(thesaurustext,
+oblitrenner);schluesseltrennung:=pos(thesaurustext,oblitrenner,
+schluesselbeginn+1);FOR iFROM 1UPTO anzschlfelderREP IF schluesseltrennung>0
+THEN schluessel(i):=subtext(thesaurustext,schluesselbeginn+1,
+schluesseltrennung-1);schluesselbeginn:=schluesseltrennung;schluesseltrennung
+:=pos(thesaurustext,oblitrenner,schluesselbeginn+1);ELSE schluessel(i):=
+subtext(thesaurustext,schluesselbeginn+1);FI ;PER ;schluessel(3):=
+datumrekonversion(schluessel(3));.END PROC 
+holenaechstenmehrtlgschluesselausdatei;PROC loeschedieerstellteobjektliste:
+forget(dateiname,quiet);END PROC loeschedieerstellteobjektliste;PROC 
+pruefeplausibilitaet(INT VAR fstatus):LET pruefartdatum=5,fmeldnichtimbestand
+=55,bestandabgangsgrund="c02 abgang",bestandabschluss="c02 abschluss";fstatus
+:=0;standardmeldung(pruefemeldung,"");IF standardmaskenfeld(fnrabgrund)<>leer
+THEN IF NOT imschlbestand(standardmaskenfeld(fnrabgrund),bestandabgangsgrund)
+THEN fstatus:=fnrabgrund;standardmeldung(fmeldnichtimbestand,"");LEAVE 
+pruefeplausibilitaetFI ;FI ;IF standardmaskenfeld(fnrneueschule)<>leerTHEN 
+IF NOT imbestand(standardmaskenfeld(fnrneueschule),bestandschulen)THEN 
+fstatus:=fnrneueschule;standardmeldung(fmeldnichtimbestand,"");LEAVE 
+pruefeplausibilitaetFI ;FI ;IF standardmaskenfeld(fnrabschluss)<>leerTHEN IF 
+NOT imschlbestand(standardmaskenfeld(fnrabschluss),bestandabschluss)THEN 
+fstatus:=fnrabschluss;standardmeldung(fmeldnichtimbestand,"");LEAVE 
+pruefeplausibilitaetFI ;FI ;IF standardmaskenfeld(fnrabdatum)<>leerTHEN 
+standardpruefe(pruefartdatum,fnrabdatum,0,0,"",fstatus);FI ;END PROC 
+pruefeplausibilitaet;#dr11.05.88PROC kuerzelaendern(INT CONST statnr,TEXT 
+CONST alterwert,neuerwert):kuerzelsummeeinsrunter(statnr,jgstaufber(wert(
+fnrsusgrpjgst)),compress(wert(fnrsusgrpzugtut)),aktbestand,alterwert);
+kuerzelsummeeinsrauf(statnr,jgstaufber(wert(fnrsusgrpjgst)),compress(wert(
+fnrsusgrpzugtut)),aktbestand,neuerwert)END PROC kuerzelaendern;#END PACKET 
+erfabmeldedaten
+

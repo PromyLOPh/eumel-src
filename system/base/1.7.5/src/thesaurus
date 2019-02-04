@@ -1,0 +1,332 @@
+(* ------------------- VERSION 2     06.03.86 ------------------- *)
+PACKET thesaurus handling                (* Autor: J.Liedtke      *)
+ 
+       DEFINES     THESAURUS , 
+                   := , 
+                   empty thesaurus , 
+                   insert,          (* fuegt ein Element ein *) 
+                   delete,          (* loescht ein Element falls vorhanden*) 
+                   rename,          (* aendert ein Element falls vorhanden*)
+                   CONTAINS ,       (* stellt fest, ob enthalten *)
+                   link ,           (* index in thesaurus        *) 
+                   name ,           (* name of entry             *)
+                   get ,            (* get next entry ("" is eof)*)
+                   highest entry :  (* highest valid index of thes*)
+
+
+TYPE THESAURUS = TEXT ;
+ 
+LET thesaurus size = 200 ,
+    nil = 0 ,
+    niltext = "" ,
+    max name length = 80 ,
+
+    begin entry char = ""0"" ,
+    end entry char   = ""1"" ,
+
+    nil entry        = ""0""1"" ,
+    nil name         = "" ,
+
+    quote            = """" ;
+
+TEXT VAR entry ;
+INT VAR  cache index := 0 ,
+         cache pos ;
+
+
+PROC access (THESAURUS CONST thesaurus, TEXT CONST name) :
+
+  construct entry ;
+  IF NOT cache identifies entry
+    THEN search through thesaurus list
+  FI ;
+  IF entry found
+    THEN cache index := code (list SUB (cache pos - 1))
+    ELSE cache index := 0
+  FI .
+
+construct entry :
+  entry := begin entry char ;
+  entry CAT name ;
+  decode invalid chars (entry, 2) ;
+  entry CAT end entry char .
+
+search through thesaurus list :
+  cache pos := pos (list, entry) .
+
+cache identifies entry :
+  cache pos <> 0 AND
+  pos (list, entry, cache pos, cache pos + LENGTH entry) = cache pos .
+
+entry found :  cache pos > 0 .
+
+list :  CONCR (thesaurus) .
+
+ENDPROC access ;
+
+PROC access (THESAURUS CONST thesaurus, INT CONST index) :
+
+  IF cache identifies index
+    THEN cache index := index ;
+         construct entry
+    ELSE cache pos := pos (list, code (index) + begin entry char) ;
+         IF entry found
+           THEN cache pos INCR 1 ;
+                cache index := index ;
+                construct entry
+           ELSE cache index := 0 ;
+                entry := niltext
+         FI
+  FI .
+
+construct entry :
+  entry := subtext (list, cache pos, pos (list, end entry char, cache pos)) .
+
+cache identifies index :
+  subtext (list, cache pos-1, cache pos) = code (index) + begin entry char .
+
+entry found :  cache pos > 0 .
+
+list :    CONCR (thesaurus) .
+
+ENDPROC access ;
+
+
+
+THESAURUS PROC empty thesaurus :
+
+  THESAURUS : (""1"")
+
+ENDPROC empty thesaurus ; 
+ 
+ 
+OP := (THESAURUS VAR dest, THESAURUS CONST source ) : 
+ 
+  CONCR (dest) := CONCR (source) .
+
+ENDOP := ; 
+ 
+TEXT VAR insert name ;
+
+PROC insert (THESAURUS VAR thesaurus, TEXT CONST name, INT VAR index) : 
+ 
+  insert name := name ;
+  decode invalid chars (insert name, 1) ;
+  IF insert name = "" OR LENGTH insert name > max name length
+    THEN index := nil ; errorstop ("Name unzulaessig")
+    ELSE insert element
+  FI .
+ 
+insert element :
+  search free entry ;
+  IF   entry found 
+    THEN insert into directory 
+    ELSE add entry to directory if possible
+  FI .
+
+search free entry :
+  access (thesaurus, nil name) .
+
+insert into directory :
+  change (list, cache pos + 1, cache pos, insert name) ;
+  index := cache index .
+
+add entry to directory if possible :
+  INT CONST next free index := code (list SUB LENGTH list) ;
+  IF next free index <= thesaurus size
+    THEN add entry to directory
+    ELSE directory overflow
+  FI .
+
+add entry to directory :
+  list CAT begin entry char ;
+  cache pos := LENGTH list ;
+  cache index := next free index ;
+  list CAT insert name ;
+  list CAT end entry char + code (next free index + 1) ;
+  index := cache index .
+
+directory overflow :
+  index := nil .
+
+entry found :   cache index > 0 .
+
+list :          CONCR (thesaurus) .
+
+ENDPROC insert ; 
+ 
+PROC decode invalid chars (TEXT VAR name, INT CONST start pos) :
+
+  INT VAR invalid char pos := pos (name, ""0"", ""31"", start pos) ;
+  WHILE invalid char pos > 0 REP
+    change (name, invalid char pos, invalid char pos, decoded char) ;
+    invalid char pos := pos (name, ""0"", ""31"", invalid char pos)
+  PER .
+
+decoded char :  quote + text(code(name SUB invalid char pos)) + quote.
+
+ENDPROC decode invalid chars ;
+
+PROC insert (THESAURUS VAR thesaurus, TEXT CONST name) :
+
+  INT VAR index ;
+  insert (thesaurus, name, index) ;
+  IF index = nil AND NOT is error
+    THEN errorstop ("THESAURUS-Ueberlauf")
+  FI .
+
+ENDPROC insert ;
+
+PROC delete (THESAURUS VAR thesaurus, TEXT CONST name, INT VAR index) : 
+ 
+  access (thesaurus, name) ;
+  index := cache index ;
+  delete (thesaurus, index) .
+
+ENDPROC delete ;
+
+PROC delete (THESAURUS VAR thesaurus, INT CONST index) :
+
+  access (thesaurus, index) ;
+  IF entry found
+    THEN delete entry
+  FI .
+
+delete entry :
+  IF is last entry of thesaurus
+    THEN cut off as much as possible
+    ELSE set to nil entry
+  FI .
+
+set to nil entry :
+  change (list, cache pos, cache pos + LENGTH entry - 1, nil entry) . 
+
+cut off as much as possible :
+  WHILE predecessor is also nil entry REP
+    set cache to this entry
+  PER ;
+  list := subtext (list, 1, cache pos - 1) ;
+  erase cache .
+
+predecessor is also nil entry :
+  subtext (list, cache pos - 3, cache pos - 2) = nil entry .
+
+set cache to this entry :
+  cache pos DECR 3 .
+
+erase cache :
+  cache pos := 0 ;
+  cache index := 0 .
+
+is last entry of thesaurus :
+  pos (list, end entry char, cache pos) = LENGTH list - 1 .
+
+list :     CONCR (thesaurus) .
+
+entry found :   cache index > nil .
+
+ENDPROC delete ;
+
+ 
+BOOL OP CONTAINS (THESAURUS CONST thesaurus, TEXT CONST name ) : 
+ 
+  IF   name = niltext OR LENGTH name > max name length
+    THEN FALSE
+    ELSE access (thesaurus, name) ; entry found
+  FI . 
+ 
+entry found :   cache index > nil . 
+ 
+ENDOP CONTAINS ; 
+ 
+PROC rename (THESAURUS VAR thesaurus, TEXT CONST old, new) :
+ 
+  rename (thesaurus, link (thesaurus, old), new)
+
+ENDPROC rename ;
+
+PROC rename (THESAURUS VAR thesaurus, INT CONST index, TEXT CONST new) :
+
+  insert name := new ;
+  decode invalid chars (insert name, 1) ;
+  IF insert name = "" OR LENGTH insert name > max name length 
+    THEN errorstop ("Name unzulaessig")
+    ELSE change to new name
+  FI .
+ 
+change to new name :
+  access (thesaurus, index) ;
+  IF cache index <> 0 AND entry <> ""
+    THEN change (list, cache pos + 1, cache pos + LENGTH entry - 2, insert name)
+  FI .
+
+list :    CONCR (thesaurus) .
+
+ENDPROC rename ;
+ 
+INT PROC link (THESAURUS CONST thesaurus, TEXT CONST name) : 
+ 
+  access (thesaurus, name) ;
+  cache index .
+
+ENDPROC link ; 
+ 
+TEXT PROC name (THESAURUS CONST thesaurus, INT CONST index) : 
+ 
+  access (thesaurus, index) ;
+  subtext (entry, 2, LENGTH entry - 1) .
+
+ENDPROC name ;
+
+PROC get (THESAURUS CONST thesaurus, TEXT VAR name, INT VAR index) :
+
+  identify index ;
+  REP
+    to next entry
+  UNTIL end of list COR valid entry found PER .
+
+identify index :
+  IF index = 0
+    THEN cache index := 0 ;
+         cache pos   := 1
+    ELSE access (thesaurus, index)
+  FI .
+
+to next entry :
+  cache pos := pos (list, begin entry char, cache pos + 1) ;
+  IF cache pos > 0
+    THEN get entry
+    ELSE get nil entry
+  FI .
+
+get entry :
+  cache index INCR 1 ;
+  index := cache index ;
+  name := subtext (list, cache pos + 1, end entry pos - 1) .
+
+get nil entry :
+  cache index := 0 ;
+  cache pos := 0 ;
+  index := 0 ;
+  name := "" .
+
+end entry pos :     pos (list, end entry char, cache pos) .
+
+end of list :       index = 0 .
+
+valid entry found : name <> "" .
+
+list :              CONCR (thesaurus) .
+
+ENDPROC get ;
+
+INT PROC highest entry (THESAURUS CONST thesaurus) :              (*840813*)
+
+  code (list SUB LENGTH list) - 1 .
+
+list :   CONCR (thesaurus) .
+
+ENDPROC highest entry ;
+
+ENDPACKET thesaurus handling ;
+

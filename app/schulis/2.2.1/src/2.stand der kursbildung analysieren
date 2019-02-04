@@ -1,0 +1,132 @@
+PACKET standderkursbildunganalysierenDEFINES 
+standderkursbildunganalysierenvorbereiten,
+standderkursbildunganalysierenstarten,standderkursbildunganalysierendrucken:
+LET maskeeingang="ms stand der kursbildung analysieren";LET fnrgewjgst=2,
+fnrhalbjahr=3,fnraktjgst=4,fnrneuanjgst=5,fnralleschueler=6;FILE VAR prot;
+LET protname="Zuordnung von Schülern zu Kursen";LET schulhalbjahr=
+"Schulhalbjahr",schulname="Schulname",schulort="Schulort";LET jgst10=10,
+jgst11=11,jgst13=13,hj1=1,hj2=2;LET meldnrdatenwerdengeprueft=57,
+meldnrbittewarten=69,meldnrbearbeitetwird=102,meldnrbitteangabeergaenzen=129,
+meldnrfalschejgstfolge=410,meldnrfalschebezugsjgst=411,meldnrkurswahlfehler=
+416;LET feldanzmaskeeingang=6;ROW feldanzmaskeeingangTEXT VAR feldbs1;INT 
+VAR letztecursorfnr:=fnrgewjgst,pruefstatus,kurswahlstatus;TEXT VAR 
+aktuelleshalbjahr:="",aktjgst,gewjgst,gewhalbjahr,neuanjgst,gewschuljahr;
+BOOL VAR alleschueler,fehlerinschuelerwahl;TEXT VAR gewschueler;LET 
+nuraktuelleschueler="O",nurneuangemeldete="N";INT VAR ischueler;TEXT VAR 
+wahldaten,schuelername,anfangsbuchstabe,kurs,gueltigekurse;INT VAR ikurs;LET 
+maxkurse=13;ROW maxkurseSTRUCT (TEXT eintrag,TEXT pb1,TEXT pb2)VAR 
+kurshinweis;TEXT VAR planbloecke,belegtebloecke,pbnr,pbkennung,pruefblock;
+LET pbkennunga="a",pbkennungb="b",pbleer="   ";INT VAR poskurs;LET laengekurs
+=6,laengeschuelerkurs=15,laengekursangaben=10,laengeplanblock=3;LET trenner=
+"�",schraegstrich="/",doppelpunkt=":",kennzhell="#";LET kennungname="N",
+kennungkurse="K",kennungplanblock="P";TEXT VAR auszeile,fachzeile,kurszeile,
+fehlerzeile;LET ueberschrift="Zuordnung von Schülern zu Kursen",untertitel1=
+"Jgst. ",erklaerung1="(Fehlende Zuordnungen sind mit ""_"" hervorgehoben,",
+erklaerung2="Überschneidungen in Planblöcken mit ""*"",",erklaerung3=
+"ungültige Kursbezeichnungen mit ""$"" markiert.)",blank=" ",zeilenbeginn=
+"   ",leereintrag="    :",ungueltigerkurs="$$$$:",fehlenderkurs="____:",
+gleichzeitigerkurs="****:";initfelderdeseingangsbildschirms;PROC 
+standderkursbildunganalysierenvorbereiten:standardstartproc(maskeeingang);
+wertedeseingangsbildschirmsholen;infeld(fnrgewjgst);standardfelderausgeben;
+infeld(letztecursorfnr);standardnprocEND PROC 
+standderkursbildunganalysierenvorbereiten;PROC 
+standderkursbildunganalysierenstarten:eingangsbehandlung;IF pruefstatus>0
+THEN infeld(pruefstatus);return(1)ELSE wertedeseingangsbildschirmsmerken;
+standardmeldung(meldnrbittewarten,"");kurswahlinitialisieren(aktjgst,gewjgst,
+gewhalbjahr,gewschueler,gewschuljahr);kurswahlbasisholen(kurswahlstatus);IF 
+kurswahlstatus<>0THEN kurswahlfehlerbehandeln;return(1)ELSE 
+protokollvorbereiten;kurszuordnungenanalysieren;zeigedatei(protname,"")FI FI 
+.protokollvorbereiten:forget(protname,quiet);prot:=sequentialfile(output,
+protname);putline(prot,schulkenndatum(schulname));auszeile:=text(
+schulkenndatum(schulort),60);auszeileCAT date;putline(prot,auszeile);line(
+prot,2);putline(prot,20*blank+ueberschrift);auszeile:=22*blank;auszeileCAT 
+untertitel1;auszeileCAT aktjgst;auszeileCAT " für ";auszeileCAT gewjgst;
+auszeileCAT ".";auszeileCAT gewhalbjahr;auszeileCAT blank;auszeileCAT 
+aufberschuljahr;putline(prot,auszeile);line(prot,2);auszeile:=erklaerung1;
+putline(prot,auszeile);auszeile:=erklaerung2;putline(prot,auszeile);auszeile
+:=erklaerung3;putline(prot,auszeile).END PROC 
+standderkursbildunganalysierenstarten;PROC kurswahlfehlerbehandeln:
+standardmeldung(meldnrkurswahlfehler,"");pause(10)END PROC 
+kurswahlfehlerbehandeln;TEXT PROC aufberschuljahr:TEXT VAR aufbersj:=subtext(
+gewschuljahr,1,2);aufbersjCAT schraegstrich;aufbersjCAT subtext(gewschuljahr,
+3,4);aufbersjEND PROC aufberschuljahr;PROC kurszuordnungenanalysieren:
+gueltigekurse:=allekurse;anfangsbuchstabe:="";FOR ischuelerFROM 
+ersterschuelerUPTO letzterschuelerREP schuelerwahluntersuchenPER .
+schuelerwahluntersuchen:fachzeile:=zeilenbeginn;kurszeile:=zeilenbeginn;
+wahldaten:=wahldatenzumindex(ischueler,kennungkurse);schuelername:=
+wahldatenzumindex(ischueler,kennungname);IF (schuelernameSUB 1)<>
+anfangsbuchstabeTHEN anfangsbuchstabe:=schuelernameSUB 1;standardmeldung(
+meldnrbearbeitetwird,anfangsbuchstabe+kennzhell)FI ;fehlerinschuelerwahl:=
+FALSE ;belegtebloecke:="";poskurs:=1;FOR ikursFROM 1UPTO maxkurseREP kurs:=
+subtext(wahldaten,poskurs+3,poskurs+laengekurs+2);IF kurs<>""THEN 
+facheintragen;kurseintragen;kurshinweiseintragenELSE leereintraegeergaenzen
+FI ;poskursINCR laengeschuelerkursPER ;fehlerzeilezusammenstellen;IF 
+fehlerinschuelerwahlCOR alleschuelerTHEN line(prot);changeall(schuelername,
+trenner,", ");putline(prot,schuelername);putline(prot,fachzeile);putline(prot
+,kurszeile);putline(prot,fehlerzeile)FI .facheintragen:fachzeileCAT subtext(
+kurs,1,2);fachzeileCAT "  :".kurseintragen:IF subtext(kurs,3,6)<>"    "THEN 
+kurszeileCAT subtext(kurs,3,6)ELSE kurszeileCAT subtext(wahldaten,poskurs+1,
+poskurs+2);kurszeileCAT "  "FI ;kurszeileCAT doppelpunkt.kurshinweiseintragen
+:IF subtext(kurs,3,6)="    "THEN kurshinweis(ikurs).eintrag:=fehlenderkurs
+ELIF suchpos(gueltigekurse,kurs,laengekursangaben)=0THEN kurshinweis(ikurs).
+eintrag:=ungueltigerkursELSE kurshinweis(ikurs).eintrag:="";planbloecke:=
+kursdaten(kurs,kennungplanblock);kurshinweis(ikurs).pb1:=subtext(planbloecke,
+1,3);kurshinweis(ikurs).pb2:=subtext(planbloecke,4,6);belegtenblockeintragen(
+kurshinweis(ikurs).pb1);belegtenblockeintragen(kurshinweis(ikurs).pb2)FI .
+fehlerzeilezusammenstellen:fehlerzeile:=zeilenbeginn;FOR ikursFROM 1UPTO 
+maxkurseREP IF kurshinweis(ikurs).eintrag=""THEN doppelbelegungpruefen;
+fehlerzeileCAT kurshinweis(ikurs).eintrag;ELIF kurshinweis(ikurs).eintrag=
+leereintragTHEN fehlerzeileCAT leereintragELSE fehlerzeileCAT kurshinweis(
+ikurs).eintrag;fehlerinschuelerwahl:=TRUE FI PER .leereintraegeergaenzen:
+fachzeileCAT leereintrag;kurszeileCAT leereintrag;kurshinweis(ikurs).eintrag
+:=leereintrag.doppelbelegungpruefen:pruefblock:=kurshinweis(ikurs).pb1;IF 
+schnittliegtvorTHEN kurshinweis(ikurs).eintrag:=gleichzeitigerkurs;
+fehlerinschuelerwahl:=TRUE ELSE pruefblock:=kurshinweis(ikurs).pb2;IF 
+schnittliegtvorTHEN kurshinweis(ikurs).eintrag:=gleichzeitigerkurs;
+fehlerinschuelerwahl:=TRUE ELSE kurshinweis(ikurs).eintrag:=leereintragFI FI 
+.schnittliegtvor:IF pruefblock=pbleerTHEN FALSE ELSE pos(belegtebloecke,
+pruefblock,suchpos(belegtebloecke,pruefblock,laengeplanblock)+1)>0FI .END 
+PROC kurszuordnungenanalysieren;PROC belegtenblockeintragen(TEXT VAR 
+belegterpb):IF belegterpb<>pbleerTHEN pbnr:=subtext(belegterpb,1,2);pbkennung
+:=belegterpbSUB laengeplanblock;belegtebloeckeCAT pbnr;belegtebloeckeCAT 
+pbkennung;IF pbkennung=blankTHEN belegtebloeckeCAT pbnr;belegtebloeckeCAT 
+pbkennunga;belegtebloeckeCAT pbnr;belegtebloeckeCAT pbkennungb;ELSE 
+belegtebloeckeCAT pbnr;belegtebloeckeCAT blankFI ;FI END PROC 
+belegtenblockeintragen;PROC standderkursbildunganalysierendrucken(BOOL CONST 
+drucken):IF druckenTHEN print(protname)FI ;forget(protname,quiet);enter(2)
+END PROC standderkursbildunganalysierendrucken;PROC eingangsbehandlung:
+pruefstatus:=0;standardmeldung(meldnrdatenwerdengeprueft,"");aktjgst:=
+standardmaskenfeld(fnraktjgst);gewhalbjahr:=standardmaskenfeld(fnrhalbjahr);
+gewjgst:=standardmaskenfeld(fnrgewjgst);neuanjgst:=standardmaskenfeld(
+fnrneuanjgst);alleschueler:=standardmaskenfeld(fnralleschueler)<>"";IF 
+aktuelleshalbjahr=""THEN aktuelleshalbjahr:=schulkenndatum(schulhalbjahr)FI ;
+allgemeinefelderpruefen.allgemeinefelderpruefen:standardpruefe(3,fnrgewjgst,
+jgst11,jgst13,"",pruefstatus);IF pruefstatus>0THEN LEAVE 
+allgemeinefelderpruefenFI ;standardpruefe(3,fnrhalbjahr,hj1,hj2,"",
+pruefstatus);IF pruefstatus>0THEN LEAVE allgemeinefelderpruefenFI ;IF aktjgst
+<>""THEN IF int(aktuelleshalbjahr)=hj2THEN standardpruefe(3,fnraktjgst,jgst10
+,jgst13,"",pruefstatus)ELSE standardpruefe(3,fnraktjgst,jgst11,jgst13,"",
+pruefstatus)FI ;IF pruefstatus>0THEN LEAVE allgemeinefelderpruefenFI ;FI ;IF 
+neuanjgst<>""THEN standardpruefe(3,fnrneuanjgst,jgst11,jgst13,"",pruefstatus)
+;IF pruefstatus>0THEN LEAVE allgemeinefelderpruefenFI ;FI ;IF aktjgst<>""
+THEN IF neuanjgst<>""THEN IF int(neuanjgst)<>int(aktjgst)+1THEN 
+standardmeldung(meldnrfalschejgstfolge,"");pruefstatus:=fnraktjgst;LEAVE 
+allgemeinefelderpruefenFI ;gewschueler:=""ELSE gewschueler:=
+nuraktuelleschuelerFI ELIF neuanjgst=""THEN standardmeldung(
+meldnrbitteangabeergaenzen,"");pruefstatus:=fnraktjgst;LEAVE 
+allgemeinefelderpruefenELSE gewschueler:=nurneuangemeldete;aktjgst:=text(int(
+neuanjgst)-1)FI ;IF aktjgst>gewjgstCOR (aktjgst=gewjgstAND aktuelleshalbjahr>
+gewhalbjahr)THEN standardmeldung(meldnrfalschebezugsjgst,"");pruefstatus:=
+fnrgewjgst;LEAVE allgemeinefelderpruefenFI .END PROC eingangsbehandlung;INT 
+PROC suchpos(TEXT CONST quelle,suchtext,INT CONST laenge):INT VAR findpos:=
+pos(quelle,suchtext);WHILE findpos>0REP IF findposMOD laenge=1THEN LEAVE 
+suchposWITH findposELSE findpos:=pos(quelle,suchtext,findpos+1);FI PER ;
+findposEND PROC suchpos;PROC initfelderdeseingangsbildschirms:INT VAR i;FOR i
+FROM 1UPTO feldanzmaskeeingangREP feldbs1(i):=""PER END PROC 
+initfelderdeseingangsbildschirms;PROC wertedeseingangsbildschirmsmerken:INT 
+VAR i;letztecursorfnr:=infeld;FOR iFROM 1UPTO feldanzmaskeeingangREP feldbs1(
+i):=standardmaskenfeld(i)PER END PROC wertedeseingangsbildschirmsmerken;PROC 
+wertedeseingangsbildschirmsholen:INT VAR i;FOR iFROM 1UPTO 
+feldanzmaskeeingangREP standardmaskenfeld(feldbs1(i),i)PER END PROC 
+wertedeseingangsbildschirmsholen;END PACKET standderkursbildunganalysieren
+

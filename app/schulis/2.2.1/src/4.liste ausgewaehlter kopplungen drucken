@@ -1,0 +1,72 @@
+PACKET listeausgewaehlterkopplungendruckenDEFINES 
+listekopplungenmitanzlverstellen,listekopplungenmitanzlvdrucken:LET feldanzlv
+=2,feldakthj=3,anzkopfzeilen=9,anzzeilen=45,ausgparam="#",leerzeile=" ",
+meldungbearbwird=352,meldunglistedrucken=58,meldunglisteaufbereiten=7,
+meldungwarten=69,meldungkeinedaten=68,meldungfalscherwert=54,meldungkeinelv=
+326,dateiname="Liste der Kopplungen",zwdateiname="zwischenspeicherung",
+praefix="          ",ueberschrift="Liste aller Kopplungen",kopfzeile=
+"Kopplung   Anzahl gekoppelter Lehrveranstaltungen",stdkopf=
+"            1   2   3   4   5   6   7   8   9   10  11  12  13  14 >14",
+unterstrich=
+"----------+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---",
+spaltentrenner=":   :   :   :   :   :   :   :   :   :   :   :   :   :   :   "
+,spaltentrenner1=
+": x :   :   :   :   :   :   :   :   :   :   :   :   :   :   ",
+spaltentrennerl=
+":   :   :   :   :   :   :   :   :   :   :   :   :   :   : x ",schuljahr=
+"Schuljahr",halbjahr="Schulhalbjahr",schulname="Schulname",schulort=
+"Schulort";TEXT VAR schj,schhj,aktkopplung:="",postfix:="",anzseiten,
+ueberschriftanhang,anzahllv:="",neuerkopf:="";INT VAR i,j,anzlv,anwanzlv,
+spaltenindex,anzs;BOOL VAR erstekopplung:=TRUE ;FILE VAR datei,zwdatei;PROC 
+listekopplungenmitanzlverstellen:standardmeldung(meldungwarten,"");schj:=
+schulkenndatum(schuljahr);schhj:=schulkenndatum(halbjahr);IF 
+standardmaskenfeld(feldakthj)=""THEN geplanteshjundsjberechnen(schhj,schj)FI 
+;anzahllv:=standardmaskenfeld(feldanzlv);IF anzahllv<>""THEN anwanzlv:=int(
+anzahllv);IF lastconversionokTHEN IF anwanzlv<1COR anwanzlv>99THEN 
+fehlermeldungfalscherwertFI ELSE fehlermeldungfalscherwertFI ;
+ueberschriftanhang:=" ab "+text(anwanzlv)+" Lehrveranstaltungen";ELSE 
+anwanzlv:=1;ueberschriftanhang:=""FI ;spaltenindex:=anwanzlv-1;inittupel(
+dnrlehrveranstaltungen);IF records(dnrlehrveranstaltungen)=0.0THEN 
+standardmeldung(meldungkeinelv,"");return(1)ELSE bereiteprotokollvor;dbstatus
+(0);erstekopplung:=TRUE ;aktkopplung:="";anzlv:=1;statleseschleife(
+ixlvsjhjkopp,schj,schhj,fnrlvsj,fnrlvhj,PROC holekopplungen);IF lines(datei)=
+anzkopfzeilenTHEN standardmeldung(meldungkeinedaten,"");return(1);ELSE 
+zeigedatei(dateiname,"vr")FI FI .fehlermeldungfalscherwert:standardmeldung(
+meldungfalscherwert,"");return(1);LEAVE listekopplungenmitanzlverstellen.
+bereiteprotokollvor:standardmeldung(meldunglisteaufbereiten,"");forget(
+dateiname,quiet);datei:=sequentialfile(output,dateiname);forget(zwdateiname,
+quiet);zwdatei:=sequentialfile(output,zwdateiname);schreibkopf(datei).END 
+PROC listekopplungenmitanzlverstellen;PROC schreibkopf(FILE VAR dat):INT VAR 
+k;putline(dat,schulkenndatum(schulname));putline(dat,text(schulkenndatum(
+schulort),65)+date);putline(dat,leerzeile);putline(dat,ueberschrift+
+ueberschriftanhang);putline(dat,"Schuljahr  19"+text(schj,2)+"/"+subtext(schj
+,3)+"  "+schhj+". Halbjahr");putline(dat,leerzeile);putline(dat,kopfzeile);
+IF anwanzlv=1THEN putline(dat,stdkopf)ELSE neuerkopf:=praefix;FOR kFROM 1
+UPTO 14REP neuerkopfCAT text(anwanzlv-1+k,4)PER ;neuerkopfCAT " >"+text(
+anwanzlv+13);putline(dat,neuerkopf)FI ;putline(dat,unterstrich).END PROC 
+schreibkopf;PROC schreibfuss(INT CONST nr):putline(zwdatei,leerzeile);putline
+(zwdatei,leerzeile);putline(zwdatei,text(nr,70)+"/"+anzseiten);putline(
+zwdatei,"#page#")END PROC schreibfuss;PROC holekopplungen(BOOL VAR b):IF wert
+(fnrlvsj)<>schjCOR wert(fnrlvhj)<>schhjCOR dbstatus<>0THEN dbstatus(1);b:=
+TRUE ELIF aktkopplung<>wert(fnrlvkopplung)THEN gibeintragaus;aktkopplung:=
+wert(fnrlvkopplung);standardmeldung(meldungbearbwird,aktkopplung+ausgparam);
+anzlv:=1ELSE anzlvINCR 1FI .gibeintragaus:IF erstekopplungTHEN erstekopplung
+:=FALSE ELIF anzlv=anwanzlvTHEN putline(datei,text(aktkopplung,10)+
+spaltentrenner1)ELIF anzlv>anwanzlv+13THEN putline(datei,text(aktkopplung,10)
++spaltentrennerl)ELIF anzlv>anwanzlvCAND anzlv<anwanzlv+14THEN postfix:=
+spaltentrenner;replace(postfix,(anzlv-spaltenindex)*4-1,"x");putline(datei,
+text(aktkopplung,10)+postfix)FI .END PROC holekopplungen;PROC 
+listekopplungenmitanzlvdrucken:INT VAR volleseiten:=0,restzeilen:=0;TEXT VAR 
+zeile:="";standardmeldung(meldunglistedrucken,"");modify(datei);
+ermittleseiten;giballeseitenaus.ermittleseiten:i:=lines(datei)-anzkopfzeilen;
+anzs:=iDIV anzzeilen;volleseiten:=anzs;restzeilen:=iMOD anzzeilen;IF 
+restzeilen<>0THEN anzsINCR 1FI ;anzseiten:=text(anzs,2).giballeseitenaus:
+toline(datei,anzkopfzeilen+1);FOR iFROM 1UPTO volleseitenREP schreibkopf(
+zwdatei);FOR jFROM 1UPTO anzzeilenREP readrecord(datei,zeile);down(datei);
+putline(zwdatei,zeile)PER ;schreibfuss(i)PER ;IF restzeilen<>0THEN 
+schreibkopf(zwdatei);FOR iFROM 1UPTO restzeilenREP readrecord(datei,zeile);
+down(datei);putline(zwdatei,zeile)PER ;FOR iFROM restzeilen+1UPTO anzzeilen
+REP putline(zwdatei,leerzeile)PER ;schreibfuss(anzs)FI ;print(zwdateiname);
+enter(2).END PROC listekopplungenmitanzlvdrucken;END PACKET 
+listeausgewaehlterkopplungendrucken;
+

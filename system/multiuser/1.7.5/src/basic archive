@@ -1,0 +1,401 @@
+(* ------------------- VERSION 11     06.03.86 ------------------- *)
+PACKET basic archive DEFINES 
+
+  archive blocks ,
+  block number ,
+  check read ,
+  format archive ,
+  read block ,
+  read ,
+  rewind ,
+  search dataspace ,
+  seek ,
+  size ,
+  skip dataspace ,
+  write block ,
+  write :
+
+INT VAR blocknr  := 0 ,
+        rerun    := 0 ,
+        page     := -1 ,
+        bit word := 1 ,
+        unreadable sequence length := 0 ;
+INT CONST all ones :=-1 ;
+
+
+DATASPACE VAR label ds ;
+
+LET write normal            = 0 ,
+    archive version         = 1 ,
+    first page stored       = 2 ,
+    dr size                 = 3 ,
+    first bit word          = 4 ,
+(*  write deleted data mark = 64 , *)
+    inconsistent            = 90 ,
+    read error              = 92 ,
+    label size              = 131 ;
+
+BOUND STRUCT (ALIGN dummy for page1,
+              (* Page 2 begins: *)
+              ROW label size INT lab) VAR label;
+
+
+INT PROC block number :
+  block nr
+ENDPROC block number ;
+
+PROC seek (INT CONST block) :
+  block nr := block
+ENDPROC seek ;
+
+PROC rewind :
+  forget (label ds);
+  label ds := nilspace;
+  label := label ds;
+  block nr := 0;
+  rerun := session 
+END PROC rewind; 
+ 
+PROC skip dataspace:
+  check rerun;
+  get label; 
+  IF is error
+    THEN
+  ELIF olivetti
+    THEN block nr INCR label.lab (dr size+1)
+    ELSE block nr INCR label.lab (dr size)
+  FI
+END PROC skip dataspace; 
+ 
+PROC read (DATASPACE VAR ds):
+  read (ds, 30000, FALSE)
+ENDPROC read ;
+
+PROC read (DATASPACE VAR ds, INT CONST max pages, BOOL CONST error accept) :
+  enable stop ;
+  check rerun;
+  get label; 
+  init next page;
+  INT VAR i ;
+  FOR i FROM 1 UPTO max pages REP
+    next page;
+    IF no further page THEN  LEAVE read FI;
+    check storage ;
+    check rerun ;
+    read block ;
+    block nr INCR 1;
+  PER .
+
+read block :
+  disable stop ;
+  get external block (ds, page, block nr) ;
+  ignore read error if no errors accepted ;
+  enable stop .
+
+ignore read error if no errors accepted :
+  IF is error CAND error code = read error CAND NOT error accept
+    THEN clear error
+  FI .
+
+check storage :
+  INT VAR size, used ;
+  storage (size, used) ;
+  IF used > size
+    THEN forget (ds) ;
+         ds := nilspace ;
+         errorstop ("Speicherengpass") ;
+         LEAVE read
+  FI .
+
+check rerun :
+    IF rerun <> session
+      THEN errorstop ("RERUN beim Archiv-Zugriff") ;
+           LEAVE read
+    FI .
+
+END PROC read;
+
+PROC check read :
+
+  enable stop ;
+  get label ;
+  INT VAR pages, i;
+  IF olivetti
+    THEN pages := label.lab (dr size+1)
+    ELSE pages := label.lab (dr size)
+  FI ;
+  FOR i FROM 1 UPTO pages REP
+    get external block (label ds, 2, block nr) ;
+    block nr INCR 1
+  PER .
+
+ENDPROC check read ;
+
+PROC write (DATASPACE CONST ds):
+  enable stop ;
+  check rerun;
+  INT VAR label block nr := block nr;
+  block nr INCR 1;init label;
+  INT VAR page := -1,i;
+  FOR i FROM 1 UPTO ds pages (ds) REP
+    check rerun ;
+    page := next ds page(ds,page);
+    put external block (ds, page, block nr) ;
+    reset archive bit;
+    label.lab(dr size) INCR 1;
+    block nr INCR 1
+  PER;
+  put label.
+
+
+  init label:
+  label.lab(archive version) := 0 ;
+  label.lab(first page stored) := 0 ;
+  label.lab(dr size) := 0;
+  INT VAR j;
+  FOR j FROM first bit word UPTO label size REP
+    label.lab (j) := all ones
+  PER.
+
+  put label:
+  put external block (label ds, 2, label block nr).
+
+  reset archive bit:
+  reset bit (label.lab (page DIV 16+first bit word), page MOD 16).
+
+END PROC write;
+
+PROC get label:
+
+  enable stop ;
+  get external block (label ds, 2, block nr)  ;
+  block nr INCR 1;
+  check label.
+
+check label:
+  IF may be z80 format label OR may be old olivetti format label
+    THEN
+    ELSE errorstop (inconsistent, "Archiv inkonsistent")
+  FI.
+
+may be z80 format label :
+  z80 archive AND label.lab(dr size) > 0 .
+
+may be old olivetti format label :
+  olivetti AND label.lab(first page stored)=0 AND label.lab(dr size+1) > 0 .
+
+END PROC get label; 
+ 
+PROC next page:
+  IF z80 archive 
+  THEN 
+    WHILE labelbits = all ones REP
+      bitword INCR 1;
+      IF bitword >= label size THEN
+      no further page := true; LEAVE next page FI
+    PER;
+    INT VAR p := lowest reset (labelbits);
+    set bit (labelbits, p);
+    page := 16*(bitword-first bit word)+p 
+  ELSE
+    WHILE oli bits = 0 REP 
+      bitword INCR 1; 
+      IF bitword >= labelsize-64 THEN
+      no further page := true; LEAVE next page FI 
+    PER; 
+    p := lowest set (oli bits); 
+    reset bit (olibits, p); 
+    page := 16*(bitword-firstbitword)+p; 
+  FI. 
+ 
+  label bits : label.lab (bitword).
+  oli bits : label.lab (bitword+1). 
+ 
+END PROC next page;
+.
+olivetti : label.lab (archive version) = -1. 
+ 
+z80 archive : label.lab (archive version) = 0. 
+ 
+init next page:
+   BOOL VAR no further page := false;
+   bitword := first bit word.
+
+check rerun :
+    IF rerun <> session
+      THEN errorstop ("RERUN beim Archiv-Zugriff")
+    FI .
+
+PROC get external block (DATASPACE VAR ds, INT CONST page,
+                         INT CONST block nr): 
+
+  INT VAR error ;
+  read block (ds, page, block nr, error) ;
+  SELECT error OF
+    CASE 0: read succeeded
+    CASE 1: error stop ("Lesen unmoeglich (Archiv)")
+    CASE 2: read failed
+    CASE 3: error stop ("Archiv-Ueberlauf") 
+    OTHERWISE error stop ("??? (Archiv)")
+  END SELECT .
+
+read succeeded :
+  unreadable sequence length := 0 .
+
+read failed :
+  unreadable sequence length INCR 1 ;
+  IF unreadable sequence length >= 30
+    THEN errorstop ("30 unlesbare Bloecke hintereinander")
+    ELSE error stop (read error, "Lesefehler (Archiv)")
+  FI .
+
+END PROC get external block; 
+ 
+PROC put external block (DATASPACE CONST ds, INT CONST page, 
+                         INT CONST block nr):
+  INT VAR error;
+  write block (ds, page, write normal, block nr, error) ;
+  SELECT error OF
+    CASE 0: 
+    CASE 1: error stop ("Schreiben unmoeglich (Archiv)")
+    CASE 2: error stop ("Schreibfehler (Archiv)")
+    CASE 3: error stop ("Archiv-Ueberlauf") 
+    OTHERWISE error stop ("??? (Archiv)") 
+  END SELECT .
+
+END PROC put external block;
+
+PROC read block (DATASPACE VAR ds,
+                 INT CONST ds page no, 
+                 INT CONST block no,
+                 INT VAR return code) :
+  read block; 
+  retry if read error.
+ 
+read block: 
+  block in (ds, ds page no, 0, block no, return code). 
+ 
+retry if read error: 
+  INT VAR retry;
+  FOR retry FROM 1 UPTO 10 WHILE return code = 2 REP 
+    reset to block 0 if fifth try; 
+    read block 
+  PER. 
+ 
+reset to block 0 if fifth try: 
+  IF retry = 5 
+    THEN block in (ds, ds page no, 0, 0, return code) 
+  FI. 
+ 
+END PROC read block;
+ 
+PROC write block (DATASPACE CONST ds,
+                 INT CONST ds page no, 
+                 INT CONST mode,
+                 INT CONST block no,
+                 INT VAR return code):
+  write block; 
+  retry if write error. 
+ 
+write block: 
+  block out (ds, ds page no, mode * 256, block no, return code) .
+
+retry if write error: 
+  INT VAR retry;
+  FOR retry FROM 1 UPTO 10 WHILE return code = 2 REP 
+    reset to block 0 if fifth try; 
+    write block 
+  PER. 
+ 
+reset to block 0 if fifth try: 
+  IF retry = 5 
+    THEN disable stop;
+         DATASPACE VAR dummy ds := nilspace;
+         block in (dummy ds, 2, 0, 0, return code);
+         forget (dummy ds);
+         enable stop
+  FI. 
+ 
+END PROC write block;
+ 
+INT PROC size (INT CONST key) :
+
+  INT VAR return code ;
+  control (5, key, 0, return code) ;
+  return code .
+
+ENDPROC size ;
+
+INT PROC archive blocks :
+  size (0)
+ENDPROC archive blocks ;
+
+PROC search dataspace (INT VAR ds pages) :
+
+  disable stop ;
+  ds pages := -1 ;
+  INT CONST last block := archive blocks ;
+ 
+  WHILE block nr < last block REP
+    IF block is dataspace label
+      THEN ds pages := pages counted ;
+           LEAVE search dataspace
+    FI ;
+    block nr INCR 1
+  UNTIL is error PER .
+
+block is dataspace label :
+  look at label block ;
+  IF is error
+    THEN IF error code = read error OR error code = inconsistent
+           THEN clear error
+         FI ;
+         FALSE
+    ELSE count pages ;
+         pages counted = number of pages as label says
+  FI .
+
+look at label block :
+  INT CONST
+  old block nr := block nr ;
+  get label ;
+  block nr := old block nr.
+
+count pages :
+  INT VAR
+  pages counted := 0 ;
+  init next page ;
+  next page ;
+  WHILE NOT no further page REP
+    pages counted INCR 1 ;
+    next page
+  PER .
+
+number of pages as label says :   label.lab (dr size) .
+
+ENDPROC search dataspace ;
+
+PROC format archive (INT CONST format code) :
+
+  IF format is possible
+    THEN format
+    ELSE errorstop ("'format' ist hier nicht implementiert")
+  FI .
+
+format is possible :
+  INT VAR return code ;
+  control (1,0,0, return code) ;
+  bit (return code, 4) .
+
+format :
+  control (7, format code, 0, return code) ;
+  IF return code = 1
+    THEN errorstop ("Formatieren unmoeglich")
+  ELIF return code > 1
+    THEN errorstop ("Schreibfehler (Archiv)")
+  FI .
+
+ENDPROC format archive ;
+
+END PACKET basic archive;
+

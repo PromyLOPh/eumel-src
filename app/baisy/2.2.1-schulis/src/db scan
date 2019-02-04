@@ -1,0 +1,245 @@
+PACKET db scan
+ 
+(********************************************************************) 
+(*                                                                  *) 
+(*  AUTOR   :  Siegfried Fronzek (ISP GmbH)                         *) 
+(*  ZWECK   :  Navigation über eine Tupelmenge                      *) 
+(*                                                                  *) 
+(*             Vor Aufruf der Prozeduren scan first/scan forward    *) 
+(*             müssen die ersten n Schlüsselwerte gesetzt werden.   *) 
+(*             Diese Schlüsselwerte bestimmen die zu durchlaufende  *) 
+(*             Tupel-Menge.                                         *) 
+(*             Die Prozeduren scan last/scan pred bestimmen zum     *) 
+(*             vorgegebenen Schlüssel den vorherigen Datensatz!     *) 
+(*                                                                  *) 
+(*             Die Prozedur scan backward liefert einen Stack incl. *) 
+(*             (eventuell nächstem !!!!) Datensatz zum vorgegebenen *) 
+(*             Schlüssel, eignet sich also nicht zur Simulation     *) 
+(*             der Proczedur scan last im Stack-Betrieb.            *) 
+(*                                                                  *) 
+(*  DATUM   :  06.04.87                                             *) 
+(*  GEÄNDERT:  20.05.87 PROCs scan backward, scan stack entry       *) 
+(*                                                                  *) 
+(********************************************************************) 
+ 
+DEFINES scan first, scan last, scan succ, scan pred, 
+        scan status, scan stack entry,
+        scan forward, scan backward, scan stack succ, scan stack pred 
+        : 
+ 
+INT VAR scan db status:: db status; 
+ 
+PROC scan first (INT CONST index nr, BOOL PROC pruefung): 
+  BOOL VAR exact sve:: exact match; 
+  exact match (FALSE); 
+  scan rumpf (index nr, BOOL PROC pruefung, PROC (INT CONST) search); 
+  IF scan status <> ok 
+    THEN 
+      scan status (file empty) 
+  FI ; 
+  exact match (exact sve) 
+ENDPROC scan first; 
+ 
+PROC scan last (INT CONST index nr, BOOL PROC pruefung): 
+  change index; 
+  scan rumpf (index nr, BOOL PROC pruefung, PROC (INT CONST) pred); 
+  IF scan status <> ok 
+    THEN 
+      scan status (file empty) 
+  FI 
+ENDPROC scan last; 
+ 
+PROC scan succ (INT CONST index nr, BOOL PROC pruefung): 
+  scan rumpf (index nr, BOOL PROC pruefung, PROC (INT CONST) succ); 
+ENDPROC scan succ; 
+ 
+PROC scan pred (INT CONST index nr, BOOL PROC pruefung): 
+  scan rumpf (index nr, BOOL PROC pruefung, PROC (INT CONST) pred); 
+ENDPROC scan pred; 
+ 
+INT PROC scan status: 
+  scan db status 
+ENDPROC scan status; 
+ 
+PROC scan status (INT CONST stat): 
+  scan db status:= stat 
+ENDPROC scan status; 
+ 
+PROC scan rumpf (INT CONST index nr, BOOL PROC pruefung, 
+                 PROC (INT CONST) aktion ): 
+   TEXT VAR sve t:: "";
+   save tupel (index nr, sve t); 
+   aktion (index nr); 
+   IF db status <> ok 
+     THEN 
+       restore tupel (index nr, sve t); 
+       change index; 
+       scan status (db status) 
+     ELSE 
+       IF NOT pruefung 
+         THEN 
+           restore tupel (index nr, sve t); 
+           change index; 
+           scan status (end of file) 
+         ELSE 
+           scan status (ok) 
+       FI 
+   FI 
+ENDPROC scan rumpf; 
+ 
+(******************************************************************) 
+(*                                                                *)
+(*                   STACK ohne Datenraum                         *)
+(*                                                                *)
+(******************************************************************) 
+#
+PROC scan forward (INT CONST index nr, BOOL PROC pruefung,
+                   INT VAR anz tupels):
+  scan stack rumpf (index nr, BOOL PROC pruefung, 
+              PROC (INT CONST,INT VAR) multisearch forward, anz tupels)
+ENDPROC scan forward; 
+ 
+PROC scan backward (INT CONST index nr, BOOL PROC pruefung, 
+                    INT VAR anz tupels): 
+  scan stack rumpf (index nr, BOOL PROC pruefung, 
+              PROC (INT CONST,INT VAR) multisearch backward, anz tupels) 
+  (* !!! Vorsicht: multisearch backward liefert den naechsten zu einem 
+                   ungültigen Startwert !!!!! *)
+ENDPROC scan backward; 
+ 
+PROC scan succ (INT CONST index nr, BOOL PROC pruefung, INT VAR anz tupels): 
+ scan stack rumpf (index nr, BOOL PROC pruefung,
+                    PROC (INT CONST,INT VAR) multisucc, anz tupels); 
+ENDPROC scan succ; 
+ 
+PROC scan pred (INT CONST index nr, BOOL PROC pruefung, INT VAR anz tupels): 
+  scan stack rumpf (index nr, BOOL PROC pruefung,
+                    PROC (INT CONST,INT VAR) multipred, anz tupels)
+ENDPROC scan pred; 
+ 
+PROC scan stack succ (INT CONST index nr, BOOL PROC pruefung): 
+  scan stack rumpf (index nr, BOOL PROC pruefung, PROC multisucc); 
+ENDPROC scan stack succ; 
+ 
+PROC scan stack pred (INT CONST index nr, BOOL PROC pruefung): 
+  scan stack rumpf (index nr, BOOL PROC pruefung, PROC multipred); 
+ENDPROC scan stack pred; 
+ 
+BOOL PROC scan stack entry (INT CONST entry nr, BOOL PROC pruefung): 
+  stack entry (entry nr); 
+  pruefung 
+ENDPROC scan stack entry; 
+ 
+PROC scan stack rumpf (INT CONST index nr, BOOL PROC pruefung, 
+                 PROC (INT CONST,INT VAR) aktion, INT VAR anz tupels ): 
+   change index;
+   aktion (index nr, anz tupels); 
+   scan status (end of file); 
+   change index;
+   IF anz tupels = 0 COR db status <> ok 
+     THEN 
+       IF anz tupels <> 0 
+         THEN 
+           scan status (db status) 
+       FI
+     ELSE 
+           scan status (ok) 
+   FI 
+ENDPROC scan stack rumpf; 
+ 
+PROC scan stack rumpf (INT CONST index nr, BOOL PROC pruefung, 
+                 PROC aktion): 
+   aktion; 
+   change index;
+   IF NOT pruefung 
+     THEN 
+       scan status (end of file) 
+     ELSE 
+       scan status (ok) 
+   FI 
+ENDPROC scan stack rumpf; 
+ 
+ #
+(******************************************************************) 
+(*                                                                *)
+(*                   STACK mit Datenraum                          *)
+(*                                                                *)
+(******************************************************************) 
+ 
+ 
+PROC scan forward (INT CONST index nr, BOOL PROC pruefung,
+                   INT VAR anz tupels):
+  scan stack rumpf (index nr, BOOL PROC pruefung, 
+                    PROC (INT CONST,INT VAR) multisearch forward,
+                    anz tupels)
+ENDPROC scan forward; 
+ 
+PROC scan backward (INT CONST index nr, BOOL PROC pruefung, 
+                    INT VAR anz tupels):
+  scan stack rumpf (index nr, BOOL PROC pruefung, 
+                    PROC (INT CONST,INT VAR) multisearch backward,
+                    anz tupels)
+  (* !!! Vorsicht: multisearch backward liefert den naechsten zu einem 
+                   ungültigen Startwert !!!!! *)
+ENDPROC scan backward; 
+ 
+PROC scan succ (INT CONST index nr, BOOL PROC pruefung, INT VAR anz tupels):
+ scan stack rumpf (index nr, BOOL PROC pruefung,
+                    PROC (INT CONST,INT VAR) multisucc,
+                    anz tupels)
+ENDPROC scan succ; 
+ 
+PROC scan pred (INT CONST index nr, BOOL PROC pruefung, INT VAR anz tupels):
+  scan stack rumpf (index nr, BOOL PROC pruefung,
+                    PROC (INT CONST,INT VAR) multipred,
+                    anz tupels)
+ENDPROC scan pred; 
+ 
+PROC scan stack succ (INT CONST index nr, BOOL PROC pruefung):
+  scan stack rumpf (index nr, BOOL PROC pruefung, PROC multisucc)
+ENDPROC scan stack succ; 
+ 
+PROC scan stack pred (INT CONST index nr, BOOL PROC pruefung):
+  scan stack rumpf (index nr, BOOL PROC pruefung,
+                    PROC multipred)
+ENDPROC scan stack pred; 
+ 
+BOOL PROC scan stack entry (INT CONST entry nr, BOOL PROC pruefung ):
+  stack entry (entry nr);
+  pruefung 
+ENDPROC scan stack entry; 
+ 
+PROC scan stack rumpf (INT CONST index nr, BOOL PROC pruefung,
+                       PROC (INT CONST,INT VAR) aktion,
+                       INT VAR anz tupels):
+   change index;
+   aktion (index nr, anz tupels);
+   scan status (end of file);
+   IF anz tupels = 0 COR db status <> ok 
+     THEN 
+       change index; 
+       IF anz tupels <> 0 
+         THEN 
+           scan status (db status) 
+       FI
+     ELSE 
+           scan status (ok) 
+   FI 
+ENDPROC scan stack rumpf; 
+ 
+PROC scan stack rumpf (INT CONST index nr, BOOL PROC pruefung, 
+                 PROC aktion):
+   aktion;
+   IF NOT pruefung 
+     THEN 
+       change index; 
+       scan status (end of file) 
+     ELSE 
+       scan status (ok) 
+   FI 
+ENDPROC scan stack rumpf; 
+ 
+ 
+ENDPACKET db scan;
+
+

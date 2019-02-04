@@ -1,0 +1,304 @@
+(*************************************************************************)
+(*                                                                        *)
+(*       K L A R T E X T                                                  *)
+(*       ===============                                                  *)
+(*                                                                        *)
+(*       Tastenbelegungen im Klartext fuer Steuertasten                   *)
+(*                                                                        *)
+(*       Autor: Thomas Berlage                                            *)
+(*       Stand: 27.04.88                                                  *)
+(*       Version 1.0                                                      *)
+(*                                                                        *)
+(*       Zweck: Lernsequenzen koennen editiert werden, wobei fuer         *)
+(*              die Steuertasten symbolische Namen in spitzen             *)
+(*              Klammern verwendet werden. Folgende Namen sind            *)
+(*              zulaessig:                                                *)
+(*                                                                        *)
+(*              <hop> <links> <rechts> <oben> <unten> <tab>               *)
+(*              <rubin> <rubout> <mark> <esc>                             *)
+(*                                                                        *)
+(*       Aufruf:                                                          *)
+(*              PROC lernsequenz editieren (TEXT CONST taste)             *)
+(*                                                                        *)
+(**************************************************************************)
+PACKET case conversion                                 (* Stand: 07.02.88 *)
+
+  DEFINES
+
+  to lowercase,
+  to uppercase :
+
+
+PROC to uppercase (TEXT VAR line) :
+
+  INT VAR p := 0;
+  REP
+    p := pos (line, "a", "z", p + 1);
+    IF p = 0 THEN LEAVE to uppercase END IF;
+    replace (line, p, code (code (line SUB p) - 32))
+  END REP
+
+END PROC to uppercase;
+
+PROC to lowercase (TEXT VAR line) :
+
+  INT VAR p := 0;
+  REP
+    p := pos (line, "A", "Z", p + 1);
+    IF p = 0 THEN LEAVE to lowercase END IF;
+    replace (line, p, code (code (line SUB p) + 32))
+  END REP
+
+END PROC to lowercase;
+
+END PACKET case conversion;
+
+PACKET klartextbelegung 
+ 
+  DEFINES 
+ 
+  sieben bit modus, 
+  klartext, 
+  kodierung : 
+ 
+ 
+BOOL VAR sieben bit := TRUE; 
+ 
+ROW 33 TEXT CONST tasten := ROW 33 TEXT : ( 
+  "nul", "hop", "rechts", "oben", "-(4)", "fkt1", "fkt2", "-(7)", "links",
+  "tab", "unten", "rubin", "rubout", "return", "fkt3", "fkt4", "mark",
+  "-(17)", "-(18)", "-(19)", "-(20)", "fkt5", "fkt6", "-(23)", "fkt7",
+  "fkt8", "fkt9", "esc", "fkt10", "fkt11", "fkt12", "fkt13", "blank");
+
+LET
+  separator anfang = "<",
+  separator ende = ">";
+
+TEXT VAR ergebnis;
+
+
+BOOL PROC sieben bit modus :
+
+  sieben bit
+
+END PROC sieben bit modus;
+
+PROC sieben bit modus (BOOL CONST modus) :
+
+  sieben bit := modus
+
+END PROC sieben bit modus;
+
+TEXT PROC klartext (TEXT CONST t) :
+
+  INT VAR i;
+  ergebnis := "";
+  FOR i FROM 1 UPTO length (t) REP
+    klartext eines zeichens bestimmen
+  END REP;
+  ergebnis .
+
+klartext eines zeichens bestimmen :
+  INT CONST c := code (t SUB i);
+  IF c < 33 THEN
+    ergebnis CAT separator anfang + tasten (c + 1) + separator ende
+  ELIF c >= 127 CAND sieben bit CAND kein umlaut THEN
+    ergebnis CAT separator anfang + text (c) + separator ende
+  ELSE
+    ergebnis CAT code (c)
+  END IF .
+
+kein umlaut :
+  pos (eumel sonderzeichen, code (c)) = 0 .
+
+eumel sonderzeichen :
+  ""214""215""216""217""218""219""220""221""222""223""251""252"" .
+
+END PROC klartext;
+
+TEXT PROC kodierung (TEXT CONST t) :
+
+  INT VAR
+    sep pos := pos (t, separator anfang),
+    sep ende := 0;
+
+  enable stop;
+  ergebnis := "";
+  WHILE sep pos > 0 REP
+    text vor separator uebernehmen;
+    separiertes zeichen behandeln;
+    sep pos := pos (t, separator anfang, sep ende)
+  END REP;
+  restliche zeichen uebernehmen;
+  ergebnis .
+
+text vor separator uebernehmen :
+  ergebnis CAT subtext (t, sep ende + 1, sep pos - 1) .
+
+separiertes zeichen behandeln :
+  sep ende := pos (t, separator ende, sep pos);
+  IF sep ende = 0 THEN
+    errorstop ("""" + separator ende + """ fehlt.")
+  ELSE
+    separiertes zeichen kodieren
+  END IF .
+
+separiertes zeichen kodieren :
+  TEXT VAR bezeichnung := subtext (t, sep pos + 1, sep ende - 1);
+  change all (bezeichnung, " ", "");
+  to lowercase (bezeichnung);
+  INT VAR c := int (bezeichnung);
+  IF keine zahl THEN
+    mit tabelle vergleichen
+  END IF;
+  ergebnis CAT code (c) .
+
+keine zahl :
+  NOT last conversion ok .
+
+mit tabelle vergleichen :
+  INT VAR i;
+  FOR i FROM 1 UPTO 33 REP
+    IF bezeichnung = tasten (i) THEN
+      c := i - 1;
+      LEAVE mit tabelle vergleichen
+    END IF
+  END REP;
+  errorstop ("unbekannte Tastenbezeichnung: """ + bezeichnung + """") .
+
+restliche zeichen uebernehmen :
+  ergebnis CAT subtext (t, sep ende + 1) .
+
+END PROC kodierung;
+
+END PACKET klartextbelegung;
+
+PACKET klartext anwendung
+
+  DEFINES
+
+  klartext auf taste,
+  klartext auf taste legen,
+  klartext aus file,
+  klartext in file,
+  lernsequenz editieren :
+
+
+LET
+  separator anfang = "<",
+  separator ende = ">";
+
+TEXT VAR
+  zeile,
+  sequenz,
+  aenderung;
+
+DATASPACE VAR
+  ds;
+
+
+TEXT PROC klartext auf taste (TEXT CONST taste) :
+
+  klartext (lernsequenz auf taste (kodierung (taste)))
+
+END PROC klartext auf taste;
+
+PROC klartext auf taste legen (TEXT CONST taste, belegung) :
+
+  lernsequenz auf taste legen (kodierung (taste), kodierung (belegung))
+
+END PROC klartext auf taste legen;
+
+PROC klartext in file (FILE VAR f, TEXT CONST belegung) :
+
+  INT VAR
+    ende,
+    anfang := 1;
+
+  output (f);
+  zeile := klartext (belegung);
+  REP
+    ende der zeile bestimmen;
+    putline (f, subtext (zeile, anfang, ende - 1));
+    anfang := ende
+  UNTIL anfang > length (zeile) END REP .
+
+ende der zeile bestimmen :
+  TEXT CONST zeichen := subtext (zeile, anfang, anfang + 4);
+  IF zeichen = "<hop>" OR zeichen = "<esc>" THEN
+    ende := pos (zeile, separator anfang, anfang + 6)
+  ELSE
+    ende := pos (zeile, separator anfang, anfang + 1)
+  END IF;
+  IF ende = 0 THEN ende := length (zeile) + 1 END IF;
+  ende := min (anfang + maxlinelength (f), ende) .
+(*
+  IF (ende - anfang) > maxlinelength (f) THEN
+    ende := anfang + maxlinelength (f)
+  ELIF ende > 5 THEN
+    letzten separator bestimmen
+  END IF .
+
+letzten separator bestimmen :
+  TEXT CONST zeichen := subtext (zeile, ende - 4, ende - 2);
+  IF zeichen = "esc" OR zeichen = "hop" THEN
+    ende verschieben
+  ELSE
+    ende := pos (zeile, separator ende, ende)
+  END IF .
+
+ende verschieben :
+  IF (zeile SUB ende + 5) = separator anfang THEN
+    ende := pos (zeile, separator ende, ende + 5);
+    IF ende = 0 THEN ende := length (zeile) END IF
+  ELSE
+    ende := ende + 5
+  END IF .
+ *)
+END PROC klartext in file;
+
+PROC klartext aus file (FILE VAR f, TEXT VAR belegung) :
+
+  input (f);
+  belegung := "";
+  WHILE NOT eof (f) REP
+    getline (f, zeile);
+    IF (zeile SUB LENGTH zeile) = " " THEN
+      zeile := subtext (zeile, 1, length (zeile) - 1)
+    END IF;
+    belegung CAT kodierung (zeile)
+  END REP .
+
+END PROC klartext aus file;
+
+PROC lernsequenz editieren (TEXT CONST taste) :
+
+  disable stop;
+  ds := nilspace;
+  editieren (taste);
+  forget (ds)
+
+END PROC lernsequenz editieren;
+
+PROC editieren (TEXT CONST taste) :
+
+  enable stop;
+  FILE VAR f := sequential file (output, ds);
+  sequenz := lernsequenz auf taste (taste);
+  klartext in file (f, sequenz);
+  headline (f, "Tastenbelegung");
+  edit (f);
+  klartext aus file (f, aenderung);
+  IF aenderung <> sequenz CAND wirklich aendern THEN
+    lernsequenz auf taste legen (taste, aenderung)
+  END IF .
+
+wirklich aendern :
+  yes ("Lernsequenz aendern") .
+
+END PROC editieren;
+
+END PACKET klartext anwendung;
+
+
+

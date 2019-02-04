@@ -1,0 +1,312 @@
+PACKET hoeherstufenlocalprogDEFINES schuljahreswechsel,halbjahreswechsel:LET 
+dnrschueler=2,fnrsufamnames=3,fnrsurufnames=4,fnrsugebdatums=5,fnrsustatuss=6
+,fnrsusgrpjgst=7,fnrsusgrpzugtut=8,fnrsutidakthjd=9,fnrsuartzugang=10,
+fnrsuneuerzugtut=11,fnrsujgsteintr=13,#fnrsuskennlschule=14,dr13.05.88#
+fnrsuabgdats=16,fnrsuabschluss=18,fnrsueintrittinsek=44,dnrhalbjahresdaten=88
+,fnrhjdfamnames=89,fnrhjdrufnames=90,fnrhjdgebdats=91,fnrhjdsj=92,fnrhjdhj=93
+,fnrhjdjgst=94,fnrhjdkennung=95,fnrhjdversetzung=96,#dnrschulen=120,dr13.
+05.88##fnrschkennung=121,dr13.05.88#dnraktschuelergruppen=129,fnrsgrpsj=130,
+fnrsgrphj=131,fnrsgrpjgst=132,fnrsgrpkennung=133,ixsustatfamrufgeb=243,
+ixsustatjgstzug=244,ixsustatjgst=250;LET hellan="",hellaus=" ",meldz=23;
+LET neuanmeld5="n05",neuanmeld11="n11",neuanmeldsonst="nso";LET jgst13="13",
+jgst11="11";LET posvers=1,posnachpr=2,posspringer=3,posfreiwillig=4,
+posnichtvers=5,poshoeherstufen=2,kennzeichenneuan="z",kennzeichenabitur="K",
+gueltigekennzeichen="vnsfw",dreizehnnachpr="N";LET null=0,niltext="",
+trennername=", ",sgtrenner="/",blank=" ",maxjahr=100,minjahr="00",klammerauf=
+" (",klammerzu=")",leerdatum="01.01.00";LET halbjahr1="1",halbjahr2="2",
+zumschuljahresende=1,zumhalbjahresende=0;LET schluesselschuljahr="Schuljahr",
+schluesselhalbjahr="Schulhalbjahr",schluesselendeschulhalbjahr=
+"Ende Schulhalbjahr";LET bestandabgegangene="abg",aktbestand="ls";LET 
+anzkenndaten=3;LET protname="Fehlerprotokoll";LET schulname="Schulname",
+schulort="Schulort",zeilenlaenge=77,datumslaenge=8,ordnungstrenner=". ",
+absatztrenner="    - ",protueberschrift=
+"Fehlerprotokoll zum automatischen Hochsetzen";LET weiterefehler=
+"Abbruch des Programmes, da zu viele Fehler",maxfehler=50;LET 
+fehlerkeinverserg=1,fehlerkeinneuertutor=2,fehlerungueltigesverserg=3,
+fehlerungueltigesg=4,fehlerungueltigehjd=5,fehlerstatus=6,fehlerplanung=7;
+LET maxfehlerart=7;LET fehleraendern="Ändern: ",fehlerloeschen="Löschen: ";
+LET rcodeprot=1001,rcodenoprot=1002;BOOL VAR updatenoetig:=FALSE ;DATASPACE 
+VAR ds:=nilspace;FILE VAR fehlerprot;INT VAR fehlerzahl,kanal;TEXT VAR 
+stichtag:="";TEXT VAR letztername,letzterrufname,letztesgebdatum,
+letzterstatus;ROW anzkenndatenTEXT VAR key;ROW maxfehlerartTEXT CONST 
+fehlertext:=ROW maxfehlerartTEXT :("Es liegt kein Versetzungsergebnis vor",
+"Es wurde kein neuer Zug/Tutor eingetragen",
+"Das eingetragene Versetzungsergebnis ist nicht zulässig",
+"Die eingetragene Schülergruppe ist nicht vorgesehen",
+"Zu diesem Schüler liegen keine oder unvollständige Halbjahresdaten vor",
+"Fehler beim Datenbankzugriff","Keine Schülergruppen im Planungsbestand");
+TEXT VAR geplschuelergruppen,aufbermeld,aufberprot,aktschuljahr,akthalbjahr,
+kommendesschuljahr;PROC schuljahreswechsel:abschnittsendebearbeitung(
+zumschuljahresende)END PROC schuljahreswechsel;PROC halbjahreswechsel:
+abschnittsendebearbeitung(zumhalbjahresende)END PROC halbjahreswechsel;PROC 
+abschnittsendebearbeitung(INT CONST zeitpunkt):forget(ds);kanal:=int(
+getrcvparam(1));continue(kanal);reinitparsing;stichtag:=schulkenndatum(
+schluesselendeschulhalbjahr);aktschuljahr:=schulkenndatum(schluesselschuljahr
+);akthalbjahr:=schulkenndatum(schluesselhalbjahr);kommendesschuljahr:=subtext
+(aktschuljahr,3,4);kommendesschuljahrCAT (jahrestext(int(kommendesschuljahr)+
+1));fehlerbehandlungvorbereiten;verarbeitung;fehlerauswertung;break(quiet).
+fehlerbehandlungvorbereiten:disablestop;forget(protname,quiet);fehlerzahl:=
+null.verarbeitung:IF zeitpunkt=zumschuljahresendeTHEN hochsetzenderschueler
+ELSE halbjahreswechselderschuelerFI .fehlerauswertung:IF fehleraufgetreten
+THEN schickefehlerprotokollananwenderELSE putsndcode(rcodenoprot);ds:=
+nilspace;putsndds(ds);forget(ds)FI ;forget(protname,quiet).fehleraufgetreten:
+fehlerzahl>null.schickefehlerprotokollananwender:clearerror;enablestop;
+putsndcode(rcodeprot);ds:=old(protname);putsndds(ds);forget(ds).END PROC 
+abschnittsendebearbeitung;PROC halbjahreswechselderschueler:enablestop;
+schuelergruppenausplanunguebernehmen;IF fehlerzahl=nullTHEN 
+aktuellanderschulebefindlicheschuelerdurchgehen(zumhalbjahresende)FI .END 
+PROC halbjahreswechselderschueler;PROC hochsetzenderschueler:enablestop;
+schuelergruppenausplanunguebernehmen;IF fehlerzahl=nullTHEN 
+aktuellanderschulebefindlicheschuelerdurchgehen(zumschuljahresende);
+neuanmeldungenuebernehmenFI .neuanmeldungenuebernehmen:
+neuanmeldungenzur5uebernehmen;neuanmeldungenzur11uebernehmen;
+sonstigeneuanmeldungenuebernehmen.END PROC hochsetzenderschueler;PROC 
+schuelergruppenausplanunguebernehmen:TEXT VAR folgesj,folgehj;
+geplschuelergruppen:=niltext;neuewertefuerschuljahrhalbjahrbestimmen;
+inittupel(dnraktschuelergruppen);putwert(fnrsgrpsj,folgesj);putwert(fnrsgrphj
+,folgehj);search(dnraktschuelergruppen,FALSE );WHILE dbstatus=okCAND 
+richtigesschulhalbjahrREP leseeinesg;succ(dnraktschuelergruppen)PER ;IF 
+geplschuelergruppen=niltextTHEN fehler(niltext,fehlerplanung)ELSE 
+alteschuelergruppenloeschen;#statistikwuerfelvorbereitendr11.05.88#FI .
+neuewertefuerschuljahrhalbjahrbestimmen:IF akthalbjahr=halbjahr1THEN folgesj
+:=aktschuljahr;folgehj:=halbjahr2ELSE folgesj:=kommendesschuljahr;folgehj:=
+halbjahr1FI .richtigesschulhalbjahr:wert(fnrsgrpsj)=folgesjCAND wert(
+fnrsgrphj)=folgehj.#dr11.05.88statistikwuerfelvorbereiten:melde(hellan+
+"Die speziellen Statistiken werden initialisiert"+hellaus,meldz);initstatraum
+(TRUE );bestaendeinstatraumeintragen(folgesj,folgehj);
+kuerzelnameninstatraumeintragen.#END PROC 
+schuelergruppenausplanunguebernehmen;PROC alteschuelergruppenloeschen:TEXT 
+VAR sg:="";inittupel(dnraktschuelergruppen);putwert(fnrsgrpsj,aktschuljahr);
+putwert(fnrsgrphj,akthalbjahr);search(dnraktschuelergruppen,FALSE );WHILE 
+altesschuljahrhalbjahrREP sg:=wert(fnrsgrpjgst)+wert(fnrsgrpkennung);delete(
+dnraktschuelergruppen);IF dbstatus<>nullTHEN fehler(sg,fehlerstatus,
+fehlerloeschen+text(dbstatus))ELSE melde("Die aktuelle Schülergruppe "+hellan
++sg+hellaus+"wird gelöscht",meldz)FI ;search(dnraktschuelergruppen,FALSE )
+PER .altesschuljahrhalbjahr:dbstatus=nullCAND wert(fnrsgrpsj)=aktschuljahr
+CAND wert(fnrsgrphj)=akthalbjahr.END PROC alteschuelergruppenloeschen;PROC 
+leseeinesg:TEXT CONST jgstkurz:=wert(fnrsgrpjgst),jgstlang:=jgstaufber(
+jgstkurz),zug:=compress(wert(fnrsgrpkennung));melde(
+"Die aktuelle Schülergruppe "+hellan+jgstlang+zug+hellaus+"wird eingerichtet"
+,meldz);geplschuelergruppenCAT jgstlang;geplschuelergruppenCAT zug;
+geplschuelergruppenCAT sgtrennerEND PROC leseeinesg;PROC 
+aktuellanderschulebefindlicheschuelerdurchgehen(INT CONST zeitpunkt):TEXT 
+VAR schuelertid:="";bereitevor;erstenlesen;WHILE nochwelchedaREP schuelertid
+:=gettid;saveupdateposition(dnrschueler);verarbeiten;aenderungspeichern;
+updatenoetig:=TRUE ;naechstenlesen;PER .bereitevor:inittupel(dnrschueler);
+putwert(fnrsustatuss,aktbestand);updatenoetig:=TRUE .erstenlesen:search(
+ixsustatfamrufgeb,FALSE );merkealleschluesselwerte.naechstenlesen:IF wert(
+fnrsustatuss)=bestandabgegangeneTHEN putwert(fnrsustatuss,aktbestand);search(
+ixsustatfamrufgeb,FALSE )ELSE succ(ixsustatfamrufgeb)FI ;IF 
+selbensatznochmalgelesenTHEN succ(ixsustatfamrufgeb)FI ;
+merkealleschluesselwerte.merkealleschluesselwerte:letztername:=wert(
+fnrsufamnames);letzterrufname:=wert(fnrsurufnames);letztesgebdatum:=wert(
+fnrsugebdatums);letzterstatus:=wert(fnrsustatuss).selbensatznochmalgelesen:
+letztername=wert(fnrsufamnames)CAND letzterrufname=wert(fnrsurufnames)CAND 
+letztesgebdatum=wert(fnrsugebdatums)CAND letzterstatus=wert(fnrsustatuss).
+nochwelcheda:dbstatus=nullCAND wert(fnrsustatuss)=aktbestand.verarbeiten:
+setzekenndaten;setzejgstundsg;meldebearbeitung;IF abgemeldetTHEN 
+anderschulebefindlicheabmeldenELIF zeitpunkt=zumschuljahresendeTHEN 
+anderschulebefindlichebehandeln(aktjgst,aktsg)ELSE 
+schuelerzumhalbjahreswechselbehandeln(aktjgst,aktsg)FI .setzejgstundsg:TEXT 
+VAR aktjgst:=jgstaufber(wert(fnrsusgrpjgst)),aktsg:=compress(wert(
+fnrsusgrpzugtut)).meldebearbeitung:melde("Die Daten von "+hellan+aufbermeld+
+hellaus+", "+hellan+aktjgst+aktsg+hellaus+"werden bearbeitet",meldz).
+abgemeldet:INT VAR aktabmeldedatum:=datum(wert(fnrsuabgdats));(
+aktabmeldedatum<>datum(leerdatum))CAND (datum(stichtag)>=aktabmeldedatum).
+anderschulebefindlicheabmelden:putwert(fnrsustatuss,bestandabgegangene);
+updatenoetig:=TRUE ;hjdnaechstesschulhalbjahrbearbeiten(aktjgst,aktsg).
+aenderungspeichern:IF dbstatus=okTHEN IF updatenoetigTHEN 
+restoreupdateposition(dnrschueler);selupdate(dnrschueler);ELSE replace(
+dnrschueler,schuelertid);putptid(schuelertid);insertinindex(ixsustatjgstzug);
+IF zeitpunkt=zumschuljahresendeTHEN insertinindex(ixsustatjgst)FI FI ;IF 
+dbstatus<>nullTHEN fehler(aufberprot,fehlerstatus,fehleraendern+text(dbstatus
+))FI FI .END PROC aktuellanderschulebefindlicheschuelerdurchgehen;PROC 
+schuelerzumhalbjahreswechselbehandeln(TEXT CONST aktjgst,aktsg):TEXT VAR 
+neueklasse,neuesg;tutorloeschen;neueklassepruefen;dbstatus(ok).tutorloeschen:
+#removeoutoffindex(ixsustatjgstzug);##dr18.08.88#neuesg:=compress(wert(
+fnrsuneuerzugtut));IF neuesg<>niltextTHEN putwert(fnrsusgrpzugtut,niltext)FI 
+.neueklassepruefen:IF neuesg=niltextTHEN neueklasse:=aktjgst+aktsg;neuesg:=
+aktsgELSE neueklasse:=aktjgst+neuesg;putwert(fnrsuneuerzugtut,niltext);
+putwert(fnrsusgrpzugtut,neuesg);FI ;IF NOT gueltigesg(neueklasse)THEN fehler(
+aufberprot,fehlerungueltigesg,neueklasse);dbstatus(9);LEAVE 
+schuelerzumhalbjahreswechselbehandelnELSE hjdnaechstesschulhalbjahrbearbeiten
+(aktjgst,neuesg)FI .END PROC schuelerzumhalbjahreswechselbehandeln;PROC 
+anderschulebefindlichebehandeln(TEXT CONST aktjgst,aktsg):holehjd;
+analysierehalbjahresdaten;aendere.holehjd:IF wert(fnrsutidakthjd)<>niltext
+THEN readtid(dnrhalbjahresdaten,wert(fnrsutidakthjd));IF iserrorTHEN 
+clearerror;dbstatus(notfound)FI ELSE dbstatus(notfound)FI ;IF 
+keinehalbjahresdatenvorhandenTHEN fehler(aufberprot,fehlerungueltigehjd);
+LEAVE anderschulebefindlichebehandelnFI .keinehalbjahresdatenvorhanden:
+dbstatus<>okCOR aktschuljahr<>wert(fnrhjdsj)COR akthalbjahr<>wert(fnrhjdhj)
+COR key[1]<>wert(fnrhjdfamnames)COR key[2]<>wert(fnrhjdrufnames)COR key[3]<>
+datumrekonversion(wert(fnrhjdgebdats))COR aktjgst<>jgstaufber(wert(fnrhjdjgst
+))COR aktsg<>compress(wert(fnrhjdkennung)).analysierehalbjahresdaten:TEXT 
+VAR versetzung:=wert(fnrhjdversetzung);pruefeversetzungskennzeichen.
+pruefeversetzungskennzeichen:BOOL VAR datenkorrekt:=FALSE ;TEXT CONST 
+neuerzugtutor:=wert(fnrsuneuerzugtut);IF versetzung=niltextTHEN fehler(
+aufberprot,fehlerkeinverserg)ELIF pos(gueltigekennzeichen,versetzung)<=null
+THEN fehler(aufberprot,fehlerungueltigesverserg,versetzung);ELIF 
+nichtnormalhoeherstufenCAND keinzugtutorTHEN fehler(aufberprot,
+fehlerkeinneuertutor);ELSE datenkorrekt:=TRUE FI ;IF NOT datenkorrektTHEN 
+LEAVE anderschulebefindlichebehandelnFI .nichtnormalhoeherstufen:pos(
+gueltigekennzeichen,versetzung)>poshoeherstufen.keinzugtutor:neuerzugtutor=
+niltext.aendere:TEXT VAR neuesg:=wert(fnrsusgrpzugtut);#removeoutoffindex(
+ixsustatjgst);removeoutoffindex(ixsustatjgstzug);##dr18.08.88#IF 
+neuerzugtutor<>niltextTHEN neuesg:=neuerzugtutorFI ;aendereschueler(aktjgst,
+aktsg,neuesg,versetzung).END PROC anderschulebefindlichebehandeln;PROC 
+aendereschueler(TEXT CONST aktjgst,aktsg,neuesg,versetzung):bereitevor;
+setzedaten;hjddatenloeschen;hjdnaechstesschulhalbjahrbearbeiten(neuejgst,
+neuesg).bereitevor:TEXT VAR neuejgst:=aktjgst;TEXT VAR loeschjgst:=aktjgst;.
+setzedaten:trageversetzungundtutorein;INT CONST kennzeichenpos:=pos(
+gueltigekennzeichen,versetzung);SELECT kennzeichenposOF CASE posspringer:
+springenCASE posvers:normalversetzenCASE posnachpr:zurnachpruefungversetzen
+CASE posnichtvers,posfreiwillig:sitzenbleibenEND SELECT ;TEXT VAR neueklasse
+:=neuejgst+neuesg;IF falscherzugtutorTHEN fehler(aufberprot,
+fehlerungueltigesg,neueklasse);LEAVE aendereschuelerFI .falscherzugtutor:NOT 
+gueltigesg(neueklasse).trageversetzungundtutorein:putwert(fnrsuartzugang,
+versetzung);putwert(fnrsuneuerzugtut,niltext).springen:IF int(aktjgst)>11
+THEN fehler(aufberprot,fehlerungueltigesverserg,versetzung);LEAVE 
+aendereschuelerFI ;BOOL VAR sitzenbleiber:=FALSE ;neuejgst:=jgstaufber(text(
+int(aktjgst)+2));loeschjgst:=jgstaufber(text(int(aktjgst)+1));
+nachfolgendehjdsloeschen;sgeintragen;eintrittsek2evtleintragen.
+normalversetzen:IF inder13THEN dreizehnerabmelden;
+hjdnaechstesschulhalbjahrbearbeiten(neuejgst,aktsg);LEAVE aendereschueler
+ELSE normalhochsetzenFI .zurnachpruefungversetzen:IF inder13THEN 
+nachpruefling13ELSE normalhochsetzenFI .normalhochsetzen:sitzenbleiber:=
+FALSE ;neuejgst:=jgstaufber(text(int(aktjgst)+1));loeschjgst:=neuejgst;
+sgeintragen;eintrittsek2evtleintragen.sgeintragen:putwert(fnrsusgrpjgst,
+neuejgst);putwert(fnrsusgrpzugtut,neuesg);.eintrittsek2evtleintragen:IF 
+neuejgst=jgst11THEN putwert(fnrsueintrittinsek,kommendesschuljahr);FI .
+nachpruefling13:sitzenbleiber:=TRUE ;putwert(fnrsuartzugang,dreizehnnachpr);
+sgeintragen.sitzenbleiben:sitzenbleiber:=TRUE ;sgeintragen;
+nachfolgendehjdsloeschen.nachfolgendehjdsloeschen:halbjahresdatenloeschen(
+PROC (INT CONST )succ,key,halbjahr2,int(aktjgst),FALSE );.inder13:aktjgst=
+jgst13.hjddatenloeschen:halbjahresdatenloeschen(key,aktjgst,loeschjgst,
+halbjahr1).END PROC aendereschueler;PROC dreizehnerabmelden:putwert(
+fnrsuabgdats,stichtag);putwert(fnrsuabschluss,kennzeichenabitur);putwert(
+fnrsustatuss,bestandabgegangene);updatenoetig:=TRUE ;END PROC 
+dreizehnerabmelden;PROC neuanmeldungenzur5uebernehmen:uebernehmenaus(
+neuanmeld5,1)END PROC neuanmeldungenzur5uebernehmen;PROC 
+neuanmeldungenzur11uebernehmen:uebernehmenaus(neuanmeld11,1)END PROC 
+neuanmeldungenzur11uebernehmen;PROC sonstigeneuanmeldungenuebernehmen:
+uebernehmenaus(neuanmeldsonst,2)END PROC sonstigeneuanmeldungenuebernehmen;
+PROC uebernehmenaus(TEXT CONST bestand,INT CONST meld):BOOL VAR 
+allesinordnung:=FALSE ;TEXT VAR neuejgst,neuerzug;bereitevor;erstenlesen;
+WHILE nochwelchedaREP saveupdateposition(dnrschueler);pruefen;IF 
+allesinordnungTHEN uebernehmen;putwert(fnrsustatuss,bestand);meldeuebernahme;
+FI ;naechstenlesen;PER .bereitevor:inittupel(dnrschueler);putwert(
+fnrsustatuss,bestand).erstenlesen:search(ixsustatfamrufgeb,FALSE ).
+nochwelcheda:dbstatus=nullCAND wert(fnrsustatuss)=bestand.pruefen:
+setzekenndaten;pruefetutorsg(allesinordnung);.uebernehmen:neuejgst:=wert(
+fnrsujgsteintr);neuerzug:=wert(fnrsuneuerzugtut);dbwertesetzen;
+hjdnaechstesschulhalbjahrbearbeiten(neuejgst,neuerzug);restoreupdateposition(
+dnrschueler);selupdate(dnrschueler);IF dbstatus<>nullTHEN fehler(aufberprot,
+fehlerstatus,fehleraendern+text(dbstatus))FI .dbwertesetzen:putwert(
+fnrsusgrpjgst,jgstaufber(neuejgst));putwert(fnrsusgrpzugtut,neuerzug);putwert
+(fnrsuartzugang,kennzeichenneuan);putwert(fnrsuneuerzugtut,niltext).
+meldeuebernahme:IF meld=1THEN melde("Bearbeitung der Neuangemeldeten zur "+
+jgstaufber(neuejgst)+": "+hellan+aufbermeld+hellaus,meldz)ELSE melde(
+"Bearbeitung sonstiger Neuanmeldungen: "+hellan+aufbermeld+hellaus,meldz)FI .
+naechstenlesen:search(ixsustatfamrufgeb,FALSE )#dr18.08.88##succ(
+ixsustatfamrufgeb)##eigentlichrichtig#.END PROC uebernehmenaus;PROC fehler(
+TEXT CONST name,INT CONST fehlernr):fehler(name,fehlernr,niltext)END PROC 
+fehler;PROC fehler(TEXT CONST name,INT CONST fehlernr,TEXT CONST ergaenzung):
+IF ersterfehlerTHEN fehlerprotokollbeginnenELIF zuvielefehlerTHEN 
+programmendeFI ;nameinprotokoll;fehler(fehlernr,ergaenzung);dbstatus(notfound
+);.ersterfehler:fehlerzahl=null.zuvielefehler:fehlerzahl=maxfehler.
+fehlerprotokollbeginnen:fehlerprot:=sequentialfile(output,protname);TEXT VAR 
+protzeile:=schulkenndatum(schulname);protzeileCAT ((zeilenlaenge-datumslaenge
+-length(protzeile))*blank);protzeileCAT date;putline(fehlerprot,protzeile);
+putline(fehlerprot,schulkenndatum(schulort));line(fehlerprot,3);putline(
+fehlerprot,protueberschrift);line(fehlerprot).programmende:line(fehlerprot);
+putline(fehlerprot,weiterefehler);stop.nameinprotokoll:fehlerzahlINCR 1;line(
+fehlerprot);protzeile:=text(fehlerzahl)+ordnungstrenner+name;putline(
+fehlerprot,protzeile).END PROC fehler;PROC fehler(INT CONST fehlernr,TEXT 
+CONST ergaenzung):TEXT VAR protzeile:=absatztrenner+fehlertext(fehlernr);IF 
+ergaenzung<>niltextTHEN protzeileCAT klammerauf;protzeileCAT ergaenzung;
+protzeileCAT klammerzuFI ;putline(fehlerprot,protzeile)END PROC fehler;PROC 
+pruefetutorsg(BOOL VAR allesinordnung):TEXT VAR eintrittjgst:=wert(
+fnrsujgsteintr),neuerzug:=wert(fnrsuneuerzugtut);allesinordnung:=neuerzug<>
+niltext;IF allesinordnungTHEN allesinordnung:=gueltigesg(eintrittjgst+
+neuerzug);IF NOT allesinordnungTHEN fehler(aufberprot,fehlerungueltigesg,
+eintrittjgst+neuerzug)FI ELSE fehler(aufberprot,fehlerkeinneuertutor)FI ;END 
+PROC pruefetutorsg;BOOL PROC gueltigesg(TEXT CONST sg):pos(
+geplschuelergruppen,sg+sgtrenner)>nullEND PROC gueltigesg;PROC setzekenndaten
+:key(1):=wert(fnrsufamnames);key(2):=wert(fnrsurufnames);key(3):=
+datumrekonversion(wert(fnrsugebdatums));aufbermeld:=key(1)+trennername+key(2)
+;aufberprot:=aufbermeld+trennername+datumskonversion(key(3))END PROC 
+setzekenndaten;TEXT PROC jahrestext(INT CONST jahr):IF jahr=maxjahrTHEN 
+minjahrELSE text(jahr)FI END PROC jahrestext;PROC 
+hjdnaechstesschulhalbjahrbearbeiten(TEXT CONST jgst,zug):IF wert(fnrsustatuss
+)<>aktbestandTHEN halbjahresdateninitialisierenundverarbeitenELSE 
+halbjahresdatensuchenundverarbeitenFI ;dbstatus(ok)#dr18.08.88##inittupel(
+dnrschulen);dr11.05.88putwert(fnrschkennung,wert(fnrsuskennlschule));search(
+dnrschulen,TRUE );einenschuelerinstatraumeinfuegen#.
+halbjahresdateninitialisierenundverarbeiten:putwert(fnrsutidakthjd,niltext);
+inittupel(dnrhalbjahresdaten);IF wert(fnrsustatuss)<>bestandabgegangeneTHEN 
+putwert(fnrsustatuss,aktbestand)FI .halbjahresdatensuchenundverarbeiten:
+schluesselsetzen;search(dnrhalbjahresdaten,TRUE );IF dbstatus=okTHEN 
+eventuellneueklasseeintragen;putwert(fnrsutidakthjd,gettid)ELSE putwert(
+fnrsutidakthjd,niltext)FI .schluesselsetzen:IF akthalbjahr=halbjahr1THEN 
+schluesselfuerhjdsetzen(dnrhalbjahresdaten,key,aktschuljahr,halbjahr2,jgst)
+ELSE schluesselfuerhjdsetzen(dnrhalbjahresdaten,key,kommendesschuljahr,
+halbjahr2,jgst)FI .eventuellneueklasseeintragen:IF schuelergruppegeaendert
+THEN halbjahresdatenaendernFI .schuelergruppegeaendert:wert(fnrhjdjgst)<>jgst
+OR wert(fnrhjdkennung)<>zug.halbjahresdatenaendern:putwert(fnrhjdjgst,jgst);
+putwert(fnrhjdkennung,zug);selupdate(dnrhalbjahresdaten).END PROC 
+hjdnaechstesschulhalbjahrbearbeiten;LET seperatorzeichen=":./ ",
+seperatorzeichen1=".";INT CONST beforefirstday:=-(22*vierjahre)-1;TEXT VAR b;
+BOOL VAR conversionerror:=FALSE ;INT PROC nildatum:beforefirstdayEND PROC 
+nildatum;#L datumslets#LET letzterjanuar=31,letzterfebruar=59,letztermaerz=90
+,letzterapril=120,letztermai=151,letzterjuni=181,letzterjuli=212,
+letzteraugust=243,letzterseptember=273,letzteroktober=304,letzternovember=334
+,#letzterdezember=365,#vierjahre=1461;PROC tmj(INT CONST d,INT VAR t,m,j):
+INT VAR a;IF d<=beforefirstdayTHEN t:=-1;m:=-1;j:=-1;LEAVE tmjFI ;a:=d;IF a>0
+THEN j:=88ELSE j:=0;aINCR (-(beforefirstday+1))FI ;jINCR 4*(aDIV vierjahre);a
+:=aMOD vierjahre;IF a=letzterfebruarTHEN t:=29;m:=2;LEAVE tmjELIF a>
+letzterfebruarTHEN aDECR 1FI ;jINCR aDIV 365;a:=(aMOD 365)+1;IF a<=
+letzterjuniTHEN januarbisjuniELSE julibisdezemberFI .januarbisjuni:IF a<=
+letztermaerzTHEN januarbismaerzELSE aprilbisjuniFI .julibisdezember:IF a<=
+letzterseptemberTHEN julibisseptemberELSE oktoberbisdezemberFI .
+januarbismaerz:IF a<=letzterjanuarTHEN m:=1;t:=aELIF a<=letzterfebruarTHEN m
+:=2;t:=a-letzterjanuarELSE m:=3;t:=a-letzterfebruarFI .aprilbisjuni:IF a<=
+letzteraprilTHEN m:=4;t:=a-letztermaerzELIF a<=letztermaiTHEN m:=5;t:=a-
+letzteraprilELSE m:=6;t:=a-letztermaiFI .julibisseptember:IF a<=letzterjuli
+THEN m:=7;t:=a-letzterjuniELIF a<=letzteraugustTHEN m:=8;t:=a-letzterjuli
+ELSE m:=9;t:=a-letzteraugustFI .oktoberbisdezember:IF a<=letzteroktoberTHEN m
+:=10;t:=a-letzterseptemberELIF a<=letzternovemberTHEN m:=11;t:=a-
+letzteroktoberELSE m:=12;t:=a-letzternovemberFI .END PROC tmj;INT PROC datum(
+TEXT CONST a):b:=a;conversionerror:=FALSE ;INT VAR seperator:=seppos,t,m,j;
+IF seperator=0THEN IF length(b)=6THEN t:=z(1)*10+z(2);m:=z(3)*10+z(4);j:=z(5)
+*10+z(6);INT VAR dummy:=datum(t,m,j);IF conversionerrorTHEN dummy:=nildatum
+FI ;LEAVE datumWITH dummyELSE leaveFI ELIF seperator=2THEN t:=z(1);ELIF 
+seperator=3THEN t:=10*z(1)+z(2);ELSE leaveFI ;b:=subtext(b,seperator+1);
+seperator:=seppos;IF seperator=3THEN m:=z(1)*10+z(2);ELIF seperator=2THEN m:=
+z(1)ELSE leaveFI ;b:=subtext(b,seperator+1);IF length(b)=2THEN j:=z(1)*10+z(2
+)ELIF length(b)=4THEN j:=z(1)*1000+z(2)*100+z(3)*10+z(4)-1900;ELSE leaveFI ;
+IF conversionerrorTHEN nildatumELSE datum(t,m,j)FI .leave:LEAVE datumWITH 
+nildatum.seppos:INT VAR q;FOR qFROM 2UPTO 3REP IF pos(seperatorzeichen,bSUB q
+)>0THEN LEAVE sepposWITH q;FI PER ;0.END PROC datum;INT PROC z(INT CONST wo):
+INT VAR e:=code(bSUB wo)-48;IF e<0OR e>9THEN conversionerror:=TRUE ;0ELSE e
+FI END PROC z;INT PROC datum(INT CONST t,m,jc):INT VAR j:=jc-1900IF j<0THEN j
+INCR 1900FI ;IF (j+160)DIV 160<>1THEN nildatumELIF t<0THEN nildatumELSE 
+SELECT mOF CASE 1,3,5,7,8,10,12:IF t>31THEN nildatumELSE erg(t,m,j)FI CASE 4,
+6,9,11:IF t>30THEN nildatumELSE erg(t,m,j)FI CASE 2:IF t<29THEN erg(t,m,j)
+ELIF t=29AND jMOD 4=0THEN erg(t,m,j)ELSE nildatumFI OTHERWISE nildatumEND 
+SELECT FI END PROC datum;INT PROC erg(INT CONST t,m,jc):INT VAR j:=jc;INT 
+VAR result:=beforefirstday,tagimzyklus;IF j>=88THEN jDECR 88;result:=-1FI ;
+resultINCR ((jDIV 4)*vierjahre);j:=jMOD 4;tagimzyklus:=tagundmonat+365*j;IF 
+tagimzyklus>erstermaerzimschaltjahrTHEN tagimzyklusINCR 1ELIF tagimzyklus=
+erstermaerzimschaltjahrAND m=3THEN tagimzyklusINCR 1FI ;result+tagimzyklus.
+erstermaerzimschaltjahr:60.tagundmonat:SELECT mOF CASE 1:tCASE 2:t+
+letzterjanuarCASE 3:t+letzterfebruarCASE 4:t+letztermaerzCASE 5:t+
+letzteraprilCASE 6:t+letztermaiCASE 7:t+letzterjuniCASE 8:t+letzterjuliCASE 9
+:t+letzteraugustCASE 10:t+letzterseptemberCASE 11:t+letzteroktoberCASE 12:t+
+letzternovemberOTHERWISE errorstop("monat > 12 oder < 0");0END SELECT .END 
+PROC erg;INT PROC jahr(INT CONST d):INT VAR t,m,j;tmj(d,t,m,j);j+1900END 
+PROC jahr;TEXT PROC datum(INT CONST d):INT VAR t,m,j;TEXT VAR e;tmj(d,t,m,j);
+IF t<0THEN LEAVE datumWITH ""FI ;e:=code(tDIV 10+48);eCAT code(tMOD 10+48);e
+CAT seperatorzeichen1;eCAT code(mDIV 10+48);eCAT code(mMOD 10+48);eCAT 
+seperatorzeichen1;eCAT code((jMOD 100)DIV 10+48);eCAT code(jMOD 10+48);eEND 
+PROC datum;END PACKET hoeherstufenlocalprog
+

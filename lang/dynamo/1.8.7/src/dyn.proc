@@ -1,0 +1,160 @@
+PACKET dynamo prozeduren DEFINES clip,fifge,switch,fifze,table,tabhl,
+                                 sclprd,sum,sumv,
+                                 noise,normrn,power,
+                                 pulse,step,ramp,
+                                 set time :
+(***************************************************D.Craemer 16. 2.1983 ***)
+(*    uses:
+                                 type TAB   (Tabellen), wert, laenge
+                                 abs
+                                 random
+ 
+      globale Variablen          simulationtime   wird durch das DYNAMO-
+                                                  Programm gesetzt und in
+                                                  den Funktionen, die zeit-
+                                                  lich ausgeloest werden,
+                                                  benutzt
+ 
+                                 lastpulse        Zeit des letzten Pulses
+ 
+ 
+*)
+ 
+REAL VAR simulation time,last pulse:=0.0;
+ 
+PROC set time (REAL CONST time) :
+ simulation time := time
+END PROC set time ;
+ 
+(************************ ab hier Funktionen *******************************)
+(************************ zur  Wertauswahl   *******************************)
+ 
+REAL PROC clip(REAL CONST p,q,r,s):
+     IF r>=s THEN p ELSE q FI
+     END PROC clip;
+ 
+REAL PROC fifge(REAL CONST p,q,r,s):
+    clip(p,q,r,s)
+     END PROC fifge;
+ 
+(* clip und fifge machen dasselbe, der Name fifge gibt die Funktion besser
+wieder: first if greater or equal
+        =     == =          =                                             *)
+ 
+REAL PROC switch (REAL CONST p,q,r):
+     IF r=0.0 THEN p ELSE q FI
+     END PROC switch;
+ 
+REAL PROC fifze (REAL CONST p,q,r):
+     switch(p,q,r)
+     END PROC fifze;
+ 
+(* Funktion switch oder fifze: first if zero
+                               =     == ==                              *)
+ 
+(************************ ab hier Funktionen *******************************)
+(************************ mit  Tabellen      *******************************)
+ 
+REAL PROC table (TAB CONST t, REAL CONST x, xlow, x high, xincr) :
+  IF x < x low OR x > x high
+  THEN putline("TABLE out of range: xlow="+text(xlow)+" x="+text(x)+ 
+               " xhigh="+text(xhigh)+" xincr="+text(xincr));0.0 
+  ELIF x=xhigh 
+       THEN wert(t,laenge(t))
+       ELIF x=xlow 
+            THEN wert(t,1) 
+            ELSE deliver interpolated value
+  FI.
+ 
+deliver interpolated value:
+  INT VAR index :: int((x-xlow)/xincr)+1;
+  REAL VAR m :: ((wert (t, index + 1) - wert (t, index)) / x incr),
+           b :: wert (t, index);
+ 
+  m * (x-(xlow+real(index-1)*xincr)) + b.
+END PROC table; 
+ 
+ 
+REAL PROC tabhl (TAB CONST t, REAL CONST x, xlow, x high, xincr) :
+  IF  xlow < x AND x < xhigh
+  THEN table(t,x,xlow,xhigh,xincr) 
+  ELIF x <= xlow 
+       THEN wert(t,1) 
+       ELSE wert(t,laenge(t))
+  FI 
+END PROC tabhl ;
+ 
+REAL PROC sclprd(TAB CONST tab1,REAL CONST erstes1,letztes1,TAB CONST tab2,
+                 REAL CONST erstes2):
+INT VAR i;
+REAL VAR summe:=0.0;
+FOR i FROM 0 UPTO int(letztes1-erstes1) REP
+    summe:=summe + wert(tab1,int(erstes1)+i)*wert(tab2,int(erstes2)+i)
+PER;
+summe
+END PROC sclprd;
+ 
+REAL PROC sumv(TAB CONST tab, REAL CONST erstes,letztes):
+REAL VAR summe:=0.0;
+INT VAR i;
+FOR i FROM int(erstes) UPTO int(letztes) REP
+    summe:=summe+wert(tab,i)
+PER;
+summe
+END PROC sumv;
+ 
+REAL PROC sum(TAB CONST tab):
+   sumv(tab,1.0,real(laenge(tab)))
+END PROC sum;
+ 
+(************************ ab hier Funktionen *******************************)
+(************************ mit  Zufallszahlen *******************************)
+ 
+REAL PROC noise(REAL CONST dummy):
+   random-0.5
+END PROC noise;
+ 
+REAL PROC normrn(REAL CONST mittelwert,stdvar):
+REAL VAR z:=0.0;
+INT VAR i;
+(* Methode nach NAYLOR et al.: Computer Simulation Technique, Wiley,NY 1966*)
+FOR i FROM 1 UPTO 12 REP
+   z:=z+random
+PER;
+z:=z-6.0;
+mittelwert+z*stdvar
+END PROC normrn;
+ 
+(************************ ab hier Funktionen *******************************)
+(************************ mit  Zeitausloesung ******************************)
+ 
+REAL PROC pulse(REAL CONST height,first,interval):
+IF simulationtime < first THEN lastpulse:=0.0; 0.0
+   ELIF abs(simulationtime-first) < smallreal THEN lastpulse:=simulationtime;
+                                               height
+   ELIF abs(simulationtime-(lastpulse+interval)) < smallreal THEN 
+                                               lastpulse:=simulationtime;
+                                               height
+   ELSE 0.0
+END IF
+END PROC pulse;
+ 
+REAL PROC step(REAL CONST height,steptime):
+   IF simulationtime<steptime THEN 0.0
+                              ELSE height
+   FI
+END PROC step;
+ 
+REAL PROC ramp(REAL CONST slope,start):
+   IF simulationtime<start THEN 0.0
+                           ELSE slope*(simulationtime-start)
+   FI
+END PROC ramp;
+ 
+REAL PROC power(REAL CONST basis,exponent):
+   basis**int(exponent)
+END PROC  power
+
+ 
+END PACKET dynamo prozeduren 
+

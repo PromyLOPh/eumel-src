@@ -1,0 +1,435 @@
+PACKET eudas dialoghilfen
+
+(*************************************************************************)
+(*                                                                       *)
+(*     Dialoghilfen für EUDAS                                            *)
+(*                                                                       *)
+(*     Version 04                                                        *)
+(*                                                                       *)
+(*     Autor: Thomas Berlage                                             *)
+(*     Stand: 15.10.88                                                   *)
+(*                                                                       *)
+(*************************************************************************)
+
+  DEFINES
+
+  fenstergroessen bestimmen,
+  fenster links,
+  fenster rechts,
+  fenster ganz,
+
+  ausfuehrung,
+  auf archiv,
+  bitte warten,
+  frage ob einrichten,
+  set command dialogue false,
+  reset command dialogue,
+  edit :
+
+
+(**************************** Fenster *************************************)
+
+LET
+  breite links = 16;
+
+INT VAR
+  last x size := 0,
+  last y size;
+
+FENSTER VAR
+  ganz,
+  links,
+  rechts,
+  fuss;
+
+fenster initialisieren (fuss);
+fenster initialisieren (ganz);
+fenster initialisieren (links);
+fenster initialisieren (rechts);
+
+
+PROC fenstergroessen bestimmen :
+
+  IF x size <> last x size OR y size <> last y size THEN
+    neue fenstergroessen;
+    last x size := x size;
+    last y size := y size
+  END IF .
+
+neue fenstergroessen :
+  fenstergroesse setzen (ganz, 1, 2, x size - 1, y size - 1);
+  fenstergroesse setzen (links, 1, 2, breite links, y size - 2);
+  fenstergroesse setzen (rechts,
+    breite links + 1, 2, x size - breite links - 1, y size - 2);
+  fenstergroesse setzen (fuss, 1, y size, x size - 1, 1);
+  dialogfenster (rechts);
+  anzeigefenster (rechts);
+  uebersichtsfenster (ganz) .
+
+END PROC fenstergroessen bestimmen;
+
+FENSTER PROC fenster rechts : rechts END PROC fenster rechts;
+
+FENSTER PROC fenster links : links  END PROC fenster links;
+
+FENSTER PROC fenster ganz : ganz  END PROC fenster ganz;
+
+
+(******************** Parameter-Auswahl ***********************************)
+
+LET
+  keine datei zur auswahl =  #1001#
+    "Keine Datei zur Auswahl vorhanden.",
+  name der datei =  #1002#
+    "Name der Datei: ";
+
+SATZ VAR sammel;
+
+THESAURUS VAR
+  zusaetzliche namen;
+
+TEXT VAR
+  feldpuffer,
+  dateiname,
+  offene;
+
+LET
+  niltext = "",
+  esc z = ""27"z",
+  cleol = ""5"";
+
+LET
+  fetch code = 11,
+  ack = 0;
+
+DATASPACE VAR ds;
+
+INITFLAG VAR init ds;
+
+BOUND STRUCT (TEXT name, write pass, read pass) VAR msg;
+
+PROC ausfuehrung (TEXT CONST prompt, BOOL CONST nur eine, INT CONST typ,
+                  PROC (TEXT CONST) operation) :
+
+  ausfuehrung (prompt, nur eine, typ, niltask,
+               PROC (TEXT CONST) operation)
+
+END PROC ausfuehrung;
+
+PROC ausfuehrung (TEXT CONST prompt, BOOL CONST nur eine, INT CONST typ,
+                  TASK CONST zusatztask,
+                  PROC (TEXT CONST) operation) :
+
+  enable stop;
+  dateinamen anfordern;
+  IF dateiname = niltext THEN
+    errorstop (niltext)
+  ELIF ist esc z THEN
+    dateiname := subtext (dateiname, 3);
+    dateinamen sammeln (all, typ, zusatztask);
+    auswahl anbieten ("EUDAS-Dateiauswahl", rechts, max wahl,
+                      "AUSWAHL/Datei",
+                      PROC (TEXT VAR, INT CONST) als text);
+    bitte warten;
+    operation ausfuehren (PROC (TEXT CONST) operation)
+  ELSE
+    last param (dateiname);
+    operation (dateiname)
+  END IF .
+
+dateinamen anfordern :
+  IF exists (std) AND (typ = 0 COR type (old (std)) = typ) THEN
+    dateiname := std
+  ELSE
+    dateiname := niltext
+  END IF;
+  editget (prompt, dateiname, "z", "GET/Dateiname") .
+
+max wahl :
+  IF nur eine THEN 1 ELSE 1024 END IF .
+
+END PROC ausfuehrung;
+
+PROC auf archiv (PROC (TEXT CONST) operation, THESAURUS CONST archivinhalt) :
+
+  dateiname := niltext;
+  editget (name der datei, dateiname, "z", "GET/Dateiname");
+  IF dateiname = niltext THEN
+    errorstop (niltext)
+  ELIF ist esc z THEN
+    uebersicht zeigen
+  ELSE
+    last param (dateiname);
+    operation (dateiname)
+  END IF .
+
+uebersicht zeigen :
+  dateiname := subtext (dateiname, 3);
+  dateinamen sammeln (archivinhalt, 0, niltask);
+  auswahl anbieten ("EUDAS-Archivauswahl", rechts, "AUSWAHL/Archiv",
+                    PROC (TEXT VAR, INT CONST) als text);
+  operation ausfuehren (PROC (TEXT CONST) operation) .
+
+END PROC auf archiv;
+
+PROC dateinamen sammeln (THESAURUS CONST t, INT CONST typ,
+                         TASK CONST zusatztask) :
+
+  BOOL CONST kein pattern := pos (dateiname, "*") = 0;
+  uebergebene namen sammeln;
+  offene dateien merken;
+  zusaetzliche namen dazu;
+  meldung falls keine datei .
+
+uebergebene namen sammeln :
+  INT VAR
+    stelle := 1,
+    von := 0;
+  satz initialisieren (sammel);
+  REP
+    get (t, feldpuffer, von);
+    IF feldpuffer = niltext THEN
+      LEAVE uebergebene namen sammeln
+    ELIF richtiger typ AND nach pattern THEN
+      feld aendern (sammel, stelle, feldpuffer);
+      stelle INCR 1
+    END IF
+  END REP .
+
+richtiger typ :
+  typ = 0 COR type (old (feldpuffer)) = typ .
+
+nach pattern :
+  kein pattern COR (feldpuffer LIKE dateiname) .
+
+offene dateien merken :
+  offene := niltext;
+  INT VAR i;
+  FOR i FROM 1 UPTO anzahl dateien REP
+    INT CONST t link := feldindex (sammel, eudas dateiname (i));
+    IF t link > 0 THEN
+      offene CAT code (t link)
+    END IF
+  END REP .
+
+zusaetzliche namen dazu :
+  IF NOT is niltask (zusatztask) THEN
+    zusaetzliche namen := ALL zusatztask;
+    zusaetzliche namen nach typ abfragen
+  END IF .
+
+zusaetzliche namen nach typ abfragen :
+  von := 0;
+  REP
+    get (zusaetzliche namen, feldpuffer, von);
+    IF feldpuffer = niltext THEN
+      LEAVE zusaetzliche namen nach typ abfragen
+    ELIF nach pattern CAND noch nicht enthalten CAND typ stimmt THEN
+      feld aendern (sammel, stelle, feldpuffer);
+      stelle INCR 1
+    END IF
+  END REP .
+
+noch nicht enthalten :
+  NOT (t CONTAINS feldpuffer) .
+
+typ stimmt :
+  typ = 0 COR tasktyp (feldpuffer, zusatztask) = typ .
+
+meldung falls keine datei :
+  IF stelle = 1 THEN
+    dialog (keine datei zur auswahl);
+    errorstop (niltext)
+  END IF .
+
+END PROC dateinamen sammeln;
+
+INT PROC tasktyp (TEXT CONST datei, TASK CONST zieltask) :
+
+  enable stop;
+  INT VAR reply, result;
+  IF NOT initialized (init ds) THEN ds := nilspace END IF;
+  forget (ds); ds := nilspace;
+  msg := ds;
+  msg. name := datei;
+  msg. write pass := write password;
+  msg. read pass := read password;
+  call (zieltask, fetch code, ds, reply);
+  IF reply <> ack THEN
+    result := 0
+  ELSE
+    result := type (ds)
+  END IF;
+  forget (ds);
+  result
+
+END PROC tasktyp;
+
+BOOL PROC ist esc z :
+
+  subtext (dateiname, 1, 2) = esc z
+
+END PROC ist esc z;
+
+PROC als text (TEXT VAR inhalt, INT CONST stelle) :
+
+  IF stelle < 256 THEN
+    feld lesen (sammel, stelle, inhalt);
+    IF pos (offene, code (stelle)) > 0 THEN
+      inhalt := "<!> " + textdarstellung (inhalt)
+    ELIF inhalt <> niltext THEN
+      inhalt := textdarstellung (inhalt)
+    END IF
+  ELSE
+    inhalt := niltext
+  END IF
+
+END PROC als text;
+
+PROC operation ausfuehren (PROC (TEXT CONST) operation) :
+
+  INT VAR
+    stelle := 1;
+  REP
+    IF wahl (stelle) = 0 THEN
+      LEAVE operation ausfuehren
+    ELSE
+      feld lesen (sammel, wahl (stelle), feldpuffer);
+      meldung in fusszeile;
+      last param (feldpuffer);
+      operation (feldpuffer)
+    END IF;
+    stelle INCR 1
+  END REP .
+
+meldung in fusszeile :
+  IF online THEN
+    fenster veraendert (fuss);
+    cursor (1, y size); out (cleol);
+    out (text (stelle)); out (". ");
+    out (textdarstellung (feldpuffer))
+  END IF .
+
+END PROC operation ausfuehren;
+
+
+(************************** Editor ****************************************)
+
+LET
+  edit status =  #1003#
+"EDITIEREN:   Abbruch: ESC h   Verlassen: ESC q   Hilfe: ESC ?",
+  show status =  #1004#
+"ZEIGEN:   Blättern: HOP OBEN, HOP UNTEN   Ende: ESC q   Hilfe: ESC ?";
+
+INT VAR return code;
+
+BOOL VAR
+  zeige edit status,
+  feldanzeige erlaubt;
+
+
+PROC edit (FILE VAR f, FENSTER CONST fenster, TEXT CONST hilfe,
+           BOOL CONST aendern) :
+
+  INT VAR x, y, x l, y l;
+  fenstergroesse (fenster, x, y, x l, y l);
+  fenster veraendert (fenster);
+  enable stop;
+  feldanzeige erlauben;
+  zeige edit status := aendern;
+  REP
+    edit status anzeigen;
+    open editor (groesster editor + 1, f, aendern, x, y, x l, y l);
+    edit (groesster editor, "eqvw19dpgn"9"?hF", PROC (TEXT CONST) kdo);
+    return code behandeln
+  END REP .
+
+feldanzeige erlauben :
+  IF aendern AND y < 3 AND y l > 22 AND x < 14 AND x l > 75 THEN
+    feldanzeige erlaubt := TRUE
+  ELSE
+    feldanzeige erlaubt := FALSE
+  END IF .
+
+return code behandeln :
+  SELECT return code OF
+  CASE 0 : LEAVE edit
+  CASE 1 : hilfe anbieten (hilfe, fenster)
+  CASE 2 : errorstop (niltext)
+  END SELECT .
+
+END PROC edit;
+
+PROC edit status anzeigen :
+
+  IF zeige edit status THEN
+    status anzeigen (edit status)
+  ELSE
+    status anzeigen (show status)
+  END IF
+
+END PROC edit status anzeigen;
+
+PROC kdo (TEXT CONST zeichen) :
+
+  return code := pos ("q?h", zeichen);
+  IF return code > 0 THEN
+    return code DECR 1;
+    quit
+  ELIF feldanzeige erlaubt CAND zeichen = "F" THEN
+    do ("feldnamen anzeigen");
+    edit status anzeigen
+  ELSE
+    std kommando interpreter (zeichen);
+    edit status anzeigen;
+    bildschirm neu
+  END IF
+
+END PROC kdo;
+
+
+(**************************** Kommandodialog *******************************)
+
+BOOL VAR dialogue state;
+
+PROC set command dialogue false :
+
+  dialogue state := command dialogue;
+  command dialogue (FALSE)
+
+END PROC set command dialogue false;
+
+PROC reset command dialogue :
+
+  command dialogue (dialogue state)
+
+END PROC reset command dialogue;
+
+
+(************************** Verschiedenes ********************************)
+
+LET
+  t bitte warten =  #1005#
+    " Bitte warten.. ",
+  t neu einrichten =  #1006#
+    " neu einrichten";
+
+
+PROC bitte warten :
+
+  status anzeigen (t bitte warten)
+
+END PROC bitte warten;
+
+PROC frage ob einrichten (TEXT CONST datei) :
+
+  IF NOT ja (textdarstellung (datei) + t neu einrichten, 
+             "JA/einrichten") THEN
+    errorstop (niltext)
+  END IF
+
+END PROC frage ob einrichten;
+
+
+END PACKET eudas dialoghilfen;
+

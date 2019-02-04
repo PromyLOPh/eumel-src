@@ -1,0 +1,1886 @@
+(***************************************************************************)
+(*                                                                         *)
+(*           Zweite von drei Dateien des EUMEL-BASIC-Systems               *)
+(*                                                                         *)
+(*           Autor: Heiko Indenbirken                                      *)
+(*           Überarbeitet von: Rudolf Ruland und Michael Overdick          *)
+(*                                                                         *)
+(*           Stand: 27.10.1987                                             *)
+(*                                                                         *)
+(***************************************************************************)
+
+PACKET basic errors DEFINES basic error,      (* Autor: Heiko Indenbirken *)
+                            return error,     (* Stand: 26.08.1987/rr/mo  *)
+                            basic warning:
+
+TEXT VAR erste zeile,
+         message;
+LET errorsize = 40;
+LET ERROR = STRUCT (INT no, TEXT msg);
+
+ROW errorsize ERROR CONST error msg :: ROW errorsize ERROR : 
+(ERROR:( 1, "NEXT ohne FOR"),
+ ERROR:( 2, "Syntaxfehler:"),
+ ERROR:( 5, "Fehlerhafter Funktionsaufruf"),
+ ERROR:( 8, "Zeile mit dieser Nummer existiert nicht"),
+ ERROR:(10, "Das Feld ist bereits dimensioniert"),
+ ERROR:(13, "Falscher Typ:"),
+ ERROR:(15, "Text zu lang"),
+ ERROR:(18, "Undefinierte 'user function'"),
+ ERROR:(22, "Ausdruck erwartet"),
+ ERROR:(26, "FOR ohne NEXT"),
+ ERROR:(29, "WHILE ohne WEND"),
+ ERROR:(30, "WEND ohne WHILE"),
+ ERROR:(51, "Interner Fehler"),
+ ERROR:(80, "Fehlerhafte Zeilennummer"),
+ ERROR:(81, "Falsche Reihenfolge der Zeilennummern"),
+ ERROR:(82, "Falscher Typ des Operanden:"),
+ ERROR:(83, "Falscher Typ der Operanden:"),
+ ERROR:(84, "Falsche Felddimension:"),
+ ERROR:(85, "Rekursive Funktionsdefinition"), 
+ ERROR:(86, "Fehlerhafte Laufvariable:"),
+ ERROR:(87, "Fehlerhafte Bereichsangabe:"),
+ ERROR:(88, "Fehlerhafte Dimensionierung:"),
+ ERROR:(89, "Parametervariable kommt mehrmals vor"),
+ ERROR:(90, "AS ohne NAME"),
+ ERROR:(91, "BASE ohne OPTION"),
+ ERROR:(92, "ELSE ohne IF"),
+ ERROR:(93, "STEP ohne FOR"),
+ ERROR:(94, "TAB ohne (L)PRINT"),
+ ERROR:(95, "THEN ohne IF"),
+ ERROR:(96, "TO ohne Zusammenhang"),
+ ERROR:(97, "USING ohne (L)PRINT"),
+ ERROR:(98, "Unbekannte Funktion,"),
+ ERROR:(99, "Unbekannte Prozedur,"),
+ ERROR:(100,"Nicht implementiert"),
+ ERROR:(101,"SUB ohne GO"),
+ ERROR:(102,"GO ohne TO oder SUB"),
+ ERROR:(103,"Accessrecht VAR erwartet, CONST gefunden"),
+ ERROR:(104,"Funktionsaufruf ohne Zusammenhang"),
+ ERROR:(105,"Nach OPTION BASE ist nur 0 oder 1 erlaubt"),
+ ERROR:(106,"Bei SWAP nur gleiche Variablentypen erlaubt"));
+
+TEXT PROC errortext (INT CONST no):
+  INT VAR i;
+  FOR i FROM 1 UPTO errorsize
+  REP IF errormsg [i].no = no
+      THEN LEAVE errortext WITH errormsg [i].msg FI
+  PER;
+  "Unbekannter BASIC-Fehler #" + text (no)  .
+END PROC errortext;
+
+PROC basic error (TEXT CONST packet,
+                  INT CONST error nr,
+                  INT CONST line nr,
+                  INT CONST statement nr,
+                  TEXT CONST position, addition,
+                  BOOL CONST leave statement):
+  erste zeile aufbauen;
+  einfache fehlermeldung aufbauen; 
+  diese auf terminal ausgeben; 
+  diese in sysout datei ausgeben wenn noetig;                    (* F20/rr *)
+  fehlermeldung in fehlerdatei ausgeben;
+  IF leave statement                                             (* DEF/mo *)
+    THEN errorstop (101, packet + "-Fehler")
+  FI.
+
+erste zeile aufbauen:
+  IF line nr = 0 AND statement nr = 0
+  THEN erste zeile := "FEHLER"
+  ELSE erste zeile := "FEHLER (Dateizeile ";
+       erste zeile CAT text (line nr);
+       erste zeile CAT ") in Zeile ";
+       erste zeile CAT text (statement nr);
+  FI;
+ 
+  erste zeile CAT " bei >> ";
+  erste zeile CAT position;
+  erste zeile CAT " << : "  .
+
+einfache fehlermeldung aufbauen:
+  message := "   ";
+  message CAT error text (error nr);
+  message CAT "   "  .
+ 
+diese auf terminal ausgeben:                                     (* F20/rr *)
+  display (""13""10"");
+  display (erste zeile);
+  display (""13""10"");
+  display (message + addition);
+  display (""13""10"") .
+ 
+diese in sysout datei ausgeben wenn noetig :                      (* F20/rr *)
+  IF sysout <> ""
+     THEN putline (erste zeile);
+          putline (message + addition);
+          line;
+  FI .
+
+fehlermeldung in fehlerdatei ausgeben:
+  note (erste zeile);
+  note line;
+  note (message);
+  note (addition);
+  note line .
+ 
+END PROC basic error;
+
+PROC basic warning (INT CONST line nr,                   (* mo *)
+                              statement nr,
+                    TEXT CONST warning text):
+generate warning;
+on screen;
+in sysout file;
+into the notebook.
+
+generate warning:
+  IF line nr = 0 AND statement nr = 0
+  THEN erste zeile := "WARNUNG"
+  ELSE erste zeile := "WARNUNG (Dateizeile ";
+       erste zeile CAT text (line nr);
+       erste zeile CAT ") in Zeile ";
+       erste zeile CAT text (statement nr);
+  FI;
+  erste zeile CAT ": ";
+  erste zeile CAT warning text.
+
+on screen:
+  display (""13""10"");
+  display (erste zeile);
+  display (""13""10"").
+
+in sysout file:
+  IF sysout <> ""
+     THEN putline (erste zeile);
+          line;
+  FI.
+
+into the notebook:
+  IF warnings
+    THEN note (erste zeile);
+         note line
+  FI.
+
+END PROC basic warning;
+
+PROC return error:
+  errorstop (1003, "RETURN ohne GOSUB")
+END PROC return error;
+
+END PACKET basic errors;
+
+PACKET basic types DEFINES symbol of,         (* Autor: Heiko Indenbirken *)
+                           type of,           (* Stand: 07.09.1987/rr/mo  *)
+                           dim of,
+                           shift, deshift,
+                           reserved,
+                           param list,
+                           is bool op:
+
+LET (*                 S y m b o l    T y p e n                          *)
+    any      =  0,    const    =  1,    var     =  2,    array    =  3,
+    expr     =  4,    unused   =  5,    letter  =  6,    param    =  7,
+    res word =  8,    operator =  9,    eos     = 10,    del      = 11,
+    stat no  = 12,    eol      = 13,    eop     = 14,
+    user fn  = 20;  (* DEF/mo *)
+(*                               Operatoren                              *)
+LET less equal = 28,  unequal = 29,  greater equal = 30;
+
+TEXT VAR dummy;
+ 
+TEXT PROC symbol of (INT CONST n) :
+  IF n < 0
+  THEN ""19"" + symbol of (-n)
+  ELSE SELECT n OF
+       CASE less equal    : "<="
+       CASE unequal       : "<>"
+       CASE greater equal : ">="
+
+       CASE eos           : "EOS"
+       CASE eol           : "EOL"
+       CASE eop           : "EOF"
+       OTHERWISE : character END SELECT
+  FI  . 
+
+character :
+  IF n > 32 AND n < 128
+  THEN code (n)
+  ELIF n >= 128 AND n <= 255
+  THEN res word of (n)
+  ELSE "%" + subtext (text (n+1000), 2) + " " FI  .
+
+END PROC symbol of;
+
+TEXT PROC type of (INT CONST n) :
+  SELECT n OF
+  CASE any      : "ANY"
+  CASE const    : "Konstante"
+  CASE var      : "Variable"
+  CASE array    : "Feld"
+  CASE expr     : "Ausdruck"
+  CASE unused   : " -?- "
+  CASE letter   : "Buchstabe" 
+  CASE param    : "Parameter"
+  CASE res word : "reserviertes Wort"
+  CASE operator : "Operator"
+  CASE eos      : "EOS"
+  CASE del      : "Trennzeichen"
+  CASE stat no  : "Zeilennumer"
+  CASE eol      : "EOL"
+  CASE eop      : "EOF"
+  CASE user fn  : "'user function'"                   (* DEF/mo *)
+  OTHERWISE "?TYPE #" + text (n) ENDSELECT.
+END PROC type of;
+
+TEXT PROC dim of (TEXT CONST parameter):
+  IF parameter = ""
+  THEN ""
+  ELSE base limits and size FI  .
+
+base limits and size:
+  INT CONST dimension :: (LENGTH parameter DIV 2) - 2;
+  TEXT VAR result :: text (parameter ISUB dimension+1);
+  INT VAR i;
+  result CAT ": [";
+  FOR i FROM 1 UPTO dimension-1
+  REP result CAT text (parameter ISUB i);
+      result CAT ", "
+  PER;
+  result CAT text (parameter ISUB dimension);
+  result CAT "]  ";
+  result CAT text (parameter ISUB dimension+2);
+  result  .
+
+END PROC dim of;
+
+TEXT PROC param list (INT CONST first, no):
+  IF no < first
+  THEN "keine"
+  ELSE parameter list FI  .
+
+parameter list:
+  INT VAR i;
+  TEXT VAR result :: "(";
+  FOR i FROM first UPTO no
+  REP result CAT dump (dtype (i));
+      IF i = no
+         THEN result CAT ")"
+         ELSE result CAT ", " FI
+  PER;
+  result  .
+
+END PROC param list;
+
+TEXT PROC shift (TEXT CONST word) :
+  INT VAR i;
+  dummy := word;
+  FOR i FROM 1 UPTO length (word)
+  REP shift char PER;
+  dummy  .
+
+shift char:
+  INT VAR local letter :: code (dummy SUB i);
+  IF 97 <= local letter AND local letter <= 122
+  THEN replace (dummy, i, code (local letter - 32)) FI  .
+
+END PROC shift;
+
+TEXT PROC deshift (TEXT CONST word) :
+  INT VAR i;
+  dummy := word;
+  FOR i FROM 1 UPTO length (word)
+  REP deshift char PER;
+  dummy  .
+
+deshift char:
+  INT VAR local letter :: code (dummy SUB i);
+  IF 65 <= local letter AND local letter <= 90
+  THEN replace (dummy, i, code (local letter + 32)) FI;
+
+END PROC deshift;
+
+(*                Verwaltung der Reservierten BASIC-Wörter               *)
+LET first operator = 249,             (* MOD  NOT  AND   OR  XOR  EQV  IMP *)
+    first bool op  = 250;             (* 249  250  251  252  253  254  255 *)
+
+INT VAR index;
+ROW 9 TEXT VAR res words :: ROW 9 TEXT :
+("",
+ ""129"as"163"go"167"if"188"on"217"to"252"or",
+ ""128"abs"130"asc"131"atn"141"cos"142"cvd"143"cvi"145"def"150"dim"152"end"153"eof"154"erl"155"err"157"exp"159"fix"160"for"161"fre"162"get"172"int"175"len"176"let"178"loc"179"log"191"out"192"pos"194"put"202"rnd"197"rem"204"sgn"205"sin"207"spc"208"sqr"214"tab"215"tan"221"val"227"cls"234"usr"235"sub"249"mod"250"not"251"and"253"xor"254"eqv"255"imp",
+ ""132"base"133"call"134"cdbl"136"chr$"137"cint"144"data"151"else"165"goto"166"hex$"173"kill"177"line"181"lset"182"mid$"183"mkd$"184"mki$"185"name"186"next"187"oct$"189"open"196"read"203"rset"209"step"210"stop"211"str$"213"swap"216"then"219"tron"222"wait"223"wend"228"erm$"230"lpos",
+ ""135"chain"138"clear"139"close"156"error"158"field"164"gosub"169"input"171"instr"174"left$"193"print"218"troff"220"using"224"while"225"width"226"write"231"time$"232"date$"233"timer",
+ ""140"common"146"defdbl"147"defint"148"defsng"149"defstr"168"inkey$"170"input$"180"lprint"190"option"199"resume"200"return"201"right$"206"space$"229"csrlin",
+ ""198"restore"212"string$",
+ "",
+ ""195"randomize");
+
+BOOL PROC reserved (TEXT CONST name, INT VAR no, type):
+  IF reserve is not possible COR not found within res words
+  THEN FALSE
+  ELSE no   := code (this words SUB (index-1));
+       type := res word or op;
+       TRUE
+  FI  .
+
+reserve is not possible:
+  INT CONST len :: length (name);
+  len < 2 OR len > 9  .
+
+not found within res words:
+  index := pos (this words, name);
+  index = 0  .
+
+this words:
+  res words [len]  .
+
+res word or op:
+  IF no >= first operator
+  THEN operator
+  ELSE res word FI  .
+
+END PROC reserved;
+
+INT PROC reserved (TEXT CONST name):
+  IF reserve is not possible COR not found within res words
+  THEN 0
+  ELSE code (this words SUB (index-1)) FI  .
+
+reserve is not possible:
+  INT CONST len :: length (name);
+  len < 2 OR len > 9  .
+
+not found within res words:
+  index := pos (this words, name);
+  index = 0  .
+
+this words:
+  res words [len]  .
+
+END PROC reserved;
+
+TEXT PROC res word of (INT CONST no):
+  INT VAR i;
+  FOR i FROM 2 UPTO 9
+  REP index := pos (res words [i], code (no));
+      IF index > 0
+      THEN LEAVE res word of WITH shift (this name) FI
+  PER;
+  ""  .
+
+this name:
+  subtext (res words [i], index+1, next code)  .
+
+next code:
+  INT VAR c := pos (res words [i], ""127"", ""255"", index+1);
+  IF c = 0
+  THEN length (res words [i])
+  ELSE c-1 FI  .
+
+END PROC res word of;
+
+BOOL PROC is bool op (INT CONST no):            (* mo *)
+  no >= first bool op
+END PROC is bool op;
+
+END PACKET basic types;
+
+PACKET basic table handling DEFINES init table, (* Autor: Heiko Indenbirken *)
+                              put name,         (* Stand: 13.08.1987/rr/mo  *)
+                              known, name of,
+                              remember,
+                              recognize,
+                              table entries,
+                              hash table, next table,
+                              scope compulsory:          (* DEF/mo *)
+
+LET hash length = 1024, 
+    hash length minus one = 1023,
+    start of name table = 256,
+    table length = 4500;
+ 
+LET SYMBOL = STRUCT (INT type, ADDRESS adr, DTYPE data, TEXT dim);
+LET TABLE = STRUCT (INT entries,
+                    ROW hash length INT hash table,
+                    ROW table length INT next, 
+                    ROW table length TEXT name table,
+                    ROW table length SYMBOL symbol table);
+ 
+DATASPACE VAR table space;
+BOUND TABLE VAR table;
+INITFLAG VAR tab := FALSE;
+SYMBOL CONST nilsymbol :: SYMBOL:(0, LOC 0, void type, "");
+INT VAR i;
+BOOL VAR compulsory with scope :: TRUE;                     (* DEF/mo *)
+
+PROC init table:
+  IF NOT initialized (tab)
+  THEN table space := nilspace;
+       table := table space;
+  FI;
+  table.entries := start of name table;
+  FOR i FROM 1 UPTO hash length
+  REP table.hash table [i] := 0 PER;
+  compulsory with scope := TRUE;                            (* DEF/mo *)
+
+END PROC init table;
+
+PROC put name (TEXT CONST scope, name, INT VAR pointer):    (* DEF/mo *)
+  IF compulsory with scope
+    THEN put name (scope + name, pointer)
+  ELIF NOT in table
+    THEN put name (name, pointer)
+  FI.
+
+in table:
+  hash (scope + name, pointer);
+  pointer := hash table (pointer);
+  WHILE not end of chain
+  REP IF name is found THEN LEAVE in table WITH TRUE FI;
+      pointer := table. next (pointer);
+  PER;
+  FALSE .
+
+name is found:
+  table.name table [pointer] = scope + name.
+ 
+not end of chain:
+  pointer > 0  .
+
+END PROC put name;
+
+PROC put name (TEXT CONST name, INT VAR pointer):
+  IF no entry in hash table
+  THEN create a new chain
+  ELSE create a new entry in chain FI;
+  insert name in name table  .
+ 
+no entry in hash table:
+  INT VAR hash index;
+  hash (name, hash index); 
+  table.hash table [hash index] = 0  .
+
+create a new chain:
+  table.hash table [hash index] := table.entries  .
+ 
+create a new entry in chain:
+  pointer := table.hash table [hash index];
+  REP IF name is found
+      THEN LEAVE put name
+      ELIF end of chain
+      THEN table.next [pointer] := table.entries;
+           LEAVE create a new entry in chain
+      ELSE pointer := next pointer FI
+  PER  .
+ 
+name is found:
+  table.name table [pointer] = name.
+ 
+end of chain:
+  INT CONST next pointer := table.next [pointer];
+  next pointer = 0  .
+
+insert name in name table:
+  IF table.entries >= table length 
+  THEN errorstop ("volle Namenstabelle") FI;
+
+  pointer := table.entries;
+  table.symbol table [pointer] := nilsymbol;
+  table.name table [pointer] := name; 
+  table.next [pointer] := 0; 
+  table.entries INCR 1  .
+
+END PROC put name; 
+
+PROC hash (TEXT CONST name, INT VAR index) :
+  INT VAR j;
+  index := 0;
+  FOR j FROM 1 UPTO length (name)
+  REP addmult cyclic PER;
+  index INCR 1  .
+ 
+addmult cyclic :
+  index INCR index ;
+  IF index > hash length minus one
+  THEN wrap around FI;
+  index := (index + code (name SUB j)) MOD hash length minus one  .
+
+wrap around:
+  index DECR hash length minus one  .
+
+ENDPROC hash ;
+ 
+INT PROC table entries:
+  table.entries
+END PROC table entries;
+
+INT PROC hash table (INT CONST n):
+  table.hash table [n]
+END PROC hash table;
+
+INT PROC next table (INT CONST n):
+  table.next [n]
+END PROC next table;
+
+TEXT PROC name of (INT CONST index): 
+  IF index < 0
+  THEN errorstop ("PROC name of: negativer Index"); ""
+  ELIF index < start of name table
+  THEN symbol of  (index)
+  ELIF index <= table.entries
+  THEN table.name table (index) 
+  ELSE errorstop ("PROC name of: Index größer als nametable");
+       ""
+  FI
+
+END PROC name of; 
+ 
+PROC recognize (INT CONST symb, type, ADDRESS CONST adr, DTYPE CONST data, TEXT CONST dim):
+  symbol.type  := type;
+  symbol.adr   := adr;
+  symbol.data  := data; 
+  symbol.dim   := dim  .
+
+symbol: table.symboltable [symb]  .
+END PROC recognize;
+
+PROC remember (INT CONST symb, INT VAR type, ADDRESS VAR adr, DTYPE VAR data, TEXT VAR dim):
+  SYMBOL CONST symbol := table.symboltable [symb];
+  type  := symbol.type;
+  adr   := symbol.adr;
+  data  := symbol.data; 
+  dim   := symbol.dim
+END PROC remember;
+
+BOOL PROC known (INT CONST symb) :
+  table.symboltable [symb].type > 0
+END PROC known;
+
+PROC scope compulsory (BOOL CONST new state):       (* DEF/mo *)
+  compulsory with scope := new state
+END PROC scope compulsory;
+
+END PACKET basic table handling;
+
+PACKET basic scanner DEFINES begin scanning,  (* Autor: Heiko Indenbirken *)
+                             next symbol,     (* Stand: 27.10.1987/rr/mo  *)
+                             next data,
+                             next statement,
+                             define chars,
+                             scan line,
+                             scan line no,                       (* F29/rr *)
+                             get data types of input vars,       (* F25/rr *)
+                             basic error,
+                             basic warning,
+                             basic list,
+                             set scope,
+                             scanner scope:
+
+
+LET (*                    S y m b o l    T y p e n                       *)
+    any     = 0,  const   = 1,  var     = 2,  array   = 3,
+    res word= 8,  operator= 9,  eos     = 10, del     =11,
+    stat no = 12, user fn = 20;         (* DEF/mo *)
+
+LET (*                    S y m b o l z e i c h e n                      *)
+    less         = 60,  greater       = 62,
+    less equal   = 28,  unequal       = 29,  greater equal = 30, 
+    point        = 46,  eol           = 13,  eop           = 14,
+    go           = 163, gosub         = 164, goto          = 165,
+    sub          = 235, to            = 217;
+
+LET name chars    = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz.0123456789!#$%",
+    quote         = """",       open bracket    = "(",
+    comma         = ",",        close bracket   = ")",
+    colon         = ":",
+    exponent chars= "dDeE";
+
+FILE VAR source file;
+TEXT VAR defint chars, defstr chars, record, letter,
+         scope, new name;     (* DEF/mo *)
+REAL VAR r dummy;
+INT VAR act stat no, record no, rec len, scan pos, i dummy;
+BOOL VAR eol generated, at line begin, listing := FALSE;
+
+PROC define chars (TEXT CONST begin, end, DTYPE CONST data):
+  INT VAR i;
+  FOR i FROM code (begin) UPTO code (end)
+  REP IF data = int type
+        THEN defint chars CAT code (i) 
+      ELIF data = text type
+        THEN defstr chars CAT code (i) 
+      FI
+  PER  .
+
+END PROC define chars;
+
+
+PROC scanline (TEXT VAR line, INT VAR col):
+  line := record;
+  col  := scan pos
+END PROC scanline;
+
+INT PROC scan line no : record no END PROC scan line no;
+
+
+PROC get data types of input vars (ROW 100 DTYPE VAR input var data, (* F25/rr *)
+                                   INT VAR number input vars) :
+
+  TEXT VAR first var char;
+  INT VAR var pos := scan pos;
+  to begin of actual var;
+  REP get next input var;
+      skip brackets if necessary;
+      IF var char <> comma THEN LEAVE get data types of input vars FI;
+      skip comma;
+  PER;
+ 
+  . var char : record SUB var pos
+
+  . to begin of actual var :
+      WHILE pos (name chars, var char) <> 0 REP var pos DECR 1 PER;
+      var pos         INCR 1;
+      number input vars := 0;
+ 
+  . get next input var :
+      first var char := deshift (var char);
+      WHILE pos (name chars, var char) <> 0 REP var pos INCR 1 PER;
+      var pos           DECR 1;
+      number input vars INCR 1;
+      input var data (number input vars) := var datatype (first var char, var char);
+      var pos := pos (record, ""33"", ""255"", var pos + 1);
+
+  . skip brackets if necessary :
+      IF var char =  open bracket
+         THEN INT VAR bracket counter := 1;
+              REP count bracket UNTIL bracket counter = 0 PER;
+              var pos := pos (record, ""33"", ""255"", var pos + 1);
+      FI;
+
+      . count bracket :
+          INT CONST open  := pos (record, open  bracket, var pos + 1),
+                    close := pos (record, close bracket, var pos + 1);
+          IF open > 0
+             THEN IF close > 0
+                     THEN IF open > close
+                             THEN close bracket found
+                             ELSE open  bracket found
+                          FI;
+                     ELSE open bracket found
+                  FI;
+             ELSE IF close > 0
+                     THEN close bracket found
+                     ELSE LEAVE get data types of input vars 
+                  FI;
+          FI;
+
+          . open bracket found :
+               bracket counter INCR 1;
+               var pos := open;
+
+          . close bracket found :
+               bracket counter DECR 1;
+               var pos := close;
+
+  . skip comma :
+      var pos := pos (record, ""33"", ""255"", var pos + 1);
+
+END PROC get data types of input vars;
+
+
+PROC begin scanning (FILE VAR basic file):
+  enable stop;
+  source file := basic file;
+  to first record (source file);
+  col (source file, 1);
+  IF eof (source file) 
+  THEN errorstop ("Datei ist leer") FI; 
+
+  defint chars := "";
+  defstr chars := ""; 
+  scope := "";                              (* DEF/mo *)
+  act stat no := 0;
+  read record (source file, record); 
+  rec len := length (record);
+  scan pos := 0; 
+  record no := 1;
+  eol generated := FALSE;
+  at line begin := TRUE;
+  IF listing
+    THEN line;
+         putline (record);
+         IF sysout <> ""
+           THEN cout (record no)
+         FI
+    ELSE cout (record no)
+  FI.
+
+END PROC begin scanning;
+ 
+PROC next statement:
+  IF eof (source file)
+  THEN errorstop (99, "")
+  ELSE eol generated := FALSE;
+       at line begin := TRUE;
+       down (source file);
+       read record (source file, record); 
+       rec len := length (record);
+       scan pos := 0; 
+       record no INCR 1;
+  FI;
+  IF listing
+    THEN putline (record);
+         IF sysout <> ""
+           THEN cout (record no)
+         FI
+    ELSE cout (record no)
+  FI.
+  
+END PROC next statement;
+
+PROC next symbol (TEXT VAR name, INT VAR no, type, DTYPE VAR data):
+  enable stop;
+  clear symbol;
+  IF eol generated
+  THEN next statement FI;
+
+  IF eol reached
+  THEN generate eol
+  ELIF at line begin CAND stat no found                          (* F15/rr *)
+  THEN generate stat no
+  ELSE generate chars FI  .
+
+clear symbol:
+  name := "";
+  no   := 0;
+  type := any;
+  data := void type  .
+ 
+eol reached:
+  scan pos := pos (record, ""33"", ""255"", scan pos+1); 
+  scan pos = 0  .
+
+generate eol :
+  IF eof (source file)
+  THEN name := "EOF";  no := eop;  type := eos
+  ELSE name := "EOL";  no := eol;  type := eos FI;
+  eol generated := TRUE  .
+
+stat no found:                                                   (* F15/rr *)
+  at line begin := FALSE;
+  pos ("0123456789", act char) <> 0 .
+ 
+generate stat no:                                                (* F15/rr *)
+  INT CONST next scan pos := last number pos;
+  name        := subtext (record, scan pos, next scan pos);
+  act stat no := int (name);
+  scan pos    := next scan pos;
+  no := act stat no;  type := stat no  .
+
+last number pos :                                                (* F15/rr *)
+  INT CONST high := pos (record, ""058"", ""255"", scan pos),
+            low  := pos (record, ""032"", ""047"", scan pos);
+  IF   high > 0
+       THEN IF low > 0
+               THEN min (high, low) - 1
+               ELSE high - 1
+            FI
+  ELIF low > 0
+       THEN low - 1
+       ELSE LENGTH record
+  FI .
+
+generate chars:
+  SELECT code (act char) OF
+  CASE 32: next symbol (name, no, type, data)            (* Space        *) 
+  CASE 34: generate text denoter                         (* "            *) 
+  CASE 39: generate eol                                  (* '            *)
+  CASE 42, 43, 45, 47, 92, 94, 61: generate operator     (* *,+,-,/,\,^,=*)
+  CASE 60: generate less op                              (*<, <=, <>     *) 
+  CASE 62: generate greater op                           (*>, >=         *)
+  CASE 46: treat point                                   (* .            *)
+  CASE 48, 49, 50, 51, 52, 53, 54, 55, 56, 57: 
+           generate numeric const                        (* 0  -  9      *)
+  CASE 58: generate eos                                  (* :            *)
+  CASE 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81,
+       82, 83, 84, 85, 86, 87, 88, 89, 90,  97, 98, 99, 100, 101, 102, 103,
+       104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117,
+       118, 119, 120, 121, 122,               (* small and large letters *)
+       generate res word or id
+  OTHERWISE generate delimiter END SELECT  .
+
+generate text denoter:
+  get text const (name, data);
+  type := const  .
+
+generate operator:
+  name := act char;  no := code (name);  type := operator  .
+
+generate less op:
+  IF next char = "="
+  THEN name := "<=";  no := less equal; skip char
+  ELIF next char = ">"
+  THEN name := "<>";  no := unequal;    skip char
+  ELSE name := "<";  no := less FI;
+  type := operator  .
+
+generate greater op:
+  IF next char = "="
+  THEN name := ">=";  no := greater equal;  skip char 
+  ELSE name := ">";  no := greater;  FI;
+  type := operator  .
+
+treat point:
+  IF pos ("0123456789", next char) <> 0
+    THEN generate numeric const
+    ELSE name := ".";
+         no := point;
+         type := del
+  FI.
+
+generate numeric const:
+  get numeric const (name, data);
+  type := const  .
+
+last name char:
+  name SUB LENGTH name  .
+
+generate eos:
+  name := ":";  no := eos;  type := eos  .
+
+generate res word or id:
+  get name chars;
+  IF reserved (deshift name, no, type)
+    THEN IF type = res word AND no = go
+           THEN treat go
+         FI
+    ELSE IF function name
+           THEN data := ftn datatype;
+                type := user fn
+           ELSE data := var datatype (deshift (name) SUB 1, last name char);
+                type := var or array
+         FI;
+         put name (scope, deshift name, no)
+  FI.
+
+treat go:
+  next symbol (new name, no, type, data);
+  IF no = to AND type = res word
+    THEN name CAT new name;
+         no := goto
+  ELIF no = sub AND type = res word
+    THEN name CAT new name;
+         no := gosub
+    ELSE scan error (102, name, "")
+  FI.
+
+get name chars:
+  TEXT VAR deshift name :: "";
+  INT VAR begin of name :: scan pos;
+  FOR scan pos FROM scan pos UPTO rec len
+  WHILE name chars found
+  REP deshift name CAT deshifted char PER;
+  scan pos DECR 1;
+  name := subtext (record, begin of name, scan pos).
+
+name chars found:
+  pos (name chars, act char) > 0  .
+
+function name:
+  subtext (deshift name, 1, 2) = "fn"  .
+
+ftn datatype:
+  IF last name char = "$"
+  THEN text type
+  ELIF last name char = "%"
+  THEN int type
+  ELSE real type FI  .
+
+var or array:
+  IF array name
+  THEN name CAT "()";
+       deshift name CAT "()";                                (* F30/rr *)
+       array
+  ELSE var FI  .
+
+array name:
+  next scan char = "("  .
+
+deshifted char:
+  letter := act char;
+  IF letter >= "A" AND letter <= "Z"
+  THEN code (code (letter) + 32)
+  ELSE letter FI  .
+
+generate delimiter:
+  name := act char;  no := code (name);  type := del  .
+
+next scan char: record SUB pos (record, ""33"", ""255"", scan pos+1). 
+next char: (record SUB scan pos + 1)  .
+act char: record SUB scan pos  .
+skip char:  scan pos INCR 1  .
+END PROC next symbol;
+
+DTYPE PROC var datatype (TEXT CONST first name char, last name char) :
+
+  IF last name char = "!" OR last name char = "#"
+  THEN real type
+  ELIF last name char = "$"
+  THEN text type
+  ELIF last name char = "%"
+  THEN int type
+  ELIF pos (defint chars, first name char) > 0
+  THEN int type
+  ELIF pos (defstr chars, first name char) > 0
+  THEN text type
+  ELSE real type FI  .
+
+END PROC var datatype;
+
+BOOL PROC next data (TEXT VAR data text, DTYPE VAR data type) :  (* F17/rr *)
+
+  data type := void type;
+  IF   no more data
+       THEN scan pos  := rec len;
+            data text := "";
+            FALSE
+  ELIF quoted string
+       THEN get quoted string;
+            TRUE
+       ELSE get unquoted string;
+            TRUE
+  FI
+
+  . no more data :
+      scan pos := pos (record, ""33"", ""255"", scan pos+1);
+      scan pos = 0
+
+  . quoted string :
+      (record SUB scan pos) = quote
+
+  . get quoted string :
+      get text const (data text, data type);
+
+  . get unquoted string :
+      INT CONST comma or colon pos 1 := position of comma or colon minus one;
+      data text := compress (subtext (record, scan pos, comma or colon pos 1));
+      scan pos  := comma or colon pos 1;
+
+  . position of comma or colon minus one :
+      INT CONST colon pos := pos (record, colon, scan pos),
+                comma pos := pos (record, comma, scan pos);
+      IF colon pos > 0
+         THEN IF comma pos > 0
+                 THEN min (colon pos, comma pos) - 1
+                 ELSE colon pos - 1
+              FI
+         ELSE IF comma pos > 0
+                 THEN comma pos - 1
+                 ELSE LENGTH record
+              FI
+      FI
+
+END PROC next data;
+
+PROC get numeric const (TEXT VAR value, DTYPE VAR data):
+  get sign;
+  get const;
+  check datatype  .
+
+get sign:
+  IF act char = "-"
+  THEN value := "-";
+       scan pos INCR 1
+  ELIF act char = "+"
+  THEN value := "+";
+       scan pos INCR 1
+  ELSE value := "" FI  .
+
+get const:
+  get digits;
+  get point;
+  get digits;
+  get exponent  .
+
+get digits:
+  FOR scan pos FROM scan pos UPTO rec len
+  WHILE digit found
+  REP value CAT act char PER  .
+
+get point:
+  IF act char = "."
+  THEN value CAT ".";
+       scan pos INCR 1
+  ELIF pos (exponent chars, act char) > 0
+  THEN value CAT ".0"
+  ELSE LEAVE get const FI  .
+
+get exponent:
+  IF pos (exponent chars, act char) > 0                 (* F1/rr *)
+  THEN value CAT "e";
+       scan pos INCR 1;
+       evtl get sign;
+       get digits
+  FI  .
+
+evtl get sign:
+  IF act char = "+" OR act char = "-"
+  THEN value CAT act char;
+       scan pos INCR 1
+  FI  .
+
+digit found:
+  "0" <= act char AND act char <= "9"  .
+
+check datatype:
+  IF act char = "%" 
+  THEN IF integer ok (value)
+       THEN data := int type
+       ELSE scan error (2, value, "INT-Konstante nicht korrekt") FI
+  ELIF act char = "!" OR act char = "#"
+  THEN IF real ok (value)
+       THEN data := real type
+       ELSE scan error (2, value, "REAL-Konstante nicht korrekt") FI
+  ELIF integer ok (value)
+  THEN scan pos DECR 1;  data := int type
+  ELIF real ok (value)
+  THEN scan pos DECR 1;
+       data := real type
+  ELSE scan error (2, value, "Numerische Konstante nicht korrekt") FI  . 
+
+act char: record SUB scan pos  .
+END PROC get numeric const;
+ 
+PROC get text const (TEXT VAR value, DTYPE VAR data):
+  INT CONST quote 1 := scan pos;
+  scan pos := pos (record, """", scan pos+1);
+  IF quote 1 < scan pos
+  THEN value := subtext (record, quote 1+1, scan pos-1);
+       data := text type
+  ELSE scan error (15, subtext (record, quote 1), "("" fehlt)") FI  .
+
+END PROC get text const;
+
+BOOL PROC integer ok (TEXT VAR zahl):
+  disable stop;
+  i dummy := int (zahl);
+  IF is error
+  THEN clear error;
+       FALSE
+  ELIF last conversion ok
+  THEN zahl := ""0""0"";
+       replace (zahl, 1, i dummy);
+       TRUE
+  ELSE FALSE FI  .
+
+END PROC integer ok;
+
+BOOL PROC real ok (TEXT VAR zahl):
+  disable stop;
+  r dummy := real (zahl);
+  IF is error
+  THEN clear error;
+       FALSE
+  ELIF last conversion ok
+  THEN zahl := ""0""0""0""0""0""0""0""0"";
+       replace (zahl, 1, r dummy);
+       TRUE
+  ELSE FALSE FI  .
+
+END PROC real ok;
+
+PROC basic error (INT CONST no, TEXT CONST name, addition):
+  basic error ("Compiler", no, record no, act stat no, name, addition, TRUE)
+END PROC basic error;
+
+PROC basic error (INT CONST no, TEXT CONST name, addition, BOOL CONST leave statement):
+  basic error ("Compiler", no, record no, act stat no, name, addition, leave statement)
+END PROC basic error;
+
+PROC scan error (INT CONST no, TEXT CONST name, addition):
+  basic error ("Scanner", no, record no, act stat no, name, addition, TRUE)
+END PROC scan error;
+
+PROC basic warning (TEXT CONST warning text):               (* mo *)
+  basic warning (record no, act stat no, warning text)
+END PROC basic warning;
+
+PROC basic list (BOOL CONST t):
+  listing := t 
+END PROC basic list;
+
+BOOL PROC basic list:
+  listing
+END PROC basic list;
+
+PROC set scope (TEXT CONST new scope):                          (* DEF/mo *)
+  scope := new scope
+END PROC set scope;
+
+TEXT PROC scanner scope:                                        (* DEF/mo *)
+  scope
+END PROC scanner scope;
+
+END PACKET basic scanner;
+
+
+PACKET basic stat no DEFINES init stat no,    (* Autor: Heiko Indenbirken *)
+                             stat no pos,     (* Stand: 27.10.1987/rr/mo  *)
+                             label pos,
+                             all stat no:
+
+LET nil = "";
+
+TEXT VAR found stat no :: nil;
+INT VAR i, akt stat no :: 0, found no :: 0;
+
+PROC init stat no (FILE VAR f, INT VAR error no):                (* F21/rr *)
+(*Die Datei 'f' muß im 'modify-Mode' sein.                               *)
+  INT VAR line no;
+  akt stat no := -1;                                             (* F28/rr *)
+  found no := 0;
+  found stat no := nil;
+  error no := 0;                                                 (* F21/rr *)
+  to first record (f);
+  col (f, 1);
+  disable stop;
+  FOR line no FROM 1 UPTO 4000
+  REP exec (PROC (TEXT CONST, INT CONST) check, f, line no);
+      IF is error THEN check error FI;
+      IF eof (f)
+      THEN LEAVE init stat no
+      ELSE down (f) FI
+  PER;
+
+. check error :                                                  (* F21/rr *)
+    IF error code = 100
+       THEN clear error;
+            error no INCR 1;
+       ELSE LEAVE init stat no;
+    FI;
+
+END PROC init stat no;
+
+PROC check (TEXT CONST record, INT CONST line no):
+  IF statement no vorhanden
+  THEN remember statement no FI  .
+
+statement no vorhanden:                                          (* F15/rr *)
+   INT CONST first number pos := pos (record, ""048"", ""057"", 1);
+   first number pos > 0 CAND first number pos = first non blank pos .
+
+first non blank pos :                                            (* F15/rr *)
+   pos (record, ""033"", ""255"", 1) .
+
+remember statement no:
+  get statement no;
+  IF neue nummer ist groesser als vorherige
+  THEN akt stat no := neue nummer;
+       cout (neue nummer);
+       found no INCR 1;
+       found stat no CAT mki (neue nummer)
+  ELSE basic error ("Stat no", 81, line no, neue nummer, number,
+                    "Letzte Zeilennummer davor: " + text (akt stat no), TRUE)
+  FI  .
+
+get statement no :                                               (* F15/rr *)
+  disable stop;
+  TEXT CONST number := subtext (record, first number pos, last number pos);
+  INT VAR neue nummer := int (number);
+  IF NOT last conversion ok OR is error
+  THEN clear error;
+       basic error ("Stat no", 80, line no, akt stat no, number,
+                    "Die Zeilennummer muß im Bereich 0-32767 liegen", TRUE)
+  FI;
+  enable stop .
+
+last number pos :                                                (* F15/rr *)
+  INT CONST high := pos (record, ""058"", ""255"", first number pos),
+            low  := pos (record, ""032"", ""047"", first number pos);
+  IF   high > 0
+       THEN IF low > 0
+               THEN min (high, low) - 1
+               ELSE high - 1
+            FI
+  ELIF low > 0
+       THEN low - 1
+       ELSE LENGTH record
+  FI .
+
+neue nummer ist groesser als vorherige:
+  neue nummer > akt stat no  .
+
+END PROC check;
+
+INT PROC stat no pos (INT CONST stat no):
+  FOR i FROM found no DOWNTO 1
+  REP IF (found stat no ISUB i) = stat no
+      THEN LEAVE stat no pos WITH i FI
+  PER;
+  0
+END PROC stat no pos;
+
+INT PROC label pos (INT CONST stat no):
+  FOR i FROM found no DOWNTO 1
+  REP IF (found stat no ISUB i) = stat no
+      THEN LEAVE label pos WITH i FI
+  PER;
+  basic error (8, text (stat no), nil);                         (* F16/rr *)
+  0
+END PROC label pos;
+
+PROC all stat no (TEXT VAR stat no, INT VAR no):
+  stat no := found stat no;
+  no      := found no
+END PROC all stat no;
+
+END PACKET basic stat no;
+
+PACKET basic storage DEFINES init storage,     (* Autor: Heiko Indenbirken *)
+                             next local adr,   (* Stand: 12.06.86          *)
+                             next ref,
+                             local adr,
+                             local storage,
+                             type size,
+                             quiet type:         
+                                              
+                                              
+
+LET ref length = 2;
+
+INT VAR quiet size, quiet align;
+ADDRESS VAR loc adr, free loc adr;
+DTYPE VAR quiet value;
+identify ("QUIET", quiet size, quiet align, quiet value);
+
+PROC init storage:
+  free loc adr := LOC 0;
+  loc adr      := LOC 0;
+
+END PROC init storage;
+
+(*        Verwaltung der lokalen Addressen für Zwischenergebnisse        *)
+ADDRESS PROC next local adr (DTYPE CONST type):
+  INT VAR type len :: type size (type);
+  loc adr := free loc adr;
+  adjust (loc adr, type len);
+  free loc adr := loc adr + type len;
+  loc adr  .
+
+END PROC next local adr;
+
+ADDRESS PROC next ref:
+  loc adr := free loc adr;
+  adjust (loc adr, ref length);
+  free loc adr := loc adr + ref length;
+  loc adr  .
+
+END PROC next ref;
+
+ADDRESS PROC local adr:
+   loc adr
+END PROC local adr;
+
+INT PROC local storage:
+  int (subtext (dump (free loc adr), 6))
+END PROC local storage;
+
+INT PROC type size (DTYPE CONST type):
+   IF type = int type OR type = bool type
+   THEN 1
+   ELIF type = row type
+   THEN 2
+   ELIF type = real type
+   THEN 4
+   ELIF type = text type
+   THEN 8
+   ELIF type = quiet value
+   THEN quiet size
+   ELSE errorstop ("Unbekannter DTYPE: " + dump (type));  0 FI  .
+
+END PROC type size;
+
+DTYPE PROC quiet type:
+  quiet value
+END PROC quiet type;
+
+END PACKET basic storage;
+
+PACKET basic identify DEFINES                 (* Autor: Heiko Indenbirken *)
+                                              (* Stand: 20.08.1987/rr/mo  *)
+                           identify,
+                           convert paramfield,
+                           dump ftn,
+                           is basic function:            (* mo *)
+
+LET nil = "";
+
+LET ENTRY = STRUCT (TEXT param, INT no, next, OPN opn, DTYPE result);
+
+ROW 256 ENTRY VAR ftn table;
+
+clear ftn table;
+init ftn names;
+init int operator;
+init real operator;
+init text operator;
+init predefined funktions;
+
+PROC dump ftn (INT CONST n, TEXT VAR param, INT VAR no, next,
+               OPN VAR opn, DTYPE VAR result):
+ param  := ftn table [n].param;
+ no     := ftn table [n].no;
+ next   := ftn table [n].next;
+ opn    := ftn table [n].opn;
+ result := ftn table [n].result
+
+END PROC dump ftn;
+
+PROC identify (INT CONST ftn no, first, params, OPN VAR operation, BOOL VAR found):
+  TEXT VAR param;
+  INT VAR pos :: min (ftn no, 256);
+  convert paramfield (first, params, param);
+  REP IF param = ftn table [pos].param  AND ftn no = ftn table [pos].no
+      THEN declare (params+1, ftn table [pos].result);
+           declare (params+1, 1);
+           operation := ftn table [pos].opn;
+           found     := TRUE;
+           LEAVE identify
+      ELSE pos := ftn table [pos].next FI
+  UNTIL pos <= 0 PER;                                           (* F14/rr *)
+  operation := nop;
+  found     := FALSE  .
+
+END PROC identify;
+
+PROC next free entry (INT VAR free pos):
+  FOR free pos FROM 1 UPTO 256
+  REP IF ftn table [free pos].next < 0 AND ftn table [free pos].no = 0  (* mo *)
+    THEN LEAVE next free entry FI
+  PER;
+  errorstop ("Überlauf der Funktionstabelle")  .
+
+END PROC next free entry;
+
+PROC convert paramfield (INT CONST first, params, TEXT VAR param):
+  INT VAR i;
+  param := nil;
+  FOR i FROM first UPTO params
+  REP param CAT datatype PER  .
+
+datatype:
+  DTYPE CONST data :: dtype (i);
+  IF data = int type
+  THEN "I"
+  ELIF data = real type
+  THEN "R"
+  ELIF data = text type
+  THEN "T"
+  ELIF data = bool type
+  THEN "b"
+  ELSE errorstop ("Falscher DTYPE: " + dump (data));
+       nil
+  FI  .
+
+END PROC convert paramfield;
+
+PROC convert paramfield (TEXT CONST params, INT CONST first):
+  INT VAR i;
+  FOR i FROM first UPTO first+length (params)-1
+  REP parameter (i, this type, 1, GLOB 0) PER  .
+
+this type:
+  IF (params SUB i) = "I"
+  THEN int type
+  ELIF (params SUB i) = "R"
+  THEN real type
+  ELIF (params SUB i) = "T"
+  THEN text type
+  ELSE errorstop ("Unbekannter Typ: " + params);
+       undefined type
+  FI  .
+
+END PROC convert paramfield;
+
+PROC init op (INT CONST ftn no, TEXT CONST param, ftn name):
+  IF elan opn found
+  THEN insert new opn in chain
+  ELSE errorstop ("PROC " + ftn name + " (" + param + ") nicht gefunden") FI  .
+
+elan opn found:
+  OPN VAR opn;
+  BOOL VAR found;
+  convert paramfield (param, 1);
+  identify (ftn name, 1, length (param), opn, found);
+  found  .
+
+insert new opn in chain:
+  INT VAR ftn pos :: ftn no;
+  REP IF end of chain found
+      THEN cat new entry in chain
+      ELIF free entry in chain found
+      THEN cover this entry
+      ELSE next entry FI
+  UNTIL ftn pos <= 0 PER  .
+
+end of chain found:
+  act entry.next = 0  .
+
+cat new entry in chain:
+  INT VAR free pos;
+  next free entry (free pos);
+  act entry.next := free pos;
+  free entry := ENTRY:(param, ftn no, 0, opn, dtype (LENGTH param+1));
+  LEAVE insert new opn in chain  .
+
+free entry in chain found:
+  act entry.next = -1 .
+
+cover this entry:
+  act entry := ENTRY:(param, ftn no, 0, opn, dtype (LENGTH param+1));
+  LEAVE insert new opn in chain  .
+
+next entry:
+  ftn pos := act entry.next  .
+
+act entry: ftn table [ftn pos]  .
+free entry: ftn table [free pos]  .
+
+END PROC init op;
+
+BOOL PROC is basic function (INT CONST ftn no):         (* mo *)
+
+  pos (ftn names, code (ftn no)) <> 0
+
+END PROC is basic function;
+
+.
+clear ftn table:
+  INT VAR k;
+  FOR k FROM 1 UPTO 256
+  REP ftn table [k] := ENTRY:(nil, 0,-1, nop, undefined type) PER  .
+
+init ftn names:
+  TEXT CONST ftn names :: "+-*/\^<=>"28""29""30""249""251""252""253""254"" +
+                          ""128""130""131""134""136""137""141""143""142"" +
+                          ""153""154""155""157""159""161""166""168""170""171""172"" +
+                          ""174""175""178""179""182""184""183""187""192"" +
+                          ""201""202""204""205""206""207""208""211""212"" +
+                          ""215""221""228""229""230""231""232""233"";
+  FOR k FROM 1 UPTO length (ftn names)
+  REP ftn table [ftn pos] := ENTRY:(nil, ftn pos,-1, nop, void type) PER  .
+
+ftn pos:
+  code (ftn names SUB k)  .
+
+init int operator:
+  init op ( 43, "II", "+");
+  init op ( 45, "II", "-");
+  init op ( 42, "II", "*");
+  init op ( 47, "II", "/");                 (* mo *)
+  init op ( 92, "II", "DIV");               (* mo *)
+  init op ( 94, "II", "^");
+  init op ( 61, "II", "EQU");
+  init op ( 29, "II", "UEQ");
+  init op ( 60, "II", "LES");
+  init op ( 28, "II", "LEQ");
+  init op ( 62, "II", "GRE");
+  init op ( 30, "II", "GEQ");
+  init op (249, "II", "MOD");               (* mo *)
+  init op (251, "II", "AND");
+  init op (252, "II", "OR");
+  init op (253, "II", "XOR");
+  init op (254, "II", "EQV");
+  init op (255, "II", "IMP").
+
+init real operator:
+  init op ( 43, "RR", "+");
+  init op ( 45, "RR", "-");
+  init op ( 42, "RR", "*");
+  init op ( 47, "RR", "/");
+  init op ( 92, "RR", "DIV");              (* mo *)
+  init op ( 94, "RR", "^");
+  init op ( 61, "RR", "EQU");
+  init op ( 29, "RR", "UEQ");
+  init op ( 60, "RR", "LES");
+  init op ( 28, "RR", "LEQ");
+  init op ( 62, "RR", "GRE");
+  init op ( 30, "RR", "GEQ");
+  init op (249, "RR", "realmod").          (* mo *)
+
+init text operator:
+  init op ( 43, "TT", "+");
+  init op ( 61, "TT", "EQU");
+  init op ( 29, "TT", "UEQ");
+  init op ( 60, "TT", "LES");
+  init op ( 28, "TT", "LEQ");
+  init op ( 62, "TT", "GRE");
+  init op ( 30, "TT", "GEQ")  .
+
+init predefined funktions:
+  init op (128, "I", "abs");
+  init op (128, "R", "abs");
+  init op (130, "T", "asc");
+  init op (131, "R", "arctan");
+  init op (131, "I", "arctan");
+  init op (134, "I", "cdbl");
+  init op (134, "R", "cdbl");
+  init op (136, "I", "chr");
+  init op (136, "R", "chr");
+  init op (137, "R", "cint");
+  init op (137, "I", "cint");
+  init op (141, "R", "cos");
+  init op (141, "I", "cos");
+  init op (143, "T", "cvi");
+  init op (142, "T", "cvd");
+# init op (153, "", "eof");#                                     (* File *)
+  init op (154, "", "errorline");
+  init op (155, "", "errorcode");
+  init op (157, "R", "exp");
+  init op (157, "I", "exp");
+  init op (159, "R", "floor");
+  init op (159, "I", "floor");
+  init op (161, "I", "fre");
+  init op (161, "R", "fre");
+  init op (161, "T", "fre");
+  init op (166, "I", "hex");
+  init op (166, "R", "hex");
+  init op (168, "", "incharety");
+  init op (170, "I", "inchars");
+  init op (170, "R", "inchars");
+  init op (171, "TT", "instr");
+  init op (171, "ITT", "instr");
+  init op (171, "RTT", "instr");
+  init op (172, "I", "ent");
+  init op (172, "R", "ent");
+  init op (174, "TI", "left");
+  init op (174, "TR", "left");
+  init op (175, "T", "length");
+# init op (178, "I", "line no");#                                (* File *)
+  init op (179, "R", "ln");
+  init op (179, "I", "ln");
+  init op (182, "TII", "mid");
+  init op (182, "TI", "mid");
+  init op (182, "TRR", "mid");
+  init op (182, "TR", "mid");
+  init op (183, "I", "mkd");
+  init op (183, "R", "mkd");
+  init op (187, "I", "oct");
+  init op (187, "R", "oct");
+  init op (192, "I", "pos");
+  init op (192, "R", "pos");
+  init op (201, "TI", "right");
+  init op (201, "TR", "right");
+  init op (202, "", "rnd");                                      (* F12/rr *)
+  init op (202, "I", "rnd");
+  init op (202, "R", "rnd");
+  init op (204, "I", "sign");
+  init op (204, "R", "sign");
+  init op (205, "R", "sin");
+  init op (205, "I", "sin");
+  init op (206, "I", "space");
+  init op (206, "R", "space");
+  init op (207, "I", "space");
+  init op (207, "R", "space");
+  init op (208, "R", "sqrt");
+  init op (208, "I", "sqrt");
+  init op (211, "I", "basictext");
+  init op (211, "R", "basictext");
+  init op (212, "IT", "string");
+  init op (212, "RT", "string");
+  init op (212, "II", "string");
+  init op (212, "RR", "string");
+  init op (212, "RI", "string");
+  init op (212, "IR", "string");
+  init op (215, "R", "tan");
+  init op (215, "I", "tan");
+  init op (221, "T", "val");                                      (* F18/rr *)
+  init op (228, "", "errormessage");
+  init op (229, "", "csrlin");
+  init op (230, "I", "lpos");
+  init op (230, "R", "lpos");
+  init op (231, "", "time");
+  init op (232, "", "date");
+  init op (233, "", "timer").
+
+END PACKET basic identify;
+
+PACKET basic data handling                          (* Autor: R. Ruland   *)
+                                                    (* Stand: 23.10.87/mo *)
+       DEFINES init data,       
+               data line,       
+               data, read,
+               restore,
+               next int,
+               next real,
+               next text:       
+
+LET (*                     R e s u l t    T y p e n                      *) 
+    stat code = 0,   stat char = ""0"",
+    data code = 1,   data char = ""1"",
+    text code = 2,   text char = ""2"",
+
+    int  overflow  =  4,
+    real overflow  =  6;
+
+INT VAR type;
+TEXT VAR data text :: "", number text;
+
+PROC init data:
+
+   data text := ""
+
+END PROC init data;
+
+
+PROC init data (TEXT VAR data, INT VAR data pos):
+
+  data      := data text;
+  data pos  := 1
+
+END PROC init data;
+
+
+PROC restore (TEXT CONST data, INT VAR data pos, INT CONST line no):
+
+  INT CONST data length :: LENGTH data;
+  data pos := 1;
+  WHILE data pos < data length
+  REP type := code (data SUB data pos);
+      data pos INCR 1;
+      SELECT type OF
+         CASE stat code            : IF int value (data, data pos) >= line no
+                                        THEN LEAVE restore FI
+         CASE data code, text code : data pos INCR int value (data, data pos)
+         OTHERWISE : errorstop (1051, "Fehlerhaften Dateneintrag gefunden: " + text (type))
+      ENDSELECT;
+  PER;
+  errorstop (1004, "RESTORE: Keine DATA-Anweisung in oder nach Zeile " + text (line no)
+                     + " gefunden");
+
+END PROC restore;
+
+ 
+INT PROC next int (TEXT CONST data, INT VAR data pos):
+
+   number text := next text (data, data pos);
+   disable stop;
+   INT VAR result := int (number text);
+   IF   is error
+        THEN IF error code = int overflow THEN handle overflow FI;
+   ELIF NOT last conversion ok CAND number text <> "" 
+        THEN errorstop (1013, "READ: Falscher Datentyp, " + number text + " ist kein INT")
+   FI;
+   result
+
+   . handle overflow :
+       clear error;
+       result := result value;
+       IF cursor x pos <> 1 THEN next line FI;
+       basic out ("WARNUNG : INT-Überlauf bei READ, gefunden: " + number text);
+       next line;
+
+       . result value :
+           IF (number text SUB 1) = "-" THEN minint ELSE maxint FI
+
+END PROC next int;
+
+ 
+REAL PROC next real (TEXT CONST data, INT VAR data pos):
+
+   number text := next text (data, data pos);
+   disable stop;
+   REAL VAR result := val (number text);
+   IF   is error
+        THEN IF error code = real overflow OR error code = int overflow  (* <- wegen Fehler in REAL PROC real (T C) *)
+                THEN handle overflow or underflow
+             FI;
+   ELIF NOT last conversion ok CAND number text <> "" 
+        THEN errorstop (1013, "READ: Falscher Datentyp, " + number text + " ist kein REAL")
+   FI;
+   result
+
+   . handle overflow or underflow :                          (* F23/rr *) 
+       clear error;
+       IF cursor x pos <> 1 THEN next line FI;
+       basic out ("WARNUNG : " + overflow or underflow + " bei READ, gefunden: " + number text);
+       next line;
+
+   . overflow or underflow :
+       IF is overflow                            
+          THEN result := sign * (max real - 0.99999999999994e120); (* <- wegen Fehler in TEXT PROC text (R C) *)
+               "REAL-Überlauf"
+          ELSE result := 0.0;
+               "REAL-Unterlauf"
+       FI
+
+       . sign :
+           IF (number text SUB 1) = "-" THEN -1.0 ELSE 1.0 FI
+
+       . is overflow :
+           INT VAR exponent pos := pos (number text, "E"); 
+           IF exponent pos = 0 THEN exponent pos := pos (number text, "e") FI;
+           IF exponent pos = 0
+              THEN TRUE
+              ELSE (number text SUB (exponent pos + 1)) <> "-"
+           FI
+
+END PROC next real;
+
+
+TEXT PROC next text (TEXT CONST data, INT VAR data pos):
+
+   INT CONST len :: int value (data, data pos);
+   data pos INCR len;
+   subtext (data, data pos-len, data pos-1)
+
+END PROC next text;
+
+
+INT PROC int value (TEXT CONST data, INT VAR data pos):
+
+   data pos INCR 2;
+   subtext (data, data pos-2, data pos-1) ISUB 1
+
+END PROC int value;
+ 
+
+PROC data line (INT CONST line no):
+
+  data text CAT stat char;
+  data text CAT mki (line no)
+
+END PROC data line;
+
+
+PROC data (TEXT CONST string, DTYPE VAR data type) :
+
+  data text CAT data + mki (length (string));
+  data text CAT string;
+
+  . data :
+      IF   data type = void type
+           THEN data char
+      ELIF data type = text type
+           THEN text char
+           ELSE errorstop (1051, "Unbekannter DTYPE: " + dump (data type)); ""
+      FI
+
+END PROC data;
+
+
+PROC read (TEXT CONST data, INT VAR data pos, INT VAR i):
+
+  type := code (data SUB data pos);
+  data pos INCR 1;
+  IF   data pos >= LENGTH data
+       THEN errorstop (1004, "Keine Daten mehr für READ")
+  ELIF type = data code
+       THEN i := next int (data, data pos)
+  ELIF type = stat code
+       THEN data pos INCR 2;
+            read (data, data pos, i)
+       ELSE errorstop (1013, "READ: Falscher Datentyp, " + data string (data,data pos) + " ist kein INT")
+  FI;
+
+END PROC read;
+
+
+PROC read (TEXT CONST data, INT VAR data pos, REAL VAR r):
+
+  type := code (data SUB data pos);
+  data pos INCR 1;
+  IF   data pos >= LENGTH data
+       THEN errorstop (1004, "Keine Daten mehr für READ")
+  ELIF type = data code
+       THEN r := next real (data, data pos)
+  ELIF type = stat code
+       THEN data pos INCR 2;
+            read (data, data pos, r)
+       ELSE errorstop (1013, "READ: Falscher Datentyp, " + data string (data,data pos) + " ist kein REAL")
+  FI;
+
+END PROC read;
+
+
+PROC read (TEXT CONST data, INT VAR data pos, TEXT VAR t):
+
+  type := code (data SUB data pos);
+  data pos INCR 1;
+  IF   data pos >= LENGTH data
+       THEN errorstop (1004, "Keine Daten mehr für READ")
+  ELIF type = data code OR type = text code
+       THEN t := next text (data, data pos)
+  ELIF type = stat code
+       THEN data pos INCR 2;
+            read (data, data pos, t)
+       ELSE errorstop (1013, "READ: Falscher Datentyp, " + data string (data,data pos) + " ist kein TEXT")
+  FI;
+
+END PROC read;
+ 
+
+TEXT PROC data string (TEXT CONST data, INT VAR data pos):
+
+  IF type = text code
+     THEN """" + next text (data, data pos) + """"
+     ELSE "unbekannter DTYPE: " + text (type)
+  FI
+
+END PROC data string;
+
+END PACKET basic data handling;
+
+
+PACKET basic odds and ends DEFINES trace,       (* Autor: Heiko Indenbirken *)
+                                   start basic, (* Stand: 26.10.1987/rr/mo  *)
+                                   end basic,
+                                   loop end,
+                                   basic stop:
+
+(*                            Fehlerbehandlung                           *)
+
+PROC trace (INT CONST stat no):
+  basic out ("[" + text (stat no) + "]")
+
+END PROC trace;
+
+(*Laufzeitprozeduren                                                     *)
+PROC start basic:
+  set line nr (0);
+  initialize random (0.1);                                   (* F26/rr *)
+  init output;
+  init input
+
+END PROC start basic;
+
+PROC end basic:
+  IF is error
+    THEN switch back to old sysout state
+  FI  .
+
+END PROC end basic; 
+
+(*                          Schleifenüberprüfung                         *)
+BOOL PROC loop end (REAL CONST x, max, step) :
+  IF step > 0.0
+  THEN x > max
+  ELSE x < max FI
+
+END PROC loop end;
+
+BOOL PROC loop end (INT CONST x, max, step) :
+  IF step > 0
+  THEN x > max
+  ELSE x < max FI
+
+END PROC loop end;
+
+PROC basic stop (INT CONST stat no):
+  basic out ("STOP beendet das Programm in Zeile " + text (stat no));
+  next line
+
+END PROC basic stop;
+
+END PACKET basic odds and ends
+

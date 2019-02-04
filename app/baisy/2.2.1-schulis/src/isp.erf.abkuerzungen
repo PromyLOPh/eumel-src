@@ -1,0 +1,67 @@
+PACKET isperfabkuerzungenDEFINES starterfassungallgemabkuerzungen,
+erfassungallgemabkuerzungen,pruefungabkuerzungen:LET standardmaskenname=
+"mu erf abkuerzungen",bestandallerbestaende="c02 bestand aller bestaende",
+fnrletztesfeld=4,fnrschluessel=2,fnrlangtext=4,trenner=" = ";TEXT VAR 
+bestandname:="",aktmaskenname:="";TEXT VAR schluesselsicherung:="";INT VAR 
+maxschluessellaenge:=0,statistiknummer:=0;BOOL VAR gesamtbestand:=FALSE ,
+erstesmalgelesen:=TRUE ;PROC starterfassungallgemabkuerzungen(TEXT CONST 
+bestand):starterfassungallgemabkuerzungen(bestand,standardmaskenname)ENDPROC 
+starterfassungallgemabkuerzungen;PROC starterfassungallgemabkuerzungen(TEXT 
+CONST bestand,maskenname):reinitparsing;bestandname:=bestand;gesamtbestand:=
+bestandname=bestandallerbestaende;aktmaskenname:=maskenname;
+holeschluessellaengediesesbestands;
+erfassungsbildschirmaufbauenundvonerfassungsbildschirmeinlesen(PROC (INT 
+CONST )erfassungallgemabkuerzungen).holeschluessellaengediesesbestands:
+systemdboff;inittupel(dnrschluessel);putwert(fnrschlsachgebiet,
+bestandallerbestaende);putwert(fnrschlschluessel,bestandname);search(
+dnrschluessel,TRUE );IF lesenfehlerfreiTHEN maxschluessellaenge:=int(wert(
+fnrschllangtext));ELSE maxschluessellaenge:=0;FI ;putwert(fnrschlsachgebiet,
+bestandname);.lesenfehlerfrei:dbstatus=0.ENDPROC 
+starterfassungallgemabkuerzungen;PROC erfassungallgemabkuerzungen(INT CONST 
+proznr):systemdboff;SELECT proznrOF CASE 1:setzeerfassungsparameterCASE 2:
+zeigeschluesselzurbearbeitungCASE 3:pruefeplausibilitaetCASE 4:
+setzewertefuerdbspeicherungCASE 5:setzeidentiobjektfuerobjektlisteCASE 6:
+abkuerzunglesenCASE 7:abkuerzungaendernCASE 8:abkuerzungeinfuegenCASE 9:
+abkuerzungloeschenENDSELECT ENDPROC erfassungallgemabkuerzungen;PROC 
+setzeerfassungsparameter:erstesmalgelesen:=TRUE ;setzeerfassungsparameter(
+dnrschluessel,maxschluessellaenge,aktmaskenname,fnrletztesfeld)END PROC 
+setzeerfassungsparameter;PROC zeigeschluesselzurbearbeitung:
+setzeerfassungsfeld(wert(fnrschlschluessel),fnrschluessel);
+setzeerfassungsfeld(wert(fnrschllangtext),fnrlangtext)END PROC 
+zeigeschluesselzurbearbeitung;PROC pruefeplausibilitaet:INT VAR fehlerstatus
+:=0;setzefehlerstatus(fehlerstatus)ENDPROC pruefeplausibilitaet;PROC 
+setzewertefuerdbspeicherung:putwert(fnrschlsachgebiet,bestandname);putwert(
+fnrschlschluessel,compress(erfassungswert(fnrschluessel)));putwert(
+fnrschllangtext,erfassungswert(fnrlangtext))ENDPROC 
+setzewertefuerdbspeicherung;PROC setzeidentiobjektfuerobjektliste:LET 
+trennsymbolfuerobli="$";TEXT VAR identizeile;identizeile:=wert(
+fnrschlschluessel)+trenner+wert(fnrschllangtext);identizeile:=subtext(
+identizeile,1,maxidentizeilenlaenge);setzeidentiwert(
+identizeilemitschluesselanhang).identizeilemitschluesselanhang:identizeile+
+trennsymbolfuerobli+wert(fnrschlschluessel).ENDPROC 
+setzeidentiobjektfuerobjektliste;PROC abkuerzunglesen:putwert(
+fnrschlsachgebiet,bestandname);putwert(fnrschlschluessel,compress(
+erfassungswert(fnrschluessel)));search(dnrschluessel,TRUE );IF dbstatus=ok
+THEN saveupdateposition(dnrschluessel);IF erstesmalgelesenTHEN 
+schluesselsicherung:=wert(fnrschlschluessel);erstesmalgelesen:=FALSE ;FI FI 
+ENDPROC abkuerzunglesen;PROC abkuerzungaendern:restoreupdateposition(
+dnrschluessel);update(dnrschluessel);#IF dbstatus=okCAND statistikbestand
+CAND kuerzelgeaendertTHEN kuerzelnameinstatraumaendern(statistiknummer,
+schluesselsicherung,schluessel)FI ;dr11.05.88#erstesmalgelesen:=dbstatus=ok.#
+kuerzelgeaendert:schluesselsicherung<>schluessel.dr11.05.88#ENDPROC 
+abkuerzungaendern;PROC abkuerzungeinfuegen:insert(dnrschluessel);#IF dbstatus
+=okCAND statistikbestandTHEN kuerzelnameinstatraumeinfuegen(statistiknummer,
+wert(fnrschlschluessel))FI ;dr11.05.88#erstesmalgelesen:=dbstatus=okENDPROC 
+abkuerzungeinfuegen;PROC abkuerzungloeschen:delete(dnrschluessel);#IF 
+dbstatus=okCAND statistikbestandTHEN kuerzelnameausstatraumentfernen(
+statistiknummer,wert(fnrschlschluessel))FI ;dr11.05.88#erstesmalgelesen:=
+dbstatus=okEND PROC abkuerzungloeschen;TEXT PROC schluessel:erfassungswert(
+fnrschluessel)END PROC schluessel;BOOL PROC pruefungabkuerzungen:wert(
+fnrschlsachgebiet)=bestandnameEND PROC pruefungabkuerzungen;#dr11.05.88BOOL 
+PROC statistikbestand:LET anzstatistiken=8;ROW anzstatistikenTEXT CONST 
+statistikname:=ROW anzstatistikenTEXT :("","c02 schulart","c02 zugang",
+"c02 versetzung","c02 relizugehoerigkeit","","c02 abgang","c02 abschluss");
+FOR statistiknummerFROM 1UPTO anzstatistikenREP IF statistikname[
+statistiknummer]=bestandnameTHEN LEAVE statistikbestandWITH TRUE FI PER ;
+FALSE END PROC statistikbestand;#END PACKET isperfabkuerzungen;
+

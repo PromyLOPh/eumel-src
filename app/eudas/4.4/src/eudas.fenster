@@ -1,0 +1,238 @@
+PACKET fenster
+
+(*************************************************************************)
+(*                                                                       *)
+(*     Bildschirmaufteilung in Fenster                                   *)
+(*                                                                       *)
+(*     Version 05                                                        *)
+(*                                                                       *)
+(*     Autor: Thomas Berlage                                             *)
+(*     Stand: 17.04.87                                                   *)
+(*                                                                       *)
+(*************************************************************************)
+
+  DEFINES
+
+  FENSTER,
+  fenster initialisieren,
+  fenstergroesse setzen,
+  fenstergroesse,
+  fenster veraendert,
+  fensterzugriff,
+  bildschirm neu :
+
+
+TYPE FENSTER = STRUCT (INT koordinaten, version);
+
+LET
+  maxfenster = 16,
+  BITVEKTOR = INT,
+  GROESSE = STRUCT (INT x anf, y anf, x laenge, y laenge);
+
+ROW maxfenster STRUCT (INT referenzen, aktuelle version,
+                       BITVEKTOR ueberschneidungen,
+                       GROESSE groesse)
+               VAR fenstergroessen;
+
+INT VAR naechste version := 1;
+
+BITVEKTOR VAR veraenderungen;
+
+INT VAR i;
+FOR i FROM 2 UPTO maxfenster REP
+  fenstergroessen (i). referenzen := 0
+END REP;
+fenstergroessen (1). referenzen := 1;
+fenstergroessen (1). aktuelle version := 0;
+fenstergroessen (1). ueberschneidungen := 0;
+fenstergroessen (1). groesse := GROESSE : (1, 1, 79, 24);
+
+
+(************************* fenster anfordern *****************************)
+
+PROC fenster initialisieren (FENSTER VAR f) :
+
+  f. koordinaten := 1;
+  fenstergroessen (1). referenzen INCR 1;
+  f. version := naechste version;
+  naechste version INCR 1;
+  IF naechste version >= 32000 THEN naechste version := -32000 END IF
+
+END PROC fenster initialisieren;
+
+PROC fenstergroesse setzen (FENSTER VAR f,
+                            INT CONST x anf, y anf, x laenge, y laenge) :
+
+  INT VAR stelle;
+  passendes fenster suchen;
+  IF stelle > maxfenster THEN
+    freie stelle suchen;
+    neue koordinaten initialisieren;
+    ueberschneidungen bestimmen
+  END IF;
+  auf referenz setzen .
+
+passendes fenster suchen :
+  stelle := 1;
+  WHILE stelle <= maxfenster REP
+    IF groesse passt THEN
+      LEAVE passendes fenster suchen
+    END IF;
+    stelle INCR 1
+  END REP .
+
+groesse passt :
+  g. x anf = x anf AND g. y anf = y anf AND g. x laenge = x laenge AND
+    g. y laenge = y laenge .
+
+g :
+  fenstergroessen (stelle). groesse .
+
+freie stelle suchen :
+  stelle := 1;
+  WHILE stelle <= maxfenster REP
+    IF fenstergroessen (stelle). referenzen = 0 THEN
+      LEAVE freie stelle suchen
+    END IF;
+    stelle INCR 1
+  END REP;
+  errorstop ("zu viele Fenstergroessen");
+  LEAVE fenstergroesse setzen .
+
+neue koordinaten initialisieren :
+  fenstergroessen (stelle). referenzen := 0;
+  fenstergroessen (stelle). aktuelle version := 0;
+  fenstergroessen (stelle). groesse :=
+    GROESSE : (x anf, y anf, x laenge, y laenge);
+  fenstergroessen (stelle). ueberschneidungen := 0 .
+
+ueberschneidungen bestimmen :
+  INT VAR vergleich;
+  FOR vergleich FROM 1 UPTO maxfenster REP
+    IF fenstergroessen (vergleich). referenzen > 0 THEN
+      vergleiche auf ueberschneidung
+    END IF
+  END REP .
+
+vergleiche auf ueberschneidung :
+  IF ueberschneidung (neues fenster, vergleichsfenster) THEN
+    set bit (fenstergroessen (stelle). ueberschneidungen, vergleich);
+    set bit (fenstergroessen (vergleich). ueberschneidungen, stelle)
+  ELSE
+    reset bit (fenstergroessen (vergleich). ueberschneidungen, stelle)
+  END IF .
+
+neues fenster :
+  fenstergroessen (stelle). groesse .
+
+vergleichsfenster :
+  fenstergroessen (vergleich). groesse .
+
+auf referenz setzen :
+  fenstergroessen (f. koordinaten). referenzen DECR 1;
+  f. koordinaten := stelle;
+  fenstergroessen (stelle). referenzen INCR 1 .
+
+END PROC fenstergroesse setzen;
+
+BOOL PROC ueberschneidung (GROESSE CONST a, b) :
+
+  ueberschneidung in x richtung AND ueberschneidung in y richtung .
+
+ueberschneidung in x richtung :
+  IF a. x anf <= b. x anf THEN
+    b. x anf < a. x anf + a. x laenge
+  ELSE
+    a. x anf < b. x anf + b. x laenge
+  END IF .
+
+ueberschneidung in y richtung :
+  IF a. y anf <= b. y anf THEN
+    b. y anf < a. y anf + a. y laenge
+  ELSE
+    a. y anf < b. y anf + b. y laenge
+  END IF .
+
+END PROC ueberschneidung;
+
+PROC fenstergroesse (FENSTER CONST f,
+                     INT VAR x anf, y anf, x laenge, y laenge) :
+
+  x anf := g. x anf;
+  y anf := g. y anf;
+  x laenge := g. x laenge;
+  y laenge := g. y laenge .
+
+g :
+  fenstergroessen (f. koordinaten). groesse .
+
+END PROC fenstergroesse;
+
+
+(************************** fenster veraendert ***************************)
+
+PROC fenster veraendert (FENSTER CONST f) :
+
+  fenstergroessen (f. koordinaten). aktuelle version := 0;
+  veraenderungen := veraenderungen OR meine ueberschneidungen .
+
+meine ueberschneidungen :
+  fenstergroessen (f. koordinaten). ueberschneidungen .
+
+END PROC fenster veraendert;
+
+
+(************************** fensterzugriff *******************************)
+
+PROC fensterzugriff (FENSTER CONST f, BOOL VAR veraendert) :
+
+  veraendert := bit (veraenderungen, f. koordinaten);
+  IF fenstergroessen (f. koordinaten). aktuelle version <> f. version THEN
+    fenstergroessen (f. koordinaten). aktuelle version := f. version;
+    veraendert := TRUE
+  END IF;
+  veraenderungen := veraenderungen OR meine ueberschneidungen;
+  reset bit (veraenderungen, f. koordinaten) .
+
+meine ueberschneidungen :
+  fenstergroessen (f. koordinaten). ueberschneidungen .
+
+END PROC fensterzugriff;
+
+
+(************************ bildschirm neu *********************************)
+
+PROC bildschirm neu :
+
+  veraenderungen := - 1
+
+END PROC bildschirm neu;
+
+
+(**************************** BITVEKTOR **********************************)
+
+(* Erforderlich, da 'reset bit' im EUMEL nicht richtig funktionierte.    *)
+
+ROW 16 INT VAR bitwert := ROW 16 INT :
+ (1,2,4,8,16,32,64,128,256,512,1024,2048,4096,8192,16384,-32767-1);
+
+PROC set bit (BITVEKTOR VAR vektor, INT CONST stelle) :
+
+  vektor := vektor OR bitwert (stelle)
+
+END PROC set bit;
+
+PROC reset bit (BITVEKTOR VAR vektor, INT CONST stelle) :
+
+  vektor := vektor AND (-1 - bitwert (stelle))
+
+END PROC reset bit;
+
+BOOL PROC bit (BITVEKTOR CONST vektor, INT CONST stelle) :
+
+  (vektor AND bitwert (stelle)) <> 0
+
+END PROC bit;
+
+END PACKET fenster;
+

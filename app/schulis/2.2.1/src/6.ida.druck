@@ -1,0 +1,261 @@
+PACKET idadruckDEFINES listendruck,ausdruckauswerten,bschirm,drucker,
+namederdruckausgabe,namederdruckausgabeohne,druckausgabeausgeben,ruecksprung,
+zurueck,postext,seitenweise:LET linkeklammer="<",rechteklammer=">",
+platzhalter="�",linefeed="",trenner=" ",kzkosmetik="#",kzseitenzahl="%",
+ddrucker=1,dbschirm=2,mlddrucken=58,mldaufb=190;TEXT VAR filename:=
+"ISP-Liste";INT CONST drucker:=ddrucker,bschirm:=dbschirm;FILE VAR ausgfile;
+INT VAR dbauswertung,anzzeilen,zeilenzaehler:=0,fusszeilen:=0,kopfzeilen:=0,
+aktuelleseite:=0,aktuellerds:=0,zeilenlaenge,verbund;BOOL VAR tupelbearbeitet
+,isppageform:=FALSE ;TEXT VAR restderletztenzeile:="";TEXT VAR schriftart:=""
+,kopfbereich:="",fussbereich:="",kosmetikbereich:="zzzz";REAL VAR links,oben;
+#nurtest!!!!!!PROC standardmeldung(INT CONST mldaufb,TEXT CONST t):fehler(
+"MELDUNG: "+text(mldaufb)+"  "+t)ENDPROC standardmeldung;PROC editiere(TEXT 
+CONST fname,BOOL CONST f):edit(fname)ENDPROC editiere;PROC enter(INT CONST i)
+:ENDPROC enter;#PROC seitenweise(BOOL CONST jn):isppageform:=jnENDPROC 
+seitenweise;BOOL PROC seitenweise:isppageformENDPROC seitenweise;TEXT PROC 
+rechtscompress(TEXT CONST zeile):TEXT VAR z:=zeile;INT VAR p:=length(zeile);
+WHILE p>0CAND (zSUB p)=trennerREP pDECR 1PER ;z:=text(z,p);zENDPROC 
+rechtscompress;INT PROC bestimmevorhandeneblanks(TEXT CONST zeile):INT VAR 
+vorhandeneblanks:=0,i;FOR iFROM 1UPTO length(zeile)REP IF (zeileSUB i)=
+trennerTHEN vorhandeneblanksINCR 1FI UNTIL (zeileSUB i)<>trennerPER ;
+vorhandeneblanksENDPROC bestimmevorhandeneblanks;TEXT PROC 
+textmitfuehrendenblanks(TEXT CONST z,INT CONST anzblanks):INT VAR 
+vorhandeneblanks:=0;TEXT VAR zeile:=z;vorhandeneblanks:=
+bestimmevorhandeneblanks(zeile);IF vorhandeneblanks>anzblanksTHEN 
+zeilekuerzenELSE mitblanksauffuellenFI ;zeile.zeilekuerzen:zeile:=subtext(
+zeile,vorhandeneblanks-anzblanks).mitblanksauffuellen:zeile:=(anzblanks-
+vorhandeneblanks)*trenner+zeile.ENDPROC textmitfuehrendenblanks;TEXT PROC 
+aktfilename:IF aktuellerds=0THEN filenameELSE filename+"."+text(aktuellerds)
+FI ENDPROC aktfilename;PROC schreibebereich(TEXT CONST bereich,BOOL CONST 
+kopf):INT VAR von:=0,bis;TEXT VAR zeile:="";bis:=pos(bereich,linefeed);WHILE 
+bis>0REP zeile:=subtext(bereich,von+1,bis-1);IF kopfTHEN changeall(zeile,
+kzseitenzahl,text(aktuelleseite));zeilenzaehlerINCR 1FI ;putline(ausgfile,
+zeile);von:=bis;bis:=pos(bereich,linefeed,von+1);PER ENDPROC schreibebereich;
+PROC schreibekopf:schreibebereich(kopfbereich,TRUE )ENDPROC schreibekopf;
+PROC schreibefuss:schreibebereich(fussbereich,FALSE )ENDPROC schreibefuss;
+PROC seitenvorschub:schreibefuss;IF filefastvollTHEN ausgabedateianlegenELSE 
+putline(ausgfile,"#page#")FI ;zeilenzaehler:=0;aktuelleseiteINCR 1;
+schreibekopf.filefastvoll:lines(ausgfile)>=3000COR storage(old(aktfilename))>
+700.ENDPROC seitenvorschub;PROC pageeinfuegen:putline(ausgfile,"#page#");
+zeilenzaehler:=0;ENDPROC pageeinfuegen;PROC zeilenvorschubundfussdrucken:
+WHILE zeilenzaehler<anzzeilen-fusszeilenREP putline(ausgfile,"");
+zeilenzaehlerINCR 1PER ;schreibefussENDPROC zeilenvorschubundfussdrucken;
+PROC putlein(TEXT CONST zeile,BOOL CONST nurkosmetik):IF seitenweiseTHEN IF 
+NOT nurkosmetikCAND zeilenzaehler=anzzeilen-fusszeilenTHEN seitenvorschubFI 
+ELSE IF zeilenzaehler=anzzeilen-fusszeilen-kopfzeilenTHEN pageeinfuegenFI FI 
+;putline(ausgfile,zeile);zeilenzaehlerINCR 1ENDPROC putlein;PROC putzeile(
+TEXT CONST zeile):TEXT VAR auszeile:="";BOOL CONST blocksatz:=(zeileSUB 
+length(zeile))=trenner;INT VAR trennpos,linkerrand;IF length(
+restderletztenzeile)>0THEN auszeile:=restderletztenzeile;IF 
+keintrennerzwischenzeilenTHEN auszeileCAT trennerFI FI ;auszeileCAT zeile;
+restderletztenzeile:="";IF length(auszeile)<=zeilenlaengeTHEN putlein(
+auszeile,FALSE )ELSE bestimmelinkenrand;WHILE length(auszeile)>zeilenlaenge
+REP trennpositionbestimmen;zeileausgebenundkürzen;PER ;IF length(auszeile)>0
+THEN IF blocksatzTHEN putlein(auszeile,FALSE )ELSE restderletztenzeile:=
+textmitfuehrendenblanks(auszeile,linkerrand)FI FI FI .
+keintrennerzwischenzeilen:(restderletztenzeileSUB length(restderletztenzeile)
+)<>trennerCAND (zeileSUB 1)<>trenner.bestimmelinkenrand:linkerrand:=
+bestimmevorhandeneblanks(auszeile);.trennpositionbestimmen:trennpos:=
+zeilenlaenge;WHILE trennpos>linkerrandCAND (auszeileSUB trennpos)<>trenner
+REP trennposDECR 1PER ;IF trennpos<=linkerrandTHEN trennpos:=max(zeilenlaenge
+,linkerrand+1);WHILE trennpos<=length(auszeile)CAND (auszeileSUB trennpos)<>
+trennerREP trennposINCR 1PER ;FI .zeileausgebenundkürzen:putlein(
+rechtscompress(text(auszeile,trennpos-1)),FALSE );auszeile:=compress(subtext(
+auszeile,trennpos+1));IF length(auszeile)>0THEN auszeile:=
+textmitfuehrendenblanks(auszeile,linkerrand)FI .ENDPROC putzeile;PROC 
+nextergebnistupel:INT VAR dnr;qsucc(verbund,dnr);tupelbearbeitet:=FALSE ;
+verbund:=gettiefennr(verbund);IF dbstatus=endoffileCAND dbauswertung=
+ordernewstackTHEN auswertungfortsetzen;dbauswertung:=dbstatus;qsucc(verbund,
+dnr);verbund:=gettiefennr(verbund);FI ENDPROC nextergebnistupel;TEXT PROC 
+sonderfunktion(TEXT CONST stcode):TEXT VAR t:=stcode,ausdruck:=stcode;IF (
+ausdruckSUB 1)=linkeklammerTHEN deletechar(ausdruck,1)FI ;IF (ausdruckSUB 
+length(ausdruck))=rechteklammerTHEN deletechar(ausdruck,length(ausdruck))FI ;
+IF ausdruck="tagesdatum"THEN t:=dateELIF ausdruck="tag"THEN t:=day(date(date)
+)ELIF ausdruck="monat"THEN t:=month(date(date))ELIF ausdruck="jahr"THEN t:=
+year(date(date))ELIF ausdruck="zeit"THEN t:=timeofdayELIF ausdruck="tt"THEN t
+:=text(date,2)ELIF ausdruck="mm"THEN t:=subtext(date,4,5)ELIF ausdruck="jj"
+THEN t:=subtext(date,7)FI ;tENDPROC sonderfunktion;TEXT PROC 
+aufbereitetezeile(TEXT CONST zeile,einfuegstellen):TEXT VAR auszeile:="",
+auswert:="",ausdruck:="";INT VAR p:=1,pp,ppalt:=1,ix,laenge;BOOL VAR rbuendig
+,druckvar;pp:=pos(zeile,platzhalter,ppalt);WHILE pp>0REP auszeileCAT subtext(
+zeile,ppalt,pp-1);ix:=decodezahl(einfuegstellen,p);IF ix>0THEN getsteuercode(
+ix,ausdruck,laenge,rbuendig,druckvar);IF druckvarTHEN auswert:=
+ausdruckauswerten(ausdruck);aufbereitenundschreiben;ELSE auswert:=
+sonderfunktion(ausdruck);aufbereitenundschreiben;FI FI ;ppalt:=pp+1;pp:=pos(
+zeile,platzhalter,ppalt);PER ;auszeileCAT subtext(zeile,ppalt);auszeile.
+aufbereitenundschreiben:IF laenge>0THEN IF length(auswert)>=laengeCOR NOT 
+rbuendigTHEN auswert:=text(auswert,laenge)ELSE auswert:=((laenge-length(
+auswert))*" ")+auswertFI ;FI ;auszeileCAT auswert.ENDPROC aufbereitetezeile;
+PROC druckezeile(TEXT CONST zeile,einfuegstellen):putzeile(aufbereitetezeile(
+zeile,einfuegstellen))ENDPROC druckezeile;PROC druckeblock(INT CONST blocknr)
+:INT VAR aktzeile:=1,pb,pz,nextblock,nextblockvorzeile;REP IF aktzeile=1CAND 
+verbund=blocknrTHEN tupelbearbeitet:=TRUE FI ;pb:=1;pz:=1;bestimmeunterblock;
+WHILE aktzeile<=getzeilenanzahl(blocknr)COR aktzeile=nextblockvorzeileREP IF 
+aktzeile=nextblockvorzeileTHEN IF verbund<nextblockCAND tupelbearbeitetTHEN 
+nextergebnistupelFI ;IF verbund=nextblockTHEN druckeblock(nextblock);FI ;
+bestimmeunterblock;ELSE IF NOT (seitenweiseCAND innerhalbkosmetikbereich)
+THEN druckezeile(getzeile(blocknr,aktzeile),geteinfuegstellen(blocknr,
+aktzeile));IF innerhalbkosmetikbereichTHEN zeilenzaehlerDECR 1FI FI ;aktzeile
+INCR 1;FI ;PER ;aktzeile:=1;IF tupelbearbeitetTHEN nextergebnistupel;IF 
+verbund<>blocknrTHEN LEAVE druckeblockFI ELIF verbund<>blocknrTHEN LEAVE 
+druckeblockFI UNTIL blocknr=0PER .innerhalbkosmetikbereich:(blocknr=0)CAND ((
+aktzeile>=code(kosmetikbereichSUB 1)CAND aktzeile<=code(kosmetikbereichSUB 2)
+)COR (aktzeile>=code(kosmetikbereichSUB 3)CAND aktzeile<=code(kosmetikbereich
+SUB 4))).bestimmeunterblock:nextblock:=decodezahl(getunterbloecke(blocknr),pb
+);nextblockvorzeile:=decodezahl(getvorzeilennr(blocknr),pz);.ENDPROC 
+druckeblock;PROC listendruck(INT CONST nr):listendruck(nr,bschirm)ENDPROC 
+listendruck;PROC ausgabedateianlegen:aktuellerdsINCR 1;forget(aktfilename,
+quiet);ausgfile:=sequentialfile(output,aktfilename);putlein(schrifttyp,TRUE )
+;putlein(startanweisung,TRUE );zeilenzaehler:=0.schrifttyp:IF schriftart=""
+THEN ""ELSE "#type ("""+schriftart+""")#"FI .startanweisung:"#start("+text(
+links)+","+text(oben)+")# ".ENDPROC ausgabedateianlegen;PROC 
+headundbottommerken:#block(0)nachheadundbottomuntersuchen#INT VAR aktzeile:=1
+,p;TEXT VAR ausdruck:="",zeile:="";kopfzeilen:=0;fusszeilen:=0;kopfbereich:=
+"";fussbereich:="";kosmetikbereich:="zzzz";WHILE aktzeile<=getzeilenanzahl(0)
+REP zeile:=getzeile(0,aktzeile);aktzeileINCR 1;p:=pos(zeile,kzkosmetik);IF p>
+0THEN ausdruckeinlesen;IF ausdruck="head"THEN kopfeinlesenELIF ausdruck=
+"bottom"THEN fusseinlesenFI ;FI ;PER .ausdruckeinlesen:ausdruck:=compress(
+subtext(zeile,p+1,pos(zeile,kzkosmetik,p+1)-1)).bereichsende:p:=pos(zeile,
+kzkosmetik);IF p>0THEN ausdruckeinlesen;pos(";head;bottom;end;",";"+ausdruck+
+";")>0ELSE FALSE FI .kopfeinlesen:replace(kosmetikbereich,1,code(aktzeile-1))
+;REP zeile:=getzeile(0,aktzeile);aktzeileINCR 1;IF bereichsendeTHEN replace(
+kosmetikbereich,2,code(aktzeile-1));LEAVE kopfeinlesenELSE kopfzeilenINCR 1;
+zeile:=aufbereitetezeile(zeile,geteinfuegstellen(0,aktzeile-1));kopfbereich
+CAT (zeile+linefeed)FI PER .fusseinlesen:replace(kosmetikbereich,3,code(
+aktzeile-1));REP zeile:=getzeile(0,aktzeile);aktzeileINCR 1;IF bereichsende
+THEN replace(kosmetikbereich,4,code(aktzeile-1));LEAVE fusseinlesenELSE 
+fusszeilenINCR 1;zeile:=aufbereitetezeile(zeile,geteinfuegstellen(0,aktzeile-
+1));fussbereichCAT (zeile+linefeed)FI PER .ENDPROC headundbottommerken;PROC 
+listendruck(INT CONST nr,INT CONST medium):REAL VAR limit;INT VAR fontnr:=0;
+getdruckaufbereitung(schriftart,links,oben,anzzeilen,limit);schriftartpruefen
+;zeilenlaenge:=int(limit);#IF seitenweiseTHEN #headundbottommerken;
+aktuelleseite:=1;aktuellerds:=-1;ausgabedateianlegen;IF seitenweiseTHEN 
+schreibekopfFI ;auswertung("QUERY."+text(nr));dbauswertung:=dbstatus;
+restderletztenzeile:="";verbund:=-1;tupelbearbeitet:=TRUE ;druckeblock(0);IF 
+length(restderletztenzeile)>0THEN putzeile("")FI ;IF seitenweiseCAND 
+fusszeilen>0THEN zeilenvorschubundfussdruckenFI ;druckegesamtliste.
+schriftartpruefen:disablestop;fontnr:=font(schriftart);IF iserrorTHEN 
+schriftart:="";clearerror;ELIF fontnr=0THEN schriftart:=font(1)FI ;enablestop
+.druckegesamtliste:BOOL VAR cd:=commanddialogue;INT VAR i;IF seitenweiseCOR 
+schriftart=""THEN druckausgabeausgeben(filename,medium);IF seitenweiseCAND 
+aktuellerds>0CAND medium=druckerTHEN FOR iFROM 1UPTO aktuellerdsREP 
+druckausgabeausgeben(filename,medium);PER FI ELSE sysout("dummy");
+commanddialogue(FALSE );standardmeldung(mldaufb,"");autopageform(filename);
+forget(filename,quiet);sysout("");forget("dummy",quiet);commanddialogue(cd);
+druckausgabeausgeben(filename+".p",medium)FI .ENDPROC listendruck;TEXT PROC 
+namederdruckausgabeohne:filenameENDPROC namederdruckausgabeohne;TEXT PROC 
+namederdruckausgabe:filename+".p"ENDPROC namederdruckausgabe;PROC 
+namederdruckausgabe(TEXT CONST fname):filename:=fnameENDPROC 
+namederdruckausgabe;PROC druckausgabeausgeben(TEXT CONST fname,INT CONST 
+medium):SELECT mediumOF CASE dbschirm:caufanfang;editiere(fname,FALSE );CASE 
+ddrucker:standardmeldung(mlddrucken,"");print(fname);enter(1)OTHERWISE :
+errorstop("Falscher Druck-Code")ENDSELECT ;zurueck.caufanfang:FILE VAR f:=
+sequentialfile(modify,fname);toline(f,1).ENDPROC druckausgabeausgeben;BOOL 
+VAR rueck:=FALSE ;PROC zurueck:rueck:=TRUE ENDPROC zurueck;BOOL PROC 
+ruecksprung:BOOL VAR b:=rueck;rueck:=FALSE ;bENDPROC ruecksprung;LET 
+parametergrenze="%",parametertrennzeichen="#",otherwise="*",niltext="",
+textbegrenzer="""";INT PROC postextende(TEXT CONST ausgabe,INT CONST 
+aktuelleposition):INT VAR neupos:=aktuelleposition+1;WHILE (ausgabeSUB neupos
+)<>textbegrenzerREP neuposINCR 1;IF (ausgabeSUB neupos)=textbegrenzerCAND (
+ausgabeSUB neupos+1)=textbegrenzerTHEN neuposINCR 2;FI ;UNTIL neupos>length(
+ausgabe)PER ;neupos+1ENDPROC postextende;INT PROC postext(TEXT CONST source,
+pattern,INT CONST from):INT VAR p:=from;WHILE (sourceSUB p)<>patternREP 
+nextcharUNTIL p>length(source)PER ;#9.12.87#IF p>length(source)THEN 0ELSE p
+FI .nextchar:IF (sourceSUB p)=textbegrenzerTHEN p:=postextende(source,p)ELSE 
+pINCR 1;#9.12.87#FI .ENDPROC postext;TEXT PROC dbwert(TEXT CONST feldname,
+BOOL VAR textvergleich):LET null="0",nulldatum="01.01.00";TEXT VAR ausgabe:=
+"";INT CONST fnr:=feldnr(compress(feldname));IF fnr>0THEN ausgabe:=wert(fnr);
+IF ((feldtyp(fnr)=intfeld)CAND (ausgabe=null))COR ((feldtyp(fnr)=datumfeld)
+CAND (ausgabe=nulldatum))THEN ausgabe:=""FI ;textvergleich:=NOT (feldtyp(fnr)
+=realfeldCOR feldtyp(fnr)=intfeld)ELSE textvergleich:=TRUE FI ;ausgabeEND 
+PROC dbwert;TEXT PROC auswerten(TEXT CONST eingabe):INT VAR 
+positionlinkeklammer:=1,positionrechteklammer:=1,positionlinkeskreuz,
+positionrechteskreuz,positionmittlereskreuz,positionparametergrenze,
+aktuelleposition:=1,positionotherwise,anzahldergeoeffnetenklammern;BOOL VAR 
+ausdruckvorhanden,caseaufruf,linkeseitevariabel,rechteseitevariabel,
+textvergleich;TEXT VAR puffer,vergleichswert,aktuellessymbol,parameter1,
+ausgabe:=compress(eingabe);REP zeichenketteueberlesen;
+auffindeneinesspitzgeklammertenausdrucks;IF ausdruckvorhandenTHEN 
+bestimmungdesfeldnamensfuerdieprozedurdbwert;aufrufderprozedurdbwert;IF 
+caseaufrufTHEN bestimmungderrichtigenalternativeFI ;
+einsetzendesfeldwertsoderderalternative;FI ;UNTIL NOT ausdruckvorhandenPER ;
+ausgabe.zeichenketteueberlesen:INT VAR p:=aktuelleposition;#1#BOOL VAR 
+innerhalbzeichenkette:=TRUE ;IF (ausgabeSUB p)=linkeklammerTHEN pINCR 1;FI ;
+IF aktuelleszeichenisttextbegrenzerTHEN WHILE innerhalbzeichenketteREP REP 
+UNTIL textendeCOR aktuelleszeichenisttextbegrenzerPER ;IF NOT textendeCAND (
+ausgabeSUB p)=textbegrenzerTHEN innerhalbzeichenkette:=TRUE ;pINCR 1ELSE 
+innerhalbzeichenkette:=FALSE ;FI PER ;pDECR 1;aktuelleposition:=p;
+leerzeichenentfernen;FI .aktuelleszeichenisttextbegrenzer:IF (ausgabeSUB p)=
+textbegrenzerTHEN deletechar(ausgabe,p);TRUE ELSE pINCR 1;FALSE FI .textende:
+p>length(ausgabe).leerzeichenentfernen:WHILE (ausgabeSUB p)=" "REP deletechar
+(ausgabe,p)PER .auffindeneinesspitzgeklammertenausdrucks:#aktuelleposition:=0
+;#linkeseitevariabel:=FALSE ;rechteseitevariabel:=FALSE ;aktuelleposition:=
+pos(ausgabe,linkeklammer,aktuelleposition);ausdruckvorhanden:=
+aktuelleposition<>0;positionlinkeklammer:=aktuelleposition.
+bestimmungdesfeldnamensfuerdieprozedurdbwert:
+ueberpruefeoblinkeseitedoppeltgeklammert;bestimmedenfeldnamen;IF 
+aktuellessymbol=rechteklammerTHEN caseaufruf:=FALSE ;fuehreleseoperationaus;
+ueberpruefeobrechteseitedoppeltgeklammertELSE caseaufruf:=TRUE ;
+positionparametergrenze:=aktuellepositionFI .fuehreleseoperationaus:
+aktuellepositionINCR 1;IF aktuelleposition>length(ausgabe)THEN 
+aktuellessymbol:=rechteklammerELSE aktuellessymbol:=ausgabeSUB 
+aktuelleposition;FI ;IF aktuellessymbol=linkeklammerTHEN 
+anzahldergeoeffnetenklammernINCR 1ELIF aktuellessymbol=rechteklammerTHEN 
+anzahldergeoeffnetenklammernDECR 1FI .fuehreleseoperationausmittextueberlesen
+:aktuellepositionINCR 1;IF (ausgabeSUB aktuelleposition)=textbegrenzerTHEN 
+aktuelleposition:=postextende(ausgabe,aktuelleposition)FI ;IF 
+aktuelleposition>length(ausgabe)THEN aktuellessymbol:=rechteklammerELSE 
+aktuellessymbol:=ausgabeSUB aktuelleposition;FI ;IF aktuellessymbol=
+linkeklammerTHEN anzahldergeoeffnetenklammernINCR 1ELIF aktuellessymbol=
+rechteklammerTHEN anzahldergeoeffnetenklammernDECR 1FI .
+ueberpruefeoblinkeseitedoppeltgeklammert:fuehreleseoperationaus;
+linkeseitevariabel:=aktuellessymbol=linkeklammer.bestimmedenfeldnamen:WHILE 
+NOT (aktuellessymbol=parametertrennzeichenOR aktuellessymbol=parametergrenze
+OR aktuellessymbol=rechteklammer)REP fuehreleseoperationausPER ;IF 
+linkeseitevariabelTHEN parameter1:=(subtext(ausgabe,positionlinkeklammer+2,
+aktuelleposition-1))ELSE parameter1:=(subtext(ausgabe,positionlinkeklammer+1,
+aktuelleposition-1))FI .ueberpruefeobrechteseitedoppeltgeklammert:IF 
+aktuellessymbol=rechteklammerTHEN rechteseitevariabel:=TRUE ;
+positionrechteklammer:=aktuellepositionELSE positionrechteklammer:=
+aktuelleposition-1FI .aufrufderprozedurdbwert:puffer:=dbwert(parameter1,
+textvergleich).bestimmungderrichtigenalternative:
+bestimmungdeserstenvergleichswertes;WHILE 
+vergleichswertstimmtnichtuebereinundeinweiterervorhandenREP 
+suchenaechstenvergleichswertPER ;positionrechteklammerbeicaseaufrufbestimmen;
+IF vergleichswertstimmtmitdemergebnisausdemdbwertaufrufuebereinTHEN 
+bereitstellenderentsprechendenalternativeELIF (ausgabeSUB positionotherwise)=
+otherwiseTHEN puffer:=auswerten(subtext(ausgabe,positionotherwise+1,
+positionrechteklammer-1))ELSE bereitstelleneinerleerenalternativeFI .
+bestimmungdeserstenvergleichswertes:positionlinkeskreuz:=
+positionparametergrenze;positionmittlereskreuz:=postext(ausgabe,
+parametertrennzeichen,positionlinkeskreuz+1);vergleichswert:=subtext(ausgabe,
+positionlinkeskreuz+1,positionmittlereskreuz-1);rechteskreuzbestimmen.
+suchenaechstenvergleichswert:positionlinkeskreuz:=positionrechteskreuz;
+positionmittlereskreuz:=postext(ausgabe,parametertrennzeichen,
+positionlinkeskreuz+1);vergleichswert:=subtext(ausgabe,positionlinkeskreuz+1,
+positionmittlereskreuz-1);rechteskreuzbestimmen.rechteskreuzbestimmen:
+aktuelleposition:=positionmittlereskreuz;anzahldergeoeffnetenklammern:=0;REP 
+fuehreleseoperationausmittextueberlesenUNTIL (anzahldergeoeffnetenklammern=0
+AND (aktuellessymbol=parametertrennzeichenOR aktuellessymbol=otherwise))OR 
+anzahldergeoeffnetenklammern<0PER ;positionrechteskreuz:=aktuelleposition;
+positionotherwise:=aktuelleposition.
+vergleichswertstimmtmitdemergebnisausdemdbwertaufrufueberein:IF textvergleich
+THEN vergleichswert=pufferELSE real(vergleichswert)=real(puffer)FI .
+bereitstellenderentsprechendenalternative:puffer:=auswerten(subtext(ausgabe,
+positionmittlereskreuz+1,positionrechteskreuz-1)).
+bereitstelleneinerleerenalternative:puffer:=niltext.
+vergleichswertstimmtnichtuebereinundeinweiterervorhanden:NOT 
+vergleichswertstimmtmitdemergebnisausdemdbwertaufrufuebereinAND 
+einweiterervergleichswertistvorhanden.einweiterervergleichswertistvorhanden:
+aktuellessymbol=parametertrennzeichen.
+positionrechteklammerbeicaseaufrufbestimmen:anzahldergeoeffnetenklammern:=0;
+IF aktuellessymbol<>rechteklammerTHEN WHILE NOT (anzahldergeoeffnetenklammern
+<0AND aktuellessymbol=rechteklammer)REP 
+fuehreleseoperationausmittextueberlesenPER FI ;positionrechteklammer:=
+aktuelleposition.einsetzendesfeldwertsoderderalternative:change(ausgabe,
+positionlinkeklammer,positionrechteklammer,puffer).ENDPROC auswerten;TEXT 
+PROC ausdruckauswerten(TEXT CONST ausdruck):TEXT VAR eingabe:=ausdruck;IF (
+eingabeSUB 1)<>linkeklammerTHEN insertchar(eingabe,linkeklammer,1)FI ;IF (
+eingabeSUB (length(eingabe)))<>rechteklammerTHEN eingabeCAT rechteklammerFI ;
+auswerten(eingabe)ENDPROC ausdruckauswerten;ENDPACKET idadruck;
+

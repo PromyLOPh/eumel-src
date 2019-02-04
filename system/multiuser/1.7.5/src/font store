@@ -1,0 +1,695 @@
+PACKET font store                                 (* Autor : Rudolf Ruland *) 
+                                                  (* Stand : 18.02.86      *) 
+        DEFINES font table, 
+                list font tables,
+                list fonts, 
+ 
+                x step conversion,
+                y step conversion,
+                on string,
+                off string,
+ 
+                font,
+                font exists, 
+                next larger font exists, 
+                next smaller font exists,
+                font lead,
+                font height,
+                font depth,
+                indentation pitch,
+                char pitch, 
+                extended char pitch,
+                replacement,
+                extended replacement,
+                font string,
+                y offsets,
+                bold offset,
+                get font, 
+                get replacements :
+ 
+ 
+LET font task       = "configurator";
+ 
+LET ack             =    0,
+    fetch code      =   11,
+    all code        =   17,
+ 
+    underline       =    1,
+    bold            =    2,
+    italics         =    4,
+    reverse         =    8,
+
+    first font      =    1,
+    max fonts       =   50,
+    max extensions  =  120, 
+    font table type = 3009,
+ 
+    FONTTABLE = STRUCT (
+ 
+        THESAURUS font names, 
+ 
+        TEXT replacements, font name links,
+             extension chars, extension indexes, 
+
+        ROW 4 TEXT on strings, off strings,
+ 
+        REAL x unit, y unit,
+ 
+        ROW 256 INT replacements table,
+ 
+        INT last font, last extension
+ 
+        ROW max fonts STRUCT (
+            TEXT font string, font name indexes, replacements,
+                 extension chars, extension indexes, y offsets,
+            ROW 256 INT pitch table, replacements table,
+            INT  indentation pitch, font lead, font height, font depth,
+                 next larger font, next smaller font, bold offset ) fonts ,
+ 
+        ROW max extensions STRUCT (
+            TEXT replacements,
+            ROW 256 INT pitch table, replacements table,
+            INT std pitch                                     ) extensions ,
+ 
+                        );
+ 
+INT VAR font nr, help, reply, list index, last font,
+        index, char code 1, link nr, font store replacements length; 
+ 
+TEXT VAR fo table := "", old font table, font name links, buffer;
+ 
+THESAURUS VAR font tables, font names;
+ 
+INITFLAG VAR in this task := FALSE, 
+             init font ds := FALSE,
+             init ds      := FALSE;
+ 
+BOUND FONTTABLE VAR font store;
+ 
+BOUND STRUCT (TEXT name, write pass, read pass) VAR msg;
+ 
+BOUND THESAURUS VAR all msg;
+ 
+BOUND TEXT VAR error msg;
+ 
+DATASPACE VAR font ds, ds;
+ 
+(*****************************************************************) 
+ 
+PROC font table (TEXT CONST new font table) :
+
+  disable stop;
+  get font table (new font table);
+  in this task := NOT (font table = "" OR type (font ds) <> font table type);
+ 
+END PROC font table;
+ 
+ 
+PROC get font table (TEXT CONST new font table) :
+ 
+  enable stop;
+  buffer := new font table;
+  change all (buffer, " ", "");
+  IF   exists (buffer) CAND type (old (buffer)) = font table type
+       THEN get font table from own task 
+  ELIF exists task (font task)
+       THEN get font table from font task 
+       ELSE errorstop ("Fonttabelle """ + buffer + """ gibt es nicht")
+  FI;
+ 
+  . get font table from own task :
+      IF NOT initialized (init ds) THEN ds := nilspace FI;
+      forget (ds); ds := old (buffer);
+      new font store;
+ 
+  . get font table from font task :
+      fetch font table (buffer);
+      IF type (ds) <> font table type 
+         THEN forget (ds);
+              errorstop ("Fonttabelle """ + buffer + """ gibt es nicht")
+      FI;
+      new font store;
+ 
+      . new font store :
+          disable stop;
+          IF NOT initialized (init font ds) THEN font ds := nilspace FI;
+          forget (font ds);
+          font ds := ds;
+          forget (ds);
+          font store      := font ds;
+          fo table        := buffer;
+          font names      := font store. font names;
+          font name links := font store. font name links;
+          last font       := font store. last font;
+          font store replacements length := LENGTH font store. replacements;
+
+END PROC get font table;
+ 
+ 
+TEXT PROC font table :
+ 
+  fo table
+ 
+END PROC  font table;
+ 
+ 
+PROC list font tables :
+ 
+  enable stop; 
+  font tables := empty thesaurus;
+  font tables in own task;
+  font tables in font task;
+  note font tables;
+  note edit;
+ 
+  . font tables in own task :
+      list index := 0;
+      REP get (all, buffer, list index);
+          IF buffer = "" THEN LEAVE font tables in own task FI;
+          IF type (old (buffer)) = font table type
+                  AND NOT (font tables CONTAINS buffer)
+            THEN insert (font tables, buffer) FI;
+      PER;
+ 
+  . font tables in font task :
+      all file names from font task;
+      THESAURUS CONST names := all msg;
+      list index := 0;
+      REP get (names, buffer, list index);
+          IF buffer = ""
+             THEN forget (ds);
+                  LEAVE font tables in font task
+          FI;
+          fetch font table (buffer);
+          IF type (ds) = font table type
+                  AND NOT (font tables CONTAINS buffer) 
+             THEN insert (font tables, buffer) FI;
+      PER;
+ 
+  . note font tables :
+      list index := 0;
+      REP get (font tables, buffer, list index);
+          IF buffer = ""
+             THEN LEAVE note font tables;
+             ELSE note (buffer); note line;
+          FI;
+      PER;
+ 
+END PROC list font tables;
+ 
+ 
+PROC list fonts (TEXT CONST name):
+ 
+  initialize if necessary;
+  disable stop;
+  old font table := font table;
+  font table (name);
+  list fonts;
+  font table (old font table);
+ 
+END PROC list fonts;
+ 
+ 
+PROC list fonts :
+ 
+  enable stop;
+  initialize if necessary;
+  note font table;
+  FOR font nr FROM first font UPTO last font REP note font PER;
+  note edit;
+
+. note font table :
+    note ("FONTTABELLE  :  """); note (font table);              note (""";"); noteline; 
+    note ("  x einheit  =  ");   note (text (font store. x unit)); note (";"); noteline; 
+    note ("  y einheit  =  ");   note (text (font store. y unit)); note (";"); noteline; 
+ 
+. note font :
+    cout (font nr);
+    noteline;
+    note ("  FONT  :  ");                note font names;                       note (";"); noteline; 
+    note ("    einrueckbreite   =  ");   note (text(font. indentation pitch));  note (";"); noteline;
+    note ("    durchschuss      =  ");   note (text(font. font lead));          note (";"); noteline;
+    note ("    fonthoehe        =  ");   note (text(font. font height));        note (";"); noteline; 
+    note ("    fonttiefe        =  ");   note (text(font. font depth));         note (";"); noteline; 
+    note ("    groesserer font  =  """); note (next larger);                  note (""";"); noteline;
+    note ("    kleinerer font   =  """); note (next smaller);                 note (""";"); noteline;
+ 
+    . font         : font store. fonts (font nr) 
+    . next larger  : name (font store. font names, font. next larger font)
+    . next smaller : name (font store. font names, font. next smaller font)
+ 
+    . note font names :
+        INT VAR index;
+        note ("""");
+        note (name (font names, font. font name indexes ISUB 1));
+        note ("""");
+        FOR index FROM 2 UPTO LENGTH font. font name indexes DIV 2
+        REP note (",  """);
+            note (name (font names, font. font name indexes ISUB index));
+            note ("""");
+        PER;
+ 
+END PROC list fonts;
+ 
+ 
+INT PROC x step conversion (REAL CONST cm) :
+ 
+  initialize if necessary;
+  IF cm >= 0.0
+     THEN int (cm * font store. x unit + 0.5 )
+     ELSE int (cm * font store. x unit - 0.5 )
+  FI
+ 
+END PROC x step conversion;
+ 
+ 
+REAL PROC x step conversion (INT CONST steps) :
+ 
+  initialize if necessary;
+  real (steps) / font store. x unit
+ 
+END PROC x step conversion;
+ 
+ 
+INT PROC y step conversion (REAL CONST cm) :
+ 
+  initialize if necessary;
+  IF cm >= 0.0
+     THEN int (cm * font store. y unit + 0.5 )
+     ELSE int (cm * font store. y unit - 0.5 )
+  FI
+ 
+END PROC y step conversion;
+ 
+ 
+REAL PROC y step conversion (INT CONST steps) :
+ 
+  initialize if necessary;
+  real (steps) / font store. y unit
+ 
+END PROC y step conversion;
+ 
+ 
+TEXT PROC on string (INT CONST modification) :
+ 
+  initialize if necessary;
+  SELECT modification OF
+    CASE underline : font store. on strings (1)
+    CASE bold      : font store. on strings (2)
+    CASE italics   : font store. on strings (3)
+    CASE reverse   : font store. on strings (4)
+         OTHERWISE : errorstop ("unzulaessige Modifikation"); ""
+  END SELECT
+ 
+END PROC on string;
+ 
+ 
+TEXT PROC  off string (INT CONST modification) :
+ 
+  initialize if necessary;
+  SELECT modification OF
+    CASE underline : font store.  off strings (1)
+    CASE bold      : font store.  off strings (2)
+    CASE italics   : font store.  off strings (3)
+    CASE reverse   : font store.  off strings (4)
+         OTHERWISE : errorstop ("unzulaessige Modifikation"); ""
+  END SELECT
+ 
+END PROC  off string;
+ 
+ 
+INT PROC font (TEXT CONST font name) :
+ 
+  initialize if necessary;
+  buffer := font name;
+  change all (buffer, " ", "");
+  INT CONST link nr := link (font names, buffer)
+  IF link nr <> 0
+     THEN font name links ISUB link nr
+     ELSE 0
+  FI
+ 
+END PROC font;
+ 
+ 
+TEXT PROC font (INT CONST font number) :
+ 
+  initialize if necessary;
+  IF font number >= first font AND font number <= last font
+     THEN name (font names, fonts. font name indexes ISUB 1)
+     ELSE ""
+  FI
+ 
+  . fonts : font store. fonts (font number)
+ 
+END PROC font;
+ 
+ 
+BOOL PROC font exists (TEXT CONST font name) :
+ 
+  font (font name) <> 0
+ 
+END PROC font exists;
+ 
+ 
+BOOL PROC next larger font exists(INT CONST font number,
+                                  INT VAR   next larger font) :
+ 
+  initialize if necessary;
+  IF font number >= first font AND font number <= last font
+     THEN next larger font := fonts. next larger font;
+          IF next larger font <> 0
+             THEN next larger font := font name links ISUB next larger font;
+                  next larger font <> 0
+             ELSE FALSE
+          FI
+     ELSE errorstop ("Font " + text (font number) + " gibt es nicht");
+          FALSE
+  FI
+ 
+  . fonts : font store. fonts (font number)
+ 
+END PROC next larger font exists;
+ 
+ 
+BOOL PROC next smaller font exists (INT CONST font number,
+                                    INT VAR   next smaller font) :
+ 
+  initialize if necessary;
+  IF font number >= first font AND font number <= last font
+     THEN next smaller font := fonts. next smaller font;
+          IF next smaller font <> 0
+             THEN next smaller font := font name links ISUB next smaller font;
+                  next smaller font <> 0
+             ELSE FALSE
+          FI
+     ELSE errorstop ("Font " + text (font number) + " gibt es nicht");
+          FALSE
+  FI
+ 
+  . fonts : font store. fonts (font number)
+ 
+END PROC next smaller font exists;
+ 
+ 
+INT PROC font lead (INT CONST font number) :
+ 
+  initialize if necessary;
+  IF font number >= first font AND font number <= last font
+     THEN fonts. font lead 
+     ELSE errorstop ("Font " + text (font number) + " gibt es nicht"); 0
+  FI
+ 
+  . fonts : font store. fonts (font number)
+ 
+END PROC font lead; 
+ 
+ 
+INT PROC font height (INT CONST font number) :
+ 
+  initialize if necessary;
+  IF font number >= first font AND font number <= last font
+     THEN fonts. font height
+     ELSE errorstop ("Font " + text (font number) + " gibt es nicht"); 0
+  FI
+ 
+  . fonts : font store. fonts (font number)
+ 
+END PROC font height;
+ 
+ 
+INT PROC font depth (INT CONST font number) :
+ 
+  initialize if necessary;
+  IF font number >= first font AND font number <= last font
+     THEN fonts. font depth
+     ELSE errorstop ("Font " + text (font number) + " gibt es nicht"); 0
+  FI
+ 
+  . fonts : font store. fonts (font number)
+ 
+END PROC font depth;
+ 
+ 
+INT PROC indentation pitch (INT CONST font number) :
+ 
+  initialize if necessary;
+  IF font number >= first font AND font number <= last font
+     THEN fonts. indentation pitch
+     ELSE errorstop ("Font " + text (font number) + " gibt es nicht"); 0
+  FI
+ 
+  . fonts : font store. fonts (font number)
+ 
+END PROC indentation pitch;
+ 
+ 
+INT PROC char pitch (INT  CONST font number,
+                     TEXT CONST char ) :
+ 
+  initialize if necessary;
+  IF font number >= first font AND font number <= last font
+     THEN INT CONST pitch := font. pitch table (code (char SUB 1) + 1);
+          IF   pitch = maxint
+               THEN extended char pitch (font number, char SUB 1, char SUB 2)
+          ELIF pitch < 0
+               THEN pitch XOR (-maxint-1) 
+               ELSE pitch
+          FI
+     ELSE errorstop ("Font " + text (font number) + " gibt es nicht"); 0
+  FI
+ 
+  . font :      font store. fonts (font number)
+ 
+END PROC char pitch;
+ 
+ 
+INT PROC extended char pitch (INT  CONST font number,
+                               TEXT CONST esc char, char) :
+ 
+  initialize if necessary;
+  IF font number >= first font AND font number <= last font
+     THEN extension. pitch table (code (char) + 1) 
+     ELSE errorstop ("Font " + text (font number) + " gibt es nicht"); 0
+  FI
+ 
+  . font      : font store. fonts (font number)
+ 
+  . extension : font store. extensions (extension number)
+ 
+  . extension number :
+      INT CONST index := pos (font. extension chars, esc char);
+      IF index = 0
+         THEN errorstop ("""" + esc char + char + """ hat keine Erweiterung") FI; 
+      font. extension indexes ISUB index
+ 
+END PROC extended char pitch;
+ 
+ 
+TEXT PROC replacement (INT  CONST font number,
+                       TEXT CONST char ) :
+ 
+  initialize if necessary;
+  IF font number >= first font AND font number <= last font
+     THEN link nr := font. replacements table (code (char SUB 1) + 1);
+          IF link nr = maxint
+             THEN extended replacement (font number, char SUB 1, char SUB 2)
+             ELSE process font replacement
+          FI
+     ELSE errorstop ("Font " + text (font number) + " gibt es nicht"); ""
+  FI
+ 
+  . font      : font store. fonts (font number)
+ 
+  . process font replacement :
+      IF link nr < 0 THEN link nr := link nr XOR (-maxint-1) FI;
+      IF   link nr = 0
+           THEN char
+      ELIF link nr > font store replacements length
+           THEN link nr DECR font store replacements length;
+                replacement text (font. replacements)
+           ELSE replacement text (font store. replacements)
+      FI
+ 
+END PROC replacement;
+ 
+ 
+TEXT PROC extended replacement (INT  CONST font number,
+                                 TEXT CONST esc char, char ) :
+ 
+  initialize if necessary;
+  IF font number >= first font AND font number <= last font
+     THEN process extension replacement
+     ELSE errorstop ("Font " + text (font number) + " gibt es nicht"); ""
+  FI
+ 
+  . process extension replacement :
+      determine extension link nr;
+      IF   link nr = 0
+           THEN char
+      ELIF link nr > font store extension replacements length 
+           THEN link nr DECR font store extension replacements length;
+                replacement text (font extension. replacements)
+           ELSE replacement text (font store extension. replacements)
+      FI
+ 
+      . determine extension link nr :
+          INT CONST index 1 := pos (font. extension chars, esc char); 
+          INT CONST index 2 := pos (font store. extension chars, esc char);
+          IF   index 1 <> 0
+               THEN link nr := font extension. replacements table (code (char) + 1); 
+          ELIF index 2 <> 0
+               THEN link nr := font store extension. replacements table (code (char) + 1); 
+               ELSE errorstop ("""" + esc char + char + """ hat keine Erweiterung") 
+          FI;
+ 
+      . font extension              : font store. extensions (font extension number)
+ 
+      . font extension number       : font. extension indexes ISUB index 1
+ 
+      . font                        : font store. fonts (font number)
+ 
+      . font store extension        : font store. extensions (font store extension number)
+ 
+      . font store extension number : font store. extension indexes ISUB index 2
+ 
+      . font store extension replacements length :
+          IF index 2 = 0
+             THEN 0
+             ELSE LENGTH font store extension. replacements
+          FI
+ 
+END PROC extended replacement;
+ 
+ 
+TEXT PROC replacement text (TEXT CONST replacements) :
+ 
+  buffer := subtext (replacements, link nr + 1,
+                                   link nr + code (replacements SUB link nr));
+  buffer
+ 
+END PROC replacement text;
+ 
+ 
+TEXT PROC font string (INT CONST font number) :
+ 
+  initialize if necessary;
+  IF font number >= first font AND font number <= last font
+     THEN fonts. font string
+     ELSE errorstop ("Font " + text (font number) + " gibt es nicht"); ""
+  FI
+ 
+  . fonts : font store. fonts (font number)
+ 
+END PROC font string;
+ 
+ 
+TEXT PROC y offsets (INT CONST font number) :
+ 
+  initialize if necessary;
+  IF font number >= first font AND font number <= last font
+     THEN fonts. y offsets
+     ELSE errorstop ("Font " + text (font number) + " gibt es nicht"); ""
+  FI
+ 
+  . fonts : font store. fonts (font number)
+ 
+END PROC y offsets;
+ 
+ 
+INT PROC bold offset (INT CONST font number) :
+ 
+  initialize if necessary;
+  IF font number >= first font AND font number <= last font
+     THEN fonts. bold offset
+     ELSE errorstop ("Font " + text (font number) + " gibt es nicht"); 0
+  FI
+ 
+  . fonts : font store. fonts (font number)
+ 
+END PROC bold offset;
+ 
+ 
+PROC get font (INT CONST font number,
+               INT VAR indentation pitch, font lead, font height, font depth,
+               ROW 256 INT VAR pitch table ) :
+ 
+  initialize if necessary;
+  IF font number >= first font AND font number <= last font
+     THEN indentation pitch := fonts. indentation pitch;
+          pitch table       := fonts. pitch table;
+          font lead         := fonts. font lead; 
+          font height       := fonts. font height;
+          font depth        := fonts. font depth; 
+     ELSE errorstop ("Font " + text (font number) + " gibt es nicht"); 
+  FI;
+ 
+  . fonts : font store. fonts (font number) 
+ 
+END PROC get font;
+ 
+ 
+PROC get replacements (INT CONST font number, 
+                       TEXT VAR replacements,
+                       ROW 256 INT VAR replacements table) :
+ 
+  initialize if necessary;
+  IF font number >= first font AND font number <= last font
+     THEN replacements       := font store. replacements;
+          replacements      CAT fonts. replacements;
+          replacements table := fonts. replacements table;
+     ELSE errorstop ("Font " + text (font number) + " gibt es nicht"); 
+  FI;
+ 
+  . fonts : font store. fonts (font number)
+ 
+END PROC get replacements;
+ 
+ 
+PROC initialize if necessary :
+
+  IF NOT initialized (in this task)
+     THEN IF font table = ""
+             THEN in this task := FALSE;
+                  errorstop ("Fonttabelle noch nicht eingestellt");
+             ELSE font table (font table);
+          FI;
+  FI;
+
+END PROC initialize if necessary; 
+ 
+ 
+PROC fetch font table (TEXT CONST font table name) :
+ 
+  enable stop;
+  IF NOT initialized (init ds) THEN ds := nilspace FI;
+  forget (ds); ds := nilspace;
+  msg             := ds;
+  msg. name       := font table name;
+  msg. write pass := "";
+  msg. read  pass := "";
+  call (task (font task), fetch code, ds, reply);
+  IF reply <> ack
+     THEN errorstop ("Fonttabelle """ + font table name + """ gibt es nicht")
+  FI;
+ 
+END PROC fetch font table;
+ 
+ 
+PROC all file names from font task :
+ 
+  enable stop;
+  IF NOT initialized (init ds) THEN ds := nilspace FI;
+  forget (ds); ds := nilspace;
+  call (task (font task), all code, ds, reply);
+  IF reply <> ack
+     THEN error msg := ds;
+          errorstop (error msg);
+     ELSE all msg := ds
+  FI;
+ 
+END PROC all file names from font task;
+ 
+ 
+END PACKET font store;
+

@@ -1,0 +1,52 @@
+PACKET merkmaleDEFINES statfeldname,statfeldlaenge,statfeldpos,statfeldart,
+statdatenbasiszeile,vergleichbaresdatum:LET niltext="",space=" ",null="0",
+arttext=1,artdate=2,artzahl=3;ROW 50INT CONST feldnr:=ROW 50INT :(5,6,7,8,10,
+12,13,0,16,17,18,0,27,35,36,38,39,42,43,44,45,46,47,48,49,50,55,56,58,59,61,
+62,64,65,67,68,69,0,0,0,0,0,0,0,0,0,0,0,0,0);ROW 50INT CONST feldlaenge:=ROW 
+50INT :(8,3,2,4,1,1,2,2,8,1,1,2,3,3,1,1,3,2,8,4,4,4,4,4,4,4,2,3,2,3,2,3,2,3,2
+,8,8,9,9,9,9,9,9,9,9,9,9,9,9,9);ROW 50INT CONST feldpos:=ROW 50INT :(1,9,12,
+14,18,19,20,22,24,32,33,34,36,39,42,43,44,47,49,57,61,65,69,73,77,81,85,87,90
+,92,95,97,100,102,105,107,115,123,132,141,150,159,168,177,186,195,204,213,222
+,231);ROW 50INT CONST feldart:=ROW 50INT :(2,1,3,1,1,1,3,1,2,1,1,1,1,1,1,1,1,
+3,2,3,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,2,2,1,1,1,1,1,1,1,1,1,1,1,1,1);TEXT 
+CONST leerezeile:=(feldpos[38]-1)*space,leerekurse:=(feldlaenge[38]*(50-37))*
+space;TEXT PROC statfeldname(INT CONST merkmal):INT CONST feldnum:=feldnr[
+merkmal];IF feldnum>0THEN name(feldnum)ELIF merkmal=8THEN 
+"Schulart letzte Schule"ELIF merkmal=12THEN "Schulart neue Schule"ELSE text(
+merkmal-37)+". Kurs"FI .END PROC statfeldname;INT PROC statfeldlaenge(INT 
+CONST merkmal):feldlaenge[merkmal]END PROC statfeldlaenge;INT PROC 
+statfeldpos(INT CONST merkmal):feldpos[merkmal]END PROC statfeldpos;INT PROC 
+statfeldart(INT CONST merkmal):feldart[merkmal]END PROC statfeldart;TEXT 
+PROC statdatenbasiszeile:TEXT VAR zeile:=leerezeile,kurse:=leerekurse,kennung
+,schule;INT VAR feldzaehler;holediffdaten;uebertragestandardfelder;
+uebertrageschularten;IF hjdatendaTHEN uebertragehjdatenFI ;zeileCAT kurse;
+zeile.uebertragestandardfelder:FOR feldzaehlerFROM 1UPTO 38REP IF feldnr[
+feldzaehler]>0THEN replace(zeile,feldpos[feldzaehler],feldinhalt);FI ;PER .
+feldinhalt:SELECT feldart[feldzaehler]OF CASE arttext:feldwertCASE artdate:
+vergleichbaresdatum(feldwert)CASE artzahl:kennung:=compress(feldwert);(
+feldlaenge[feldzaehler]-length(kennung))*null+kennungOTHERWISE niltextEND 
+SELECT .feldwert:subtext(wert(feldnr[feldzaehler]),1,feldlaenge[feldzaehler])
+.holediffdaten:IF wert(fnrsutiddiffdaten)=niltextTHEN errorstop(
+"Keine Diffdaten zu Schüler "+wert(fnrsufamnames));ELSE readtid(dnrdiffdaten,
+wert(fnrsutiddiffdaten));FI .uebertrageschularten:schule:=wert(
+fnrsuskennlschule);IF schule>niltextTHEN putwert(fnrschkennung,schule);search
+(dnrschulen);IF dbstatus=okTHEN replace(zeile,feldpos[8],wert(fnrschart));FI 
+;FI ;schule:=wert(fnrsuskennnschule);IF schule>niltextTHEN putwert(
+fnrschkennung,schule);search(dnrschulen);IF dbstatus=okTHEN replace(zeile,
+feldpos[12],wert(fnrschart));FI ;FI .hjdatenda:wert(fnrsutidakthjd)>niltext.
+uebertragehjdaten:readtid(dnrhalbjahresdaten,wert(fnrsutidakthjd));kennung:=
+wert(fnrhjdkursart);FOR feldzaehlerFROM 0UPTO length(kennung)DIV 2-1REP 
+replace(kurse,feldzaehler*9+1,diesekurskennung);PER ;kennung:=wert(fnrhjdfach
+);FOR feldzaehlerFROM 0UPTO length(kennung)DIV 2-1REP replace(kurse,
+feldzaehler*9+3,diesefachkennung);PER ;kennung:=wert(fnrhjdlerngrpkenn);FOR 
+feldzaehlerFROM 0UPTO length(kennung)DIV 2-1REP replace(kurse,feldzaehler*9+5
+,dieselernkennung);PER ;kennung:=wert(fnrhjdklausurteiln);FOR feldzaehler
+FROM 1UPTO length(kennung)REP replace(kurse,feldzaehler*9,dieseklsrkennung);
+PER .diesekurskennung:subtext(kennung,feldzaehler*2+1,feldzaehler*2+2).
+diesefachkennung:subtext(kennung,feldzaehler*2+1,feldzaehler*2+2).
+dieselernkennung:subtext(kennung,feldzaehler*4+1,feldzaehler*4+4).
+dieseklsrkennung:kennungSUB feldzaehler.END PROC statdatenbasiszeile;TEXT 
+PROC vergleichbaresdatum(TEXT CONST dat):INT CONST datzahl:=datum(dat);IF 
+datzahl<0THEN "  0"+text(datzahl-minint,5)ELSE "  1"+text(datzahl,5)FI END 
+PROC vergleichbaresdatum;END PACKET merkmale;
+

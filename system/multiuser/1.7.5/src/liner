@@ -1,0 +1,3079 @@
+(* ------------------- VERSION 406 vom 28.05.86 ----(1.7.5)------------- *)
+PACKET liner DEFINES line form,
+                     autoform,
+                     hyphenation width,
+                     additional commands:
+
+(* Programm zur Zeilenformatierung mit unterschiedlichen Schriftypen
+   Autor: Rainer Hahn
+   Stand: 1.7.1 Febr. 1984
+          1.7.3 Juli  1984
+          1.7.4 Juni  1985 
+          1.7.5 ab Okt. 1985 
+ *)
+
+(********************* form deklarationen ********************)
+
+TEXT VAR zeichen,
+         aufzaehlungszeichen,
+         par 1,
+         par 2,
+         kommando,
+         command store,
+         zielreferenzen,
+         herkunftsreferenzen,
+         aktuelle referenz,
+         alter schriftname, 
+         dummy,
+         fehlerdummy,
+         footdummy,
+         scan symbol,
+         font table name :: "",
+         trennwort,
+         trennwort ohne komm,
+         wort1,
+         wort1 ohne komm,
+         wort2,
+         font nr speicher,
+         modifikations speicher,
+         mod zeilennr speicher,
+         index speicher,
+         ind zeilennr speicher,
+         counter numbering store,
+         counter reference store,
+         trennsymbol,
+         puffer,
+         neue zeile,
+         zeile,
+         einrueckung zweite zeile,
+         aktuelle blanks,
+         alte blanks,
+         zusaetzliche commands :: "",
+         kommando liste;
+
+INT CONST rueckwaerts :: -1,
+          esc char ohne zweites byte ausgang :: - maxint - 1;
+
+INT VAR anz tabs,
+        mitzuzaehlende zeichen,
+        anz blanks freihalten,
+        kommando index,
+        scan type,
+        font nr :: 1,
+        blankbreite fuer diesen schrifttyp,
+        aktuelle     pitch zeilenlaenge,
+        eingestellte indentation pitch,
+        einrueckbreite,
+        zeilenbreite,
+        trennbreite in prozent :: 7,
+        trennbreite,
+        max trennlaenge,
+        max trenn laenge ohne komm,
+        zeichenwert ausgang,
+        formelbreite,
+        formelanfang,
+        zeilennr,
+        wortanfang,
+        wortende,
+        erste fehler zeilennr,
+        macro kommando ende,
+        von,
+        pufferlaenge,
+        zeichenpos,
+        zeichenpos bereits verarbeitet;
+
+BOOL VAR ask type and limit,
+         format file in situ,
+         lineform mode,
+         macro works,
+         kommandos speichern,
+         letzter puffer war absatz,
+         in d und e verarbeitung,
+         in tabelle,
+         in foot uebertrag,
+         in foot;
+
+LET hop          = ""1"",
+    rechts       = ""2"",
+    cl eol       = ""5"",
+    links        = ""8"",
+    return       = ""13"",
+    begin mark   = ""15"",
+    end mark     = ""14"",
+    escape       = ""27"",
+    trennzeichen = ""221"",
+    trenn k      = ""220"",
+    blank        = " ",
+    bindestrich  = "-",
+    buchstaben   =
+               "abcdefghijklmnopqrstuvwxyzüäößABCDEFGHIJKLMNOPQRSTUVWXYZÄÜö",
+    kommando zeichen = "#",
+    max tabs              = 30,
+    extended char ausgang = 32767,
+    blank      ausgang    = 32766,
+    kommando   ausgang    = 32765,
+    such       ausgang    = 32764,
+    zeilenende ausgang    = 0,
+    vorwaerts          = 1,
+    type1        = 1,
+    linefeed     = 3,
+    limit        = 4,
+    free         = 5,
+    page command0= 6,
+    page command1= 7,
+    on           = 8,
+    off          = 9,
+    page nr      = 10,
+    pagelength   = 11,
+    start        = 12,
+    foot         = 13,
+    end          = 14,
+    head         = 15,
+    headeven     = 16,
+    headodd      = 17,
+    bottom       = 18,
+    bottomeven   = 19,
+    bottomodd    = 20,
+    block        = 21,
+    material     = 22,
+    columns      = 23,
+    columnsend   = 24,
+    ib0          = 25,
+    ib1          = 26,
+    ib2          = 27,
+    ie0          = 28,
+    ie1          = 29,
+    ie2          = 30,
+    topage       = 31,
+    goalpage     = 32,
+    count0       = 33,
+    count1       = 34,
+    setcount     = 35,
+    value0       = 36,
+    value1       = 37,
+    table        = 38,
+    table end    = 39,
+    r pos        = 40,
+    l pos        = 41,
+    c pos        = 42,
+    d pos        = 43,
+    b pos        = 44,
+    clear pos0   = 45,
+    clear pos1   = 46,
+    right        = 47,
+    center       = 48,
+    skip         = 49,
+    skip end     = 50,
+    u command    = 51,
+    d command    = 52,
+    e command    = 53,
+    head on      = 54,
+    head off     = 55,
+    bottom on    = 56,
+    bottom off   = 57,
+    count per page=58,
+    fillchar     = 59,
+    mark command = 60,
+    mark end     = 61,
+    pageblock    = 62,
+    bsp          = 63,
+    counter1     = 64,
+    counter2     = 65,
+    setcounter   = 66,
+    putcounter0  = 67,
+    putcounter1  = 68,
+    storecounter = 69,
+    ub           = 70,
+    ue           = 71,
+    fb           = 72,
+    fe           = 73;
+
+REAL VAR limit in cm :: 16.0,
+         fehler wert :: -1.0;
+
+FILE VAR eingabe,
+         ausgabe,
+         file;
+
+FRANGE VAR alter bereich; 
+ 
+DATASPACE VAR ds;
+
+ROW 256 INT VAR pitch table;
+ROW max tabs TEXT VAR tab zeichen;
+ROW max tabs ROW 3 INT VAR tabs;
+(* 1. Eintrag: Position
+   2. Eintrag: Art
+   3. Eintrag: Bis-Position
+*)
+ 
+(************************** liner state-Routinen **********************)
+
+TYPE LINERSTATE =
+  STRUCT (INT position, from,
+          BOOL in macro,
+          TEXT buffer line, next line,
+               old blanks, actual blanks,
+               new line);
+
+LINERSTATE VAR before macro state,
+               before foot state;
+
+PROC get liner state (LINERSTATE VAR l):
+  l . position    := zeichenpos;
+  l . from        := von;
+  l . in macro    := macro works;
+  l . buffer line := puffer;
+  l . next line   := zeile;
+  l . old blanks  := alte blanks;
+  l . actualblanks:= aktuelle blanks;
+  l . new line    := neue zeile;
+END PROC get liner state;
+
+PROC put liner state (LINERSTATE CONST l):
+  zeichenpos          := l . position;
+  von                 := l . from;
+  macro works         := l . in macro;
+  puffer              := l . buffer line ;
+  zeile               := l . next line ;
+  alte blanks         := l . old blanks;
+  aktuelle blanks     := l . actual blanks;
+  neue zeile          := l . new line ;
+  pufferlaenge := length (puffer);
+END PROC put liner state;
+
+(*********************** Utility Routinen **************************)
+
+PROC delete int (TEXT VAR resultat, INT CONST delete pos) :
+    change  (resultat, delete pos * 2 - 1, delete pos * 2, "")
+END PROC delete int; 
+
+OP CAT (TEXT VAR resultat, INT CONST zahl) :
+    resultat CAT "  ";
+    replace (resultat, LENGTH resultat DIV 2, zahl);
+END OP CAT;
+
+PROC conversion (REAL VAR cm, INT VAR pitches):
+  disable stop;
+    INT VAR i :: x step conversion (cm);
+    IF is error
+      THEN dummy := error message;
+           clear error;
+           dummy CAT " -> ";
+           dummy CAT text (cm);
+           fehler (38, dummy);
+           cm := fehler wert
+    ELIF i < 0
+      THEN fehler (38, "negativ");
+           cm := fehler wert
+      ELSE pitches := i
+    FI;
+  enable stop
+END PROC conversion;
+
+(************************** Fehlermeldungen **********************)
+ 
+PROC fehler (INT CONST nr, TEXT CONST addition):
+  fehler melden;
+  meldung auf terminal ausgeben und ggf zeilennummer merken.
+ 
+fehler melden:
+  report text processing error (nr, zeilen nr, fehlerdummy, addition).
+END PROC fehler;
+ 
+PROC warnung (INT CONST nr, TEXT CONST addition):
+  warnung melden;
+  meldung auf terminal ausgeben und ggf zeilennummer merken.
+ 
+warnung melden:
+  report text processing warning (nr, zeilennr, fehlerdummy, addition).
+END PROC warnung;
+
+PROC meldung auf terminal ausgeben und ggf zeilennummer merken:
+  IF online
+    THEN line ;
+         out (fehlerdummy);
+         line ;
+  FI;
+  IF erste fehler zeilennr = 0
+    THEN erste fehler zeilennr := zeilennr
+  FI
+END PROC meldung auf terminal ausgeben und ggf zeilennummer merken;
+
+(*********************** Macro-Bearbeitung ***********************)
+
+PROC fuehre initialisierung fuer macro aus:
+  get liner state (before macro state);
+  get macro line (puffer);
+  pufferlaenge := length (puffer);
+  get macro line (zeile);
+  zeichenpos := 1;
+  von := 1;
+  macro works := TRUE.
+END PROC fuehre initialisierung fuer macro aus;
+
+PROC macro end command: 
+  kommando := subtext (kommando, 2);
+  scan (kommando);
+  next symbol (scan symbol, scan type); 
+  IF NOT macro works
+    THEN fehler (40, kommando);
+         LEAVE macro end command
+  ELIF scan symbol <> "macroend" 
+    THEN fehler (33, kommando) 
+    ELSE put liner state (before macro state);
+  FI
+END PROC macro end command; 
+ 
+(************************** Schrifttyp einstellen *********************)
+
+PROC stelle font ein:
+  IF alter schriftname = par1
+    THEN IF zeilen nr > 2
+           THEN warnung (8, par1)
+           ELSE LEAVE stelle font ein
+         FI
+  ELIF font exists (par1)
+    THEN font nr := font (par1);
+    ELSE fehler (1, par1);
+         par1 := font (1);
+         font nr := 1
+  FI;
+  alter schriftname := par1;
+  hole font und stelle trennbreite ein
+END PROC stelle font ein;
+ 
+PROC hole font:
+  INT VAR x; (* height Werte *)
+  get font (font nr, eingestellte indentation pitch, x, x, x, pitch table);
+  pitch table [code (kommandozeichen) + 1] := kommando ausgang;
+  blankbreite fuer diesen schrifttyp := pitch table [code (blank) + 1] 
+END PROC hole font;
+
+PROC hole font und stelle trennbreite ein:
+  hole font;
+  trennbreite setzen
+END PROC hole font und stelle trennbreite ein;
+
+PROC trennbreite setzen:
+  trennbreite := berechnete trennbreite.
+
+berechnete trennbreite:
+  INT VAR eingestellte trennbreite;
+  conversion (limit in cm, eingestellte trennbreite);
+  eingestellte trennbreite := eingestellte trennbreite
+                                            DIV 100 * trennbreite in prozent;
+  IF eingestellte trennbreite <= zweimal blankbreite
+    THEN zweimal blankbreite
+    ELSE eingestellte trennbreite
+  FI.
+
+zweimal blankbreite:
+  2 * eingestellte indentation pitch.
+END PROC trennbreite setzen; 
+ 
+PROC hyphenation width (INT CONST prozente): 
+  IF prozente < 4 OR prozente > 20 
+    THEN putline ("Fehler: Einstellbare Trennbreite zwischen 4 und 20%") 
+    ELSE trennbreite in prozent := prozente
+  FI 
+END PROC hyphenation width;
+
+(************************** kommando verarbeitung ****************)
+
+PROC additional commands (TEXT CONST k): 
+  zusaetzliche commands := k 
+END PROC additional commands; 
+ 
+TEXT PROC additional commands:
+  zusaetzliche commands
+END PROC additional commands;
+
+BOOL PROC hinter dem kommando steht nix (INT CONST komm ende):
+  komm ende = pufferlaenge OR absatz hinter dem kommando.
+
+absatz hinter dem kommando:
+  komm ende + 1 = pufferlaenge AND puffer hat absatz.
+END PROC hinter dem kommando steht nix;
+
+PROC verarbeite kommando und neue zeile auffuellen:
+  neue zeile auffuellen (von, zeichenpos - 1);
+  von := zeichenpos;
+  verarbeite kommando;
+  neue zeile auffuellen (von, zeichenpos - 1);
+  von := zeichenpos
+END PROC verarbeite kommando und neue zeile auffuellen;
+
+PROC speichere kommando:
+  command store CAT "#";
+  command store CAT kommando;
+  command store CAT "#"
+END PROC speichere kommando;
+
+PROC execute stored commands:
+  IF length (command store) <> 0
+    THEN kommandos speichern := FALSE;
+         dummy := puffer;
+         INT VAR zpos := zeichenpos;
+         zeichenpos := 1;
+         puffer := command store;
+         pufferlaenge := length (puffer);
+         execute commands;
+         puffer := dummy;
+         pufferlaenge := length (puffer);
+         zeichenpos := zpos;
+         command store := "";
+  FI;
+  kommandos speichern := TRUE.
+
+execute commands:
+  WHILE zeichenpos < pufferlaenge REP
+    verarbeite kommando
+  END REP.
+END PROC execute stored commands;
+
+PROC verarbeite kommando:
+INT VAR  anz params,
+         intparam,
+         kommando ende;
+REAL VAR realparam;
+   zeichenpos INCR 1;
+   kommando ende := pos (puffer, kommando zeichen, zeichenpos);
+   IF kommando ende <> 0
+     THEN kommando oder kommentar kommando verarbeiten;
+          zeichenpos := kommando ende + 1
+     ELSE fehler (2, "")
+  FI.
+
+kommando oder kommentar kommando verarbeiten:
+  kommando := subtext (puffer, zeichenpos, kommando ende - 1);
+  TEXT CONST erstes kommandozeichen :: (kommando SUB 1);
+  IF pos ("-/"":*", erstes kommandozeichen) = 0
+    THEN scanne kommando und fuehre es aus
+    ELSE restliche kommandos
+  FI.
+
+restliche kommandos:
+  IF erstes kommandozeichen = "-" OR erstes kommandozeichen = "/"
+    THEN
+  ELIF erstes kommandozeichen = """"
+    THEN scan (kommando);
+         next symbol (scan symbol, scan type);
+         INT VAR scan type2;
+         next symbol (scan symbol, scan type2);
+         IF scan type <> 4 OR scan type2 <> 7
+           THEN fehler (58, kommando)
+         FI
+  ELIF erstes kommandozeichen = "*"
+    THEN zeichenpos := kommando ende + 1;
+         macroend command;
+         LEAVE verarbeite kommando
+  ELIF erstes kommandozeichen = ":"
+    THEN disable stop;
+         delete char (kommando, 1);
+         INT CONST line no before do := line no (eingabe);
+         do (kommando);
+         to line (eingabe, line no before do);
+         IF is error
+           THEN dummy := error message;
+                clear error;
+                dummy CAT " -> ";
+                dummy CAT kommando;
+                fehler (9, dummy)
+         FI;
+         enable stop
+  FI.
+ 
+scanne kommando und fuehre es aus:
+   analyze command (kommando liste, kommando, 3,
+                    kommando index, anz params, par1, par2);
+   disable stop ; 
+   command error ;
+   IF is error
+     THEN dummy := error message;
+          clear error;
+          dummy CAT " -> ";
+          dummy CAT kommando;
+          fehler (22, dummy); 
+          enable stop;
+          LEAVE scanne kommando und fuehre es aus
+   FI;
+   enable stop;
+   setze kommando um.
+
+setze kommando um:
+   SELECT kommando index OF
+ 
+CASE type1:
+     stelle font ein;
+     modifikations speicher := "";
+     mod zeilennr speicher  := ""
+ 
+CASE limit:
+     realparam := real (par1); 
+     IF kommandos speichern
+       THEN speichere kommando
+     ELIF last conversion ok AND pos (par1, ".") <> 0
+       THEN IF realparam = 0.0
+              THEN fehler (37, "")
+              ELSE conversion (realparam, aktuelle pitch zeilenlaenge);
+                   IF realparam <> fehlerwert
+                     THEN limit in cm := realparam;
+                          trennbreite setzen
+                   FI
+            FI
+       ELSE fehler (4, par1);
+     FI
+ 
+CASE on, ub, fb:
+     TEXT VAR mod zeichen;
+     IF kommando index = ub
+       THEN mod zeichen := "u"
+     ELIF kommando index = fb
+       THEN mod zeichen := "b"
+       ELSE mod zeichen := (par1 SUB 1);
+     FI;
+     INT VAR position :: pos (modifikations speicher, mod zeichen);
+     IF position <> 0
+       THEN dummy := mod zeichen + " in Zeile ";
+            dummy CAT text (mod zeilennr speicher ISUB position);
+            fehler (54, dummy);
+            replace (mod zeilennr speicher, position, zeilennr);
+       ELSE modifikations speicher CAT mod zeichen;
+            mod zeilennr speicher CAT zeilennr
+     FI
+ 
+CASE off, fe, ue:
+     IF kommando index = ue
+       THEN mod zeichen := "u"
+     ELIF kommando index = fe
+       THEN mod zeichen := "b"
+       ELSE mod zeichen := (par1 SUB 1);
+     FI;
+     position := pos (modifikations speicher, mod zeichen);
+     IF position  = 0
+       THEN fehler (55, mod zeichen)
+       ELSE delete char (modifikations speicher, position);
+            delete int (mod zeilennr speicher, position)
+     FI
+ 
+CASE pagenr, pagelength, start, block, material, setcount, right, center,
+     linefeed:
+ 
+CASE head, headodd, headeven, bottom, bottomodd, bottomeven, end, free,
+          page command0, page command1, columns, columnsend:
+     IF NOT hinter dem kommando steht nix (kommando ende)
+       THEN fehler (19, kommando)
+     ELIF kommando ende = pufferlaenge
+       THEN IF (neue zeile SUB length (neue zeile)) = blank
+              THEN delete char (neue zeile, length (neue zeile))
+            FI;
+            puffer CAT blank;
+            pufferlaenge := length (puffer)
+     FI;
+     in foot := FALSE
+ 
+CASE foot:
+     IF in foot uebertrag
+       THEN zeilenbreite := aktuelle pitch zeilenlaenge + 1
+     ELIF in foot
+       THEN fehler (3, "")
+       ELSE fuelle ggf zeile vor foot auf (kommando ende)
+     FI
+ 
+CASE ib0, ib1, ib2:
+     TEXT VAR ind zeichen;
+     IF kommando index = ib0
+       THEN ind zeichen:= "1"
+       ELSE ind zeichen := par1
+     FI;
+     position := pos (index speicher, ind zeichen);
+     IF position <> 0
+       THEN dummy := ind zeichen + " in Zeile ";
+            dummy CAT text (ind zeilennr speicher ISUB position);
+            fehler (56, dummy);
+            replace (ind zeilennr speicher, position, zeilennr)
+       ELSE index speicher CAT ind zeichen;
+            ind zeilennr speicher CAT zeilennr
+     FI
+
+CASE ie0, ie1, ie2:
+     IF kommando index = ie0
+       THEN ind zeichen := "1"
+       ELSE ind zeichen := par1
+     FI;
+     position := pos (index speicher, ind zeichen);
+     IF position = 0
+       THEN fehler (57, ind zeichen)
+       ELSE delete char (index speicher, position);
+            delete int (ind zeilennr speicher, position)
+     FI
+
+CASE topage, count1: 
+     herkunftsreferenzen speichern;
+     zeilenbreite um blankbreite erhoehen (3)
+ 
+CASE count0: 
+     zeilenbreite um blankbreite erhoehen (3)
+ 
+CASE value0, value1: 
+     IF anz params <> 0
+       THEN zielreferenzen speichern ohne warnung
+     FI;
+     zeilenbreite um blankbreite erhoehen (3)
+
+CASE goalpage: 
+     zielreferenzen speichern
+
+CASE table:
+     IF in tabelle
+       THEN fehler (41, "")
+       ELSE IF hinter dem kommando steht nix (kommando ende)
+              THEN zeichenpos := pufferlaenge;
+                   neue zeile auffuellen und ausgabe bei zeilenende
+              ELSE neue zeile auffuellen (von, kommando ende);
+                   puffer := subtext (puffer, kommandoende + 1);
+                   schreibe und initialisiere neue zeile
+            FI;
+            verarbeite tabelle;
+            LEAVE verarbeite kommando
+     FI
+
+CASE table end:
+     IF NOT in tabelle
+       THEN fehler (59, "")
+     FI
+
+CASE r pos:
+     IF kommandos speichern
+       THEN speichere kommando
+       ELSE tabulatorposition eintragen (r pos)
+     FI
+
+CASE l pos:
+     IF kommandos speichern
+       THEN speichere kommando
+       ELSE tabulatorposition eintragen (l pos)
+     FI
+
+CASE c pos:
+     IF kommandos speichern
+       THEN speichere kommando
+       ELSE tabulatorposition eintragen (c pos)
+     FI
+
+CASE d pos:
+     IF kommandos speichern
+       THEN speichere kommando
+       ELSE tabulatorposition eintragen (d pos)
+     FI
+
+CASE b pos:
+     IF kommandos speichern
+       THEN speichere kommando
+       ELSE tabulatorposition eintragen (b pos)
+     FI
+
+CASE clear pos0:
+     IF kommandos speichern
+       THEN speichere kommando
+       ELSE anz tabs := 0;
+     FI
+
+CASE clear pos1:
+     IF kommandos speichern
+       THEN speichere kommando
+       ELSE tabulatorposition loeschen
+     FI
+
+CASE skip:
+     IF hinter dem kommando steht nix (kommando ende)
+       THEN neue zeile auffuellen und ausgabe bei zeilenende
+       ELSE neue zeile auffuellen (von, kommandoende);
+            puffer := subtext (puffer, kommandoende + 1);
+            schreibe und initialisiere neue zeile
+     FI;
+     skip zeilen verarbeiten;
+     kommando ende := zeichenpos;
+
+CASE skip end:
+
+CASE u command, d command:
+     INT VAR next smaller font;
+     speichere font nr;
+     IF next smaller font exists (font nr, next smaller font)
+       THEN font nr := next smaller font
+     FI;
+     hole font und stelle trennbreite ein;
+     IF NOT in d und e verarbeitung
+       THEN verarbeite index und exponenten;
+            LEAVE verarbeite kommando
+     FI
+
+CASE e command:
+     entspeichere font nr
+
+CASE head on, head off, bottom on, bottom off, count per page, fillchar,
+     mark command, markend, pageblock:
+
+CASE bsp:
+     zeichenpos DECR 2;
+     IF kommandoende = length (puffer) OR
+        (puffer SUB kommandoende + 1) = kommandozeichen OR
+        zeichenpos < 1 OR
+        (puffer SUB zeichenpos) = kommandozeichen
+       THEN fehler (28, "");
+            LEAVE setze kommando um
+     FI;
+     begin of this char (puffer, zeichenpos);
+     kommandoende INCR 1;
+     INT VAR diese breite    :: breite (puffer, zeichenpos),
+             naechste breite :: breite (puffer, kommandoende);
+     IF in d und e verarbeitung
+       THEN formelbreite DECR diese breite;
+            formelbreite INCR max (diese breite, naechste breite)
+       ELSE zeilenbreite DECR diese breite;
+            zeilenbreite INCR max (diese breite, naechste breite) 
+     FI;
+     zeichenpos := kommandoende;
+     char pos move (vorwaerts);
+     LEAVE verarbeite kommando
+
+CASE counter1, counter2:
+     dummy := "#";
+     dummy CAT par1;
+     dummy CAT "#";
+     IF pos (counter numbering store, dummy) = 0
+       THEN fehler (34, par1);
+     FI;
+     IF kommando index = counter1
+       THEN par2 := "0"
+     FI;
+     anz blanks freihalten := 3 + 2 * int (par2);
+     zeilenbreite um blankbreite erhoehen (anz blanks freihalten)
+
+CASE set counter:
+     dummy := "#";
+     dummy CAT par1;
+     dummy CAT "#";
+     IF pos (counter numbering store, dummy) = 0
+       THEN counter numbering store CAT dummy
+       ELSE warnung (15, par1)
+     FI
+
+CASE put counter0:
+     zeilenbreite um blankbreite erhoehen (anz blanks freihalten) 
+
+CASE put counter1:
+     dummy := "#";
+     dummy CAT par1;
+     dummy CAT "#";
+     INT VAR begin pos :: pos (counter reference store, dummy);
+     IF begin pos = 0
+       THEN counter reference store CAT "u";
+            counter reference store CAT dummy
+     ELIF (counter reference store SUB begin pos - 1) <> "u"
+       THEN insert char (counter reference store,"u", max (begin pos, 1))
+     FI;
+     zeilenbreite um blankbreite erhoehen (5)
+
+CASE store counter:
+     dummy := "#";
+     dummy CAT par1;
+     dummy CAT "#";
+     begin pos := pos (counter reference store, dummy);
+     IF begin pos <> 0
+       THEN IF (counter reference store SUB begin pos - 1) = "i" OR
+               (counter reference store SUB begin pos - 2) = "i"
+              THEN fehler (35, par1)
+            ELIF (counter reference store SUB begin pos - 1) = "u"
+              THEN insert char (counter reference store, "i",
+                                max (begin pos - 1, 1))
+              ELSE insert char (counter reference store, "i",
+                                max (begin pos, 1))
+            FI
+       ELSE counter reference store CAT "i";
+            counter reference store CAT dummy
+     FI
+
+OTHERWISE
+     IF macro command and then process parameters (kommando)
+       THEN IF macro works
+              THEN fehler (15, kommando)
+              ELSE zeichenpos := kommando ende + 1;
+                   neue zeile auffuellen (von, zeichenpos - 1);
+                   von := zeichenpos;
+                   fuehre initialisierung fuer macro aus;
+                   LEAVE verarbeite kommando
+            FI
+     ELIF zusaetzliche commands <> ""
+       THEN analyze command (zusaetzliche commands, kommando, 3,
+                             kommando index, anz params, par1, par2);
+            IF kommando index = 0
+              THEN fehler (8, kommando)
+            FI
+       ELSE fehler (8, kommando)
+     FI;
+END SELECT.
+END PROC verarbeite kommando;
+ 
+(************************* Indizes und Exponenten **********************)
+
+PROC zeilenbreite um blankbreite erhoehen (INT CONST anz):
+  INT CONST blankbreite mal anz :: anz * eingestellte indentation pitch;
+  IF in d und e verarbeitung 
+    THEN formelbreite INCR blankbreite mal anz
+    ELSE zeilenbreite INCR blankbreite mal anz
+  FI;
+  mitzuzaehlende zeichen INCR anz
+END PROC zeilenbreite um blankbreite erhoehen;
+
+PROC speichere font nr:
+  IF index oder exponent anfang
+    THEN suche wortanfang in neuer zeile;
+         zeilenbreite DECR formelbreite
+  FI;
+  font nr speicher CAT " ";
+  font nr speicher CAT text (font nr).
+
+index oder exponent anfang:
+  font nr speicher = "".
+
+suche wortanfang in neuer zeile:
+  auf das letzte zeichen stellen;
+  WHILE NOT wortanfang vor formel REP
+    formelbreite INCR breite (neue zeile, formelanfang);
+    IF formelanfang = 1
+      THEN LEAVE suche wortanfang in neuer zeile
+    FI;
+    char pos move (neue zeile, formelanfang, rueckwaerts);
+  END REP;
+  char pos move (neue zeile, formelanfang, vorwaerts).
+
+wortanfang vor formel:
+  pos (" #", neue zeile SUB formelanfang) <> 0.
+
+auf das letzte zeichen stellen:
+  formelanfang := length (neue zeile);
+  formelbreite := 0;
+  IF formelanfang > 0
+    THEN begin of this char (neue zeile, formelanfang);
+    ELSE formelanfang := 1;
+         LEAVE suche wortanfang in neuer zeile
+  FI
+END PROC speichere font nr;
+
+PROC verarbeite index und exponenten:
+  in d und e verarbeitung := TRUE;
+  zeichenpos := pos (puffer, kommandozeichen, zeichenpos) + 1;
+  INT VAR altes zeichenpos := zeichenpos;
+  verarbeite index oder exponenten zeichen;
+  fehler (52, "");
+  entspeichere font nr.
+
+verarbeite index oder exponenten zeichen:
+  REP
+    stranalyze (pitch table, formelbreite,
+               aktuelle pitch zeilenlaenge - zeilenbreite,
+                puffer, zeichenpos, pufferlaenge, zeichenwert ausgang);
+    IF zeichenwert ausgang = kommando ausgang
+      THEN verarbeite zeichen vor kommando;
+           verarbeite kommando und neue zeile auffuellen;
+           IF NOT in d und e verarbeitung
+             THEN zeilenbreite INCR formelbreite;
+                  LEAVE verarbeite index und exponenten
+           FI;
+           altes zeichenpos := zeichenpos
+    ELIF zeichenwert ausgang = extended char ausgang
+      THEN char pos move (vorwaerts);
+           zeilenbreite INCR breite (puffer, zeichenpos);
+           char pos move (vorwaerts)
+    ELIF     zeichenpos >= pufferlaenge
+         AND formelbreite + zeilenbreite < aktuelle pitch zeilenlaenge
+      THEN LEAVE verarbeite index oder exponenten zeichen
+    ELIF formelanfang <= 1
+      THEN fehler (53, "");
+           formelbreite := 0;
+    ELIF zeichenwert ausgang = esc char ohne zweites byte ausgang
+      THEN fehler (23, "");
+           LEAVE verarbeite index oder exponenten zeichen
+      ELSE schreibe neue zeile vor formelanfang
+    FI
+  END REP.
+
+verarbeite zeichen vor kommando:
+  mitzuzaehlende zeichen INCR
+                         number chars (puffer, altes zeichenpos, zeichenpos);
+  IF (puffer SUB zeichenpos) <> blank
+    THEN aufzaehlungszeichen := (puffer SUB zeichenpos)
+  FI;
+  char pos move (vorwaerts).
+
+schreibe neue zeile vor formelanfang:
+  dummy := subtext (neue zeile, formelanfang);
+  neue zeile := subtext (neue zeile, 1, formelanfang - 1);
+  loesche nachfolgende blanks;
+  schreibe und initialisiere neue zeile;
+  neue zeile CAT dummy;
+  formelanfang := 1;
+  char pos move (vorwaerts)
+END PROC verarbeite index und exponenten;
+
+PROC entspeichere font nr:
+  INT VAR index := length (font nr speicher);
+  IF index <= 1
+    THEN fehler (51, "")
+    ELSE suche nr anfang;
+         entspeichere;
+  FI.
+
+suche nr anfang:
+  WHILE (font nr speicher SUB index) <> " " AND index <> 0 REP
+    index DECR 1
+  END REP.
+
+entspeichere:
+  font nr := int (subtext (font nr speicher, index + 1));
+  IF index <= 1
+    THEN font nr speicher := "";
+         in d und e verarbeitung := FALSE
+    ELSE font nr speicher := subtext (font nr speicher, 1, index - 1)
+  FI;
+  hole font und stelle trennbreite ein
+END PROC entspeichere font nr;
+
+(*************************** skip zeilen ****************************)
+
+PROC skip zeilen verarbeiten:
+  REP
+    IF dateiende
+      THEN errorstop ("Dateiende während skip-Anweisung")
+    ELIF skip ende kommando
+      THEN LEAVE skip zeilen verarbeiten
+    FI;
+    neue zeile auffuellen und ausgabe bei zeilenende
+  END REP.
+
+dateiende:
+  pufferlaenge = 0.
+
+skip ende kommando:
+  TEXT VAR kliste :: "skipend:1.0", k;
+  INT VAR k anf :: pos (puffer, kommandozeichen),
+          kende, anz params, kindex;
+  WHILE noch ein kommando vorhanden REP
+    kindex := 0;
+    analysiere das kommando
+  END REP;
+  FALSE.
+
+noch ein kommando vorhanden:
+  kanf <> 0.
+
+analysiere das kommando:
+  kende := pos (puffer, kommandozeichen, kanf + 1);
+  IF kende = 0
+    THEN fehler (2, "");
+         LEAVE skip ende kommando WITH FALSE
+  FI;
+  k := subtext (puffer, kanf + 1, kende - 1);
+  analyze command (kliste, k, 3, kindex, anz params, par1, par2);
+  IF kindex = 1
+    THEN zeichenpos := kende;
+         LEAVE skip ende kommando WITH TRUE
+  FI;
+  kanf := pos (puffer, kommandozeichen, kende + 1).
+END PROC skip zeilen verarbeiten;
+
+(**************** sonderbehandlung von zeilen vor foot *******************)
+
+PROC fuelle ggf zeile vor foot auf (INT VAR com ende):
+  IF foot am zeilenende ohne absatz AND NOT macro works
+    THEN letzter puffer war absatz := TRUE;
+         IF text vor foot AND NOT zeile hat richtige laenge
+           THEN INT VAR   foot zeilennr := line no (eingabe);
+                INT CONST x1            := com ende;
+                in foot uebertrag := TRUE;
+                get liner state (before foot state);
+                formatiere diese zeile;
+                to line (eingabe, foot zeilennr);
+                footdummy := neue zeile;
+                put liner state (before foot state);
+                neue zeile := footdummy;
+                com ende := x1;
+                in foot uebertrag := FALSE
+         FI
+  ELIF NOT hinter dem kommando steht nix (com ende)
+    THEN fehler (19, kommando);
+         LEAVE fuelle ggf zeile vor foot auf
+  FI;
+  in foot := TRUE.
+
+foot am zeilenende ohne absatz:
+  com ende = pufferlaenge.
+
+text vor foot:
+  pos (neue zeile, ""33"", ""255"", 1) <> 0.
+
+formatiere diese zeile:
+  foot anweisung entfernen;
+  lese eingabe datei bis end kommando;
+  zeile nach end in zeile;
+  formatiere;
+  schreibe die veraenderte zeile nach end.
+ 
+foot anweisung entfernen:
+  zeichenpos := com ende;
+  ueberspringe das kommando (puffer, zeichenpos, rueckwaerts);
+  zeichenpos DECR 1;
+  puffer := subtext (puffer, 1, zeichenpos);
+  WHILE NOT within kanji (puffer, zeichenpos) AND
+        (puffer SUB zeichenpos) = blank AND foot stand nicht am zeilenanfang
+        REP
+    zeilenbreite DECR breite (blank);
+    delete char (puffer, zeichenpos);
+    delete char (neue zeile, length (neue zeile));
+    zeichenpos DECR 1
+  END REP;
+  pufferlaenge := length (puffer).
+
+foot stand nicht am zeilenanfang:
+  zeichenpos > 0.
+
+lese eingabe datei bis end kommando:
+  TEXT VAR kliste :: "end:1.0";
+  dummy := zeile;
+  WHILE NOT foot ende kommando REP
+    IF eof (eingabe)
+      THEN LEAVE formatiere diese zeile
+    FI;
+    read record (eingabe, dummy);
+    down (eingabe);
+  ENDREP;
+  INT CONST zeile nach end := line no (eingabe);
+  IF NOT end kommando steht am zeilenende
+    THEN LEAVE formatiere diese zeile
+  FI.
+
+end kommando steht am zeilenende:
+  k ende = length (dummy) OR k ende + 1 = length (dummy).
+
+foot ende kommando:
+  INT VAR k anf, k ende :: 0, anz params, k index;
+  WHILE noch ein kommando vorhanden REP
+    k ende := pos (dummy, kommandozeichen, k anf + 1);
+    IF k ende = 0
+      THEN LEAVE foot ende kommando WITH FALSE
+      ELSE kommando := subtext (dummy, k anf + 1, k ende - 1);
+    FI;
+    analyze command (kliste, kommando, 3, kindex, anz params, par1, par2);
+    IF k index = 1
+      THEN LEAVE foot ende kommando WITH TRUE
+    FI;
+  END REP;
+  FALSE.
+
+noch ein kommando vorhanden:
+  k anf := pos (dummy, kommandozeichen, k ende + 1);
+  k anf <> 0.
+
+zeile nach end in zeile:
+  read record (eingabe, zeile);
+  INT VAR text anf := pos (zeile, ""33"", ""255"", 1);
+  IF zeile nach end ist leerzeile
+    THEN LEAVE formatiere diese zeile
+    ELSE IF text anf > 1
+           THEN aktuelle blanks := subtext (zeile, 1, text anf - 1);
+                zeile := subtext (zeile, text anf)
+         FI;
+  FI.
+
+zeile nach end ist leerzeile:
+  text anf <= 0.
+
+formatiere:
+  IF foot stand nicht am zeilenanfang
+    THEN verarbeite letztes zeichen von puffer
+    ELSE puffer CAT zeile;
+         pufferlaenge := length (puffer)
+  FI;
+  REP
+    stranalyze (pitch table, zeilenbreite, aktuelle pitch zeilenlaenge,
+                puffer, zeichenpos, pufferlaenge, zeichenwert ausgang);
+    IF zeichenwert ausgang = kommando ausgang
+      THEN zeichenpos INCR 1;
+           neue zeile auffuellen (von, zeichenpos - 1);
+           von := zeichenpos;
+           INT VAR ende der neuen zeile := length (neue zeile),
+                   zpos davor := zeichenpos;
+           verarbeite kommando;
+           neue zeile auffuellen (von, zeichenpos - 1);
+           von := zeichenpos;
+           IF kommando index = foot
+             THEN behandlung der zeile vor foot;
+                  LEAVE formatiere
+           ELIF zeichenpos >= pufferlaenge
+              OR zeilenbreite > aktuelle pitch zeilenlaenge
+             THEN ende einer neuen zeile;
+                  LEAVE formatiere
+           FI
+    ELIF zeichenwert ausgang = extended char ausgang
+      THEN char pos move (vorwaerts);
+           zeilenbreite INCR breite (puffer, zeichenpos);
+           char pos move (vorwaerts)
+    ELIF zeichenwert ausgang = zeilenende ausgang
+         OR zeichenwert ausgang = esc char ohne zweites byte ausgang
+      THEN up (eingabe);
+           delete record (eingabe);
+           neue zeile auffuellen;
+           IF zeichenwert ausgang = esc char ohne zweites byte ausgang
+             THEN fehler (23, "")
+           FI;
+           LEAVE formatiere diese zeile
+      ELSE ende einer neuen zeile;
+           LEAVE formatiere
+    FI
+  END REP.
+
+behandlung der zeile vor foot:
+  neue zeile := subtext (neue zeile, 1, ende der neuen zeile);
+  zeichenpos := zpos davor.
+
+schreibe die veraenderte zeile nach end:
+  to line (eingabe, zeile nach end);
+  dummy := (text anf - 1) * blank;
+  dummy CAT subtext (puffer, zeichenpos);
+  IF format file in situ
+    THEN insert record (eingabe)
+  FI;
+  write record (eingabe, dummy).
+END PROC fuelle ggf zeile vor foot auf;
+
+(*************** Tabulator- und Tabellen verarbeitung ******************)
+
+PROC tabulatorposition eintragen (INT CONST tab type):
+  ROW 3 INT VAR akt tab pos;
+  IF anz tabs >= max tabs
+    THEN fehler (32, "")
+  ELIF tab in cm umwandeln (par1, tab pos in pitches)
+    THEN IF tab type = b pos AND tab in cm umwandeln (par2, bis tab)
+           THEN 
+           ELSE bis tab := 0
+         FI;
+         TEXT VAR zentrierzeichen;
+         IF tab type = d pos
+           THEN zentrierzeichen := par2
+           ELSE zentrierzeichen := ""
+         FI;
+        tabs sortiert eintragen
+  FI.
+
+tabs sortiert eintragen:
+  INT VAR i;
+  type tab := tab type;
+  FOR i FROM 1 UPTO anz tabs REP
+    IF tab pos in pitches = tabs [i] [1]
+      THEN fehler (42, par1);
+           LEAVE tabulatorposition eintragen
+    ELIF tabs [i] [1] > tab pos in pitches
+      THEN vertauschen
+    FI;
+    IF ueberschneidende bpos
+      THEN fehler (12, text (xstepconversion (tab pos in pitches)))
+    FI;
+  END REP;
+  anz tabs INCR 1;
+  tabs [anz tabs]        := akt tab pos;
+  tab zeichen [anz tabs] := zentrierzeichen.
+
+ueberschneidende bpos:
+  tabs [i] [2] = bpos AND naechste anfang pos liegt in diesem bpos bereich.
+
+naechste anfang pos liegt in diesem bpos bereich:
+  tab pos in pitches <= tabs [i] [3].
+
+vertauschen:
+  ROW 3 INT CONST hilf1 :: tabs [i];
+  TEXT CONST thilf      :: tab zeichen [i];
+  tabs [i]        := akt tab pos;
+  tab zeichen [i] := zentrierzeichen;
+  akt tab pos     := hilf1;
+  zentrierzeichen := thilf.
+
+tab pos in pitches: 
+  akt tab pos [1].
+
+type tab:
+  akt tab pos [2].
+
+bis tab:
+  akt tab pos [3].
+END PROC tabulatorposition eintragen;
+
+BOOL PROC tab in cm umwandeln (TEXT CONST text wert, INT VAR f breite):
+  REAL VAR cm := real (text wert);
+  IF last conversion ok AND pos (text wert, ".") <> 0
+    THEN umwandeln
+    ELSE fehler (4, par1);
+         TRUE
+  FI.
+
+umwandeln:
+  conversion (cm, f breite);
+  IF f breite > aktuelle pitch zeilenlaenge
+    THEN fehler (39, par1)
+  ELIF cm = fehlerwert
+    THEN
+    ELSE LEAVE tab in cm umwandeln WITH TRUE
+  FI;
+  FALSE
+END PROC tab in cm umwandeln;
+
+PROC cm angabe der druckposition in dummy (INT CONST nr):
+  dummy := text (x step conversion (tabs [nr] [1]));
+  IF (dummy SUB length (dummy)) = "."
+    THEN dummy CAT "0"
+  FI;
+  dummy CAT " cm"
+END PROC cm angabe der druckposition in dummy;
+
+PROC tabulator position loeschen:
+  INT VAR tab pos in pitches;
+  IF tab in cm umwandeln (par1, tab pos in pitches)
+    THEN versuche zu loeschen
+  FI.
+
+versuche zu loeschen:
+  INT VAR i;
+  FOR i FROM 1 UPTO anz tabs REP
+    IF tab pos in pitches = tabs [i] [1]
+      THEN verschiebe eintraege nach unten;
+           LEAVE tabulator position loeschen
+    FI
+  END REP;
+  fehler (43, par1).
+
+verschiebe eintraege nach unten:
+  INT VAR k;
+  FOR k FROM i UPTO anz tabs - 1 REP
+    tabs [k] := tabs [k + 1];
+    tab zeichen [k] := tab zeichen [k + 1];
+  END REP;
+  anz tabs DECR 1.
+END PROC tabulatorposition loeschen;
+
+PROC verarbeite tabelle:
+  in tabelle := TRUE;
+  pitch table auf blank ausgang setzen;
+  verarbeite tabellenzeilen;
+  pitch table auf blank setzen;
+  IF suchausgang gesetzt
+    THEN pitch table [pos tab zeichen in pitch table] :=
+                                                breite erstes dezimalzeichen;
+         suchausgang gesetzt := FALSE; 
+  FI;
+  in tabelle := FALSE.
+
+verarbeite tabellenzeilen:
+  WHILE pufferlaenge <> 0 REP
+    ueberpruefe tabellenzeile;
+    zeichenpos := pufferlaenge;
+    neue zeile auffuellen und ausgabe bei zeilenende
+  END REP;
+  puffer       := " ";
+  pufferlaenge := 1;
+  zeichenpos   := 1;
+  fehler (49, "").
+
+ueberpruefe tabellenzeile:
+(* Achtung: Zeilenbreite ist Spaltenbreite;
+            tab zeilen breite ist Summe der Spalten und Positionen *)
+  INT VAR tab zeilen breite :: 0,
+          tab no   :: 1;
+  WHILE noch tab positionen OR only command line (puffer) REP
+    positioniere auf naechste spalte;
+    errechne spaltenbreite;
+    IF anz tabs > 0
+      THEN ueberpruefe ob es passt;
+    FI;
+    tab no INCR 1
+  END REP;
+  IF tabellenzeile breiter als limit
+    THEN warnung (10, "")
+  ELIF noch mehr spaltentexte AND anz tabs <> 0
+    THEN warnung (11, subtext (puffer, zeichenpos))
+  FI.
+
+noch tab positionen: 
+  tab no <= anz tabs.
+
+positioniere auf naechste spalte:
+  zeichenpos := pos (puffer, ""33"", ""255"", zeichenpos);
+  IF leerzeile oder rest der zeile ist leer 
+    THEN IF NOT only command line (puffer) AND pufferlaenge > 1
+           THEN warnung (14, "")
+         FI;
+         LEAVE ueberpruefe tabellenzeile
+  FI.
+
+leerzeile oder rest der zeile ist leer:
+  zeichenpos <= 0.
+
+errechne spaltenbreite:
+  zeilenbreite := 0;
+  BOOL VAR suchausgang gesetzt :: FALSE;
+  IF diese position ist dezimal pos
+    THEN setze dezimalzeichen auf suchausgang
+  FI;
+  REP
+    stranalyze (pitch table, zeilenbreite, aktuelle pitch zeilenlaenge,
+                puffer, zeichenpos, pufferlaenge, zeichenwert ausgang);
+    zeichenpos INCR 1;
+    IF zeichenwert ausgang = blank ausgang
+      THEN behandele dieses blank
+    ELIF zeichenwert ausgang = kommando ausgang
+      THEN verarbeite das kommando
+    ELIF zeichenwert ausgang = extended char ausgang
+      THEN char pos move (vorwaerts);
+           zeilenbreite INCR breite (puffer, zeichenpos);
+           char pos move (vorwaerts)
+    ELIF zeichenwert ausgang = such ausgang
+      THEN verarbeite ersten teil der dezimal zentrierung 
+    ELIF zeichenwert ausgang = esc char ohne zweites byte ausgang
+      THEN fehler (23, "");
+           LEAVE ueberpruefe tabellenzeile
+    ELIF zeilenbreite + zeichenwert ausgang > aktuelle pitch zeilenlaenge
+      THEN fehler (36, "");
+           LEAVE ueberpruefe tabellenzeile
+      ELSE tabellenzeile ohne absatz
+    FI
+  END REP.
+ 
+diese position ist dezimal pos:
+  tabs [tab no] [2] = dpos.
+
+setze dezimalzeichen auf suchausgang:
+  INT CONST pos tab zeichen in pitch table ::
+                 code (tab zeichen [tab no] SUB 1) + 1;
+  INT VAR breite erstes dezimalzeichen :=breite (tab zeichen [tab no] SUB 1),
+          breite excl dezimalzeichen := 0;
+  suchausgang gesetzt := TRUE;
+  pitch table [pos tab zeichen in pitch table] := such ausgang.
+
+verarbeite ersten teil der dezimal zentrierung:
+  IF pos (puffer, tab zeichen [tab no], zeichenpos) = zeichenpos
+    THEN pitch table [pos tab zeichen in pitch table] :=
+                                           breite erstes dezimalzeichen;
+         suchausgang gesetzt := FALSE;
+         breite excl dezimalzeichen := zeilenbreite
+  FI;
+  zeilenbreite INCR breite (puffer SUB zeichenpos);
+  zeichenpos INCR 1.
+
+behandele dieses blank:
+  IF doppelblank OR absatz
+    THEN LEAVE errechne spaltenbreite
+    ELSE zeilenbreite INCR blankbreite fuer diesen schrifttyp;
+         zeichenpos INCR 1
+  FI.
+
+doppelblank:
+  (puffer SUB zeichenpos + 1) = blank.
+
+verarbeite das kommando:
+  pitch table auf blank setzen;
+  verarbeite kommando und neue zeile auffuellen;
+  pitch table auf blank ausgang setzen;
+  IF kommando index = table end
+    THEN LEAVE verarbeite tabellenzeilen
+  ELIF suchausgang gesetzt AND
+       pitch table [pos tab zeichen in pitch table] <> suchausgang
+    THEN pitch table [pos tab zeichen in pitch table] := suchausgang
+  FI.
+
+tabellenzeile ohne absatz:
+  IF zeilenende eines macros
+    THEN zeile in puffer und zeile lesen;
+         zeichenpos := pos (puffer, ""33"", ""255"", zeichenpos);
+    ELSE LEAVE errechne spaltenbreite
+  FI.
+
+zeilenende eines macros:
+  zeichenwert ausgang = zeilenende ausgang AND macro works.
+
+ueberpruefe ob es passt:
+  INT CONST akt tab pos :: tabs [tab no] [1];
+  IF vorherige spalte ueberschreibt tabulator position 
+    THEN cm angabe der druckposition in dummy (tab no - 1);
+         fehler (44, dummy);
+         tab zeilenbreite := akt tab pos
+  ELIF only command line (puffer)
+    THEN
+    ELSE ueberpruefe nach art des tabulators
+  FI.
+
+ueberpruefe nach art des tabulators:
+  IF   tabs [tab no] [2] = r pos
+    THEN nach links schreibend
+  ELIF tabs [tab no] [2] = l pos
+    THEN nach rechts schreibend
+  ELIF tabs [tab no] [2] = b pos
+    THEN nach rechts blockend schreibend
+  ELIF tabs [tab no] [2] = c pos
+    THEN zentrierend
+    ELSE zentrierend um zeichen
+  FI.
+
+vorherige spalte ueberschreibt tabulator position:
+  tab zeilenbreite > akt tab pos.
+
+nach links schreibend:
+  IF tab zeilenbreite + zeilenbreite > akt tab pos
+    THEN cm angabe der druckposition in dummy (tab no); 
+         fehler (45, dummy);
+  FI;
+  tab zeilenbreite := akt tab pos.
+
+nach rechts schreibend:
+  tab zeilenbreite := akt tab pos + zeilenbreite.
+
+nach rechts blockend schreibend:
+  IF akt tab pos + zeilenbreite > tabs [tab no] [3]
+    THEN cm angabe der druckposition in dummy (tab no);
+         fehler (48, dummy)
+  FI;
+  tab zeilenbreite := tabs [tab no] [3].
+
+zentrierend:
+  IF tab zeilenbreite + (zeilenbreite DIV 2) > akt tab pos
+    THEN cm angabe der druckposition in dummy (tab no);
+         fehler (46, dummy)
+  FI;
+  tab zeilenbreite := akt tab pos + (zeilenbreite DIV 2).
+
+zentrierend um zeichen:
+  IF breite excl dezimalzeichen = 0
+    THEN cm angabe der druckposition in dummy (tab no);
+         fehler (50, dummy)
+  ELIF tab zeilenbreite + breite excl dezimalzeichen > akt tab pos
+    THEN cm angabe der druckposition in dummy (tab no);
+         fehler (47, dummy)
+  FI;
+  IF suchausgang gesetzt
+    THEN pitch table [pos tab zeichen in pitch table] :=
+                                                breite erstes dezimalzeichen;
+         suchausgang gesetzt := FALSE; 
+  FI;
+  tab zeilenbreite := akt tab pos +
+                                 (zeilenbreite - breite excl dezimalzeichen).
+
+tabellenzeile breiter als limit:
+  tab zeilenbreite > aktuelle pitch zeilenlaenge + einrueckbreite.
+
+noch mehr spaltentexte:
+  pos (puffer, ""33"", ""255"", zeichenpos) <> 0.
+END PROC verarbeite tabelle;
+ 
+(*********************** referenzen ueberpruefen **********************)
+ 
+PROC aktuelle referenz erstellen:
+  aktuelle referenz := "#";
+  aktuelle referenz CAT par1;
+  aktuelle referenz CAT "#";
+END PROC aktuelle referenz erstellen;
+
+PROC zielreferenzen speichern ohne warnung:
+  aktuelle referenz erstellen;
+  IF pos (zielreferenzen, aktuelle referenz) = 0 
+    THEN delete char (aktuelle referenz, 1);
+         zielreferenzen CAT aktuelle referenz
+  FI 
+END PROC zielreferenzen speichern ohne warnung;
+
+PROC zielreferenzen speichern:
+  aktuelle referenz erstellen;
+  IF pos (zielreferenzen, aktuelle referenz) <> 0 
+    THEN warnung (9, par1) 
+    ELSE delete char (aktuelle referenz, 1);
+         zielreferenzen CAT aktuelle referenz
+  FI 
+END PROC zielreferenzen speichern;
+ 
+PROC herkunftsreferenzen speichern:
+  aktuelle referenz erstellen;
+  IF pos (herkunftsreferenzen, aktuelle referenz) = 0 
+    THEN delete char (aktuelle referenz, 1);
+         herkunftsreferenzen CAT aktuelle referenz
+  FI 
+END PROC herkunftsreferenzen speichern; 
+ 
+PROC referenzen ueberpruefen: 
+  ueberpruefe zielreferenzen; 
+  ueberpruefe restliche herkunftsreferenzen. 
+ 
+ueberpruefe zielreferenzen: 
+  REP 
+    hole naechste zielreferenz; 
+    IF pos (herkunfts referenzen, aktuelle referenz) = 0 
+      THEN change all (aktuelle referenz,"#", ""); 
+           warnung (3, aktuelle referenz)
+      ELSE delete char (aktuelle referenz, length (aktuelle referenz));
+           change (herkunftsreferenzen, aktuelle referenz, ""); 
+    FI
+  END REP. 
+ 
+hole naechste zielreferenz: 
+  IF length (zielreferenzen) > 1
+    THEN aktuelle referenz :=
+            subtext (zielreferenzen, 1, pos (zielreferenzen, "#", 2));
+         zielreferenzen := 
+            subtext (zielreferenzen, pos (zielreferenzen, "#", 2))
+    ELSE LEAVE ueberpruefe zielreferenzen 
+  FI. 
+ 
+ueberpruefe restliche herkunftsreferenzen: 
+  WHILE length (herkunftsreferenzen) > 1 REP 
+    aktuelle referenz :=
+     subtext (herkunftsreferenzen, 1, pos (herkunftsreferenzen, "#", 2) - 1);
+    change (herkunftsreferenzen, aktuelle referenz, "");
+    delete char (aktuelle referenz, 1); 
+    warnung (4, aktuelle referenz) 
+  END REP. 
+END PROC referenzen ueberpruefen;
+ 
+(*************************** Utilities *******************************)
+
+INT PROC breite (TEXT CONST z):
+  INT VAR b;
+  IF z = ""
+    THEN display and pause (1)
+  ELIF z = kommandozeichen
+    THEN display and pause (2); b := 1
+    ELSE b := pitch table [code (z) + 1]
+  FI;
+  IF zeilenbreite > maxint - b
+    THEN display and pause (3); b := 1
+  FI;
+  b.
+END PROC breite;
+
+INT PROC breite (TEXT CONST ein text, INT CONST zpos):
+  TEXT CONST z :: ein text SUB zpos;
+  INT VAR zeichen breite;
+  IF z = ""
+    THEN display and pause (4); zeichen breite := 1
+  ELIF z = kommandozeichen
+    THEN display and pause (6); zeichen breite := 1
+    ELSE zeichen breite := pitch table [code (z) + 1]
+  FI;
+  IF zeichen breite = extended char ausgang
+    THEN zeichen breite := extended char pitch (font nr,
+           ein text SUB zpos, ein text SUB zpos + 1)
+  FI;
+  zeichen breite
+END PROC breite;
+
+PROC char pos move (INT CONST richtung):
+  char pos move (zeichenpos, richtung)
+END PROC char pos move;
+
+PROC char pos move (INT VAR zpos, INT CONST richtung):
+  char pos move (puffer, zpos, richtung)
+END PROC char pos move;
+
+BOOL PROC absatz:
+  zeichenpos = pufferlaenge AND puffer hat absatz
+END PROC absatz;
+
+BOOL PROC puffer hat absatz:
+  NOT within kanji (puffer, pufferlaenge) AND
+  (puffer SUB pufferlaenge) = blank
+END PROC puffer hat absatz;
+
+PROC pitch table auf blank ausgang setzen:
+  IF pitch table [code (blank) + 1] <> blank ausgang
+    THEN blank breite fuer diesen schrifttyp := breite (blank);
+         pitch table [code (blank) + 1] := blank ausgang
+  FI
+END PROC pitch table auf blank ausgang setzen;
+
+PROC pitch table auf blank setzen:
+  pitch table [code (blank) + 1] := blank breite fuer diesen schrifttyp
+END PROC pitch table auf blank setzen;
+
+(*PROC zustands test (TEXT CONST anf):
+line ;put(anf);
+line ;put("zeilenbreite, aktuelle pitch zeilenlaenge:");
+     put(zeilenbreite);put(aktuelle pitch zeilenlaenge);
+line ;put("zeichenpos, pufferlaenge, ausgang, zeichen:");
+put(zeichenpos);put(pufferlaenge);
+IF zeichenwert ausgang = blank ausgang
+  THEN put ("blank")
+ELIF zeichenwert ausgang = kommando ausgang
+  THEN put ("kommando")
+ELIF zeichenwert ausgang = such ausgang
+  THEN put ("such")
+ELIF zeichenwert ausgang = zeilenende ausgang
+  THEN put ("zeilenende")
+  ELSE put(zeichenwert ausgang);
+FI; put ("ausgang");
+out(">");out(puffer SUB zeichenpos);out("<");
+line ;out("puffer >");
+IF length (puffer) > 65
+  THEN outsubtext (puffer, 1, 65);
+       line ; outsubtext (puffer, 66)
+  ELSE out(puffer);
+FI;
+out("<");
+line ;out("zeile >");
+IF length (zeile) > 65
+  THEN outsubtext (zeile, 1, 65);
+       line ; outsubtext (zeile, 66)
+  ELSE out (zeile);
+FI;
+out("<");
+line ;out("neue zeile >");
+IF length (neue zeile) > 65
+  THEN outsubtext (neue zeile, 1, 65);
+       line ; outsubtext (neue zeile, 66)
+  ELSE out(neue zeile);
+FI;
+out("<");
+line ; 
+END PROC zustands test;*)
+
+(*************************** eigentliche form routine ********************)
+
+PROC zeilen form (TEXT CONST datei):
+  enable stop;
+  form initialisieren (datei);
+  formiere absatzweise;
+  letzte neue zeile ausgeben.
+
+formiere absatzweise:
+  REP
+    letzter puffer war absatz := FALSE;
+    einrueckbreite := eingestellte indentation pitch;
+    IF einfacher absatz nach absatz
+      THEN gebe einfachen absatz aus
+      ELSE verarbeite abschnitt nach absatz
+    FI
+  UNTIL pufferlaenge = 0 END REP.
+
+einfacher absatz nach absatz:
+  absatz.
+
+gebe einfachen absatz aus:
+  neue zeile := blank;
+  ausgabe bei zeilenende.
+
+verarbeite abschnitt nach absatz:
+  berechne erste zeile nach absatz;
+  IF NOT letzter puffer war absatz
+    THEN formiere
+  FI.
+
+formiere:
+  INT VAR letzte zeilennr;
+  REP
+    stranalyze (pitch table, zeilenbreite, aktuelle pitch zeilenlaenge,
+                puffer, zeichenpos, pufferlaenge, zeichenwert ausgang);
+    IF zeichenwert ausgang   = kommando ausgang
+      THEN zeichenpos INCR 1;
+           verarbeite kommando und neue zeile auffuellen;
+           IF letzter puffer war absatz
+             THEN ausgabe bei zeilenende;
+                  LEAVE verarbeite abschnitt nach absatz
+           ELIF zeichenpos > pufferlaenge OR absatz
+             THEN letzte zeilennr := zeilennr;
+                  verarbeite letztes zeichen von puffer;
+                  IF neue zeile ausgeloest
+                    THEN LEAVE verarbeite abschnitt nach absatz
+                    ELSE letzter puffer war absatz := FALSE
+                  FI
+           FI
+    ELIF zeichenwert ausgang = extended char ausgang
+      THEN char pos move (vorwaerts);
+           zeilenbreite INCR breite (puffer, zeichenpos);
+           char pos move (vorwaerts)
+    ELIF zeichenwert ausgang = zeilenende ausgang
+         OR zeichenwert ausgang = esc char ohne zweites byte ausgang
+      THEN letzte zeilennr := zeilennr;
+           verarbeite letztes zeichen von puffer;
+           IF zeichenwert ausgang = esc char ohne zweites byte ausgang
+             THEN fehler (23, "")
+           FI;
+           IF neue zeile ausgeloest
+             THEN LEAVE verarbeite abschnitt nach absatz
+             ELSE letzter puffer war absatz := FALSE
+           FI
+      ELSE ende einer neuen zeile
+    FI;
+  UNTIL pufferlaenge = 0 END REP. 
+
+neue zeile ausgeloest:
+  letzte zeilennr < zeilennr.
+END PROC zeilen form;
+
+PROC berechne erste zeile nach absatz:
+  INT CONST anz einrueckungszeichen :: zeilenbreite DIV einrueckbreite;
+  INT VAR anz zeichen fuer einzeilige einrueckung :: 0,
+          anz zeichen          :: 0,
+          schlepper zeichenpos :: 1,
+          letzte zeilennr;
+  BOOL CONST puffer hatte anfangs absatz :: puffer hat absatz;
+  BOOL VAR   noch kein blank gewesen :: TRUE;
+  pitch table auf blank ausgang setzen;
+  berechne erste zeile;
+  pitch table auf blank setzen.
+
+berechne erste zeile:
+  REP
+    stranalyze (pitch table, zeilenbreite, aktuelle pitch zeilenlaenge,
+                puffer, zeichenpos, pufferlaenge, zeichenwert ausgang);
+    IF zeichenwert ausgang   = blank ausgang
+      THEN verarbeite text
+    ELIF zeichenwert ausgang = extended char ausgang
+      THEN char pos move (vorwaerts);
+           zeilenbreite INCR breite (puffer, zeichenpos);
+           char pos move (vorwaerts)
+    ELIF zeichenwert ausgang = kommando ausgang
+      THEN verarbeite dieses kommando
+    ELIF zeichenwert ausgang = zeilenende ausgang
+         OR zeichenwert ausgang = esc char ohne zweites byte ausgang
+      THEN behandele zu kurze zeile
+      ELSE behandele zu lange zeile
+    FI
+  END REP.
+
+verarbeite dieses kommando:
+  textzeichen mitzaehlen;
+  IF pos (" #", (puffer SUB zeichenpos)) = 0
+    THEN aufzaehlungszeichen := (puffer SUB zeichenpos)
+  FI;
+  char pos move (vorwaerts);
+  mitzuzaehlende zeichen := 0;
+  pitch table auf blank setzen;
+  verarbeite kommando und neue zeile auffuellen;
+  pitch table auf blank ausgang setzen;
+  IF letzter puffer war absatz
+    THEN neue zeile auffuellen und ausgabe bei zeilenende;
+         LEAVE berechne erste zeile
+  ELIF zeichenpos > pufferlaenge OR absatz
+    THEN letzte zeilennr := zeilennr;
+         verarbeite letztes zeichen von puffer;
+         IF neue zeile ausgeloest
+           THEN LEAVE berechne erste zeile
+           ELSE letzter puffer war absatz := FALSE
+         FI
+  ELIF anweisung erlaubt keine aufzaehlung
+    THEN LEAVE berechne erste zeile
+  FI;
+  anz zeichen INCR mitzuzaehlende zeichen;
+  schlepper zeichenpos := zeichenpos.
+
+neue zeile ausgeloest:
+  letzte zeilennr < zeilennr.
+
+anweisung erlaubt keine aufzaehlung:
+  kommando index = center OR kommando index = right.
+
+verarbeite text:
+  char pos move (vorwaerts);
+  IF absatz
+    THEN verarbeite letztes zeichen von puffer;
+         LEAVE berechne erste zeile
+  ELIF zeilenbreite + blankbreite fuer diesen schrifttyp >
+                                                  aktuelle pitch zeilenlaenge
+    THEN behandele zu lange zeile
+  ELIF mehrfaches blank
+    THEN positionierung mit doppelblank
+  ELIF noch kein blank gewesen AND
+       anz zeichen +
+                number chars (puffer, schlepper zeichenpos, zeichenpos) <= 20
+    THEN ggf aufzaehlung aufnehmen
+    ELSE zeilenbreite INCR blankbreite fuer diesen schrifttyp
+  FI;
+  noch kein blank gewesen := FALSE;
+  zeichenpos INCR 1.
+
+mehrfaches blank:
+  (puffer SUB zeichenpos + 1) = blank.
+
+positionierung mit doppelblank:
+  WHILE NOT within kanji (puffer, zeichenpos + 1) AND
+        (puffer SUB zeichenpos + 1) = blank REP
+    zeichenpos INCR 1
+  END REP;
+  textzeichen mitzaehlen;
+  pruefe auf ueberschreibung
+              (zeilenbreite, anz zeichen + anz einrueckungszeichen).
+
+ggf aufzaehlung aufnehmen:
+  IF NOT within kanji (puffer, zeichenpos - 1) AND
+     (puffer SUB zeichenpos - 1) <> kommandozeichen
+    THEN aufzaehlungszeichen := (puffer SUB zeichenpos - 1);
+  FI;
+  textzeichen mitzaehlen;
+  IF    aufzaehlungszeichen = ":"
+     OR (aufzaehlungszeichen = "-" AND anz zeichen <= 2)
+     OR (anz zeichen <= 7 AND (   aufzaehlungszeichen = ")"
+                               OR aufzaehlungszeichen = "."))
+    THEN anz zeichen fuer einzeilige einrueckung := anz zeichen;
+         pruefe auf ueberschreibung
+               (zeilenbreite, anz zeichen + anz einrueckungszeichen)
+    ELSE zeilenbreite INCR blankbreite fuer diesen schrifttyp
+  FI.
+
+textzeichen mitzaehlen:
+  anz zeichen INCR number chars (puffer, schlepper zeichenpos, zeichenpos);
+  IF is kanji esc (puffer SUB zeichenpos)
+    THEN schlepper zeichenpos := zeichenpos + 2
+    ELSE schlepper zeichenpos := zeichenpos + 1
+  FI.
+
+behandele zu kurze zeile:
+  textzeichen mitzaehlen;
+  IF zeichenwert ausgang = esc char ohne zweites byte ausgang
+    THEN fehler (23, "");
+         neue zeile auffuellen;
+         schreibe und initialisiere neue zeile;
+         zeichenpos := 1;
+         LEAVE berechne erste zeile
+  FI;
+  letzte zeilennr := zeilennr;
+  verarbeite letztes zeichen von puffer;
+  IF neue zeile ausgeloest
+    THEN LEAVE berechne erste zeile
+  FI;
+  schlepper zeichenpos := 1.
+
+behandele zu lange zeile:
+  pitch table auf blank setzen;
+  IF zeilenende bei erstem zeichen
+    THEN loesche nachfolgende blanks;
+         schreibe und initialisiere neue zeile;
+         zeichenpos := 1;
+         LEAVE berechne erste zeile
+  ELIF (puffer SUB zeichenpos) = kommandozeichen
+    THEN zeichenpos INCR 1
+    ELSE zeilenbreite DECR breite (puffer, zeichenpos)
+  FI;
+  IF puffer hatte anfangs absatz
+    THEN einrueckung gemaess pufferanfang
+  FI;
+  LEAVE berechne erste zeile.
+
+zeilenende bei erstem zeichen:
+  zeichenpos < 1.
+
+einrueckung gemaess pufferanfang:
+alte blanks :=
+(anz einrueckungszeichen + anz zeichen fuer einzeilige einrueckung) * blank.
+END PROC berechne erste zeile nach absatz;
+
+PROC pruefe auf ueberschreibung (INT CONST aufzaehlungsbreite,
+                                           anz aufzaehlungszeichen):
+  IF ueberschreibung
+    THEN fehlende blanks errechnen;
+         INT VAR aufzaehlungsende :: zeichenpos - 1;
+         WHILE (puffer SUB aufzaehlungsende) = blank REP
+           aufzaehlungsende DECR 1
+         END REP;
+         dummy := ">"; 
+         dummy CAT subtext (puffer,
+                            aufzaehlungsende - 15, aufzaehlungsende);
+         dummy CAT "< Fehlende Blanks: ";
+         dummy CAT text (anz fehlende blanks);
+         warnung (12, dummy)
+  FI;
+  zeilenbreite := anz aufzaehlungszeichen * einrueckbreite.
+
+ueberschreibung:
+  INT CONST anz zeichen mal einrueckbreite ::
+                                anz aufzaehlungszeichen * einrueckbreite,
+            min zwischenraum :: (einrueckbreite DIV 4);
+  aufzaehlungsbreite + min zwischenraum > anz zeichen mal einrueckbreite.
+
+fehlende blanks errechnen:
+  INT VAR anz fehlende blanks ::
+  (aufzaehlungsbreite + min zwischenraum
+                   - anz zeichen mal einrueckbreite + einrueckbreite - 1)
+   DIV einrueckbreite.
+END PROC pruefe auf ueberschreibung;
+
+(********************** eingabe routinen **************************)
+
+PROC zeile lesen:
+  alte blanks := aktuelle blanks;
+  hole zeile;
+  behandele einrueckung.
+
+hole zeile:
+  IF macro works
+    THEN get macro line (zeile);
+  ELIF eof (eingabe)
+    THEN zeile := "";
+         LEAVE zeile lesen
+    ELSE lesen
+  FI;
+  IF zeile = ""
+    THEN zeile := blank
+  ELIF (zeile SUB length (zeile) - 1) = blank
+    THEN ggf ueberfluessige leerzeichen am ende entfernen
+  FI.
+
+lesen:
+  IF format file in situ
+    THEN read record (eingabe, zeile);
+         delete record (eingabe)
+    ELSE read record (eingabe, zeile);
+         down (eingabe)
+  FI.
+ 
+ggf ueberfluessige leerzeichen am ende entfernen:
+  WHILE NOT within kanji (zeile, length (zeile) - 1) AND
+        subtext (zeile, length (zeile) - 1) = "  " REP 
+    delete char (zeile, length (zeile)) 
+  END REP. 
+ 
+behandele einrueckung:
+  aktuelle blanks := "";
+  IF zeile <> blank
+    THEN INT VAR einrueckung := pos (zeile, ""33"", ""255"", 1);
+         IF einrueckung > 1
+           THEN aktuelle blanks := subtext (zeile, 1, einrueckung - 1);
+                zeile := subtext (zeile, einrueckung)
+         FI
+  FI
+END PROC zeile lesen;
+
+PROC zeile in puffer und zeile lesen:
+  puffer := zeile;
+  zeichenpos := 1;
+  von        := 1;
+  zeile lesen;
+  pufferlaenge := length (puffer);
+  ggf absatz an puffer anfuegen;
+END PROC zeile in puffer und zeile lesen;
+
+PROC ggf absatz an puffer anfuegen:
+  IF    (zeile ist nur absatz AND NOT puffer hat absatz)
+     OR (NOT puffer hat absatz AND only command line (puffer)
+         AND only command line (zeile))
+    THEN puffer CAT blank;
+         pufferlaenge := length (puffer)
+  ELIF puffer ist nur absatz AND (zeile SUB length (zeile)) <> " " AND
+       only command line (zeile)
+    THEN zeile CAT " "
+  FI. 
+ 
+puffer ist nur absatz:
+  puffer = blank.
+
+zeile ist nur absatz: 
+  zeile = blank. 
+END PROC ggf absatz an puffer anfuegen;
+
+(****************** routinen fuer zeilenende behandlung ***********)
+
+PROC verarbeite letztes zeichen von puffer:
+  zeichenpos := length (puffer);
+  begin of this char (puffer, zeichenpos);
+  zeichen := puffer SUB zeichenpos;
+  IF trennung vorhanden
+    THEN IF zeile hat richtige laenge
+           THEN neue zeile auffuellen und ausgabe bei zeilenende
+           ELSE getrennte zeilen zusammenziehen
+         FI
+  ELSE neue zeile auffuellen;
+       IF absatz
+         THEN letzter puffer war absatz := TRUE;
+              IF letztes kommando war macro AND macro hat absatz getaetigt
+                THEN zeile in puffer und zeile lesen;
+                     initialisiere neue zeile;
+                ELSE ausgabe bei zeilenende;
+              FI
+         ELSE neue zeile ggf weiterfuehren
+       FI
+  FI.
+ 
+neue zeile ggf weiterfuehren:
+  IF macro end in dieser oder naechster zeile
+    THEN
+  ELIF zeile = ""
+    THEN schreibe und initialisiere neue zeile;
+         letzter puffer war absatz := TRUE
+  ELIF zeilenbreite + blank breite fuer diesen schrifttyp >
+                                                 aktuelle pitch zeilenlaenge
+    THEN loesche nachfolgende blanks;
+         schreibe und initialisiere neue zeile
+  ELIF in neuer zeile steht etwas
+    THEN neue zeile CAT blank;
+         zeilenbreite INCR blank breite fuer diesen schrifttyp
+  FI;
+  zeile in puffer und zeile lesen.
+
+macro end in dieser oder naechster zeile:
+  macro works AND (pos (puffer, "#*") <> 0 OR pos (zeile, "#*") <> 0).
+
+in neuer zeile steht etwas:
+  pos (neue zeile, ""33"", ""255"", 1) <> 0.
+
+letztes kommando war macro:
+  pos (kommando, "macro") <> 0.
+
+macro hat absatz getaetigt:
+  NOT in neuer zeile steht etwas.
+END PROC verarbeite letztes zeichen von puffer;
+ 
+PROC getrennte zeilen zusammenziehen:
+  zeichen := puffer SUB pufferlaenge;
+  IF NOT within kanji (puffer, pufferlaenge) AND zeichen = trennzeichen
+    THEN zeilenbreite DECR breite (trennzeichen);
+         delete char (puffer, pufferlaenge);
+         pufferlaenge := length (puffer);
+         IF ((puffer SUB pufferlaenge) = trenn k) AND ((zeile SUB 1) = "k")
+           THEN replace (puffer, pufferlaenge, "c");
+                zeilenbreite DECR breite ("k");
+                zeilenbreite INCR breite ("c");
+         FI;
+         zeichenpos := pufferlaenge + 1
+  FI;
+  puffer CAT zeile;
+  zeile lesen;
+  pufferlaenge := length (puffer);
+  ggf absatz an puffer anfuegen;
+END PROC getrennte zeilen zusammenziehen;
+ 
+BOOL PROC trennung vorhanden:
+  IF within kanji (puffer, pufferlaenge)
+    THEN LEAVE trennung vorhanden WITH FALSE
+  FI;
+  zeichen := puffer SUB pufferlaenge;
+  zeichen = trennzeichen OR wort mit bindestrich.
+
+wort mit bindestrich:
+  zeichen = bindestrich AND kein leerzeichen davor
+   AND NOT naechstes wort ist konjunktion AND kein loser gedankenstrich.
+
+kein leerzeichen davor:
+ NOT within kanji (puffer, pufferlaenge - 1) AND
+     (puffer SUB pufferlaenge - 1) <> blank.
+
+naechstes wort ist konjunktion:
+     pos (zeile, "und")   = 1
+  OR pos (zeile, "oder")  = 1
+  OR pos (zeile, "bzw")   = 1
+  OR pos (zeile, "sowie") = 1.
+
+kein loser gedankenstrich:
+  pufferlaenge > 1.
+END PROC trennung vorhanden;
+ 
+BOOL PROC zeile hat richtige laenge:
+  zeilenbreite > aktuelle pitch zeilenlaenge - trennbreite
+END PROC zeile hat richtige laenge;
+
+(*********************** ausgabe routinen *******************)
+
+PROC ende einer neuen zeile:
+  IF zeichenpos > 0
+    THEN begin of this char (puffer, zeichenpos);
+  FI;
+  zeichen := puffer SUB zeichenpos;
+  zeichenpos bereits verarbeitet := 0;
+  IF naechstes zeichen ist absatz
+    THEN zeichenpos := pufferlaenge;
+         verarbeite letztes zeichen von puffer;
+         LEAVE ende einer neuen zeile 
+  ELIF zeichen = blank
+    THEN neue zeile auffuellen (von, zeichenpos - 1);
+         zeichenpos := pos (puffer, ""33"", ""255"", zeichenpos); 
+         von := zeichenpos;
+  ELIF nach zeichenpos beginnt ein neues wort
+    THEN neue zeile auffuellen (von, zeichenpos); 
+         zeichenpos := pos (puffer, ""33"", ""255"", zeichenpos + 1);
+         von := zeichenpos
+  ELIF letzter puffer passte genau
+    THEN (* erstes zeichen des neuen puffers > zeilenbreite *)
+         zeichenpos := 1;
+         von := 1
+    ELSE zeichenpos bereits verarbeitet := zeichenpos;
+         trennung eventuell vornehmen;
+         IF erstes wort auf der absatzzeile laesst sich nicht trennen
+           THEN alte blanks := aktuelle blanks
+         FI
+  FI;
+  loesche nachfolgende blanks;
+  IF NOT in foot uebertrag
+    THEN schreibe und initialisiere neue zeile;
+         zeilenbreite und zeichenpos auf das bereits verarbeitete
+         zeichen setzen;
+  FI.
+
+erstes wort auf der absatzzeile laesst sich nicht trennen:
+  pos (neue zeile, ""33"", ""255"", 1) = 0 AND  (*keine buchstaben*)
+  length (neue zeile) > 1 AND                   (*einrueckung*)
+  (neue zeile SUB length (neue zeile)) = blank. (* Absatz *)
+
+naechstes zeichen ist absatz:
+  zeichenpos + 1 = pufferlaenge AND puffer hat absatz.
+
+nach zeichenpos beginnt ein neues wort:
+  (pufferlaenge > zeichenpos + 2) AND (puffer SUB zeichenpos + 1) = blank.
+
+letzter puffer passte genau:
+  zeichenpos <= 0.
+
+zeilenbreite und zeichenpos auf das bereits verarbeitete zeichen setzen:
+  IF zeichenpos bereits verarbeitet <> 0
+    THEN INT VAR bis := zeichenpos, einfuege pos := bis;
+         zeilenbreite um die bereits verarbeiteten zeichen erhoehen; 
+         zeichenpos := zeichenpos bereits verarbeitet;
+         IF einfuege pos > 1
+           THEN insert char (puffer, blank, einfuege pos);
+                pufferlaenge := length (puffer);
+                von := einfuege pos + 1;
+                char pos move (vorwaerts)
+         FI;
+         char pos move (vorwaerts);
+  FI.
+
+zeilenbreite um die bereits verarbeiteten zeichen erhoehen:
+  zeichenpos := zeichenpos bereits verarbeitet;
+  WHILE (puffer SUB bis) = kommandozeichen REP
+    bis := pos (puffer, kommandozeichen, bis + 1) + 1
+  END REP;
+  begin of this char (puffer, zeichenpos);
+  WHILE zeichenpos >= bis REP
+    IF (puffer SUB zeichenpos) = kommandozeichen
+      THEN ueberspringe das kommando (puffer, zeichenpos, rueckwaerts)
+      ELSE zeilenbreite INCR breite (puffer, zeichenpos);
+    FI;
+    IF zeichenpos <= 1
+      THEN LEAVE zeilenbreite um die bereits verarbeiteten zeichen erhoehen
+    FI;
+    char pos move (rueckwaerts)
+  END REP.
+END PROC ende einer neuen zeile;
+ 
+PROC loesche nachfolgende blanks:
+  WHILE NOT within kanji (neue zeile, length (neue zeile)) AND
+        (neue zeile SUB length (neue zeile)) = blank REP
+    delete char (neue zeile, length (neue zeile))
+  END REP
+END PROC loesche nachfolgende blanks; 
+ 
+PROC neue zeile auffuellen:
+   dummy := subtext (puffer, von);
+   neue zeile CAT dummy
+END PROC neue zeile auffuellen;
+
+PROC neue zeile auffuellen (INT CONST from, to):
+   dummy := subtext (puffer, from, to);
+   neue zeile CAT dummy
+END PROC neue zeile auffuellen;
+
+PROC schreibe neue zeile:
+  IF macro works
+    THEN IF alte neue zeile einschliesslich macro ist auszugeben
+           THEN schreibe textteil einschliesslich macro;
+         FI
+  ELSE schreibe;
+       pruefe auf abbruch
+  FI.
+
+alte neue zeile:
+  before macro state . new line.
+
+alter puffer:
+  before macro state . buffer line.
+
+alte neue zeile einschliesslich macro ist auszugeben:
+  INT VAR text anf :: pos (alte neue zeile, ""33"", ""255"", 1);
+  text anf <> 0.
+
+schreibe textteil einschliesslich macro:
+  dummy := neue zeile;
+  neue zeile := alte neue zeile;
+  IF macro hatte absatz danach
+    THEN neue zeile CAT " "
+    ELSE zeilennr INCR 1
+  FI;
+  schreibe;
+  neue zeile := dummy;
+  alte neue zeile := subtext (alte neue zeile, 1, text anf - 1).
+
+macro hatte absatz danach:
+  length (alter puffer) - 1 = length (alte neue zeile) AND
+     (alter puffer SUB length (alter puffer)) = " ".
+
+pruefe auf abbruch:
+  IF incharety = escape
+    THEN errorstop ("Abbruch mit ESC")
+  FI.
+END PROC schreibe neue zeile;
+
+PROC schreibe:
+  IF format file in situ
+    THEN insert record (eingabe);
+         write record (eingabe, neue zeile);
+         down (eingabe)
+    ELSE insert record (ausgabe);
+         write record  (ausgabe, neue zeile);
+         down (ausgabe);
+         speicher ueberlauf
+  FI;
+  execute stored commands;
+  IF (neue zeile SUB length (neue zeile)) = blank
+    THEN einrueckbreite := eingestellte indentation pitch
+  FI.
+
+speicher ueberlauf:
+  INT VAR size, used;
+  storage (size, used);
+  IF used > size
+    THEN errorstop ("Speicherengpaß")
+  FI.
+END PROC schreibe;
+
+PROC schreibe und initialisiere neue zeile:
+   schreibe neue zeile;
+   initialisiere neue zeile
+END PROC schreibe und initialisiere neue zeile;
+
+PROC ausgabe bei zeilenende:
+  schreibe und initialisiere neue zeile;
+  zeile in puffer und zeile lesen
+END PROC ausgabe bei zeilenende;
+
+PROC neue zeile auffuellen und ausgabe bei zeilenende:
+  neue zeile auffuellen;
+  schreibe und initialisiere neue zeile;
+  zeile in puffer und zeile lesen
+END PROC neue zeile auffuellen und ausgabe bei zeilenende;
+
+PROC initialisiere neue zeile:
+  einrueckung in die neue zeile;
+  zeilennummer mitzaehlen.
+
+einrueckung in die neue zeile:
+  IF  zeichenpos < pufferlaenge AND
+      (puffer hat absatz OR foot ohne absatz am zeilenende)
+    THEN neue zeile := alte blanks
+    ELSE neue zeile := aktuelle blanks
+  FI;
+  zeilenbreite := length (neue zeile) * einrueckbreite;
+  IF zeilenbreite +trennbreite +einrueckbreite >= aktuelle pitch zeilenlaenge
+    THEN fehler (10, "");
+         zeilenbreite := 0;
+  FI.
+
+foot ohne absatz am zeilenende:
+  pos (puffer, "#foot#") > 1 AND pos (puffer, "#foot#") = length (puffer) -5.
+
+zeilennummer mitzaehlen:
+  IF NOT macro works
+    THEN zeilennr INCR 1;
+         cout (zeilennr);
+  FI.
+END PROC initialisiere neue zeile;
+
+PROC letzte neue zeile ausgeben:
+  IF pos (neue zeile, ""33"", ""255"", 1) <> 0
+    THEN schreibe neue zeile
+  FI;
+  offene modifikationen ausgeben;
+  offene indizes ausgeben;
+  IF aktueller editor < 1
+    THEN referenzen ueberpruefen;
+         offene counter referenzen ausgeben;
+  FI.
+
+offene modifikationen ausgeben:
+  WHILE length (modifikations speicher) <> 0 REP
+    dummy := (modifikations speicher SUB 1);
+    delete char (modifikations speicher, 1);
+    dummy CAT " in Zeile ";
+    dummy CAT text (mod zeilennr speicher ISUB 1);
+    delete int (mod zeilennr speicher, 1);
+    warnung (5, dummy)
+  END REP.
+
+offene indizes ausgeben:
+  WHILE length (index speicher) <> 0 REP
+    dummy := (index speicher SUB 1);
+    delete char (index speicher, 1);
+    dummy CAT " in Zeile ";
+    dummy CAT text (ind zeilennr speicher ISUB 1);
+    delete int (ind zeilennr speicher, 1);
+    warnung (6, dummy)
+  END REP.
+
+offene counter referenzen ausgeben:
+  INT VAR begin pos := pos (counter reference store, "#");
+  WHILE begin pos > 0 REP
+    INT VAR end pos := pos (counter reference store, "#", begin pos + 1);
+    IF (counter reference store SUB begin pos - 1) <> "u"
+      THEN fehler (60, subtext (counter reference store, begin pos + 1,
+                                end pos - 1))
+    ELIF (counter reference store SUB begin pos - 2) <> "i"
+      THEN fehler (61, subtext (counter reference store, begin pos + 1,
+                                end pos - 1))
+    FI;
+    begin pos := pos (counter reference store, "#", end pos + 1)
+  END REP.
+END PROC letzte neue zeile ausgeben;
+
+(*********************** silbentrenn routinen *******************)
+
+INT PROC position von (TEXT CONST such zeichen, INT CONST richtung,
+                       INT VAR anz zeich, breite der z):
+  INT VAR index :: zeichenpos;
+  TEXT VAR akt z;
+  anz zeich    := 0;
+  breite der z := 0;
+  WHILE index > 1 AND index < pufferlaenge REP
+    akt z := puffer SUB index;
+    IF akt z   = such zeichen
+      THEN LEAVE position von WITH index
+    ELIF akt z = kommandozeichen
+      THEN ueberspringe das kommando (puffer, index, richtung);
+           IF nur ein kommandozeichen gefunden
+             THEN gehe nur bis erstes kommandozeichen
+           ELIF index <= 1 OR index >= pufferlaenge
+             THEN LEAVE position von WITH index
+           FI
+      ELSE anz zeich INCR 1;
+           breite der z INCR breite (puffer, index)
+    FI;
+    char pos move (index, richtung)
+  END REP;
+  anz zeich INCR 1;
+  breite der z INCR breite (puffer, index);
+  index.
+
+nur ein kommandozeichen gefunden:
+  (puffer SUB index) <> kommandozeichen.
+
+gehe nur bis erstes kommandozeichen:
+  index := zeichenpos; anz zeich := 0; breite der z := 0;
+  WHILE (puffer SUB index) <> kommandozeichen REP
+    anz zeich INCR 1;
+    breite der z INCR breite (puffer, index);
+    char pos move (index, richtung)
+  END REP;
+  IF richtung <> rueckwaerts
+    THEN index DECR 1
+  FI;
+  LEAVE position von WITH index.
+END PROC position von;
+
+PROC ueberspringe das kommando (TEXT CONST t, INT VAR i, INT CONST richtung):
+  REP
+    i INCR richtung;
+    IF within kanji (t, i)
+      THEN i INCR richtung
+    FI
+  UNTIL (t SUB i) = kommandozeichen OR i <= 1 OR i >= length (t) END REP.
+END PROC ueberspringe das kommando;
+
+PROC trennung eventuell vornehmen: 
+INT VAR xwort1, ywort1,
+        anz zeichen davor,
+        breite davor;
+  IF macro works
+    THEN fehler (6, "")
+  FI;
+  trennsymbol := trennzeichen;
+  wortanfang := position von
+                       (blank, rueckwaerts, anz zeichen davor, breite davor);
+  bereite neue zeile bis wortanfang auf;
+  IF trennung sinnvoll
+    THEN versuche zu trennen
+    ELSE zeichenpos := wortanfang
+  FI.
+ 
+bereite neue zeile bis wortanfang auf:
+  IF wortanfang > 1
+    THEN wortanfang INCR 1
+  FI;
+  IF von > wortanfang
+    THEN eliminiere zeichen in neuer zeile bis wortanfang
+    ELSE neue zeile auffuellen (von, wortanfang - 1)
+  FI;
+  von := wortanfang.
+
+eliminiere zeichen in neuer zeile bis wortanfang:
+  INT VAR y :: length (neue zeile);
+  begin of this char (neue zeile, y);
+  WHILE y >= 1 REP
+    IF (neue zeile SUB y) = kommandozeichen
+      THEN ueberspringe das kommando (neue zeile, y, rueckwaerts)
+    FI;
+    char pos move (neue zeile, y, rueckwaerts)
+  UNTIL (neue zeile SUB y) = blank END REP;
+  neue zeile := subtext (neue zeile, 1, y).
+
+trennung sinnvoll:
+  anz zeichen davor > 2 AND breite davor > trennbreite.
+
+versuche zu trennen: 
+  INT CONST k := zeichenpos;
+  naechste zeile ggf heranziehen;
+  zeichenpos := k;
+  wortteile holen;
+  trenn (trennwort ohne komm, wort1 ohne komm, trennsymbol,
+                                               max trennlaenge ohne komm);
+  wort1 mit komm ermitteln;
+  IF lineform mode
+    THEN wort2 := subtext (trennwort, length (wort1) + 1, max trennlaenge);
+         display vorherige zeile bis wortanfang;
+         schreibe nicht trennbaren teil des trennwortes;
+         schreibe zeile nach trennwort;
+         skip input;
+         interaktive worttrennung
+  FI;
+  neue zeile mit trennwort versehen;
+  IF wort1 <> "" AND NOT lineform mode
+    THEN note (zeilen nr); note (": ");
+         note (trennwort);
+         note (" --> ");
+         note (wort1); note (trennsymbol);
+         wort2 := subtext (trennwort, length (wort1) + 1);
+         note (wort2);
+         note line
+  FI.
+
+wortteile holen:
+  zeichenpos durch trennzeichenbreite verschieben;
+  wort1 := subtext (puffer, wortanfang, zeichenpos);
+  max trennlaenge := length (wort1);
+  wortende ermitteln;
+  wort2 := subtext (puffer, zeichenpos, wortende);
+  trennwort := subtext (puffer, wortanfang, wortende);
+  trennwort ohne komm ermitteln;
+  wort1 ohne komm := subtext (trennwort ohne komm, 1, anz zeichen davor);
+  max trenn laenge ohne komm := anz zeichen davor.
+
+trennwort ohne komm ermitteln:
+  trennwort ohne komm := trennwort;
+  WHILE pos (trennwort ohne komm, kommando zeichen) <> 0 REP
+    INT CONST komm anf := pos (trennwort ohne komm, kommando zeichen),
+              komm ende:= pos (trennwort ohne komm, kommando zeichen,
+                                        komm anf + 1);
+    IF komm ende = 0
+      THEN LEAVE trennwort ohne komm ermitteln
+    FI;
+    dummy := subtext (trennwort ohne komm, komm ende + 1);
+    trennwort ohne komm := subtext (trennwort ohne komm, 1, komm anf - 1);
+    trennwort ohne komm CAT dummy;
+  END REP.
+
+wort1 mit komm ermitteln:
+  IF length (wort1 ohne komm) = 0
+    THEN wort1 := "";
+         LEAVE wort1 mit komm ermitteln
+  FI;
+  INT VAR index ohne := 0,
+          index mit  := 0;
+  REP
+    index ohne INCR 1;
+    index mit  INCR 1;
+    WHILE (wort1 SUB index mit) = kommando zeichen REP
+      index mit := pos (wort1, kommando zeichen, index mit + 1) + 1
+    END REP;
+  UNTIL index ohne >= length (wort1 ohne komm) END REP;
+  wort1 := subtext (wort1, 1, index mit). 
+
+zeichenpos durch trennzeichenbreite verschieben:
+  REP
+    zeichen := puffer SUB zeichenpos;
+    IF zeichen = kommandozeichen
+      THEN ueberspringe das kommando (puffer, zeichenpos, rueckwaerts);
+           char pos move (rueckwaerts)
+    ELIF zeichenpos < wortanfang + 1
+      THEN zeichenpos := wortanfang;
+           LEAVE trennung eventuell vornehmen
+      ELSE zeilenbreite DECR breite (puffer, zeichenpos);
+           anz zeichen davor DECR 1;
+           char pos move (rueckwaerts);
+           IF zeilenbreite+breite(trennzeichen) <= aktuellepitchzeilenlaenge
+              AND (puffer SUB zeichenpos) <> kommandozeichen
+             THEN LEAVE zeichenpos durch trennzeichenbreite verschieben
+           FI
+    FI;
+  END REP.
+ 
+wortende ermitteln:
+  INT VAR x1, x2;
+  wortende := position von (blank, 1, x1, x2);
+  IF pufferlaenge > wortende
+   THEN wortende DECR 1
+  FI.
+
+display vorherige zeile bis wortanfang:
+  dummy := neue zeile;
+  dummy CAT subtext (puffer, von, wortanfang - 2);
+  line ;
+  outsubtext (dummy, length (dummy) - 78).
+
+schreibe nicht trennbaren teil des trennwortes:
+  line ;
+  get cursor (xwort1, ywort1);
+  IF length (trennwort) < 70
+    THEN cursor (max trennlaenge + 4, ywort1);
+         outsubtext (trennwort, max trennlaenge + 1)
+  FI.
+ 
+schreibe zeile nach trennwort: 
+   dummy := subtext (puffer, wortende + 1);
+   get cursor (trennwort endepos, ywort1);
+   IF length (trennwort) >= 70
+     THEN
+   ELIF length (dummy) > 75 - trennwort ende pos
+     THEN outsubtext (dummy, 1, 75 - trennwort endepos);
+     ELSE out (dummy);
+          IF (dummy SUB length (dummy)) = blank
+            THEN cursor (78, ywort1);
+                 out (begin mark);
+                 out (end mark)
+          FI
+   FI.
+ 
+trennwort endepos: 
+  xwort1.
+ 
+interaktive worttrennung:
+   REP
+      out (return); 
+      schreibe erstes wort;
+      get cursor (xwort1, ywort1);
+      schreibe trennung;
+      schreibe zweites wort;
+      schreibe rest bei zu langem trennwort;
+      cursor (xwort1, ywort1);
+      hole steuerzeichen und veraendere worte
+   END REP.
+
+schreibe erstes wort:
+  out (begin mark);
+  IF length (trennwort) < 70
+    THEN out (wort1)
+    ELSE outsubtext (wort1, length (wort1) - 60)
+  FI.
+
+schreibe trennung:
+  IF ck vorhanden
+    THEN out (links); out ("k");
+  FI;
+  out (trennsymbol).
+
+schreibe zweites wort:
+  IF length (trennwort) < 70
+    THEN out (wort2)
+    ELSE outsubtext (wort2, 1, 70 - xwort1);
+  FI;
+  out (end mark).
+
+schreibe rest bei zu langem trennwort:
+  IF length (trennwort) >= 70 
+    THEN INT VAR xakt pos;
+         out (cl eol);
+         get cursor (xakt pos, ywort1);
+         outsubtext (trennwort, max trennlaenge + 1,
+                                max trennlaenge + 1 + (78 - xakt pos))
+  FI.
+
+ck vorhanden: 
+  (wort1 SUB length (wort1)) = "c" AND
+              (trennwort SUB (length (wort1) + 1)) = "k".
+ 
+hole steuerzeichen und veraendere worte:
+TEXT VAR steuerzeichen;
+   inchar (steuerzeichen);
+   IF steuerzeichen = links
+     THEN nach links
+   ELIF steuerzeichen = rechts
+     THEN nach rechts
+   ELIF steuerzeichen = hop
+     THEN sprung
+   ELIF steuerzeichen = return
+     THEN line ;
+          LEAVE interaktive worttrennung
+   ELIF steuerzeichen = escape
+     THEN errorstop ("Abbruch mit ESC")
+   ELIF code (steuerzeichen) < 32
+     THEN
+     ELSE trennsymbol := steuerzeichen;
+          LEAVE hole steuerzeichen und veraendere worte
+   FI;
+   IF wort1 = ""
+      OR (wort1 SUB length (wort1)) = bindestrich 
+     THEN trennsymbol := blank 
+     ELSE trennsymbol := trennzeichen 
+   FI. 
+ 
+nach links:
+TEXT VAR ein zeichen;
+INT VAR  position;
+   IF length (wort1) <> 0
+     THEN position := length (wort1);
+          IF (wort1 SUB position) = kommando zeichen
+            THEN ueberspringe das kommando (wort1, position, rueckwaerts);
+          FI;
+          position DECR 1;
+          wort1 := subtext (trennwort, 1, position);
+          wort2 := subtext (trennwort, position + 1, max trennlaenge); 
+          IF rechtes teilwort mit bindestrich
+            THEN ein zeichen := (wort1 SUB length (wort1));
+                 delete char (wort1, length (wort1));
+                 insert char (wort2, ein zeichen, 1)
+          FI
+   FI.
+
+nach rechts:
+   IF length (wort1) <  max trennlaenge
+     THEN position := length (wort1) + 1;
+          IF (trennwort SUB position) = kommando zeichen
+            THEN ueberspringe das kommando (trennwort, position, +1);
+          FI;
+          wort1 := subtext (trennwort, 1, position);
+          wort2 := subtext (trennwort, position + 1, max trennlaenge); 
+          IF rechtes teilwort mit bindestrich
+            THEN wort1 CAT bindestrich;
+                 delete char (wort2, 1)
+          FI
+   FI.
+ 
+rechtes teilwort mit bindestrich:
+  (wort2 SUB 1) = bindestrich AND
+                             pos (buchstaben, wort1 SUB length (wort1)) <> 0.
+
+sprung:
+   inchar(steuerzeichen);
+   IF steuerzeichen = rechts
+     THEN wort1 := subtext (trennwort, 1, max trennlaenge);
+          wort2 := ""
+   ELIF steuerzeichen = links
+     THEN wort1 := "";
+          wort2 := subtext (trennwort, 1, max trennlaenge)
+   FI.
+
+neue zeile mit trennwort versehen:
+  IF wort1 = ""
+    THEN keine trennung
+    ELSE zeichenpos := wortanfang + length (wort1); 
+         mit trennsymbol trennen;
+         von := zeichenpos
+  FI.
+ 
+keine trennung:
+  IF wort ist zu lang fuer limit
+    THEN warnung (7, trennwort);
+         neue zeile CAT trennwort;
+         zeichenpos := wortende + 1;
+         zeichenpos bereits verarbeitet := 0;
+         von := zeichenpos
+    ELSE loesche nachfolgende blanks;
+         zeichenpos := wortanfang
+  FI.
+
+wort ist zu lang fuer limit:
+  length (alte blanks) * einrueckbreite + breite davor + trennbreite
+                                             >= aktuelle pitch zeilenlaenge.
+
+mit trennsymbol trennen:
+  IF (wort1 SUB length (wort1)) = "c" AND
+      (trennwort SUB (length (wort1) + 1)) = "k"
+    THEN replace (wort1, length (wort1), trenn k)
+  FI;
+  neue zeile CAT wort1;
+  IF trennsymbol <> blank
+    THEN neue zeile CAT trennsymbol
+  FI.
+END PROC trennung eventuell vornehmen;
+ 
+PROC naechste zeile ggf heranziehen:
+  IF puffer hat absatz
+     OR puffer hat noch mindestens zwei woerter
+     OR zeile hat eine foot anweisung
+     OR in foot uebertrag
+    THEN LEAVE naechste zeile ggf heranziehen
+  ELIF trennung vorhanden
+    THEN IF zeichenpos < pufferlaenge
+           THEN zeilenbreite INCR breite (trennzeichen)
+         FI;
+         getrennte zeilen zusammenziehen;
+         LEAVE naechste zeile ggf heranziehen
+  FI;
+  puffer CAT blank;
+  puffer CAT zeile;
+  zeile lesen;
+  pufferlaenge := length (puffer);
+  ggf absatz an puffer anfuegen.
+ 
+puffer hat noch mindestens zwei woerter:
+  INT VAR anz :: 0, i :: zeichenpos;
+  WHILE pos (puffer, " ", i) > 0 REP
+    anz INCR 1;
+    i := pos (puffer, " ", i) + 1
+  END REP;
+  anz > 1.
+
+zeile hat eine foot anweisung:
+  pos (puffer, "#foot") <> 0.
+END PROC naechste zeile ggf heranziehen; 
+ 
+(******************** initialisierungs routine *******************)
+
+PROC form initialisieren (TEXT CONST datei):
+   kommando liste :=
+"type:1.1linefeed:3.1limit:4.1free:5.1page:6.01on:8.1off:9.1pagenr:10.2
+pagelength:11.1start:12.2foot:13.0end:14.0head:15.0headeven:16.0
+headodd:17.0bottom:18.0bottomeven:19.0bottomodd:20.0block:21.0";
+   kommando liste CAT
+"material:22.1columns:23.2columnsend:24.0ib:25.012ie:28.012topage:31.1
+goalpage:32.1count:33.01setcount:35.1value:36.01table:38.0tableend:39.0
+rpos:40.1lpos:41.1cpos:42.1dpos:43.2bpos:44.2clearpos:45.01right:47.0";
+  kommando liste CAT
+"center:48.0skip:49.0skipend:50.0u:51.0d:52.0e:53.0headon:54.0headoff:55.0
+bottomon:56.0bottomoff:57.0countperpage:58.0fillchar:59.1mark:60.2
+markend:61.0pageblock:62.0b:63.0counter:64.12setcounter:66.2putcounter:67.01
+storecounter:69.1";
+  kommando liste CAT 
+"ub:70.0ue:71.0fb:72.0fe:73.0";
+  line ;
+  erste fehlerzeilennr    := 0;
+  anz tabs                := 0;
+  zeilennr                := 0;
+  zeilenbreite            := 0;
+  anz blanks freihalten   := 3;
+  herkunftsreferenzen     := "#";
+  zielreferenzen          := "#";
+  aktuelle blanks         := "";
+  font nr speicher        := "";
+  modifikationsspeicher   := "";
+  mod zeilennr speicher   := "";
+  index speicher          := "";
+  ind zeilennr speicher   := "";
+  counter numbering store := "";
+  counter reference store := "";
+  command store           := "";
+  kommando                := "";
+  neue zeile              := "";
+  zeile                   := "";
+  puffer                  := " ";
+  macro works             := FALSE;
+  in tabelle              := FALSE;
+  in d und e verarbeitung := FALSE;
+  kommandos speichern     := TRUE;
+  in foot                 := FALSE;
+  in foot uebertrag       := FALSE;
+  test ob font table vorhanden;
+  bildschirm initialisieren;
+  zeile lesen;
+  zeile in puffer und zeile lesen;
+  einrueckung zweite zeile := "xxx";
+  limit und type ggf anfragen;
+  einrueckbreite := eingestellte indentation pitch ;
+  initialisiere neue zeile;
+  IF einrueckung zweite zeile <> "xxx"
+    THEN aktuelle blanks := einrueckung zweite zeile
+  FI.
+
+test ob font table vorhanden:
+  INT VAR xxx :: x step conversion (0.0). 
+
+bildschirm initialisieren:
+  IF online
+    THEN init
+  FI.
+
+init:
+   page;
+   IF lineform mode
+     THEN put ("LINEFORM") 
+     ELSE put ("AUTOFORM")
+   FI;
+   put ("(für"); put (lines (eingabe)); put ("Zeilen):");
+   put (datei);
+   cursor (1, 3).
+END PROC form initialisieren;
+
+PROC limit und type ggf anfragen:
+  conversion (limit in cm, aktuelle pitch zeilenlaenge);
+  IF ask type and limit
+    THEN type und limit setzen
+    ELSE alter schriftname := kein vorhandener schriftname;
+         stelle font ein
+  FI;
+  REAL VAR x :: limit in cm;
+  conversion (x, aktuelle pitch zeilenlaenge);
+  IF x = fehler wert
+    THEN limit in cm := 16.0;
+         conversion (limit in cm, aktuelle pitch zeilenlaenge)
+    ELSE limit in cm := x
+  FI;
+  trennbreite setzen.
+
+type und limit setzen:
+  LET type text                    = "#type (""",
+      limit text                   = "#limit (",
+      kommando ende text           = ")#",
+      kein vorhandener schriftname = "#####";
+  IF type und limit anweisungen nicht vorhanden
+    THEN type und limit fragen
+    ELSE hole font;
+         alter schriftname := kein vorhandener schriftname
+  FI.
+
+type und limit fragen:
+  type anfragen;
+  type in neue zeile;
+  limit anfragen;
+  limit in neue zeile;
+  IF NOT format file in situ
+    THEN schreibe neue zeile;
+         zeilen nr INCR 1
+  FI;
+  IF NOT puffer hat absatz
+    THEN einrueckung zweite zeile := aktuelle blanks;
+         aktuelle blanks := alte blanks;(* Einrueckung fuer die erste zeile*)
+  FI;
+  line.
+
+type und limit anweisungen nicht vorhanden:
+  (pos (puffer, type text) <> 1 OR pos (puffer, "limit") < 12).
+
+type anfragen:
+  put ("Bitte Schrifttyp    :");
+  IF font table name = font table
+    THEN dummy := font (font nr);
+    ELSE dummy := font (1);
+         font table name := font table
+  FI;
+  REP
+    editget (dummy);
+    IF font exists (dummy)
+      THEN alter schriftname := dummy;
+           font nr := font (dummy);
+           hole font;
+           LEAVE type anfragen
+      ELSE line ;
+           put ("ERROR: unbekannter Schrifttyp");
+           line (2);
+           put ("Schrifttyp bitte nochmal:")
+    FI
+  END REP.
+
+type in neue zeile:
+  neue zeile := type text;
+  neue zeile CAT dummy;
+  neue zeile CAT """";
+  neue zeile CAT kommando ende text.
+ 
+limit anfragen:
+  line ;
+  put ("Zeilenbreite (in cm):");
+  dummy := text (limit in cm);
+  REP
+    editget (dummy);
+    limit in cm := real (dummy);
+    IF last conversion ok AND pos (dummy, ".") <> 0
+      THEN LEAVE limit anfragen
+      ELSE line ;
+           put ("ERROR: Falsche Angabe");
+           line (2);
+           put ("Zeilenbreite (in cm) bitte nochmal:");
+    FI
+  END REP.
+
+limit in neue zeile:
+  neue zeile CAT limit text;
+  neue zeile CAT dummy;
+  neue zeile CAT kommando ende text;
+  neue zeile CAT " ".
+END PROC limit und type ggf anfragen;
+
+PROC start form (TEXT CONST datei): 
+  IF NOT format file in situ 
+    THEN last param (datei);
+  FI;
+  disable stop; 
+     dateien assoziieren;
+     zeilen form (datei);
+     IF is error
+       THEN fehlerbehandlung
+       ELSE datei neu nach alt kopieren
+     FI;
+     zwischendatei loeschen;
+  enable stop;
+  col (eingabe, 1);
+  IF aktueller editor > 0
+    THEN set range (file, alter bereich)
+  FI;
+  IF anything noted
+    THEN IF aktueller editor = 0
+           THEN to line (eingabe, erste fehler zeilen nr);
+           ELSE alles neu
+         FI;
+         note edit (eingabe)
+  ELIF NOT format file in situ
+    THEN to line (eingabe, 1)
+  FI.
+
+dateien assoziieren:
+  IF format file in situ 
+    THEN
+  ELIF exists (datei)
+    THEN IF subtext (datei, length (datei) - 1) = ".p"
+           THEN errorstop
+                ("'.p'-Datei kann nicht mit lineform bearbeitet werden")
+         FI;
+         eingabe := sequential file (modify, datei);
+         ausgabe datei einrichten
+    ELSE errorstop ("Datei existiert nicht")
+  FI;
+  to line (eingabe, 1);
+  col (eingabe, 1).
+
+ausgabe datei einrichten:
+  ds := nilspace;
+  ausgabe := sequential file (modify, ds);
+  to line (ausgabe, 1);
+  copy attributes (eingabe, ausgabe).
+
+fehlerbehandlung:
+  put error;
+  clear error;
+  font nr := 1;
+  font table name := "";
+  limit in cm := 16.0;
+  IF format file in situ
+    THEN insert record (eingabe);
+         write record  (eingabe, neue zeile);
+         down (eingabe);
+         insert record (eingabe);
+         write record  (eingabe, puffer);
+         down (eingabe);
+         insert record (eingabe);
+         write record  (eingabe, zeile)
+  FI.
+
+datei neu nach alt kopieren:
+  IF NOT format file in situ 
+    THEN forget (datei, quiet);
+         copy (ds, datei);
+         eingabe := sequential file (modify, datei)
+  FI. 
+
+zwischendatei loeschen:
+  IF NOT format file in situ 
+    THEN forget (ds)
+  FI.
+END PROC start form;
+ 
+(************** line/autoform fuer benannte Dateien ******************)
+
+PROC lineform:
+  IF aktueller editor > 0
+    THEN IF mark
+           THEN editor bereich bearbeiten
+           ELSE errorstop ("kein markierter Bereich")
+         FI
+    ELSE lineform (last param)
+  FI.
+
+editor bereich bearbeiten:
+  disable stop;
+    file := editfile; 
+    set marked range (file, alter bereich); 
+    lineform (file);
+  enable stop;
+END PROC lineform;
+ 
+PROC lineform (TEXT CONST datei):
+  ask type and limit  := TRUE;
+  lineform mode       := TRUE;
+  format file in situ := FALSE; 
+  start form (datei)
+END PROC lineform;
+ 
+PROC autoform:
+  IF aktueller editor > 0
+    THEN IF mark
+           THEN editor bereich bearbeiten
+           ELSE errorstop ("kein markierter Bereich")
+         FI
+    ELSE auto form (last param)
+  FI.
+
+editor bereich bearbeiten:
+  disable stop;
+    file := editfile; 
+    set marked range (file, alter bereich); 
+    autoform (file);
+  enable stop
+END PROC autoform;
+
+PROC autoform (TEXT CONST datei):
+  ask type and limit  := TRUE;
+  lineform mode       := FALSE;
+  format file in situ := FALSE; 
+  start form (datei)
+END PROC autoform;
+ 
+(******************** line/autoform fuer files ************************)
+
+PROC lineform (FILE VAR f):
+  enable stop;
+  eingabe := f; 
+  format file in situ := TRUE;
+  ask type and limit  := TRUE;
+  lineform mode       := TRUE;
+  start form ("");
+END PROC lineform;
+
+PROC autoform (FILE VAR f):
+  enable stop;
+  eingabe := f; 
+  format file in situ := TRUE;
+  ask type and limit  := TRUE;
+  lineform mode       := FALSE;
+  start form ("");
+END PROC autoform;
+
+PROC lineform (FILE VAR f, TEXT CONST type name, REAL CONST file limit): 
+  eingabe := f; 
+  format file in situ := TRUE;
+  lineform mode       := TRUE; 
+  ask type and limit  := FALSE;
+  par1        := type name; 
+  limit in cm := file limit;
+  start form (""); 
+END PROC lineform; 
+
+PROC autoform (FILE VAR f, TEXT CONST type name, REAL CONST file limit): 
+  eingabe := f; 
+  format file in situ := TRUE;
+  lineform mode       := FALSE; 
+  ask type and limit  := FALSE;
+  par1        := type name; 
+  limit in cm := file limit;
+  start form (""); 
+END PROC autoform; 
+END PACKET liner;
+(*
+REP
+    copy("lfehler","zz");
+    IF yes ("autoform")
+      THEN autoform ("zz")
+      ELSE lineform ("zz")
+    FI;
+    edit("zz");
+    forget("zz")
+UNTIL yes ("ENDE") ENDREP;
+*)
+

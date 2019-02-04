@@ -1,0 +1,77 @@
+PACKET name conversion DEFINES                  (* Copyright (C) 1985 *)
+                                                (* Frank Klapper      *)
+  dos name,                                     (* 31.12.86           *)
+
+  read  modus,
+  write modus:
+
+BOOL CONST read  modus :: TRUE,
+           write modus :: NOT read modus;
+
+LET upper case chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789$#&§!()-{}`_",
+    lower case chars = "abcdefghijklmnopqrstuvwxyz";
+
+TEXT PROC dos name (TEXT CONST eu name, BOOL CONST read write modus):
+  enable stop;
+  INT CONST point pos :: pos (eu name, ".");
+  IF name extension exists
+    THEN changed name with extension
+    ELSE changed name without extension
+  FI.
+
+name extension exists:
+  point pos > 0.
+
+changed name with extension:
+  TEXT CONST name pre  :: compress (subtext (eu name, 1, point pos - 1)),
+             name post :: compress (subtext (eu name, point pos + 1));
+  IF LENGTH name pre = 0 OR LENGTH name pre > 8 OR LENGTH name post > 3
+    THEN error
+  FI;
+  IF LENGTH name post = 0
+    THEN new name (name pre, read write modus)
+    ELSE new name (name pre, read write modus) + "."
+       + new name (name post, read write modus)
+  FI.
+
+changed name without extension:
+  IF LENGTH eu name > 8 OR LENGTH euname < 1
+    THEN error
+  FI;
+  new name (eu name, read write modus).
+
+error:
+  error stop ("Unzulässiger Name").
+
+END PROC dos name;
+
+TEXT PROC new name (TEXT CONST old name, BOOL CONST read write modus):
+  TEXT VAR new := "";
+  INT VAR count;
+  FOR count FROM 1 UPTO LENGTH old name REP
+    convert char
+  PER;
+  new.
+
+convert char:
+  TEXT CONST char :: old name SUB count;
+  IF is lower case char
+    THEN new CAT (upper case chars SUB string pos)
+  ELIF is upper case char OR read write modus
+    THEN new CAT char
+  ELSE error stop ("Unzulässiger Name")
+  FI.
+
+is lower case char:
+  pos (lower case chars, char) > 0.
+
+is upper case char:
+  pos (upper case chars, char) > 0. 
+
+string pos:
+  pos (lower case chars, char).
+
+END PROC new name; 
+ 
+END PACKET name conversion;
+

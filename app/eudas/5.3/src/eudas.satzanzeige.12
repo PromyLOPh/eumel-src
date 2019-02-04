@@ -1,0 +1,1007 @@
+PACKET satzanzeige 
+
+(*************************************************************************)
+(*                                                                       *)
+(*     Anzeige von EUDAS-Saetzen                                         *)
+(*                                                                       *)
+(*     Version 12                                                        *)
+(*                                                                       *)
+(*     Autor: Thomas Berlage                                             *)
+(*     Stand: 05.02.89                                                   *)
+(*                                                                       *)
+(*************************************************************************)
+
+  DEFINES
+
+  anzeigefenster,
+  bild ausgeben,
+  aendern,
+  einfuegen,
+  suchen,
+  feldauswahl,
+  rollen,
+  exit durch,
+  exit zeichen :
+
+
+LET
+  maxfelder = 256;
+
+LET
+  blank = " ",
+  niltext = "",
+  cleol = ""5"",
+  begin mark = ""15"",
+  blank end mark = " "14"",
+  blank end mark blank = " "14" ";
+
+ROW maxfelder STRUCT (INT feldnr, anfang) VAR zeilen;
+
+INT VAR
+  anzahl zeilen,
+  erste zeile,
+  laenge := 24,
+  breite := 79,
+  zeilen anf := 1,
+  spalten anf := 1,
+  feldnamenlaenge,
+  inhaltsbreite,
+  zuletzt angezeigter satz := 0,
+  letzte kombi := 0,
+  anzeigeversion := dateiversion - 1,
+  anzeigedateien := 0;
+
+BOOL VAR
+  neues fenster := TRUE,
+  bis zeilenende := TRUE,
+  save ds voll := FALSE,
+  namen ausgeben;
+
+FENSTER VAR fenster;
+fenster initialisieren (fenster);
+
+DATASPACE VAR
+  save ds,
+  edit ds;
+
+FILE VAR edit file;
+
+TEXT VAR
+  ueberschrift,
+  zeilenpuffer;
+
+LET
+  fenster zu klein =  #801#
+    "Anzeigefenster zu klein";
+
+
+PROC anzeigefenster (FENSTER CONST fe) :
+
+  INT VAR x anf, y anf, x laenge, y laenge;
+  fenstergroesse (fe, x anf, y anf, x laenge, y laenge);
+  IF x laenge >= 39 THEN
+    fenstergroesse setzen (fenster, fe);
+    bis zeilenende := x anf + x laenge >= x size;
+    breite := x laenge; laenge := y laenge;
+    spalten anf := x anf;
+    zeilen anf := y anf;
+    neues fenster := TRUE
+  ELSE
+    errorstop (fenster zu klein)
+  END IF
+
+END PROC anzeigefenster;
+
+FENSTER PROC anzeigefenster :
+  fenster
+END PROC anzeigefenster;
+
+PROC fensterzugriff anmelden :
+
+  BOOL VAR fenster veraendert;
+  fensterzugriff (fenster, fenster veraendert);
+  IF fenster veraendert THEN
+    namen ausgeben := TRUE
+  END IF
+
+END PROC fensterzugriff anmelden;
+
+PROC zeilendeskriptor aktualisieren :
+
+  IF neue datei seit letztem mal OR neues fenster THEN
+    neue feldnummern uebernehmen;
+    feldnamenlaenge bestimmen;
+    ueberschrift generieren;
+    fuer bildausgabe sorgen;
+    edit datei loeschen;
+    veraenderungsstatus merken
+  END IF .
+
+neue datei seit letztem mal :
+  anzeigeversion <> dateiversion .
+
+neue feldnummern uebernehmen :
+  anzahl zeilen := 0;
+  WHILE anzahl zeilen < anzahl felder REP
+    anzahl zeilen INCR 1;
+    zeilen (anzahl zeilen). feldnr := anzahl zeilen
+  END REP;
+  erste zeile := 1 .
+
+feldnamenlaenge bestimmen :
+  INT VAR feldnr;
+  feldnamenlaenge := 11;
+  FOR feldnr FROM 1 UPTO anzahl felder REP
+    feldnamen bearbeiten (feldnr,
+      PROC (TEXT CONST, INT CONST, INT CONST) namen max)
+  END REP;
+  feldnamenlaenge := min (feldnamenlaenge, breite DIV 3);
+  inhaltsbreite := breite - feldnamenlaenge - 3 .
+
+fuer bildausgabe sorgen :
+  namen ausgeben := TRUE .
+
+edit datei loeschen :
+  forget (edit ds);
+  edit ds := nilspace;
+  IF neue datei seit letztem mal AND save ds voll THEN
+    forget (save ds);
+    save ds voll := FALSE
+  END IF .
+
+veraenderungsstatus merken :
+  anzeigeversion := dateiversion;
+  anzeigedateien := anzahl dateien;
+  neues fenster := FALSE .
+
+END PROC zeilendeskriptor aktualisieren;
+
+PROC namen max (TEXT CONST satz, INT CONST von, bis) :
+
+  feldnamenlaenge INCR length (satz) - length (satz);
+      (* damit Parameter benutzt *)
+  feldnamenlaenge := max (feldnamenlaenge, bis - von + 1)
+
+END PROC namen max;
+
+PROC rollen (INT CONST vektor) :
+
+  erste zeile := erste zeile + vektor;
+  IF erste zeile < 1 THEN
+    erste zeile := 1
+  ELIF erste zeile > letzte zeile THEN
+    erste zeile := max (letzte zeile, 1)
+  END IF;
+  namen ausgeben := TRUE .
+
+letzte zeile :
+  anzahl zeilen - laenge + 3 .
+
+END PROC rollen;
+
+PROC feldauswahl (TEXT CONST wahlvektor) :
+
+  zeilendeskriptor aktualisieren;
+  feldnummern uebernehmen;
+  namen ausgeben := TRUE .
+
+feldnummern uebernehmen :
+  anzahl zeilen := length (wahlvektor);
+  INT VAR zeilennr;
+  FOR zeilennr FROM 1 UPTO anzahl zeilen REP
+    zeilen (zeilennr). feldnr := code (wahlvektor SUB zeilennr)
+  END REP;
+  erste zeile := 1 .
+
+END PROC feldauswahl;
+
+
+(**************************** editfile ***********************************)
+
+INT VAR gelesene zeile;
+
+PROC edit file loeschen :
+
+  type (edit ds, - 1);
+  edit file := sequential file (modify, edit ds);
+  edit info (edit file, -1);
+  to line (editfile, 1);
+  col (editfile, 1);
+  maxlinelength (edit file, 10000);
+  gelesene zeile := 1
+
+END PROC edit file loeschen;
+
+.
+noch zeile zu bearbeiten :
+  gelesene zeile <= anzahl zeilen .
+
+PROC naechste zeile bearbeiten (PROC (TEXT CONST, INT CONST) bearbeite) :
+
+  zu bearbeitende zeilen bestimmen;
+  IF eof (editfile) THEN
+    bearbeite ("", feldnr)
+  ELIF mehrere zeilen THEN
+    zeilen verketten;
+    blanks abschneiden;
+    bearbeite (zeilenpuffer, feldnr)
+  ELIF blanks am ende THEN
+    read record (edit file, zeilenpuffer);
+    blanks abschneiden;
+    bearbeite (zeilenpuffer, feldnr);
+    down (edit file)
+  ELSE
+    exec (PROC (TEXT CONST, INT CONST) bearbeite, edit file, feldnr);
+    down (edit file)
+  END IF .
+
+zu bearbeitende zeilen bestimmen :
+  INT CONST
+    von := gelesene zeile,
+    feldnr := zeilen (von). feldnr;
+  REP 
+    gelesene zeile INCR 1
+  UNTIL gelesene zeile > anzahl zeilen COR neues feld END REP .
+
+neues feld :
+  zeilen (gelesene zeile). feldnr <> feldnr .
+
+mehrere zeilen :
+  gelesene zeile - von > 1 .
+
+zeilen verketten :
+  zeilenpuffer := "";
+  REP
+    exec (PROC (TEXT CONST, INT CONST) verkette,
+          edit file, length (zeilenpuffer));
+    down (edit file)
+  UNTIL eof (edit file) OR line no (edit file) = gelesene zeile END REP .
+
+blanks am ende :
+  INT CONST ende := len (edit file);
+  subtext (edit file, ende, ende) = blank .
+
+END PROC naechste zeile bearbeiten;
+
+PROC verkette (TEXT CONST edit zeile, INT CONST pufferlaenge) :
+
+  IF pufferlaenge > 0 CAND (zeilenpuffer SUB pufferlaenge) <> blank
+                      CAND (edit zeile SUB 1) <> blank THEN
+    zeilenpuffer CAT blank
+  END IF;
+  zeilenpuffer CAT edit zeile
+
+END PROC verkette;
+
+PROC blanks abschneiden :
+
+  INT VAR ende := length (zeilenpuffer);
+  WHILE (zeilenpuffer SUB ende) = blank REP
+    ende DECR 1
+  END REP;
+  zeilenpuffer := subtext (zeilenpuffer, 1, ende)
+
+END PROC blanks abschneiden;
+
+
+(*************************** Funktionen **********************************)
+
+
+BOOL VAR aus einfuegen;
+
+PROC einfuegen (PROC hilfe) :
+
+  enable stop;
+  zeilendeskriptor aktualisieren;
+  IF anzahl zeilen > 0 THEN
+    edit file loeschen;
+    fensterzugriff anmelden;
+    editieren (PROC hilfe);
+    satz einfuegen;
+    aus einfuegen := TRUE;
+    felder aendern
+  END IF
+
+END PROC einfuegen;
+
+PROC felder aendern :
+
+  WHILE noch zeile zu bearbeiten REP
+    naechste zeile bearbeiten
+      (PROC (TEXT CONST, INT CONST) ein feld aendern)
+  END REP;
+  aenderungen eintragen
+
+END PROC felder aendern;
+
+PROC ein feld aendern (TEXT CONST inhalt, INT CONST feldnr) :
+
+  IF NOT aus einfuegen COR inhalt <> niltext THEN
+    feld aendern (feldnr, inhalt)
+  END IF
+
+END PROC ein feld aendern;
+
+PROC aendern (PROC hilfe) :
+
+  enable stop;
+  IF dateiende THEN
+    einfuegen (PROC hilfe)
+  ELSE
+    wirklich aendern
+  END IF .
+
+wirklich aendern :
+  zeilendeskriptor aktualisieren;
+  IF anzahl zeilen > 0 THEN
+    edit file loeschen;
+    fensterzugriff anmelden;
+    bild aufbauen (namen ausgeben);
+    feldinhalte eintragen;
+    editieren (PROC hilfe);
+    aus einfuegen := FALSE;
+    felder aendern
+  END IF .
+
+feldinhalte eintragen :
+  kopierzeile := 1;
+  WHILE kopierzeile <= anzahl zeilen REP
+    feld bearbeiten (zeilen (kopierzeile). feldnr,
+      PROC (TEXT CONST, INT CONST, INT CONST) inhalt kopieren);
+    insert record (edit file);
+    write record (edit file, zeilenpuffer);
+    down (edit file);
+    kopierzeile INCR 1
+  END REP;
+  to line (edit file, 1) .
+
+END PROC aendern;
+
+INT VAR kopierzeile;
+
+PROC inhalt kopieren (TEXT CONST satz, INT CONST von, bis) :
+
+  zeilenpuffer := subtext (satz, feldanfang, feldende) .
+
+feldanfang :
+  von + zeilen (kopierzeile). anfang .
+
+feldende :
+  IF keine fortsetzung THEN
+    bis
+  ELSE
+    von + zeilen (kopierzeile + 1). anfang - 1
+  END IF .
+
+keine fortsetzung :
+  kopierzeile = anzahl zeilen COR
+    zeilen (kopierzeile + 1). feldnr <> zeilen (kopierzeile). feldnr .
+
+END PROC inhalt kopieren;
+
+PROC suchen (PROC hilfe) :
+
+  enable stop;
+  zeilendeskriptor aktualisieren;
+  IF anzahl zeilen > 0 THEN
+    edit file loeschen;
+    fensterzugriff anmelden;
+    IF such version <> 0 THEN
+      altes suchmuster eintragen
+    END IF;
+    editieren (PROC hilfe);
+    suchbedingung einstellen
+  END IF .
+
+altes suchmuster eintragen :
+  kopierzeile := 1;
+  WHILE kopierzeile <= anzahl zeilen REP
+    insert record (edit file);
+    suchmusterzeile eintragen;
+    down (edit file);
+    kopierzeile INCR 1
+  END REP;
+  to line (edit file, 1) .
+
+suchmusterzeile eintragen :
+  IF zeilen (kopierzeile). anfang = 0 THEN
+    suchbedingung lesen (zeilen (kopierzeile). feldnr, zeilenpuffer);
+    write record (edit file, zeilenpuffer)
+  END IF .
+
+suchbedingung einstellen :
+  suchbedingung loeschen;
+  WHILE noch zeile zu bearbeiten REP
+    naechste zeile bearbeiten (PROC (TEXT CONST, INT CONST) zeilenbedingung)
+  END REP .
+
+END PROC suchen;
+
+PROC zeilenbedingung (TEXT CONST zeile, INT CONST feldnr) :
+
+  suchbedingung (feldnr, zeile)
+
+END PROC zeilenbedingung;
+
+PROC bild ausgeben (BOOL CONST datei veraendert) :
+
+  enable stop;
+  zeilendeskriptor aktualisieren;
+  fensterzugriff anmelden;
+  IF datei veraendert OR namen ausgeben OR anderer satz THEN
+    bild aufbauen (namen ausgeben);
+    zuletzt angezeigter satz := satznummer;
+    letzte kombi := satzkombination;
+    einzelbild ausgeben (TRUE)
+  ELSE
+    ueberschrift ausgeben (TRUE)
+  END IF .
+
+anderer satz :
+  satznummer <> zuletzt angezeigter satz OR letzte kombi <> satzkombination .
+
+END PROC bild ausgeben;
+
+
+(*************************** Bild aufbauen *******************************)
+
+INT VAR anfang;
+
+BOOL VAR fertig;
+
+
+PROC bild aufbauen (BOOL CONST kuerzen erlaubt) :
+
+  INT VAR
+    zeilennr := 1,
+    alte feldnr := 0;
+  fertig := TRUE;
+  WHILE zeilennr <= anzahl zeilen OR NOT fertig REP
+    eine zeile behandeln
+  END REP .
+
+eine zeile behandeln :
+  IF fertig CAND zeilen (zeilennr). feldnr = alte feldnr THEN
+    eventuell zusammenruecken
+  ELSE
+    IF altes feld beendet THEN
+      feldwechsel
+    END IF;
+    zeilen (zeilennr). anfang := anfang;
+    feld bearbeiten (zeilen (zeilennr). feldnr,
+      PROC (TEXT CONST, INT CONST, INT CONST) laenge bestimmen);
+    zeilennr INCR 1
+  END IF .
+
+eventuell zusammenruecken :
+  IF kuerzen erlaubt THEN
+    zeile loeschen (zeilennr)
+  ELSE
+    zeilen (zeilennr). anfang := anfang;
+    zeilennr INCR 1
+  END IF .
+
+altes feld beendet :
+  zeilennr > anzahl zeilen COR zeilen (zeilennr). feldnr <> alte feldnr .
+
+feldwechsel :
+  IF fertig THEN
+    neues feld anfangen
+  ELSE
+    zeile einfuegen (zeilennr);
+    zeilen (zeilennr). feldnr := alte feldnr
+  END IF .
+
+neues feld anfangen :
+  alte feldnr := zeilen (zeilennr). feldnr;
+  anfang := 0 .
+
+END PROC bild aufbauen;
+
+PROC laenge bestimmen (TEXT CONST satz, INT CONST von, bis) :
+
+  INT CONST restlaenge := bis - von - anfang + 1;
+  IF restlaenge > inhaltsbreite - 2 THEN
+    anfang INCR inhaltsbreite - 2;
+    rueckwaerts blank suchen;
+    fertig := FALSE
+  ELSE
+    anfang INCR restlaenge;
+    fertig := TRUE
+  END IF .
+
+rueckwaerts blank suchen :
+  INT VAR stelle := von + anfang - 1;
+  IF trennung im wort AND blanks vorhanden THEN
+    WHILE (satz SUB stelle) <> blank REP
+      stelle DECR 1; anfang DECR 1
+    END REP
+  END IF .
+
+trennung im wort :
+  (satz SUB stelle) <> blank .
+
+blanks vorhanden :
+  pos (satz, blank, stelle - inhaltsbreite + 3, stelle - 1) > 0 .
+
+END PROC laenge bestimmen;
+
+PROC zeile einfuegen (INT CONST zeilennr) :
+
+  INT VAR i;
+  FOR i FROM anzahl zeilen DOWNTO zeilennr REP
+    zeilen (i+1) := zeilen (i)
+  END REP;
+  anzahl zeilen INCR 1;
+  namen ausgeben := TRUE
+
+END PROC zeile einfuegen;
+
+PROC zeile loeschen (INT CONST zeilennr) :
+
+  INT VAR i;
+  FOR i FROM zeilennr + 1 UPTO anzahl zeilen REP
+    zeilen (i-1) := zeilen (i)
+  END REP;
+  anzahl zeilen DECR 1;
+  namen ausgeben := TRUE
+
+END PROC zeile loeschen;
+
+
+(************************** Editieren ************************************)
+
+INT VAR rueckkehrcode;
+
+TEXT VAR
+  zeilenrest,
+  zeile vorher,
+  zeile nachher,
+  quit zeichen := "",
+  quit durch;
+
+LET
+  hinweiszeile =  #802#
+    ""15" Bild verschoben ! ESC 1 druecken ! "14"";
+
+LET
+  eudas res = ""3""10"19"11""12""13"q?hpg";
+
+LET
+  oben = 1,
+  unten = 2,
+  eins = 3,
+  neun = 4,
+  rubin = 5,
+  rubout = 6,
+  return = 7,
+  edit ende = 8,
+  frage = 9,
+  abbruch = 10,
+  double = 11,
+  esc get = 12;
+
+
+PROC editieren (PROC hilfe) :
+
+  INT VAR alte zeilennr := erste zeile;
+  lernsequenz auf taste legen ("D", date);
+  REP
+    einzelbild ausgeben (FALSE);
+    file verlaengern;
+    erste und letzte zeile markieren;
+    file editieren;
+    nachbehandeln
+  UNTIL wirklich verlassen END REP;
+  to line (edit file, 1);
+  col (edit file, 1) .
+
+file verlaengern :
+  IF lines (edit file) < anzahl zeilen + 1 THEN
+    output (edit file);
+    line (editfile, anzahl zeilen - lines (editfile) + 2);
+    modify (edit file)
+  END IF .
+
+erste und letzte zeile markieren :
+  IF erste zeile <> 1 THEN
+    einsetzen (erste zeile - 1, zeile vorher)
+  END IF;
+  einsetzen (zeile nach bildschirm, zeile nachher);
+  to line (edit file, alte zeilennr) .
+
+zeile nach bildschirm :
+  min (anzahl zeilen + 1, erste zeile + laenge - 1) .
+
+file editieren :
+  open editor (groesster editor + 1, edit file, TRUE,
+    spalten anf + feldnamenlaenge + 3, zeilen anf,
+    inhaltsbreite, editlaenge);
+  edit (groesster editor, eudas res + quit zeichen,
+        PROC (TEXT CONST) eudas interpreter);
+  auf lernwarnmeldung achten .
+
+auf lernwarnmeldung achten :
+  INT VAR test x, test y;
+  get cursor (test x, test y);
+  IF test x <> 1 THEN bildschirm neu END IF .
+
+editlaenge :
+  min (anzahl zeilen - erste zeile + 2, laenge) .
+
+nachbehandeln :
+  alte zeilennr := line no (edit file);
+  hinweiszeilen entfernen;
+  SELECT rueckkehrcode OF
+  CASE oben :    nach oben rollen
+  CASE unten :   nach unten rollen
+  CASE eins :    auf erste zeile
+  CASE neun :    auf letzte zeile
+  CASE rubin :   zeile umbrechen
+  CASE rubout :  zeile entfernen
+  CASE return :  aktuelle zeile als anfang
+  CASE frage :   hilfe; namen ausgeben := TRUE
+  CASE abbruch : errorstop (niltext)
+  CASE double :  in save ds kopieren
+  CASE esc get : aus save ds holen
+  END SELECT .
+
+hinweiszeilen entfernen :
+  INT CONST spalte := col (edit file);
+  col (edit file, 1);
+  IF erste zeile <> 1 THEN
+    entfernen (erste zeile - 1, zeile vorher)
+  END IF;
+  entfernen (zeile nach bildschirm, zeile nachher);
+  col (edit file, spalte) .
+
+nach oben rollen :
+  INT VAR abstand;
+  abstand := alte zeilennr - erste zeile;
+  rollen (-laenge + 1);
+  alte zeilennr := erste zeile + abstand .
+
+nach unten rollen :
+  abstand := alte zeilennr - erste zeile;
+  rollen (laenge - 1);
+  alte zeilennr := min (erste zeile + abstand, anzahl zeilen) .
+
+auf erste zeile :
+  rollen (-999);
+  alte zeilennr := 1 .
+
+auf letzte zeile :
+  abstand := alte zeilennr - erste zeile;
+  rollen (999);
+  alte zeilennr := min (erste zeile + abstand, anzahl zeilen) .
+
+zeile umbrechen :
+  to line (edit file, alte zeilennr);
+  aktuelle zeile aufsplitten;
+  zeile einfuegen (alte zeilennr) .
+
+aktuelle zeile aufsplitten :
+  read record (edit file, zeilenpuffer);
+  zeilenrest := subtext (zeilenpuffer, spalte);
+  zeilenpuffer := subtext (zeilenpuffer, 1, spalte - 1);
+  write record (edit file, zeilenpuffer);
+  down (edit file);
+  insert record (edit file);
+  write record (edit file, zeilenrest) .
+
+zeile entfernen :
+  to line (edit file, alte zeilennr);
+  IF spalte = 1 AND
+     (nicht letzte zeile CAND noch gleiche dahinter OR
+      nicht erste zeile CAND noch gleiche davor) THEN
+    ganz loeschen
+  ELSE
+    nur ueberschreiben
+  END IF .
+
+nicht letzte zeile :
+  alte zeilennr <> anzahl zeilen .
+
+noch gleiche dahinter :
+  zeilen (alte zeilennr + 1). feldnr = zeilen (alte zeilennr). feldnr .
+
+nicht erste zeile :
+  alte zeilennr <> 1 .
+
+noch gleiche davor :
+  zeilen (alte zeilennr - 1). feldnr = zeilen (alte zeilennr). feldnr .
+
+ganz loeschen :
+  delete record (edit file);
+  zeile loeschen (alte zeilennr);
+  IF alte zeilennr > anzahl zeilen THEN
+    alte zeilennr := anzahl zeilen
+  END IF .
+
+nur ueberschreiben :
+  read record (edit file, zeilenpuffer);
+  zeilenpuffer := subtext (zeilenpuffer, 1, spalte - 1);
+  write record (edit file, zeilenpuffer) .
+
+aktuelle zeile als anfang :
+  abstand := alte zeilennr - erste zeile;
+  rollen (abstand) .
+
+in save ds kopieren :
+  forget (save ds);
+  save ds := edit ds;
+  save ds voll := TRUE .
+
+aus save ds holen :
+  IF save ds voll THEN
+    forget (edit ds);
+    edit ds := save ds;
+    edit file := sequential file (modify, edit ds)
+  END IF .
+
+wirklich verlassen :
+  rueckkehrcode = edit ende .
+
+END PROC editieren;
+
+PROC eudas interpreter (TEXT CONST zeichen) :
+
+  enable stop;
+  set busy indicator;
+  rueckkehrcode := pos (eudas res, zeichen);
+  IF rueckkehrcode > 0 THEN
+    quit durch := zeichen;
+    quit
+  ELIF pos (quit zeichen, zeichen) > 0 THEN
+    rueckkehrcode := edit ende;
+    quit durch := zeichen;
+    quit
+  ELIF kommando auf taste (zeichen) <> niltext THEN
+    std kommando interpreter (zeichen)
+  ELSE
+    nichts neu
+  END IF
+
+END PROC eudas interpreter;
+
+PROC einsetzen (INT CONST zeilennr, TEXT VAR speicher) :
+
+  to line (edit file, zeilennr);
+  read record (edit file, speicher);
+  write record (edit file, hinweiszeile)
+
+END PROC einsetzen;
+
+PROC entfernen (INT CONST zeilennr, TEXT CONST speicher) :
+
+  to line (edit file, zeilennr);
+  IF eof (edit file) COR pos (edit file, hinweiszeile, 1) = 0 THEN
+    to line (edit file, 1);
+    down (edit file, hinweiszeile);
+    IF eof (edit file) THEN
+      to line (edit file, zeilennr);
+      insert record (edit file)
+    END IF
+  END IF;
+  write record (edit file, speicher)
+
+END PROC entfernen;
+
+PROC exit zeichen (TEXT CONST zeichenkette) :
+
+  quit zeichen := zeichenkette
+
+END PROC exit zeichen;
+
+TEXT PROC exit durch : 
+
+  quit durch
+
+END PROC exit durch;
+
+
+(****************************** Ausgabe **********************************)
+
+INT VAR ausgabezeile;
+
+LET
+  t ende =  #803#
+    "ENDE.",
+  t such plus =  #804#
+    "SUCH+",
+  t such minus =  #805#
+    "SUCH-",
+  t mark plus =  #806#
+    "MARK+",
+  t mark minus =  #807#
+    "MARK-",
+  t feld =  #808#
+    " Zeile    "14" ",
+  t satz =  #809#
+    " Satz   ",
+  t koppel =  #810#
+    "<KOPPEL>";
+
+LET
+  fuenf punkte = ".....",
+  sieben blanks = "       ";
+
+
+PROC einzelbild ausgeben (BOOL CONST auch inhalte) :
+
+  INT VAR
+    bildschirmzeile := zeilen anf + 1,
+    aktuelles feld := 0;
+  INT CONST letzte ausgabezeile := erste zeile + laenge - 2;
+  ueberschrift ausgeben (auch inhalte);
+  ausgabezeile := erste zeile;
+  WHILE ausgabezeile <= letzte ausgabezeile REP
+    feldnamen ausgeben;
+    feldinhalt ausgeben;
+    evtl unterbrechung;
+    bildschirmzeile INCR 1;
+    ausgabezeile INCR 1
+  END REP;
+  namen ausgeben := FALSE .
+
+feldnamen ausgeben :
+  IF namen ausgeben THEN
+    cursor (spalten anf, bildschirmzeile);
+    IF ausgabezeile <= anzahl zeilen THEN
+      namen tatsaechlich ausgeben
+    ELIF ausgabezeile = anzahl zeilen + 1 THEN
+      endebalken ausgeben
+    ELSE
+      bildschirmzeile loeschen
+    END IF
+  END IF .
+
+namen tatsaechlich ausgeben :
+  out (begin mark);
+  IF zeilen (ausgabezeile). feldnr = aktuelles feld THEN
+    feldnamenlaenge TIMESOUT blank
+  ELSE
+    aktuelles feld := zeilen (ausgabezeile). feldnr;
+    feldnamen bearbeiten (aktuelles feld,
+      PROC (TEXT CONST, INT CONST, INT CONST) randanzeige)
+  END IF;
+  out (blank end mark) .
+
+endebalken ausgeben :
+  out (begin mark);
+  breite - 4 TIMESOUT ".";
+  out (blank end mark blank) .
+
+bildschirmzeile loeschen :
+  IF bis zeilenende THEN
+    out (cleol)
+  ELSE
+    breite TIMESOUT blank
+  END IF .
+
+feldinhalt ausgeben :
+  IF auch inhalte AND ausgabezeile <= anzahl zeilen THEN
+    cursor (spalten anf + feldnamenlaenge + 3, bildschirmzeile);
+    feld bearbeiten (zeilen (ausgabezeile). feldnr,
+      PROC (TEXT CONST, INT CONST, INT CONST) feldteil ausgeben)
+  END IF .
+
+evtl unterbrechung :
+  IF NOT namen ausgeben THEN
+    TEXT CONST input := getcharety;
+    IF input <> niltext THEN
+      push (input);
+      IF pos (quit zeichen, input) > 0 THEN
+        zuletzt angezeigter satz := 0;
+        LEAVE einzelbild ausgeben
+      END IF
+    END IF
+  END IF .
+
+END PROC einzelbild ausgeben;
+
+PROC ueberschrift ausgeben (BOOL CONST auch inhalte) :
+
+  satznummer bestimmen;
+  satznummer in ueberschrift;
+  cursor (spalten anf, zeilen anf);
+  IF NOT auch inhalte THEN
+    outsubtext (ueberschrift, 1, feldnamenlaenge + 3);
+    LEAVE ueberschrift ausgeben
+  END IF;
+  replace (ueberschrift, feldnamenlaenge +  7, auswahlzeichen);
+  replace (ueberschrift, feldnamenlaenge + 14, markzeichen);
+  out (ueberschrift);
+  cursor (spalten anf + breite - 5, zeilen anf);
+  out (text (erste zeile)) .
+
+satznummer bestimmen :
+  TEXT VAR satznr;
+  satznr := text (satznummer);
+  IF anzahl koppeldateien > 0 AND NOT auf koppeldatei THEN
+    satznr CAT "-";
+    satznr CAT text (satzkombination)
+  END IF .
+
+satznummer in ueberschrift :
+  replace (ueberschrift, 7, sieben blanks);
+  replace (ueberschrift, 7, satznr) .
+
+auswahlzeichen :
+  IF such version = 0 THEN
+    fuenf punkte
+  ELIF satz ausgewaehlt THEN
+    t such plus
+  ELSE
+    t such minus
+  END IF .
+
+markzeichen :
+  IF dateiende THEN
+    t ende
+  ELIF markierte saetze = 0 THEN
+    fuenf punkte
+  ELIF satz markiert THEN
+    t mark plus
+  ELSE
+    t mark minus
+  END IF .
+
+END PROC ueberschrift ausgeben;
+
+PROC randanzeige (TEXT CONST satz, INT CONST von, bis) :
+
+  IF bis - von >= feldnamenlaenge THEN
+    outsubtext (satz, von, von + feldnamenlaenge - 1)
+  ELSE
+    outsubtext (satz, von, bis);
+    feldnamenlaenge - bis + von - 1 TIMESOUT blank
+  END IF
+
+END PROC randanzeige;
+
+PROC feldteil ausgeben (TEXT CONST satz, INT CONST von, bis) :
+
+  INT VAR ende;
+  IF ausgabezeile = anzahl zeilen COR letzte feldzeile THEN
+    ende := bis
+  ELSE
+    ende := von + zeilen (ausgabezeile + 1). anfang - 1
+  END IF;
+  outsubtext (satz, von + zeilen (ausgabezeile). anfang, ende);
+  IF bis zeilenende THEN
+    out (cleol)
+  ELSE
+    laenge bis zum rand TIMESOUT blank
+  END IF .
+
+letzte feldzeile :
+  zeilen (ausgabezeile + 1). feldnr <> zeilen (ausgabezeile). feldnr .
+
+laenge bis zum rand :
+  inhaltsbreite - ende + von + zeilen (ausgabezeile). anfang - 1 .
+
+END PROC feldteil ausgeben;
+
+PROC ueberschrift generieren :
+
+  ueberschrift := text (t satz, feldnamenlaenge + 3);
+  ueberschrift CAT begin mark;
+  INT VAR i;
+  INT CONST punktlaenge := breite - length (ueberschrift) - 12;
+  FOR i FROM 1 UPTO punktlaenge REP
+    ueberschrift CAT "."
+  END REP;
+  ueberschrift CAT t feld;
+  ggf koppel in ueberschrift .
+
+ggf koppel in ueberschrift :
+  IF auf koppeldatei THEN
+    replace (ueberschrift, feldnamenlaenge + 22, t koppel)
+  END IF .
+
+END PROC ueberschrift generieren;
+
+
+END PACKET satzanzeige;
+

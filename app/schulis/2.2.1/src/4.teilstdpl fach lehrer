@@ -1,0 +1,124 @@
+PACKET teilstdplfachlehrerDEFINES stdplfachlehrerspezielleteile:LET 
+eingangsmaske="ms teilstdpl fach lehrer",maskenanfpos=2,spaltentrenner=":",
+niltext="",blank=" ",komma=",",null=0,ueberschriftenzeilen=2,ausgkopflaenge=2
+,ausgfeldlaenge=1,anzahlderobjekteprobildschirm=17,spalte1fach=4,
+spalte2paraphe=6,spalte3art=3,spalte4lvs=59,mnrgewaehltezeitenfalsch=397,
+mnrkeinestdplandatenvorhanden=366,mnrauswahlnichtsinnvoll=56,
+mnrbearbeitetwerden=352;TEXT VAR spaltenstrich,stdplfachlehreruebbild,
+stdplfachlehreruebdruck1:=
+"Übersicht über Lehrbefähigte und ihren Stundenplan zu bestimmten Zeiten",
+stdplfachlehreruebdruck2,spaltenueberschrift,anfbuchstabe,neueranfbuchstabe:=
+"",teiltextmeldung1:="die Fächer mit Anfangsbuchstaben: ",teiltextmeldung2:=
+"das Fach: ",angegebenesfach,fach,altesfach,paraphe,art,lehrveranstaltung,
+schuljahr,halbjahr,sjhjaufber;INT VAR status,index:=dnrlehrbefaehigungen,
+eingabestatus,lesestart,bildanfang,druckzeilenzahl,zeit,zaehler;LET 
+maxanzahlzeiten=6;ROW maxanzahlzeitenINT VAR zeiten;BOOL VAR 
+geplantessjgewaehlt,mitscanner,bestfachgewaehlt;LET AUSGFELD =ROW 
+ausgfeldlaengeTEXT ,AUSGKOPF =ROW ausgkopflaengeTEXT ;AUSGFELD VAR ausgfeld;
+AUSGKOPF VAR ausgkopf;BOOL PROC multistop:BOOL VAR a;IF bestfachgewaehltTHEN 
+a:=wert(fnrlbfach)=angegebenesfachAND dbstatus=okELSE a:=dbstatus=0FI ;aEND 
+PROC multistop;BOOL PROC multistopsim:setzebestandende(FALSE );BOOL VAR b:=
+multistop;setzebestandende(NOT b);bEND PROC multistopsim;PROC 
+stdplfachlehrerspezielleteile(INT CONST nr):SELECT nrOF CASE 1:
+stdplfachlehrerdialogvorbereitenCASE 2:stdplfachlehrereingabenrichtigCASE 3:
+stdplfachlehrerlistenvorbereitenCASE 4:stdplfachlehrerdruckvorbereitenCASE 5:
+stdplfachlehrerseitedruckenCASE 6:stdplfachlehrerbildschirmvorbereitenCASE 7:
+stdplfachlehrerseitezeigenENDSELECT .END PROC stdplfachlehrerspezielleteile;
+PROC stdplfachlehrerdialogvorbereiten:stdplfachlehreruebbild:=text(
+vergleichsknoten);setzeanfangswerte(eingangsmaske,maskenanfpos);END PROC 
+stdplfachlehrerdialogvorbereiten;PROC stdplfachlehrereingabenrichtig:LET 
+fnrfach=2,fnrakthj=69,fnrgeplhj=70,fnrausgbild=71,fnrausgdruck=72;
+standardpruefe(5,fnrausgbild,fnrausgdruck,null,niltext,status);IF status<>0
+THEN infeld(status);setzeeingabetest(FALSE )ELSE standardpruefe(5,fnrakthj,
+fnrgeplhj,null,niltext,status);IF status<>0THEN infeld(status);
+setzeeingabetest(FALSE )ELSE IF NOT anzahldergewaehltenzeitenkorrektTHEN 
+infeld(3);standardmeldung(mnrgewaehltezeitenfalsch,niltext);setzeeingabetest(
+FALSE )ELSE spaltenstrich:="----+------+---+";spaltenstrichCAT zeit*
+"--------+";parametersetzen;IF NOT stundenplandatenvorhandenTHEN infeld(
+fnrakthj);standardmeldung(mnrkeinestdplandatenvorhanden,niltext);
+setzeeingabetest(FALSE )ELSE setzeausgabedrucker(standardmaskenfeld(
+fnrausgbild)=niltext);setzeeingabetest(TRUE )FI ;FI ;FI ;FI .
+anzahldergewaehltenzeitenkorrekt:INT VAR unterrichtsstd,std;zeit:=0;
+spaltenueberschrift:="Fach Lehrer Art ";FOR stdFROM 3UPTO 68REP IF 
+standardmaskenfeld(std)<>niltextTHEN zeitINCR 1;IF zeit<=maxanzahlzeitenTHEN 
+unterrichtsstd:=std-2;zeiten(zeit):=unterrichtsstd;
+spaltenueberschriftweiterzusammenbauen(unterrichtsstd);FI ;FI ;PER ;zeit<=
+maxanzahlzeitenAND zeit>0.parametersetzen:angegebenesfach:=standardmaskenfeld
+(fnrfach);bestfachgewaehlt:=angegebenesfach<>niltext;mitscanner:=
+bestfachgewaehlt;geplantessjgewaehlt:=standardmaskenfeld(fnrakthj)=niltext;
+schuljahr:=schulkenndatum("Schuljahr");halbjahr:=schulkenndatum(
+"Schulhalbjahr");IF geplantessjgewaehltTHEN geplanteshjundsjberechnen(
+halbjahr,schuljahr);FI ;sjhjaufber:=subtext(schuljahr,1,2)+"/";sjhjaufberCAT 
+subtext(schuljahr,3,4)+komma+blank;sjhjaufberCAT halbjahr;.
+stundenplandatenvorhanden:stundenplanhalbjahrsetzen(halbjahr,schuljahr);
+stundenplanbasisundstundenplanholen(eingabestatus);eingabestatus=0END PROC 
+stdplfachlehrereingabenrichtig;PROC spaltenueberschriftweiterzusammenbauen(
+INT VAR unterrichtsstd):INT VAR x;TEXT VAR hilfstext;x:=(unterrichtsstd-1)
+DIV 12;IF x=0THEN hilfstext:="Mo "ELIF x=1THEN hilfstext:="Di "ELIF x=2THEN 
+hilfstext:="Mi "ELIF x=3THEN hilfstext:="Do "ELIF x=4THEN hilfstext:="Fr "
+ELSE hilfstext:="Sa "FI ;x:=unterrichtsstdMOD 12;IF x=0THEN hilfstextCAT 
+"12   "ELSE hilfstextCAT text(x,2)+4*blankFI ;spaltenueberschriftCAT 
+hilfstext;END PROC spaltenueberschriftweiterzusammenbauen;PROC 
+stdplfachlehrerlistenvorbereiten:BOOL VAR b;altesfach:=niltext;inittupel(
+dnrlehrbefaehigungen);initspalten;setzeidentiwert("");initobli(
+anzahlderobjekteprobildschirm);putwert(fnrlbfach,angegebenesfach);IF 
+bestfachgewaehltTHEN objektlistestarten(index,angegebenesfach,fnrlbparaphe,
+TRUE ,b)ELSE objektlistestarten(index,angegebenesfach,0,TRUE ,b);FI ;
+setzebestandende(NOT multistopCOR b);END PROC 
+stdplfachlehrerlistenvorbereiten;PROC stdplfachlehrerbildschirmvorbereiten:
+LET fnrausganf=2;standardkopfmaskeaktualisieren(stdplfachlehreruebbild);
+bildanfang:=fnrausganf;setzebildanfangsposition(bildanfang);
+setzespaltenbreite(bildbreite);spaltenweise(spaltenueberschrift);ausgfeld(1)
+:=zeile;ausgfeld(1)IN ausgabepos;erhoeheausgabeposumeins;spaltenweise(
+spaltenstrich);ausgfeld(1):=zeile;ausgfeld(1)IN ausgabepos;
+erhoeheausgabeposumeins;setzebildanfangsposition(4);spaltenbreitensetzen;END 
+PROC stdplfachlehrerbildschirmvorbereiten;PROC spaltenbreitensetzen:
+initspalten;setzespaltentrenner(spaltentrenner);setzespaltenbreite(
+spalte1fach);setzespaltenbreite(spalte2paraphe);setzespaltenbreite(spalte3art
+);setzespaltenbreite(spalte4lvs);END PROC spaltenbreitensetzen;PROC 
+stdplfachlehrerseitezeigen:altesfach:=niltext;blaettern(PROC (INT CONST )
+teilstdplfachlehrerzeigen,aktion,TRUE ,mitscanner,BOOL PROC multistop);END 
+PROC stdplfachlehrerseitezeigen;PROC teilstdplfachlehrerzeigen(INT CONST x):
+datenauslehrbefundstdplholen;datenauslehrbefundstdplaufbereitenbild;
+datenauslehrbefundstdplaufbildschirmEND PROC teilstdplfachlehrerzeigen;PROC 
+datenauslehrbefundstdplholen:TEXT VAR lv,raum,par;lehrveranstaltung:=niltext;
+paraphe:=wert(fnrlbparaphe);art:=wert(fnrlbart);fach:=wert(fnrlbfach);FOR 
+zaehlerFROM 1UPTO zeitREP planeintraglesen(zeiten(zaehler),"P",paraphe,lv,
+raum,par);lehrveranstaltungCAT text(lv,8)+spaltentrennerPER ;END PROC 
+datenauslehrbefundstdplholen;PROC datenauslehrbefundstdplaufbereitenbild:IF 
+altesfach<>fachTHEN spaltenweise(fach);altesfach:=fach;ELSE spaltenweise(
+blank);FI ;spaltenweise(paraphe);spaltenweise(art);spaltenweise(
+lehrveranstaltung)END PROC datenauslehrbefundstdplaufbereitenbild;PROC 
+datenauslehrbefundstdplaufbildschirm:INT VAR i;FOR iFROM 1UPTO ausgfeldlaenge
+REP ausgfeld(i):=zeile;ausgfeld(i)IN ausgabepos;erhoeheausgabeposumeins;PER ;
+END PROC datenauslehrbefundstdplaufbildschirm;PROC 
+stdplfachlehrerdruckvorbereiten:setzebestandende(FALSE );anfbuchstabe:=" ";
+druckvorbereiten;druckzeilenzahl:=drucklaenge(ueberschriftenzeilen)-
+ausgkopflaenge;stdplfachlehreruebdruck2:="Schulhalbjahr ";
+stdplfachlehreruebdruck2CAT sjhjaufber;stdplfachlehreruebdruck2CAT 
+". Halbjahr";initdruckkopf(stdplfachlehreruebdruck1,stdplfachlehreruebdruck2)
+;inittupel(index);putwert(fnrlbfach,angegebenesfach);lesenvorbereitendruck(
+PROC (INT CONST ,BOOL PROC ,INT VAR )scanforward,BOOL PROC multistop);
+setzebestandende(NOT multistop)END PROC stdplfachlehrerdruckvorbereiten;PROC 
+stdplfachlehrerseitedrucken:druckkopfschreiben;initspalten;setzespaltenbreite
+(bildbreite);spaltenweise(spaltenueberschrift);ausgfeld(1):=zeile;ausgfeld(1)
+IN ausgabepos;druckzeileschreiben(ausgfeld(1));spaltenweise(spaltenstrich);
+ausgfeld(1):=zeile;druckzeileschreiben(ausgfeld(1));spaltenbreitensetzen;
+altesfach:=niltext;seitedrucken(PROC (INT VAR )stdplfachlehrerdrucken,
+druckzeilenzahl,ausgfeldlaenge,BOOL PROC multistopsim);seitenwechsel;END 
+PROC stdplfachlehrerseitedrucken;PROC stdplfachlehrerdrucken(INT VAR 
+zeilenzaehler):LET markiert="#";datenauslehrbefundstdplholen;
+ggflmeldunganfbuchstabe;stdplfachlehreraufbereitendruck;zeilenzaehlerINCR 
+ausgfeldlaenge;stdplfachlehrerindruckdatei.ggflmeldunganfbuchstabe:IF 
+anfbuchstabegeaendertTHEN meldunganfbuchstabeFI .anfbuchstabegeaendert:
+neueranfbuchstabe:=fachSUB 1;anfbuchstabe<>neueranfbuchstabe.
+meldunganfbuchstabe:IF bestfachgewaehltTHEN standardmeldung(
+mnrbearbeitetwerden,teiltextmeldung2+fach+markiert);ELSE standardmeldung(
+mnrbearbeitetwerden,teiltextmeldung1+neueranfbuchstabe+markiert);FI ;
+anfbuchstabe:=neueranfbuchstabeEND PROC stdplfachlehrerdrucken;PROC 
+stdplfachlehreraufbereitendruck:datenauslehrbefundstdplaufbereitenbild;
+ausgfeld(1):=zeile;END PROC stdplfachlehreraufbereitendruck;PROC 
+stdplfachlehrerindruckdatei:INT VAR i;FOR iFROM 1UPTO ausgfeldlaengeREP 
+druckzeileschreiben(ausgfeld(1))PER .END PROC stdplfachlehrerindruckdatei;
+END PACKET teilstdplfachlehrer
+

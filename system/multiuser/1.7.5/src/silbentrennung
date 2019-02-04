@@ -1,0 +1,1166 @@
+(* ------------------- VERSION 170 vom 30.09.85 -------------------- *)
+PACKET silbentrennung DEFINES
+       trenn,
+       schreibe trennvektor,
+       ist ausnahme wort,
+       lade ausnahmen,
+       entlade ausnahmen:
+
+(* Programm zur Silbentrennung
+   Autor: Klaus-Uwe Koschnick / Rainer Hahn
+   Stand: 1.7.1 (Febr. 1984)
+          1.7.4 (Mai 1984) (Ausnahme-Woerterbuch, Verbesserungen)
+*)
+ 
+(*--------------------- Ausnahme Woerterbuch -----------------------*)
+
+DATASPACE VAR ds1 :: nilspace; 
+ 
+FILE VAR f; 
+ 
+LET name table length = 1024, 
+    max hash chars = 5; 
+ 
+INT VAR anz worte :: 0, 
+        hash index; 
+ 
+INITFLAG VAR this packet :: FALSE; 
+ 
+TEXT VAR dummy, 
+         name ohne trennstellen,
+         trennstellen,
+         blanked name;
+ 
+BOUND ROW name table length TEXT VAR name table; 
+ 
+PROC init packet:
+  IF NOT initialized (this packet)
+    THEN anz worte := 0
+  FI
+END PROC init packet;
+
+PROC init name table:
+  forget (ds1);
+  ds1 := nilspace;
+  name table := ds1;
+  INT VAR i;
+  FOR i FROM 1 UPTO name table length REP
+    cout (i);
+    name table [i] := ""
+  END REP;
+  anz worte := 0.
+END PROC init name table;
+
+PROC lade ausnahmen:
+  lade ausnahmen (last param)
+END PROC lade ausnahmen;
+
+PROC lade ausnahmen (TEXT CONST filename): 
+ IF exists (filename) 
+   THEN lade 
+   ELSE errorstop ("Datei nicht vorhanden") 
+ FI. 
+ 
+lade: 
+  init packet;
+  IF anz worte > 0 
+    THEN IF yes ("überschreiben") 
+           THEN init nametable 
+         ELIF no ("anfügen") 
+           THEN LEAVE lade ausnahmen
+         FI
+    ELSE init nametable
+  FI;
+  line (2);
+  f := sequential file (input, file name);
+  WHILE NOT eof (f) REP
+    get (f, dummy);
+    IF subtext (dummy, 1, 2) = "(*"
+      THEN ueberlese kommentar
+      ELSE lade wort (* Vor.: Worte ohne Blanks *)
+    FI
+  END REP.
+
+ueberlese kommentar:
+  WHILE NOT eof (f) AND pos (dummy, "*)") = 0 REP
+    get (f, dummy);
+  END REP.
+
+lade wort:
+  line ;
+  anz worte INCR 1;
+  put (anz worte);
+  stelle namen ohne trennstellen her;
+  put (name ohne trennstellen);
+  blanked name := " ";
+  name ohne trennstellen CAT " ";
+  blanked name CAT name ohne trennstellen;
+  hash;
+  IF pos (name table [hash index], blanked name) > 0
+    THEN put ("(bereits geladen)")
+    ELSE insert char (name ohne trennstellen, " ", 1);
+         name ohne trennstellen CAT trennstellen;
+         name table [hash index] CAT name ohne trennstellen;
+  FI.
+
+stelle namen ohne trennstellen her:
+  INT VAR number;
+  name ohne trennstellen := dummy;
+  trennstellen := "";
+  WHILE pos (name ohne trennstellen, "-") > 0 REP
+    number := pos (name ohne trennstellen, "-");
+    delete char (name ohne trennstellen, number);
+    trennstellen CAT text (number - 1);
+    trennstellen CAT " "
+  END REP.
+END PROC lade ausnahmen;
+
+PROC entlade ausnahmen (TEXT CONST file name):
+  init packet;
+  IF exists (file name)
+    THEN errorstop ("Datei existiert bereits")
+    ELSE unload
+  FI.
+
+unload:
+  f := sequential file (output, file name);
+  INT VAR i;
+  FOR i FROM 1 UPTO name table length REP
+    cout (i);
+    IF name table [i] <> ""
+      THEN putline (f, name table [i])
+    FI
+  END REP.
+END PROC entlade ausnahmen;
+
+BOOL PROC ist ausnahme wort (TEXT CONST word,
+                             INT CONST maximum, INT VAR trenn position):
+  init packet;
+  IF anz worte > 0 
+    THEN blanked name fuer hash bilden;
+         hash;
+         IF pos (name table [hash index], blanked name) > 0
+           THEN trennstelle suchen
+         FI
+  FI;
+  FALSE.
+
+blanked name fuer hash bilden:
+  blanked name := " ";
+  IF maximum <= max hash chars
+    THEN eliminiere ggf satzzeichen hinter dem wort;
+         blanked name CAT
+           subtext (word, 1, min (max hash chars, wortlaenge))
+    ELSE blanked name CAT subtext (word, 1, maximum);
+  FI.
+
+eliminiere ggf satzzeichen hinter dem wort:
+  INT VAR wort laenge := length (word);
+  WHILE letztes zeichen ist kein buchstabe REP
+    wort laenge DECR 1;
+    IF wort laenge <= 2
+      THEN LEAVE ist ausnahme wort WITH FALSE
+    FI
+  END REP.
+
+letztes zeichen ist kein buchstabe:
+  TEXT CONST letztes zeichen :: (word SUB wortlaenge);
+  NOT (letztes zeichen >= "A" AND letztes zeichen <= "Z" OR
+  letztes zeichen >= "a" AND letztes zeichen <= "z" OR
+  letztes zeichen >= "Ä" AND letztes zeichen <= "k" OR 
+  letztes zeichen = "ß").
+
+trennstelle suchen:
+  index der ersten ziffer suchen;
+  INT VAR neue ziffer := 0;
+  trenn position := 0;
+  ziffern holen.
+
+index der ersten ziffer suchen:
+  dummy := name table [hash index];
+  INT VAR ziffern index := pos (dummy, blanked name);
+  ziffern index := pos (dummy, " ", ziffern index + 1) + 1.
+
+ziffern holen:
+  WHILE ist ziffer REP
+    hole neue ziffer;
+    IF gefundene ziffer ist ausserhalb des trennbereichs
+      THEN LEAVE ist ausnahme wort WITH TRUE
+    FI;
+    trenn position := neue ziffer
+  END REP;
+  LEAVE ist ausnahme wort WITH TRUE.
+
+ist ziffer:
+  ziffern index < length (dummy) AND
+((dummy SUB ziffern index + 1) = " " OR (dummy SUB ziffern index + 2) = " ").
+
+hole neue ziffer:
+  INT VAR ende position :: pos (dummy, " ", ziffern index);
+  neue ziffer := int (subtext (dummy, ziffern index, ende position - 1));
+  ziffern index := ende position + 1.
+
+gefundene ziffer ist ausserhalb des trennbereichs:
+  neue ziffer > maximum.
+END PROC ist ausnahme wort;
+
+PROC hash:
+  INT VAR i;
+  hash index := code (blanked name SUB 2);
+  FOR i FROM 3 UPTO min (length (blanked name), max hash chars) REP
+    hash index INCR hash index;
+    hash index INCR code (blanked name SUB i);
+    decrementiere hash index
+  END REP.
+
+decrementiere hash index:
+  WHILE hash index > name table length REP
+    hash index DECR 1023
+  END REP.
+END PROC hash;
+
+(*-------------- eigentlicher Trenn-Algorithmus --------------*)
+
+LET zeichenkette n = "-/",
+    regelmaessig = " bl br chl chr dr fl fr gl gr kl kn kr pf ph pl pr
+ sp st schl schm schn schr schw th tr zw ",
+    vokal string = "aeiouyäöü",
+    buchstaben   =
+    "abcdefghijklmnopqrstuvwxyzäöüßABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÜ",
+    grosse buchstaben = "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+    trennstrich = ""221"",
+    cv a = 97 , cv b = 98 , cv c = 99 , cv d = 100, cv e = 101,
+    cv f = 102, cv g = 103, cv i = 105, cv k = 107,
+    cv l = 108, cv m = 109, cv n = 110, cv o = 111,
+    cv p = 112, cv r = 114, cv s = 115, cv t = 116,
+    cv u = 117, cv w = 119, cv x = 120, cv y = 121,
+    cv ae = 217 , cv oe = 218 , cv ue = 219 , cv sz = 251,
+    weder h noch ch = 0 ,
+    buchstabe h     = 1 ,
+    zeichenfolge ch = 2 ;
+
+INT CONST minus one :: - 1;
+
+INT VAR i, grenze, absolute grenze, sonderzeichen trennpos,
+        zeichen vor teilwort, teilwort laenge, a pos, e pos, 
+        a pos minus 2, a pos minus 1, a pos plus 1, a pos plus 2, 
+        e pos minus 1; 
+ 
+ROW 50 INT VAR vektor ;
+ 
+TEXT VAR wort,
+         teilwort,
+         kons gr,
+         search,
+         zeichen;
+
+BOOL VAR trennstelle gefunden ;
+
+PROC trenn (TEXT CONST word, TEXT VAR part1, trennsymbol, INT CONST maximum):
+  IF ist ausnahme wort (word, maximum, position)
+    THEN ausnahme wort behandlung;
+         LEAVE trenn
+  FI;
+  INT VAR laenge :: length (word) ;
+  IF laenge < 4
+     THEN trennung nicht moeglich
+     ELSE wort := word ;
+          grenze := min (50, maximum) ;
+          absolute grenze := min (laenge, grenze + 5) ;
+          trennung versuchen
+  FI .
+ 
+ausnahme wort behandlung:
+  IF position <= 0
+    THEN trennung nicht moeglich
+    ELSE part1 := subtext (word, 1, position);
+         IF pos (zeichenkette n, word SUB position + 1) > 0
+           THEN trennsymbol := " "
+           ELSE trennsymbol := trennstrich
+         FI
+  FI.
+
+trennung nicht moeglich : 
+  part 1 := "";
+  trennsymbol := " ".
+ 
+trennung versuchen :
+  erstelle trennvektor ;
+  IF sonderzeichen trennpos > 0
+     THEN part 1 := subtext (word, 1, sonderzeichen trennpos) ;
+          trennsymbol := " " 
+     ELSE bestimme trennposition ;
+          IF position = 0
+             THEN trennung nicht moeglich
+             ELSE part 1 := subtext (wort, 1, position) ;
+                  trennsymbol := trennstrich
+          FI
+  FI .
+
+bestimme trennposition :
+  INT VAR position ;
+  FOR position FROM grenze DOWNTO 1 REP
+     IF vektor [position] = 1
+        THEN LEAVE bestimme trennposition
+     FI
+  END REP ; 
+  position := 0 
+END PROC trenn ;
+
+BOOL PROC buchstabe (INT CONST posi) : 
+  pos (buchstaben, wort SUB posi) > 0 OR spezialcode.
+
+spezialcode:
+  INT CONST z code :: code (wort SUB posi) ;
+  (zcode > 96 AND zcode < 123).
+END PROC buchstabe ; 
+ 
+OP SPERRE (INT CONST element) :
+  INT CONST w element :: zeichen vor teilwort + element ;
+  IF w element > 0 AND w element <= grenze
+     THEN vektor [w element] := minus one
+  FI
+END OP SPERRE ;
+
+OP SETZE (INT CONST element) :
+  INT CONST w element :: zeichen vor teilwort + element;
+  IF w element > 0 AND w element <= grenze AND vektor [w element] <> minus one
+    THEN vektor [w element] := 1 ;
+         trennstelle gefunden := TRUE 
+  FI
+END OP SETZE ;
+
+BOOL PROC vorletzter buchstabe oderkeine trennung oder sperre gesetzt
+                    (INT CONST akt buchstabenpos):
+  vorletzter buchstabe (akt buchstabenpos)
+  OR NOT trennung oder sperre gesetzt (akt buchstabenpos).
+END PROC vorletzter buchstabe oderkeine trennung oder sperre gesetzt;
+
+BOOL PROC vorletzter buchstabe (INT CONST akt buchstabenpos):
+  akt buchstabenpos = absolute grenze - 1
+END PROC vorletzter buchstabe;
+
+BOOL PROC trennung oder sperre gesetzt (INT CONST element):
+  INT CONST w element :: zeichen vor teilwort + element;
+  IF w element > 1 AND w element < teilwort laenge
+    THEN vektor [w element] = 1 OR gesperrt
+    ELSE TRUE
+  FI.
+
+gesperrt:
+  IF w element >= length (wort) - 1
+    THEN TRUE
+    ELSE vektor [w element] = minus one
+  FI.
+END PROC trennung oder sperre gesetzt;
+
+PROC sperren und setzen (INT CONST element) : 
+  INT CONST w element :: zeichen vor teilwort + element ; 
+  vektor [w element - 1] := minus one;
+  vektor [w element] := 1 
+END PROC sperren und setzen ; 
+ 
+TEXT PROC string (INT CONST anf pos, end pos) : 
+  subtext (teilwort, maximum, minimum).
+
+maximum:
+  IF anf pos > 1
+    THEN anf pos
+    ELSE 1
+  FI.
+
+minimum:
+  IF teilwort laenge < end pos
+    THEN teilwort laenge
+    ELSE end pos
+  FI.
+END PROC string ; 
+ 
+BOOL PROC silbenanfang vor (INT CONST akt buchstabenpos): 
+  zwei silber (akt buchstabenpos - 2) OR drei silber (akt buchstabenpos - 3)
+END PROC silbenanfang vor;
+
+BOOL PROC silbenanfang nach (INT CONST akt buchstabenpos):
+  zwei silber (akt buchstabenpos + 1) OR drei silber (akt buchstabenpos + 1)
+END PROC silbenanfang nach;
+
+BOOL PROC zwei silber (INT CONST akt buchstabenpos):
+  TEXT VAR zweier :: string (akt buchstabenpos, akt buchstabenpos + 1);
+  length (zweier) = 2 AND
+  pos ("ab an ar be er ge in um un zu re", zweier) > 0
+END PROC zwei silber;
+
+BOOL PROC drei silber (INT CONST akt buchstabenpos):
+  TEXT VAR dreier :: string (akt buchstabenpos, akt buchstabenpos + 2);
+  length (dreier) = 3 AND
+  pos ("auf aus bei ein end ent mit", dreier) > 0
+END PROC drei silber;
+
+BOOL PROC reg (INT CONST st pos) : 
+  INT CONST code one :: code (teilwort SUB st pos) ,
+            code two :: code (teilwort SUB st pos + 1) ;
+  pos (regelmaessig, konsonanten) > 0 .
+
+konsonanten :
+  search := " " ;
+  IF code one = cv c
+    THEN search CAT string (st pos, st pos + 2)
+  ELIF code one = cv s AND code two = cv c 
+    THEN search CAT string (st pos, st pos + 3)
+    ELSE search CAT string (st pos, st pos + 1) 
+  FI ;
+  search CAT " " ;
+  search
+END PROC reg ;
+ 
+INT PROC grenz position (INT CONST start pos, richtung):
+  INT VAR posit :: start pos ;
+  REP
+     posit INCR richtung 
+  UNTIL sonderzeichen oder position unzulaessig END REP;
+  posit - richtung.
+
+sonderzeichen oder position unzulaessig: 
+  posit = 0 AND posit > absolute grenze OR ist kein buchstabe.
+
+ist kein buchstabe:
+  pos (buchstaben, wort SUB posit) = 0 AND kein spezialcode.
+
+kein spezialcode:
+  INT CONST z code :: code (wort SUB posit) ;
+  (zcode < 97 OR zcode > 121).
+END PROC grenz position ; 
+
+PROC schreibe trennvektor (TEXT CONST ttt):
+line ; put (ttt); INT VAR ii;
+FOR ii FROM 1 UPTO length (wort) REP put(vektor [ii]) PER
+END PROC schreibe trennvektor;
+
+PROC erstelle trennvektor :
+INT VAR akt pos, anfang teilwort, ende teilwort, anzahl, 
+        zuletzt, tr pos, ind, code 1, code 2, code 3,
+        rechts von a pos, z code, posit;
+BOOL VAR sonderzeichen modus,
+         aktueller buchstabe ist vokal,
+         vorsilbe oder nachsilbe;
+
+  sonderzeichen trennpos := 0 ;
+  trennstelle gefunden := FALSE ;
+  initialisiere trennvektor ;
+  akt pos := grenze ;
+  IF buchstabe (akt pos) 
+     THEN zuerst teilwort
+     ELSE zuerst sonderzeichenblock
+  FI;
+  WHILE akt pos > 0 REP
+     IF sonderzeichen modus
+        THEN behandle sonderzeichenblock
+        ELSE suche trennstellen in teilwort
+     FI
+  END REP.
+
+initialisiere trennvektor : 
+  FOR i FROM 1 UPTO grenze REP vektor [i] := 0 END REP .
+
+zuerst teilwort:
+  ende teilwort := grenz position (akt pos, 1) ;
+  sonderzeichen modus := FALSE .
+
+zuerst sonderzeichenblock:
+  sonderzeichen modus := TRUE .
+
+behandle sonderzeichenblock:
+  WHILE sonderzeichen modus REP
+     IF buchstabe (akt pos)
+        THEN sonderzeichen modus := FALSE
+        ELSE zeichen := wort SUB akt pos ;
+             IF pos (zeichenkette n, zeichen) <> 0
+                THEN sonderzeichen trennpos := akt pos ;
+                     LEAVE erstelle trennvektor
+             FI ;
+             akt pos DECR 1 ;
+             IF akt pos = 0 
+                THEN LEAVE erstelle trennvektor
+             FI
+     FI
+  END REP;
+  ende teilwort := akt pos .
+
+suche trennstellen in teilwort:
+  bestimme anfang von teilwort ;
+  IF teilwort lang genug
+     THEN teilwort ausbauen und wandeln ;
+          SPERRE 1 ; SPERRE (teilwort laenge - 1) ;
+          vorsilben untersuchen ;
+          nachsilben untersuchen ;
+          vorsilbe oder nachsilbe := trennstelle gefunden ;
+          trennstelle gefunden := FALSE ;
+          weitere trennstellen suchen ;
+          IF vorsilbe oder nachsilbe
+             THEN LEAVE erstelle trennvektor
+          FI
+  FI ;
+  akt pos := anfang teilwort - 1 ;
+  sonderzeichen modus := TRUE .
+
+bestimme anfang von teilwort:
+  anfang teilwort := grenz position (ende teilwort, minus one) .
+
+teilwort lang genug:
+  teilwort laenge := ende teilwort - anfang teilwort + 1 ;
+  teilwort laenge > 3 .
+
+teilwort ausbauen und wandeln:
+  teilwort := subtext (wort, anfang teilwort, ende teilwort);
+  zeichen vor teilwort := anfang teilwort - 1 ;
+  IF pos (grosse buchstaben, teilwort SUB 1) > 0
+     THEN replace (teilwort, 1, code (code (teilwort SUB 1) + 32))
+  FI .
+  (* Es ist nicht notwendig, gross geschriebene Umlaute am
+  Wortanfang zu wandeln! *)
+
+weitere trennstellen suchen:
+  e pos := teilwort laenge ;
+  aktueller buchstabe ist vokal := letzter buchstabe ist vokal ;
+  WHILE e pos > 1 REP
+     anzahl := 0 ;
+     a pos := e pos ;
+     IF aktueller buchstabe ist vokal
+        THEN behandle vokalgruppe
+        ELSE behandle konsonantengruppe
+     FI ;
+     IF trennstelle gefunden 
+        THEN LEAVE erstelle trennvektor
+     FI ;
+     e pos := a pos - 1 ;
+  END REP .
+
+letzter buchstabe ist vokal:
+  pos (vokal string,teilwort SUB e pos) > 0 .
+
+behandle vokalgruppe:
+  vokalgruppe lokalisieren ;
+  IF a pos > 1 AND e pos < teilwort laenge
+     THEN a pos plus 1 := a pos + 1 ; 
+          a pos plus 2 := a pos + 2 ; 
+          IF anzahl = 2
+             THEN vokal 2
+          ELIF anzahl > 2
+             THEN vokal 3
+             ELSE vokal 1
+          FI
+  FI .
+
+vokalgruppe lokalisieren:
+  zuletzt := 0 ;
+  WHILE aktueller buchstabe ist vokal REP
+     zeichen := teilwort SUB a pos ;
+     IF pos (vokal string,zeichen) > 0
+        THEN z code := code(zeichen) ;
+             IF zuletzt <> cv e
+                OR (z code <> cv a AND z code <> cv o AND z code <> cv u)
+                THEN anzahl INCR 1
+             FI ;
+             IF a pos > 1
+                THEN a pos DECR 1 ;
+                     zuletzt := z code 
+                ELSE aktueller buchstabe ist vokal := FALSE
+             FI
+        ELSE a pos INCR 1 ;
+             aktueller buchstabe ist vokal := FALSE
+     FI 
+  END REP .
+
+behandle konsonantengruppe:
+  konsonantengruppe lokalisieren ;
+  IF a pos > 1 AND e pos < teilwort laenge
+     THEN a pos minus 2 := a pos - 2 ; 
+          a pos minus 1 := a pos - 1 ; 
+          a pos plus 1  := a pos + 1 ; 
+          a pos plus 2  := a pos + 2 ; 
+          e pos minus 1 := e pos - 1 ; 
+          SELECT anzahl OF
+          CASE 1    : konsonant 1
+          CASE 2    : konsonant 2
+          OTHERWISE : konsonant 3
+          END SELECT
+  FI .
+
+konsonantengruppe lokalisieren:
+  rechts von a pos := weder h noch ch ;
+  REP 
+     zeichen := teilwort SUB a pos ;
+     IF pos (vokal string, zeichen) = 0
+        THEN anzahl INCR 1 ;
+             IF zeichen = "h" 
+                THEN rechts von a pos := buchstabe h
+              ELIF zeichen = "c" AND rechts von a pos = buchstabe h
+                THEN anzahl DECR 1 ;
+                     rechts von a pos := zeichenfolge ch
+              ELIF zeichen = "s" AND rechts von a pos = zeichenfolge ch
+                THEN anzahl DECR 1 ;
+                     rechts von a pos := weder h noch ch
+                ELSE rechts von a pos := weder h noch ch 
+             FI ;
+             IF a pos > 1 
+                THEN a pos DECR 1 
+                ELSE aktueller buchstabe ist vokal := TRUE
+             FI
+        ELSE a pos INCR 1 ;
+             aktueller buchstabe ist vokal := TRUE 
+     FI
+  UNTIL aktueller buchstabe ist vokal END REP .
+
+vorsilben untersuchen: 
+  code 2 := code (teilwort SUB 2);
+  code 3 := code (teilwort SUB 3);
+  IF ch vierer silbe
+    THEN sperren und setzen (4)
+    ELSE restliche vorsilben
+  FI.
+
+ch vierer silbe:
+ string (2, 4) = "ach" OR string (2, 4) = "och" OR string (2, 4) = "uch".
+
+restliche vorsilben:
+  ind    := pos ("abdefghimnrstuvwüu", teilwort SUB 1);
+SELECT ind OF 
+CASE1(*a*): IF drei silber (1)
+              THEN sperren und setzen (3) 
+            ELIF code 2 = cv b (*ab*)
+              THEN IF string(3,5) = "end" (*abend*)
+                      THEN SPERRE 2; sperren und setzen (5) 
+                    ELIF string(3,4) = "er" (*aber*)
+                      THEN sperren und setzen (4) 
+                      ELSE sperren und setzen (2)
+                   FI
+            ELIF code 2 = cv n AND string(3,5) <> "alo" (*analo*)
+              THEN SETZE 2
+            FI
+CASE2(*b*): IF code 2 = cv e (* be *)
+              THEN IF    (teilwort SUB 3) = "h" (* be-handeln usw *)
+                      OR (teilwort SUB 3) = "a" (* beamter *)
+                     THEN sperren und setzen (2)
+                   ELIF string (3, 4) = "ob" (* beobachten *)
+                     THEN SETZE 2; sperren und setzen (4)
+                   FI
+            ELIF string (2, 3) = "au" (* bauer usw *)
+              THEN sperren und setzen (3)
+            FI
+CASE3(*d*): IF (code 3 = cv s AND (code 2 = cv i OR code 2 = cv e))
+               OR string (2, 3) = "ar" (* dis, des, dar*)
+              THEN sperren und setzen (3) 
+            ELIF string (2, 4) = "enk" (* denk.. *)
+              THEN sperren und setzen (4)
+            ELIF string(2,5) = "urch" (*durch*)
+              THEN SPERRE 3 ; SETZE 5 
+            FI
+CASE4(*e*): IF code 2 = cv r AND code 3 <> cv n AND code 3 <> cv d 
+              AND string (3, 4) <> "ro" (* er, aber nicht: ern, erd, erro *)
+              THEN SETZE 2
+            ELIF code 2 = cv x (* ex *)
+              THEN SETZE 2
+            ELIF (code 2 = cv m AND code 3 = cv p AND (teilwort SUB 4) = "f")
+                 OR (code 2 = cv n AND code 3 = cv t) (* empf, ent *)
+              THEN sperren und setzen (3)
+            FI 
+CASE5(*f*): 
+CASE6(*g*): IF string (2, 5) = "egen" (* gegen *)
+              THEN sperren und setzen (5)
+            ELIF string (2, 6) = "leich" (* gleich *)
+              THEN IF vorletzter buchstabe (5)
+                     THEN SPERRE 6
+                   ELIF vorletzter buchstabe (6)
+                     THEN sperren und setzen (4)
+                     ELSE sperren und setzen (6)
+                   FI
+            ELIF zwei silber (1)
+              THEN SETZE 2
+            FI
+CASE7(*h*): IF string (2, 3) = "in" OR string (2, 3) = "er" (* hin, her *)
+              THEN sperren und setzen (3)
+            FI
+CASE8(*i*): IF code 2 = cv n (* in *)
+              THEN IF string (3, 5) = "ter" (* inter *)
+                      THEN sperren und setzen (5)
+                   ELIF subtext (teilwort, 1, 5) = "insbe"
+                      THEN sperren und setzen (3)
+                      ELSE sperren und setzen (2)
+                   FI;
+            FI
+CASE9(*m*):  IF string (2, 3) = "ög" AND teilwort laenge > 5 (* mög *)
+               THEN sperren und setzen (3);
+             FI
+CASE10(*n*): IF string (2, 4) = "ach" AND teilwort laenge >= 7 
+                AND (teilwort SUB 5) <> "t" (* nach, aber nicht: nacht *)
+               THEN SETZE 4 
+             ELIF string (2, 6) = "ieder" (* nieder *)
+               THEN sperren und setzen (6) 
+             ELIF string (2, 5) = "icht" (* nicht *)
+               THEN sperren und setzen (5)
+             ELIF string (2, 3) = "eu" (* neu *)
+               THEN sperren und setzen (3);
+                    IF dreisilber (4)
+                      THEN sperren und setzen (6)
+                    FI
+             ELIF string (2, 5) = "iste"
+               THEN sperren und setzen (2)
+             FI
+CASE11(*r*): IF code 2 = cv e (* re *)
+               THEN IF silbenanfang nach (4) (* Realeinkommen *)
+                      THEN sperren und setzen (4)
+                      ELSE sperren und setzen (2)
+                    FI
+             FI
+CASE12(*s*): IF string (2, 6) = "elbst" (* selbst *)
+               THEN sperren und setzen (6); SPERRE 4
+             FI
+CASE13(*t*): IF string (2, 3) = "at" (* tat *)
+               THEN sperren und setzen (3)
+             ELIF string (2, 5) = "rans" (* trans *)
+               THEN sperren und setzen (5)
+             ELIF string (2, 4) = "heo" (* theo *)
+               THEN sperren und setzen (4)
+             FI
+CASE14(*u*): IF code 2 = cv m (* um *)
+               THEN SETZE 2
+             ELIF code 2 = cv n (* un *)
+               THEN IF code 3 = cv i (* uni *)
+                       THEN sperren und setzen (3)
+                       ELSE sperren und setzen (2);
+                            IF string (3, 5) = "ter" (* unter *)
+                               THEN sperren und setzen (5)
+                            FI
+                    FI
+             FI
+CASE15(*v*): IF string (2, 3) = "or" OR string (2, 3) = "on" OR
+                string (2, 3) = "er" (* vor, von, ver *)
+               THEN sperren und setzen (3)
+             FI
+CASE16(*w*): IF code 2 = cv e AND code 3 = cv g (* weg *)
+               THEN sperren und setzen (3) 
+             ELIF code 2 = cv i (* wi *)
+               THEN IF string(3,5) = "der" (* wider *)
+                       THEN sperren und setzen (5)
+                     ELIF string(3,6) = "eder" (* weder *)
+                       THEN sperren und setzen (6) 
+                    FI
+             FI
+CASE17(*ü*): IF string (2, 4) = "ber" (* über *)
+               THEN sperren und setzen (4)
+             FI
+CASE18(*z*): IF code 2 = cv u (*zu*)
+               THEN sperren und setzen (2);
+                    IF drei silber (3) (* zuein *)
+                      THEN sperren und setzen (5)
+                    FI
+             FI
+END SELECT.
+ 
+nachsilben untersuchen:
+  IF (teilwort SUB teilwort laenge) = "t" 
+     THEN IF (string (teilwort laenge - 3,teilwort laenge) = "heit" 
+             AND (teilwort SUB teilwort laenge - 4) <> "c")
+             OR string (teilwort laenge - 3, teilwort laenge -1) = "kei"
+             THEN sperren und setzen (teilwort laenge - 4)
+          FI
+  ELIF string (teilwort laenge - 2, teilwort laenge) = "tag"
+    THEN sperren und setzen (teilwort laenge - 3)
+  ELIF string (teilwort laenge - 3, teilwort laenge) = "tags"
+    THEN sperren und setzen (teilwort laenge - 4)
+  FI.
+
+vokal 1:
+  IF string (a pos, a pos plus 2) = "uel"
+    THEN SETZE a pos
+  FI.
+
+vokal 2 :
+  ind    := pos (vokal string, teilwort SUB a pos);
+  code 2 := code (teilwort SUB a pos plus 1);
+SELECT ind OF 
+CASE1(*a*): IF code 2 = cv a OR code 2 = cv i OR code 2 = cv y (*aa,ai,ay*)
+              THEN
+            ELIF code 2 = cv u
+              THEN silbe au behandlung
+              ELSE SETZE a pos 
+            FI
+CASE2(*e*): IF code 2 = cv u AND (teilwort SUB a pos plus 2) = "e" (*eue*)
+              THEN SETZE a pos plus 1 
+            ELIF code 2 = cv o OR code 2 = cv ae OR code 2 = cv ue
+                OR code 2 = cv oe  (*eo, eä, eü, eö *)
+             THEN SETZE a pos 
+            FI
+CASE3(*i*): IF code 2 <> cv e AND code 2 <> cv o (* i, aber nicht: ie, io *)
+              THEN SETZE a pos
+            FI
+CASE4(*o*): IF code 2 = cv o OR code 2 = cv u (* oo, ou *)
+              THEN 
+            ELIF code 2 = cv e (* oe *)
+              THEN SETZE a pos plus 1 
+              ELSE SETZE a pos 
+            FI
+CASE5(*u*): IF (teilwort SUB a pos - 1) = "q" (* qu *)
+              THEN 
+            ELIF code 2 = cv e (* ue *)
+              THEN SETZE a pos plus 1
+              ELSE SETZE a pos 
+            FI
+CASE7(*y*): IF code 2 <> cv u (* yu *)
+              THEN SETZE a pos
+            FI
+OTHERWISE (*äöü*): SETZE a pos
+END SELECT.
+ 
+silbe au behandlung:
+  IF (teilwort SUB a pos + 2) = "e" (* aue, wie in dau-ernd *)
+    THEN SETZE a pos plus 1 
+  ELIF a pos > 2 AND trennung oder sperre gesetzt (a pos + 2) AND 
+       ((teilwort SUB a pos + 2) = "f" OR (teilwort SUB a pos + 2) = "s")
+       (* aus- oder auf-Mittelsilben *)
+    THEN SETZE (a pos - 1)
+  FI.
+
+vokal 3 : 
+  IF string (a pos, a pos plus 2) <> "eau"
+     AND string (a pos plus 1, a pos+3) <> "eau" 
+     THEN IF e pos - a pos = anzahl - 1 
+             THEN SETZE a pos plus 1
+             ELSE code 1 := code(teilwort SUB a pos) ; 
+                  tr pos := a pos plus 1 ; 
+                  IF (code 1 = cv a OR code 1 = cv o OR code 1 = cv u) 
+                     AND (teilwort SUB a pos plus 1) = "e" 
+                     THEN tr pos INCR 1
+                  FI;
+                  code 2 := code (teilwort SUB tr pos) ; 
+                  IF (code 2 = cv a OR code 2 = cv o OR code 2 = cv u) 
+                     AND (teilwort SUB tr pos + 1) = "e" 
+                     THEN tr pos INCR 1
+                  FI ; 
+                  SETZE tr pos
+          FI 
+  FI .
+
+konsonant 1 : 
+  ind := pos ("bcklmnrstß", teilwort SUB a pos);
+SELECT ind OF 
+CASE1(*b*): IF string (a pos minus 1, a pos plus 2) = "über"
+              THEN SETZE a pos minus 2
+            ELIF silbenanfang nach (a  pos)
+                 AND NOT trennung oder sperre gesetzt (a pos minus 1)
+              THEN SETZE a pos
+            ELIF vorletzter buchstabe oderkeine trennung oder sperre gesetzt 
+                        (a pos) 
+              THEN SETZE a pos minus 1
+            FI;
+CASE2(* c oder ch *):
+            IF ((teilwort SUB a pos plus 1) = "h"
+                 AND (silbenanfang nach (a pos plus 1)
+                     OR string (a pos, a pos + 3) = "chen"))
+               OR (teilwort SUB a pos plus 1) <> "h"
+              THEN SETZE a pos minus 1
+              ELSE SETZE a pos plus 1
+            FI
+CASE3(*k*): IF string (a pos minus 2, a pos minus 1) = "ti" (* tik *)
+               AND silbenanfang nach (a pos)
+              THEN SETZE a pos
+              ELSE SETZE a pos minus 1
+            FI
+CASE4(*l*): IF string (a pos - 3, a pos plus 1) = "reali"
+              THEN SETZE a pos plus 1
+            ELIF string (a pos minus 1, a pos plus 1) = "aly"
+              THEN SETZE a pos minus 1
+            ELIF    string (a pos minus 2, a pos minus 1) = "ta" (*..tal..*)
+                 OR string (a pos minus 2, a pos minus 1) = "na" (*..nal..*)
+                 OR string (a pos minus 2, a pos minus 1) = "ia" (*..ial..*) 
+              THEN SETZE a pos
+              ELSE SETZE a pos minus 1
+            FI
+CASE5(*m*): IF string (a pos minus 2, a pos minus 1) = "to" (* ..tom..*)
+              THEN SETZE a pos
+              ELSE SETZE a pos minus 1
+            FI
+CASE6(*n*): IF string (a pos - 4, a pos minus 1) = "gege" 
+               OR string (a pos - 4, a pos minus 1) = "nebe" (*gegen, neben*)
+              THEN SETZE (a pos - 3) ; SETZE a pos 
+            ELIF string (a pos minus 1, a pos plus 1) = "ini"
+              THEN 
+            ELIF NOT silbenanfang vor (a pos)
+                 AND ((teilwort SUB a pos minus 1) = "e"  (* en *)
+                       OR (teilwort SUB a pos minus 1) = "u") (* un *)
+                       AND (silbenanfang nach (a pos) 
+                       OR string (a pos plus 1, a pos plus 2) = "ob")
+              THEN SETZE a pos
+            ELIF string (a pos minus 2, a pos plus 1) = "eina"
+              THEN SETZE a pos
+              ELSE SETZE a pos minus 1 
+            FI
+CASE7(*r*): IF string (a pos minus 2, a pos minus 1) = "tu" (*..tur..*)
+              THEN IF    string (a pos plus 1, a pos plus 2) = "el" 
+                      OR (string (a pos plus 1, a pos plus 2) = "en"
+                          AND string (a pos minus 1, apos +3) <> "ent")
+                         (* turel OR <>turentwick*)
+                     THEN SETZE a pos minus 1
+                     ELSE SETZE a pos
+                   FI
+            ELIF    string (a pos minus 2, a pos minus 1) = "ve"  (*..ver..*)
+                 OR string (a pos minus 2, a pos minus 1) = "vo"  (*..vor..*)
+              THEN SETZE a pos 
+            ELIF string (a pos minus 2, a pos minus 1) = "te" (* ter *)
+              THEN IF dreisilber (a pos plus 1)
+                      OR string (a pos plus 1, a pos plus 1) = "a" (*tera*)
+                      OR string (a pos - 3, a pos minus 2) <> "zt" (*zter*)
+                     THEN SETZE a pos
+                     ELSE SETZE a pos minus 1
+                   FI
+            ELIF (teilwort SUB a pos minus 1) = "e" (* er*)
+                 AND silbenanfang nach (a pos) 
+                 AND string (a pos plus 1, a pos + 3) <> "ung" (*erung*)
+                 AND string (a pos plus 1, a pos plus 2) <> "er" (*erer*)
+              THEN SETZE a pos
+            ELIF vorletzter buchstabe oderkeine trennung oder sperre gesetzt 
+                        (a pos) 
+              THEN SETZE a pos minus 1 
+            FI
+CASE8(*s*): IF string (a pos minus 2, a pos minus 1) = "de" (* des *)
+               OR string (a pos minus 2, a pos minus 1) = "xi" (* ..xis *)
+              THEN SETZE a pos
+            ELIF string (a pos minus 2, a pos minus 1) = "ni" (* nis *)
+               AND silbenanfang nach (a pos)
+              THEN SETZE a pos
+            ELIF vorletzter buchstabe oderkeine trennung oder sperre gesetzt 
+                        (a pos) 
+              THEN SETZE apos minus 1
+            FI
+CASE9(*t*): IF string (a pos plus 1, a pos + 3) = "ion" (* tion *)
+              THEN SETZE a pos minus 1
+            ELIF string (a pos plus 1, a pos + 3) <> "ier" (* imitieren *)
+               AND    (string (a pos minus 2, a pos minus 1) = "mi"(*...mit..*)
+                    OR string (a pos minus 2, a pos minus 1) = "va"(*privat..*)
+                    OR string (a pos minus 2, a pos minus 1) = "fi"(*profit..*)
+                    OR string (a pos - 3, a pos minus 1)     = "zei")(*..zeit..*)
+              THEN SETZE a pos
+              ELSE SETZE a pos minus 1
+            FI
+CASE10(*ß*): IF string (a pos, a pos plus 2) = "ßen"
+               OR vorletzter buchstabe (a pos)
+               THEN SETZE a pos minus 1
+               ELSE SETZE a pos
+             FI
+OTHERWISE:  IF vorletzter buchstabe oderkeine trennung oder sperre gesetzt 
+                        (a pos) 
+              THEN SETZE a pos minus 1
+            FI
+END SELECT.
+ 
+konsonant 2 : 
+  kons gr := string (a pos, e pos);
+  IF a pos > 2 AND trennung oder sperre gesetzt (a pos minus 1)
+    THEN 
+  ELIF ausnahme fuer zwei konsonanten
+    THEN SETZE a pos
+  ELIF kons gr = "ts"
+    THEN IF NOT trennung oder sperre gesetzt (a pos)
+            (* für <> Tatsache, tatsächlich *)
+           THEN SETZE e pos 
+         FI
+  ELIF kons gr = "tz"
+    THEN IF (teilwort SUB a pos plus 2) = "e" (* ..tze.. *)
+            OR (teilwort SUB a pos plus 2) = "u" (* ..tzu.. *)
+           THEN SETZE a pos
+           ELSE SETZE a pos plus 1
+         FI
+  ELIF string (a pos, a pos plus 1) = "ch"(* ch zaehlt als 1 Buchstabe *)
+    THEN SETZE a pos plus 1               (* darum keine Abfrage mit kons gr *)
+  ELIF (kons gr = "dt" OR kons gr = "kt")
+       AND silbenanfang nach (e pos)
+    THEN SETZE e pos
+  ELIF kons gr = "ns" AND
+       (string (a pos - 2, a pos - 1) = "io"    (* ..ions *)
+        OR (string (a pos minus 1, a pos) ="en" (*..ens..*)
+            AND (teilwort SUB a pos minus 2) <> "t")) (* aber nicht ..tensiv*)
+    THEN SETZE e pos
+  ELIF string (a pos minus 2, a pos plus 1) = "nach" 
+    THEN IF (teilwort SUB a pos plus 2) <> "t"
+           THEN SETZE a pos plus 1 
+         FI 
+  ELIF string (e pos, e pos + 3) = "lich" 
+    THEN IF string (a pos minus 2, a pos) = "mög"
+           THEN SETZE a pos
+         ELIF pos ("hg", teilwort SUB e pos minus 1) > 0
+           THEN SPERRE e pos minus 1 
+           ELSE SETZE e pos minus 1
+         FI;
+  ELIF (reg (a pos) AND NOT trennung oder sperre gesetzt (a pos))
+       OR (kons gr = "sp" AND silbenanfang vor (a pos))
+    THEN SETZE a pos minus 1 
+  ELIF string (a pos, a pos plus 2) = "sch"
+    THEN SETZE a pos plus 2
+    ELSE SETZE a pos
+  FI.
+ 
+ausnahme fuer zwei konsonanten:
+  string (a pos minus 2, a pos) = "nis" AND a pos > 1
+          (*..nis.., aber nicht nisten *)
+  OR string (a pos minus 2, a pos plus 1) = "rafr" (* strafrecht *)
+  OR string (a pos - 4, a pos) = "undes" (* Bundes *)
+  OR string (a pos minus 1, a pos + 3) = "unter" 
+  OR silbenanfang vor (e pos).
+
+konsonant 3 : 
+  code 1 := code (teilwort SUB a pos);
+  code 2 := code (teilwort SUB a pos plus 1);
+  code 3 := code (teilwort SUB a pos plus 2);
+  IF NOT (ausnahme 1 OR ausnahme 2 OR ausnahme 3 OR ausnahme 4)
+     THEN suche regelmaessige konsonantenverbindung
+  FI.
+ 
+ausnahme 1 : 
+  ind := pos ("cfgklnprt", code (code 1));
+  SELECT ind OF 
+CASE1(*c*): IF code 2 = cv k (* ck *)
+              THEN SETZE a pos plus 1
+            ELIF string (a pos, a pos + 3) = "chts"
+            (* Rechts.., Gesichts.., .. machts..*)
+              THEN SETZE (a pos + 3)
+            ELIF string (a pos plus 1, a pos + 5) = "hstag" (* Reichstag *)
+                 OR (string (a pos, a pos plus 2) = "chs" AND (* ..chs.. *)
+                     string (a pos plus 2, a pos +3) <> "st") 
+              THEN SETZE a pos plus 2
+              ELSE LEAVE ausnahme 1 WITH FALSE 
+            FI;
+            TRUE
+CASE2(*f*): IF code 2 = cv f (*ff*)
+              THEN IF code 3 = cv s
+                     THEN SETZE a pos plus 2 (* ffs *)
+                     ELSE SETZE a pos plus 1
+                   FI
+            ELIF string (a pos minus 1, a pos plus 1) = "aft" (*..aft..*)
+              THEN IF (teilwort SUB a pos plus 2) = "s"
+                     THEN SETZE a pos plus 2
+                     ELSE SETZE a pos plus 1
+                   FI
+              ELSE LEAVE ausnahme 1 WITH FALSE 
+            FI;
+            TRUE
+CASE3(*g*): IF string (a pos minus 2, a pos minus 1) = "ag" (* ags *)
+              THEN SETZE a pos plus 1
+              ELSE LEAVE ausnahme 1 WITH FALSE
+            FI;
+            TRUE
+CASE4(*k*): IF string (a pos, a pos plus 1) = "kt"
+               AND silbenanfang nach (a pos plus 1)
+              THEN SETZE a pos plus 1
+              ELSE LEAVE ausnahme 1 WITH FALSE
+            FI;
+            TRUE
+CASE5(*l*): IF code 2 = cv d OR code 2 = cv g OR code 2 = cv k (*ld, lg, lk*)
+              THEN SETZE a pos plus 1
+            ELIF string (a pos, a pos + 4) = "ltspr" (* Anwaltsprogramm *)
+              THEN SETZE (a pos + 2)
+              ELSE LEAVE ausnahme 1 WITH FALSE
+            FI;
+            TRUE
+CASE6(*n*): IF string (a pos - 2, a pos) = "ein"
+              THEN SETZE a pos
+            ELIF code 2 = cv d (* nd *)
+              THEN IF code 3 = cv s (* nds, wie in ...stands... *)
+                     THEN SETZE a pos plus 2
+                     ELSE SETZE a pos plus 1
+                   FI
+            ELIF code 2 = cv g (* ng *)
+              THEN IF code 3 = cv s   (* ..ngs.. *)
+                      THEN SETZE a pos plus 2 
+                   ELIF code 3 = cv r (* ..ngr.. *)
+                      THEN SETZE a pos
+                   ELIF code 3 = cv l (* ungleich *)
+                      THEN
+                      ELSE SETZE a pos plus 1
+                   FI 
+            ELIF   string (a pos - 3, a pos plus 1) = "trans" 
+                OR string (a pos - 3, a pos plus 1) = "tions" (*tionsplan*)
+              THEN SETZE a pos plus 1 
+            ELIF string (a pos plus 1, a pos + 6) = "ftsper"  (*ftsperspek*)
+              THEN SETZE (a pos + 3)
+              ELSE LEAVE ausnahme 1 WITH FALSE 
+            FI;
+            TRUE 
+CASE7(*p*): IF code 2 = cv p                        (* pp *)
+               OR (code 2 = cv f AND code 3 = cv t) (* pft *)
+              THEN SETZE a pos plus 1; TRUE
+              ELSE FALSE 
+            FI 
+CASE8(*r*): IF string (a pos plus 1, a pos + 4) = "tner" (* rtner *)
+              THEN SETZE a pos plus 1
+            ELIF trennung oder sperre gesetzt (a pos)
+              THEN
+              ELSE LEAVE ausnahme 1 WITH FALSE
+            FI;
+            TRUE
+CASE9(*t*): IF string (a pos plus 1, a pos plus 2) = "st" (*tst*)
+              THEN SETZE a pos 
+            ELIF string (a pos plus 1, a pos plus 2) = "zt"
+                      (* letzt.. *) 
+              THEN IF (teilwort SUB a pos + 3) = "e" (*letzte..*)
+                     THEN SETZE a pos plus 1
+                     ELSE SETZE a pos plus 2
+                   FI
+            ELIF string (apos - 2, a pos plus 1) = "eits"
+                      (* ..heits.., ..keits.., ..beits.. *)
+                 OR string (a pos plus 1, a pos plus 1)= "z" (*tz*)
+              THEN SETZE a pos plus 1
+              ELSE LEAVE ausnahme 1 WITH FALSE
+            FI;
+            TRUE
+OTHERWISE: FALSE
+END SELECT.
+ 
+ausnahme 2 : 
+  IF e pos - a pos = 2 
+     THEN FALSE 
+   ELIF code 2 = cv p AND string (a pos plus 2, a pos + 3) = "ft" (* pft *)
+     THEN SETZE a pos plus 2; TRUE 
+     ELSE FALSE 
+  FI . 
+ 
+ausnahme 3 : 
+  IF code 1 = cv s 
+     THEN IF code 2 = cv t AND code 3 <> cv r (* st, aber nicht: str *)
+             AND pos (vokal string, teilwort SUB a pos plus 2) = 0 
+             THEN SETZE a pos plus 1 ; TRUE 
+             ELSE FALSE 
+          FI 
+   ELIF code 2 = cv s 
+     THEN IF code 3 = cv t AND (teilwort SUB a pos + 3) <> "r" 
+             AND pos (vokal string, teilwort SUB (a pos + 3)) = 0
+             THEN SETZE a pos plus 2; TRUE 
+             ELSE FALSE
+          FI 
+     ELSE FALSE
+  FI . 
+ 
+ausnahme 4 :
+  IF string (e pos, e pos + 3) = "lich" 
+     THEN IF pos ("hg", teilwort SUB e pos minus 1) > 0
+            THEN SPERRE e pos minus 1
+            ELSE SETZE e pos minus 1 
+          FI;
+          TRUE
+     ELSE FALSE
+  FI .
+ 
+suche regelmaessige konsonantenverbindung : 
+  FOR posit FROM a pos UPTO e pos minus 1 REP 
+      IF reg (posit) 
+         THEN SETZE (posit - 1); LEAVE konsonant 3 
+      FI 
+  END REP ;
+  IF (teilwort SUB e pos) <> "h" OR (teilwort SUB e pos minus 1) <> "c" 
+     THEN SETZE e pos minus 1 
+   ELIF (teilwort SUB e pos - 2) <> "s" 
+     THEN SETZE (e pos - 2) 
+     ELSE SETZE (e pos - 3)
+  FI  
+END PROC erstelle trennvektor ; 
+END PACKET silbentrennung;
+

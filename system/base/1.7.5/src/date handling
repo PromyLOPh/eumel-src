@@ -1,0 +1,303 @@
+PACKET date handling DEFINES date, time,        (*  Autor: H. Indenbirken  *)
+                             time of day,       (*  Stand:  02.06.1986 (wk)*)
+                             month, day , year ,
+                             hour ,
+                             minute,
+                             second :
+
+LET middle yearlength = 31557380.0,
+    weeklength =    604800.0,
+    daylength  =     86400.0,
+    hours      =      3600.0,
+    minutes    =        60.0,
+    seconds    =         1.0;
+
+
+(* Tage bis zum Jahr 01.01.1900: 693970.25   5.995903e10   Sekunden        *)
+(* Dieser Tag ist ein Montag                                               *)
+
+REAL VAR begin of today := 0.0 , end of today := 0.0 ;
+
+TEXT VAR today , result ;
+
+
+ROW 12 REAL CONST previous days :: ROW 12 REAL : (0.0, 2678400.0, 5097600.0,
+                                           7776000.0, 10368000.0, 13046400.0,
+                                          15638400.0, 18316800.0, 20995200.0,
+                                          23587200.0, 26265600.0, 28857600.0);
+ 
+REAL PROC day: day length END PROC day;
+REAL PROC hour: hours     END PROC hour;
+REAL PROC minute: minutes END PROC minute;
+REAL PROC second: seconds END PROC second;
+
+TEXT PROC date :
+
+  IF clock (1) < begin of today OR end of today <= clock (1)
+  THEN begin of today := clock (1) ;
+       end of today := floor (begin of today/daylength)*daylength+daylength;
+       today := date (begin of today)
+  FI ;
+  today
+ 
+ENDPROC date ;
+
+TEXT PROC date (REAL CONST datum):
+  INT VAR year :: int (datum/middle yearlength),
+          day  :: int (((datum - datum MOD daylength) MOD middle yearlength) / daylength) + 1;
+
+correct kalendary day;
+ 
+  calculate month and correct day;
+  result := daytext;
+  result CAT monthtext;
+  result CAT yeartext;
+  change all (result, " ", "0") ;
+  result .
+
+correct kalendary day:
+  IF day >= 60 AND NOT leapyear 
+  THEN day INCR 1 FI  .
+
+leapyear:
+  IF year MOD 100 = 0 
+    THEN year MOD 400 = 0
+    ELSE year MOD 4 = 0 
+  FI.
+
+calculate month and correct day:
+  INT VAR month;
+  IF day > 182
+  THEN IF day > 274
+       THEN IF day > 305
+            THEN IF day > 335
+                 THEN month := 12;
+                      day DECR 335
+                 ELSE month := 11;
+                      day DECR 305
+                 FI
+            ELSE month := 10;
+                 day DECR 274
+            FI
+       ELSE IF day > 213
+            THEN IF day > 244
+                 THEN month := 9;
+                      day DECR 244
+                 ELSE month := 8;
+                      day DECR 213
+                 FI
+            ELSE month := 7;
+                 day DECR 182
+            FI
+       FI 
+  ELSE IF day > 91
+       THEN IF day > 121
+            THEN IF day > 152
+                 THEN month := 6;
+                      day DECR 152
+                 ELSE month := 5;
+                      day DECR 121
+                 FI
+            ELSE month := 4;
+                 day DECR 91
+            FI
+       ELSE IF day > 31
+            THEN IF day > 60
+                 THEN month := 3;
+                      day DECR 60
+                 ELSE month := 2;
+                      day DECR 31
+                 FI
+            ELSE month := 1 FI
+       FI 
+  FI  .
+
+daytext :
+  text (day, 2) + "."   .
+
+monthtext :
+  text (month,2) + "."   .
+
+yeartext:
+  IF 1900 <= year AND year < 2000
+    THEN text (year - 1900, 2)
+    ELSE text (year, 4)
+  FI   .
+
+END PROC date;
+
+TEXT PROC day (REAL CONST datum):
+  SELECT int ((datum MOD weeklength)/daylength) OF
+  CASE 1: "Donnerstag"
+  CASE 2: "Freitag"
+  CASE 3: "Samstag"
+  CASE 4: "Sonntag"
+  CASE 5: "Montag"
+  CASE 6: "Dienstag"
+  OTHERWISE "Mittwoch" ENDSELECT  .
+END PROC day;
+
+TEXT PROC month (REAL CONST datum):
+  SELECT int (subtext (date (datum), 4, 5)) OF
+  CASE  1: "Januar"
+  CASE  2: "Februar"
+  CASE  3: "März"
+  CASE  4: "April"
+  CASE  5: "Mai"
+  CASE  6: "Juni"
+  CASE  7: "Juli"
+  CASE  8: "August"
+  CASE  9: "September"
+  CASE 10: "Oktober"
+  CASE 11: "November"
+  OTHERWISE "Dezember" ENDSELECT  .
+
+END PROC month;
+
+TEXT PROC year (REAL CONST datum) :
+
+  TEXT VAR buffer := subtext (date (datum), 7) ;
+  IF LENGTH buffer = 2
+    THEN "19" + buffer
+    ELSE buffer
+  FI .
+
+ENDPROC year ;
+
+TEXT PROC time of day :
+  time of day (clock (1))
+ENDPROC time of day ;
+
+TEXT PROC time of day (REAL CONST value) :
+  subtext (time (value MOD daylength), 1, 5)
+ENDPROC time of day ;
+
+TEXT PROC time (REAL CONST value) :
+  time (value,10)
+ENDPROC time ;
+
+TEXT PROC time (REAL CONST value, INT CONST length) :
+  result := "" ;
+  IF length > 7
+    THEN result CAT hour ;
+         result CAT ":" 
+  FI ;
+  result CAT minute ;
+  result CAT ":" ;
+  result CAT rest ;
+  change all (result, " ", "0") ;
+  result .
+
+hour :
+  text (int (value/hours), length-8) .
+
+minute :
+  text (int (value/minutes MOD 60.0), 2)  .
+
+rest :
+  text (value MOD minutes, 4, 1) .
+
+END PROC time ; 
+
+REAL PROC date (TEXT CONST datum) :
+  split and check datum;
+  real (day no)*daylength +
+  previous days [month no] + calendary day +
+  floor (real (year no)*middleyearlength / daylength)*daylength  .
+
+split and check datum:
+  INT CONST day no :: first no;
+  IF NOT last conversion ok 
+  THEN errorstop ("inkorrekte Datumsangabe (Tag) : " + datum) FI;
+
+  INT CONST month no :: second no;
+  IF NOT last conversion ok OR month no < 1 OR month no > 12
+  THEN errorstop ("inkorrekte Datumsangabe (Monat) : " + datum) FI;
+
+  INT CONST year no :: third no + century;
+  IF NOT last conversion ok
+  THEN errorstop ("inkorrekte Datumsangabe (Jahr) : " + datum) FI;
+
+  IF day no < 1 OR day no > size of month
+  THEN errorstop ("inkorrekte Datumsangabe (Tag) : " + datum) FI  .
+
+century:
+  IF (length (datum) - second pos) <= 2
+  THEN 1900
+  ELSE 0 FI  .
+
+size of month:
+  SELECT month no OF
+  CASE 1, 3, 5, 7, 8, 10, 12: 31
+  CASE 4, 6, 9, 11: 30
+  OTHERWISE february size ENDSELECT  .
+
+february size:
+  IF leapyear
+  THEN 29
+  ELSE 28 FI  .
+
+calendary day:
+  IF month no > 2 AND leapyear 
+  THEN daylength
+  ELSE 0.0 FI  .
+
+leapyear:
+  year no MOD 4 = 0  AND year no MOD 400 <> 0  .
+
+first no:
+  INT CONST first pos :: pos (datum, ".");
+  int (subtext (datum, 1, first pos-1))  .
+
+second no:
+  INT CONST second pos :: pos (datum, ".", first pos+1);
+  int (subtext (datum, first pos + 1, second pos-1))  .
+
+third no:
+  int (subtext (datum, second pos + 1))  .
+
+END PROC date;
+
+REAL PROC time (TEXT CONST time) :
+  split and check time;
+  hour + min + sec  .
+
+split and check time:
+  REAL CONST hour :: hour no * hours;
+  IF NOT last conversion ok
+  THEN errorstop ("inkorrekte Datumsangabe (Stunde) : " + time) FI;
+
+  REAL CONST min  :: min no * minutes;
+  IF NOT last conversion ok
+  THEN errorstop ("inkorrekte Datumsangabe (Minute) : " + time) FI;
+
+  REAL CONST sec :: sec no;
+  IF NOT last conversion ok
+  THEN errorstop ("inkorrekte Datumsangabe (Sekunde) : " + time) FI;
+
+  set conversion (hour ok AND min ok AND sec ok)  .
+ 
+hour no:
+  INT CONST hour pos :: pos (time, ":");
+  real (subtext (time, 1, hour pos-1))  .
+
+min no:
+  INT VAR min pos :: pos (time, ":", hour pos+1);
+  IF min pos = 0 
+    THEN real (subtext (time, hour pos + 1, LENGTH time))
+    ELSE real (subtext (time, hour pos + 1, min pos-1)) 
+  FI .
+
+sec no:
+  IF min pos = 0
+    THEN 0.0
+    ELSE real (subtext (time, min pos + 1)) 
+  FI .
+
+hour ok: 0.0 <= hour AND hour < daylength  .
+min ok:  0.0 <= min  AND min  < hours  .
+sec ok:  0.0 <= sec  AND sec  < minutes  .
+END PROC time;
+ 
+END PACKET datehandling
+

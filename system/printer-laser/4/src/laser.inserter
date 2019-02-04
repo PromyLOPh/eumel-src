@@ -1,0 +1,275 @@
+PACKET laserdrucker inserter DEFINES treiber einrichten : 
+ 
+(**************************************************************************)
+(*   Installationsprogramm                        Stand   : 12.12.88      *)
+(*   für Tintenstrahl-                            Version : 0.9           *)
+(*   und Laserdrucker                             Autor   : hjh           *)
+(**************************************************************************)
+ 
+LET anzahl firmen = 6 ; 
+LET apple = "APPLE" , 
+    canon = "CANON" , 
+    epson = "EPSON" , 
+    hp    = "HEWLETT PACKARD" , 
+    kyo   = "KYOCERA" , 
+    nec   = "NEC" ; 
+ 
+THESAURUS VAR firmen := empty thesaurus ; 
+ 
+INT VAR i ; 
+ROW anzahl firmen THESAURUS VAR drucker ; 
+FOR i FROM 1 UPTO anzahl firmen REP 
+  drucker (i) := empty thesaurus 
+PER ;
+ROW anzahl firmen THESAURUS VAR printer ; 
+FOR i FROM 1 UPTO anzahl firmen REP 
+  printer (i) := empty thesaurus 
+PER ;
+ROW anzahl firmen THESAURUS VAR fonttables ; 
+FOR i FROM 1 UPTO anzahl firmen REP 
+  fonttables (i) := empty thesaurus 
+PER ;
+ 
+liste (apple,"LASERWRITER","printer.apple.laserwriter","fonttab.apple.laserwriter"); 
+liste (canon , "LBP-8"    ,"printer.canon.lbp-8"      ,"fonttab.canon.lbp-8"); 
+liste (epson , "SQ 2500"  ,"printer.epson.sq"         ,"fonttab.epson.sq"); 
+liste (hp , "HP LASERJET" ,"printer.hp.laserjet"      ,"fonttab.hp.laserjet"); 
+liste (hp , "HP LASERJET+" ,"printer.hp.laserjet"      ,"fonttab.hp.laserjet"); 
+liste (kyo , "F-1010"     ,"printer.kyocera.f-1010"   ,"fonttab.kyocera.f-1010"); 
+liste (kyo , "F-2200"     ,"printer.kyocera.f-1010"   ,"fonttab.kyocera.f-1010"); 
+liste (nec , "SILENTWRITER LC-08"      ,"printer.nec.lc-08"
+,"fonttab.nec.lc-08"); 
+
+treiber einrichten;
+ 
+PROC liste (TEXT CONST firmenname, druckername , 
+                        printername, fonttabname ) : 
+  INT VAR firmnum ; 
+  IF firmen CONTAINS firmenname 
+    THEN firmnum := link (firmen,firmenname) 
+    ELSE insert (firmen,firmenname,firmnum) 
+  FI; 
+  insert (drucker(firmnum), druckername) ; 
+  insert (printer(firmnum), printername) ; 
+  insert (fonttables(firmnum), fonttabname) ; 
+END PROC liste ;
+ 
+PROC treiber einrichten : 
+  INT VAR menu phase := 1 ; 
+  BOOL VAR installed := FALSE ; 
+  BOOL VAR was esc ; 
+  INT VAR firmnum, druckernum ;
+  TEXT VAR firmenname, druckername, printername, fonttabname ;
+ 
+  pre menu ;
+  REP 
+    SELECT menu phase OF 
+      CASE 1 : menu ("Hauptmenü Tintenstrahl und Laserdrucker", firmen, 
+                     "CR: Eingabe        ESC : Installation abrechen", 
+                     firmnum, was esc ) ;
+               IF was esc 
+                 THEN menu phase := 0 
+                 ELSE menu phase := 2 ; 
+                      firmenname := name (firmen,firmnum) ;
+               FI ;
+  
+      CASE 2 : menu (firmenname + " - Menü", drucker(firmnum),
+                     "CR: Eingabe        ESC : Zurück zum Hauptmenü",      
+                     druckernum, was esc) ;
+               IF was esc 
+                 THEN menu phase := 1 
+                 ELSE menu phase := 3 ; 
+                      druckername := name (drucker(firmnum),druckernum);  
+                      printername := name (printer(firmnum),druckernum); 
+                      fonttabname := name (fonttables(firmnum),druckernum); 
+               FI;
+ 
+      CASE 3 : inst (druckername, printername, fonttabname, installed) ; 
+               IF NOT installed THEN menu phase := 1 FI;
+    END SELECT 
+  UNTIL installed OR abbruch PER ;
+  post menu. 
+ 
+  abbruch: 
+    menu phase < 1 .
+ 
+  pre menu: 
+    line; 
+    IF is single task system
+      THEN errorstop ("Dieser Treiber arbeitet nur mit Multi-Tasking-EUMEL") 
+    FI; 
+    IF NOT is system task (myself)
+      THEN errorstop ("Die Druckertask muß im Systemzweig angelegt werden") 
+    FI; 
+    command dialogue (TRUE);
+    IF name (myself) <> "PRINTER" 
+      THEN putline ("Diese Task heißt nicht ""PRINTER"", sondern """ + 
+                    name (myself) + """ !"); 
+           IF yes ("Soll die Task in ""PRINTER"" umbenannt werden ?") 
+             THEN rename myself ("PRINTER") 
+           FI 
+    FI. 
+ 
+  is single task system:  (pcb (9) AND 255) = 1.
+ 
+  post menu: 
+   IF NOT installed 
+    THEN page; 
+         putline ("Es ist kein Druckertreiber installiert worden!"); 
+         line; 
+         putline ("Wenn dieses Installationsprogramm insertiert wurde,");
+         putline ("kann es in der Task """ + name (myself) + """ "); 
+         putline ("mit 'treiber einrichten' erneut aufgerufen werden."); 
+         line; 
+   FI. 
+ 
+END PROC treiber einrichten ;
+ 
+PROCEDURE menu (TEXT CONST header, THESAURUS CONST items, TEXT CONST bottom, 
+                INT VAR choice, BOOL VAR was esc) : 
+  INT VAR anzahl ; 
+  page; 
+  headline (header) ; 
+  show list (items,anzahl) ; 
+  bottomline (bottom) ;
+  ask user (anzahl,choice,was esc);  
+END PROC menu ;
+ 
+PROC headline (TEXT CONST header): 
+  cursor (13,1); 
+  putline ("E U M E L - Druckertreiber - Installations - Programm"); 
+  cursor (40 - LENGTH header DIV 2, 2); 
+  IF header <> "" THEN put (header) FI ;
+  line (2) 
+END PROC headline; 
+ 
+PROC bottomline (TEXT CONST bottom): 
+  cursor (1,24); 
+  IF bottom <> "" THEN put (""5"" + bottom) FI ;
+END PROC bottomline; 
+ 
+PROC show list (THESAURUS CONST items , INT VAR anzahl ) : 
+  INT VAR i ; 
+  anzahl := highest entry (items);
+  FOR i FROM 1 UPTO anzahl REP 
+    putline ( text(i) + ".  " + name (items,i) ) ; 
+  PER;
+END PROC show list ;
+ 
+PROC ask user (INT CONST max choice, INT VAR choice, BOOL VAR was esc): 
+  TEXT VAR exit; 
+  TEXT VAR inp := "";
+  REP 
+    cursor (1,23); 
+    IF inp = "" 
+      THEN put ("Ihre Wahl (Nummer eingeben):")
+      ELSE put ("FEHLER! Eingabe korrigieren:")
+    FI; 
+    editget (inp, ""27"", "", exit); 
+    was esc :=  exit = ""27"";
+  UNTIL was esc OR ok PER. 
+ 
+  ok: 
+    choice := int (inp) ; 
+    last conversion ok CAND ( choice > 0 AND choice <= max choice) . 
+END PROC ask user; 
+ 
+BOOL PROC is system task (TASK CONST task): 
+  TASK VAR tsk := task ; 
+  WHILE NOT (tsk = supervisor OR tsk = niltask) REP  
+    tsk := father (tsk) ; 
+  PER;
+  tsk = supervisor 
+END PROC is system task ;
+ 
+PROC inst (TEXT CONST druckername, printername, fonttabname, 
+           BOOL VAR success) : 
+   page ; 
+   headline (druckername) ; 
+   fetch from archive if necessary ((empty thesaurus 
+      + printer name + fonttab name) - all ,success); 
+   IF success  AND ok
+     THEN page ; 
+          putline ("Der Drucker wird insertiert"); 
+          insert (printer name) ; 
+     ELSE success := FALSE ; 
+   FI. 
+ 
+ok: 
+  bottomline (" "); 
+  yes ("Soll der ausgewählte Drucker insertiert werden"). 
+   
+END PROC inst ; 
+ 
+PROC fetch from archive if necessary (THESAURUS CONST files, 
+                                       BOOL VAR success ):
+  BOOL VAR was esc ; 
+  THESAURUS VAR thes :: files; 
+ 
+  WHILE highest entry (thes) > 0  REP
+    ask for archive;
+    IF NOT was esc 
+      THEN disable stop ; 
+           bottomline ("Bitte warten !  "); 
+           reserve archive;
+           IF NOT is error 
+             THEN IF highest entry (thes / ALL archive) > 0 
+                    THEN fetch (thes / ALL archive, archive);
+                    ELSE fehler ("Dateien nicht gefunden") 
+                  FI; 
+                  thes := thes - all;
+           FI; 
+           IF is error 
+             THEN fehler (errormessage);
+                  clear error 
+           FI; 
+           command dialogue (FALSE); 
+           release (archive);
+           command dialogue (TRUE); 
+           enable stop ; 
+    FI;
+  UNTIL was esc PER; 
+  success := highest entry (thes) = 0. 
+ 
+ask for archive:
+  headline ("") ;
+  putline ("Bitte Archiv mit den Dateien"); 
+  TEXT VAR buffer;
+  INT VAR index :: 0; 
+  REP 
+    get (thes, buffer, index); 
+    putline ("    " + buffer) 
+  UNTIL index = 0 PER; 
+  putline ("einlegen !"); 
+  bottomline ("CR: Wenn Archiv eingelegt        ESC : Zurück zum Hauptmenü"); 
+  cursor (1,24); 
+  REP 
+    inchar (buffer) ; 
+  UNTIL buffer = ""13"" OR buffer = ""27"" PER ; 
+  was esc := buffer = ""27"". 
+ 
+reserve archive :
+  INT VAR p1, p2;
+  archive (" "31" ");
+  list (archive);
+  IF is error
+     THEN buffer := errormessage;
+          p1 := pos (buffer, """", 1 ) + 1;
+          p2 := pos (buffer, """", p1) - 1;
+          IF p1 > 0 AND p2 > 0
+             THEN clear error;
+                  buffer := subtext (buffer, p1, p2);
+                  archive (buffer);
+          FI;
+  FI.
+
+END PROC fetch from archive if necessary ;
+
+PROC fehler (TEXT CONST fehlermeldung): 
+  bottomline (""7"" + fehlermeldung + "   Bitte eine Taste drücken") ; 
+  pause ; 
+  bottomline (" ") ; 
+END PROC fehler;
+ 
+END PACKET laserdrucker inserter;
+

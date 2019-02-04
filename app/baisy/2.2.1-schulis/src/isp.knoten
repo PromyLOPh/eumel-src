@@ -1,0 +1,137 @@
+PACKET knotenDEFINES systembaum,setzesystembaumundaktuellenknoten,
+generierebaisymonitor,KNOTEN ,STACK ,KNOTENMENGE ,leeremenge,nilknoten,
+leererstack,anfangsknotenholen,einzelknotenholen,erster,weitere,naechster,
+attribute,maske,task,text,nummer,vorprozedur,nachprozedur,taste,isrefinement,
+isopen,knotenaufrufindex,HAT ,zahlderelemente,mengedernachfolger,:=,=,push,
+pop,hoehe,voll,leer:LET maxhoehe=20,bottom=1;LET maxkn=2190;TYPE LONGROW =
+TEXT ;TYPE KNOTENMENGE =INT ;TYPE KNOTEN =STRUCT (INT zeile,index);TYPE 
+INTKNOTEN =INT ;TYPE EINTRAG =STRUCT (TEXT attribute,INTKNOTEN vater,LONGROW 
+knotenmengenLONGROW knoten);TYPE SYSTAB =STRUCT (INT maxeintrag,ersterfreier,
+ROW maxknEINTRAG zeile);KNOTEN CONST nilknoten:=KNOTEN :(0,0);BOUND SYSTAB 
+VAR sysbaum;TYPE STACK =STRUCT (ROW maxhoeheKNOTEN st,INT top);LET maxat=6,
+tepos=1,mpos=2,vpos=3,npos=4,tpos=5,ppos=6;LET scanid=1;DATASPACE VAR ds;
+BOOL VAR verteilteraufruf;INT VAR newkind;TEXT VAR newsymbol;TEXT VAR 
+pruefstack;BOOL PROC isid:(newkind=scanid)END PROC isid;PROC next:nextsymbol(
+newsymbol,newkind);END PROC next;PROC next(TEXT CONST proz):scan(proz);next
+END PROC next;BOOL PROC prozedurexistiert(TEXT CONST prozname):BOOL VAR da:=
+false;scanstring(da,prozname);da.END PROC prozedurexistiert;PROC scanstring(
+BOOL VAR da,TEXT CONST str):procpos:=1;next(str);analyse(da);WHILE NOT 
+schlussREP next(subtext(str,procpos+4));IF isidTHEN analyse(da)ELSE da:=false
+FI ;procposINCR 1PER .schluss:INT VAR procpos:=pos(str,"PROC",procpos);
+procpos=0.END PROC scanstring;PROC analyse(BOOL VAR da):IF schongeprueftTHEN 
+da:=trueELSE da:=analyseergebnis(newsymbol);IF daTHEN alsgeprueftvermerkenFI 
+FI .schongeprueft:pos(pruefstack,pruefname(newsymbol))>0.alsgeprueftvermerken
+:pruefstackCAT pruefname(newsymbol).END PROC analyse;BOOL PROC 
+analyseergebnis(TEXT CONST prozname):pruefungvorbereiten;IF iserrorTHEN 
+breakabfangen;falseELSE trueFI .pruefungvorbereiten:disablestop;type("�q");
+help(prozname).breakabfangen:TEXT VAR br:="";editget(br);clearerror.END PROC 
+analyseergebnis;TEXT PROC pruefname(TEXT CONST name):"/"+name+"/"END PROC 
+pruefname;TEXT PROC prozedur(TEXT CONST pname):IF pname<>""THEN IF 
+prozedurexistiert(pname)THEN pnameELSE "return(1)"FI ELSE pnameFI END PROC 
+prozedur;PROC generierebaisymonitor(TEXT CONST teilbaumname):LET maxcase=510;
+startemonitordatei;naechstezeile;WHILE NOT tabellenendeREP neuescase;
+naechstezeilePER ;schlusszeilen.startemonitordatei:richtedateiein;
+anfangszeile.richtedateiein:TEXT CONST monitorname:=teilbaumname+" monitor";
+forget(monitorname,quiet);FILE VAR f:=sequentialfile(output,monitorname).
+anfangszeile:putline(f,
+"PACKET baisymonitor DEFINES call,starten ueber monitor:");TEXT VAR anfaenge
+:="";INT VAR tabind:=0;INT VAR caseproczahl:=0;INT VAR aktcasezahl:=0;INT 
+VAR maxtabeintrag:=sysbaum.ersterfreier-1;pruefstack:="".naechstezeile:
+aktcasezahlINCR 1;tabindINCR 1;cout(tabind).tabellenende:tabind>maxtabeintrag
+.neuescase:IF aktcasezahl=1THEN neuecaseprocFI ;casewennnoetig;IF aktcasezahl
+=maxcaseTHEN schlusscaseprocFI .neuecaseproc:caseproczahlINCR 1;putline(f,
+"PROC case"+text(caseproczahl)+"(INT CONST i,BOOL CONST vor):");putline(f,
+"SELECT i OF").casewennnoetig:IF gueltigezeileTHEN KNOTEN VAR k;k.zeile:=
+tabind;TEXT VAR vproc:=prozedur(vorprozedur(k));IF vproc<>""THEN vprocteil;
+TEXT VAR nproc:=prozedur(nachprozedur(k));IF nproc<>""THEN nprocteilELSE put(
+f,"FI");line(f)FI FI FI .gueltigezeile:CONCR (sysbaum.zeile(tabind).vater)>=0
+.vprocteil:put(f,"CASE "+text(aktcasezahl)+": ");put(f,"IF vor THEN "+vproc).
+nprocteil:put(f," ELSE "+nproc+" FI");line(f).schlusszeilen:schlusscaseproc;
+procanfang;ifabfragen;procundpacketende.schlusscaseproc:putline(f,
+"END SELECT");putline(f,"END PROC case"+text(caseproczahl)+";");aktcasezahl:=
+0;anfaengeCAT text(tabind,4).procanfang:putline(f,"PROC call"+
+"(INT CONST i,BOOL CONST vor,TEXT CONST t):").ifabfragen:INT VAR ifzahl:=
+caseproczahl-1;IF ifzahl=0THEN einfacherfallELIF ifzahl=1THEN erstesif;
+elseteilELSE erstesif;alleelifs;elseteilFI .caseaufruf:TEXT VAR zusatz:="";
+TEXT VAR decr:=subtext(anfaenge,basis-3,basis);IF decr<>""THEN zusatz:=" - "+
+decrFI ;put(f,"case"+text(aktcaseindex)+"(i"+zusatz+",vor)");.einfacherfall:
+put(f,"case1(i,vor)");line(f).erstesif:INT VAR aktcaseindex;basis:=0;put(f,
+"IF i<="+subtext(anfaenge,1,4)+" THEN");einfacherfall.alleelifs:INT VAR elif;
+FOR elifFROM 1UPTO ifzahl-1REP neueselifPER .neueselif:put(f,"ELIF ");
+aktcaseindex:=elif+1;INT VAR basis:=elif*4;put(f,"i <="+subtext(anfaenge,
+basis+1,basis+4)+" THEN");caseaufruf;line(f).elseteil:put(f,"ELSE ");basis
+INCR 4;aktcaseindex:=ifzahl+1;caseaufruf;putline(f," FI").procundpacketende:
+putline(f,"END PROC call;");putline(f,"PROC starten ueber monitor:");putline(
+f,"start baisy("""+teilbaumname+
+""",PROC (INT CONST,BOOL CONST,TEXT CONST) call)");putline(f,
+"END PROC starten ueber monitor");putline(f,"END PACKET baisymonitor");
+pruefstack:="".END PROC generierebaisymonitor;DATASPACE PROC systembaum:ds
+END PROC systembaum;KNOTEN VAR aktuellerknoten;PROC 
+setzesystembaumundaktuellenknoten(DATASPACE CONST d,INT CONST s):ds:=d;
+aktuellerknoten.zeile:=sEND PROC setzesystembaumundaktuellenknoten;PROC 
+kopplesystembauman(TEXT CONST name):forget(ds);ladesystembaum(ds,name);
+sysbaum:=dsEND PROC kopplesystembauman;PROC anfangsknotenholen(TEXT CONST 
+name,KNOTEN VAR k,BOOL VAR ok):schaltersetzen;vglkn:=nilknoten;IF NOT 
+verteilteraufrufTHEN kopplesystembauman(name);suche(k,ok)ELSE ok:=TRUE ;
+sysbaum:=ds;k:=aktuellerknotenFI .schaltersetzen:verteilteraufruf:=name="".
+END PROC anfangsknotenholen;PROC einzelknotenholen(TEXT CONST name,KNOTEN 
+VAR einzelknoten,BOOL VAR ok):IF NOT verteilteraufrufTHEN 
+holeindexvoneinzelknoten;IF okTHEN vermerkeihnanletzterstelleFI ELSE 
+sucheunterdenangehaengtenindizesFI .holeindexvoneinzelknoten:DATASPACE VAR 
+savespace:=ds;kopplesystembauman(name);INT VAR index;suche(index,ok);forget(
+ds);ds:=savespace;forget(savespace);sysbaum:=ds.vermerkeihnanletzterstelle:
+einzelknoten.zeile:=index;sysbaum.maxeintragINCR 1;CONCR (sysbaum.zeile(
+sysbaum.maxeintrag).vater):=einzelknoten.zeile;sysbaum.zeile(sysbaum.
+maxeintrag).attribute:=taste(einzelknoten).sucheunterdenangehaengtenindizes:
+INT VAR i;FOR iFROM sysbaum.ersterfreierUPTO sysbaum.maxeintragREP IF sysbaum
+.zeile(i).attribute=nameTHEN einzelknoten.zeile:=CONCR (sysbaum.zeile(i).
+vater)FI PER .END PROC einzelknotenholen;PROC suche(KNOTEN VAR k,BOOL VAR ok)
+:suche(k.zeile,ok);sysbaum.maxeintragINCR 1;sysbaum.ersterfreier:=sysbaum.
+maxeintrag;CONCR (sysbaum.zeile(sysbaum.maxeintrag).vater):=k.zeileEND PROC 
+suche;PROC suche(INT VAR k,BOOL VAR ok):k:=CONCR (sysbaum.zeile(sysbaum.
+ersterfreier).vater);ok:=(k>0)END PROC suche;KNOTENMENGE PROC leeremenge:
+KNOTENMENGE :(0)END PROC leeremenge;STACK PROC leererstack:STACK VAR s;s.top
+:=bottom;sEND PROC leererstack;TEXT PROC knotentexte(KNOTEN CONST k):sysbaum.
+zeile(k.zeile).attributeEND PROC knotentexte;PROC knotentexte(KNOTEN VAR k,
+TEXT CONST t):sysbaum.zeile(k.zeile).attribute:=tEND PROC knotentexte;TEXT 
+PROC maske(KNOTEN CONST k):attribut(k,mpos)END PROC maske;TEXT PROC task(
+KNOTEN CONST k):attribut(k,ppos)END PROC task;INT PROC nummer(KNOTEN CONST k)
+:knotenaufrufindex(k)END PROC nummer;TEXT PROC text(KNOTEN CONST k):attribut(
+k,tepos)END PROC text;TEXT PROC vorprozedur(KNOTEN CONST k):attribut(k,vpos)
+END PROC vorprozedur;TEXT PROC nachprozedur(KNOTEN CONST k):attribut(k,npos)
+END PROC nachprozedur;TEXT PROC taste(KNOTEN CONST k):attribut(k,tpos)END 
+PROC taste;TEXT VAR attext;TEXT PROC attribut(KNOTEN CONST k,INT CONST i):
+attribute(k);TEXT VAR amuster:="��",emuster:="��";replace(amuster,1,i);
+replace(emuster,1,i+1);INT VAR ende,anfang;anfang:=pos(attext,amuster)+2;IF i
+<maxatTHEN ende:=pos(attext,emuster,anfang)-1;subtext(attext,anfang,ende)
+ELSE subtext(attext,anfang)FI END PROC attribut;KNOTEN VAR vglkn;PROC 
+attribute(KNOTEN CONST k):IF NOT (k=vglkn)THEN attext:=knotentexte(k);vglkn:=
+kFI END PROC attribute;BOOL PROC isrefinement(KNOTEN CONST k):attribute(k);(
+attextSUB 1)="1"END PROC isrefinement;BOOL PROC isnormal(KNOTEN CONST k):
+attribute(k);(attextSUB 1)="0"END PROC isnormal;BOOL PROC isopen(KNOTEN 
+CONST k):NOT (isrefinement(k)COR isnormal(k))END PROC isopen;OP HAT (KNOTEN 
+VAR k,TEXT CONST t):knotentexte(k,t)END OP HAT ;INT PROC zahlderelemente(
+KNOTENMENGE CONST m):length(sysbaum.zeile(CONCR (m)).knoten)END PROC 
+zahlderelemente;INT PROC length(LONGROW CONST l):length(CONCR (l))DIV 2END 
+PROC length;PROC mengedernachfolger(KNOTEN CONST k,KNOTENMENGE VAR m):CONCR (
+m):=k.zeileEND PROC mengedernachfolger;KNOTEN PROC erster(KNOTENMENGE CONST m
+):KNOTEN VAR k;aktuellemenge:=sysbaum.zeile(CONCR (m)).knoten;aktuellelaenge
+:=length(aktuellemenge);mengenindex:=CONCR (m);k.zeile:=0;k.index:=0;
+naechster(k);kEND PROC erster;LONGROW VAR aktuellemenge;INT VAR 
+aktuellelaenge;INT VAR mengenindex;PROC naechster(KNOTEN VAR k):IF (
+aktuellelaenge>0)CAND (k.index<aktuellelaenge)THEN k.indexINCR 1;k.zeile:=
+CONCR (aktuellemenge)ISUB k.indexELSE k:=nilknotenFI END PROC naechster;INT 
+PROC knotenaufrufindex(KNOTEN CONST k):k.zeileEND PROC knotenaufrufindex;
+BOOL PROC weitere(KNOTEN CONST k,KNOTENMENGE CONST m):(CONCR (m)=mengenindex)
+CAND (k.index<>0)END PROC weitere;BOOL OP =(KNOTEN CONST k,l):k.zeile=l.zeile
+END OP =;OP :=(KNOTEN VAR ziel,KNOTEN CONST quelle):CONCR (ziel):=CONCR (
+quelle)END OP :=;OP :=(KNOTENMENGE VAR ziel,KNOTENMENGE CONST quelle):CONCR (
+ziel):=CONCR (quelle)END OP :=;OP :=(LONGROW VAR ziel,LONGROW CONST quelle):
+CONCR (ziel):=CONCR (quelle)END OP :=;OP :=(STACK VAR ziel,STACK CONST quelle
+):CONCR (ziel):=CONCR (quelle)END OP :=;PROC push(STACK VAR s,KNOTEN CONST k)
+:IF NOT (s.top=maxhoehe)THEN s.st(s.top):=k;s.topINCR 1FI END PROC push;PROC 
+pop(STACK VAR s,KNOTEN VAR k):IF NOT (s.top=bottom)THEN s.topDECR 1;k:=s.st(s
+.top);FI END PROC pop;INT PROC hoehe(STACK CONST s):s.top-1END PROC hoehe;
+BOOL PROC voll(STACK CONST s):s.top=maxhoeheEND PROC voll;BOOL PROC leer(
+STACK CONST s):s.top=bottomEND PROC leer;END PACKET knoten;
+

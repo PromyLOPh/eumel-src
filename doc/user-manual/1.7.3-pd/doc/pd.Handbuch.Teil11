@@ -1,0 +1,1072 @@
+                       EUMEL-Benutzerhandbuch 
+ 
+                          TEIL 11: Utilities                         
+ 
+ 
+In diesem Teil werden einige Dienstprogramme aufgeführt. Diese Programme 
+sind bei speziellen Anwendungen nützlich. 
+ 
+ 
+ 
+1. Scanner 
+ 
+Der Scanner zerlegt einen TEXT in Symbole bzw. "Tokens" entsprechend der 
+ELAN-Sprachdefinition. 
+ 
+Der Scanner kann benutzt werden, um festzustellen, welche Art von Symbolen 
+in einem TEXT enthalten sind. Die Repräsentation der Symbole müssen dabei 
+der ELAN-Syntax entsprechen. Folgende #ib#Symbole#ie# kann der Scanner 
+erkennen: 
+ 
+   - "tags", d.h. Namen, 
+   - "bolds", d.h. Schlüsselworte, 
+   - "number", d.h. INT oder REAL Zahlen, 
+   - Operatoren, 
+   - "delimiter", d.h. Begrenzer wie z.B. ";", 
+   - und das Ende des Scan-Textes. 
+ 
+ 
+Der Scanner überliest Kommentare und Leerzeichen zwischen den Symbolen. 
+Der (erste) zu verarbeitende Text muß mit der Prozedur 
+ 
+     scan 
+ 
+in den Scanner "hineingesteckt" werden. Mit der Prozedur 
+ 
+     next symbol 
+ 
+wird das jeweils nächste Symbol des TEXTes geholt. Am Ende wird "end of scan" 
+und als Symbol 'niltext' geliefert. Falls innerhalb eines TEXT-Denoters oder 
+eines Kommentars "end of scan" auftritt, wird "within text" bzw. "within 
+comment" gemeldet. Der Scan-Prozeß kann dann mit dem nächsten zu scannenden 
+TEXT (der nächsten Zeile) fortgesetzt werden. Dafür wird nicht die Prozedur 
+'scan', sondern 
+ 
+     continue scan 
+ 
+verwandt. Sie setzt im letzten Scan-Zustand (z.B. Kommentar oder TEXT- 
+Denoter) wieder auf, so daß auch Folgen von TEXTen (Zeilen) wie z.B. Dateien 
+leicht gescannt werden können. 
+ 
+Mit den Prozeduren 
+ 
+     scan              (* meldet eine Datei zum scannen an *) 
+     next symbol       (* holt die Symbole                 *) 
+ 
+kann man auch eine Datei nach ELAN-Symbolen untersuchen. Beispiel: 
+ 
+     FILE VAR f :: ... 
+     ... 
+     scan (f);          (* beginnt das Scanning in der nächsten Zeile *) 
+     TEXT VAR symbol; 
+     INT VAR type; 
+     REP 
+       next symbol (f, symbol, type); 
+       verarbeite symbol 
+     UNTIL type >= 7 END REP. 
+ 
+Merke: Mit dem Scanner kann man einen ELAN-Text analysieren. 
+ 
+ 
+ 
+Scanner-Kommandos 
+ 
+continue scan 
+     PROC continue scan (TEXT CONST scan text) 
+     Zweck: Das Scanning soll mit 'scan text' fortgesetzt werden. Falls der 
+            Scan-Vorgang beim vorigen 'scan text' innerhalb eines TEXT- 
+            Denoters oder eines Kommentars abgebrochen wurde, wird er jetzt 
+            entsprechend mit dem nächsten 'next symbol' fortgesetzt. Der 
+            erste Teil-Scan einer Folge muß aber stets mit 'scan' einge- 
+            leitet werden! 
+ 
+next symbol 
+     PROC next symbol (TEXT VAR symbol, INT VAR type) 
+     Zweck: Holt das nächste Symbol. In "symbol" steht der TEXT des Symbols, 
+            so z.B. die Ziffern eines INT-Denoters. Bei TEXT-Denotern 
+            werden die führenden und abschließenden Anführungsstriche ab- 
+            geschnitten. Leerzeichen oder Kommentare spielen in "tags" oder 
+            "numbers" keine Rolle. Zwischen Symbolen spielen Leerzeichen 
+            oder Kommentare keine Rolle. In "type" steht eine Kennzeichung 
+            für den Typ des Symbols: 
+ 
+               tag             = 1 , 
+               bold            = 2 , 
+               number          = 3 , 
+               text            = 4 , 
+               operator        = 5 , 
+               delimiter       = 6 , 
+               end of file     = 7 , 
+               within comment  = 8 , 
+               within text     = 9 . 
+ 
+            Wird Scan-Ende innerhalb eines Kommentars gefunden, so wird 
+            'niltext' und 'within comment' geliefert. Wird Scan-Ende inner- 
+            halb eines TEXT-Denoters gefunden, so wird der schon analysierte 
+            Teil des Denoters und 'within text' geliefert. 
+ 
+     PROC next symbol (TEXT VAR symbol) 
+     Zweck: s.o. Es wird aber nur der Text des Symbols (ohne Typ) geliefert. 
+ 
+     PROC next symbol (FILE VAR f, TEXT CONST symbol) 
+     Zweck: arbeitet wie obige Prozeduren, jedoch auf einen FILE. 
+ 
+     PROC next symbol (FILE VAR f, TEXT CONST symbol, INT VAR type) 
+     Zweck: arbeitet wie obige Prozeduren, jedoch auf einen FILE. 
+ 
+scan 
+     PROC scan (TEXT CONST scan text) 
+     Zweck: Meldet einen 'scan text' für den Scanner zur Verarbeitung an. 
+            Die Prozedur 'scan' muß vor dem ersten Aufruf von 'next symbol' 
+            gegeben werden. Im Gegensatz zu 'continue scan' normiert 'scan' 
+            den inneren Zustand des Scanners, d.h. vorherige Scan-Vorgänge 
+            haben keinen Einfluß mehr auf das Scanning. 
+ 
+     PROC scan (FILE VAR f) 
+     Zweck: Wie obige Prozedur, jedoch auf einen FILE. Die zu scannende Zeile 
+            ist die nächste Zeile im FILE 'f' ('scan' macht zuerst ein 'get- 
+            line'). 
+ 
+ 
+ 
+2. Inspector 
+ 
+Der Inspector stellt ein Hilfsmittel bei der Programmentwicklung dar. 
+ 
+Der Inspector informiert über alle 
+ 
+   - insertierten Prozeduren / Operatoren mit dem gleichen Namen 
+   - Prozeduren / Operatoren / Typen, die ein Paket definiert 
+   - bisher insertierten Pakete 
+   - insertierten Prozeduren / Operatoren / Typen. 
+ 
+Mit dem Aufruf von 
+ 
+     help ("name") 
+ 
+wird eine Liste aller Prozeduren / Operatoren, die 'name' heißen, auf dem 
+Bildschirm ausgegeben. Die Liste ist paketweise sortiert unter Angabe des 
+Paketnamens. Die Ausgabe erfolgt mit der Angabe der Parametertypen. Gibt es 
+kein Objekt mit dem angegebenen Namen, so erscheint die Ausgabe 
+ 
+     unbekannt: name 
+ 
+Das Kommando 
+ 
+     bulletin ("paket name") 
+ 
+informiert über alle Objekte, die in der DEFINES-Liste des Pakets mit dem 
+Namen "paket name" stehen. Die Ausgabe erfolgt wie beim list-Kommando. 
+ 
+Eine gesamte Liste aller bisher insertierten Prozeduren/Operatoren/Typen 
+erhält man mit dem Kommando 
+ 
+     bulletin 
+ 
+Bei diesen Funktionen ist (noch) zu beachten, daß Typen immer dem textmäßig 
+vorhergehendem Paket zugeordnet werden. Der Grund hierfür liegt in der 
+Behandlung abstrakter Datentypen im ELAN-Compiler. Eine Korrektur ist für 
+spätere Auslieferungen geplant. 
+ 
+Mit 
+ 
+     packets 
+ 
+werden die Namen aller bisher insertierten Pakete "gelistet". 
+ 
+Merke: Mit 'help' kann man sich über verfügbare Prozeduren/Operatoren in- 
+formieren. 
+ 
+ 
+ 
+Inspector-Kommandos 
+ 
+help 
+     PROC help (TEXT CONST name) 
+     Zweck: Listen aller Prozeduren / Operatoren mit dem Namen "name". Die 
+            Ausgabe erfolgt direkt auf den Bildschirm. 
+ 
+bulletin 
+     PROC bulletin (TEXT CONST paket name) 
+     Zweck: Listen aller in der DEFINES-Liste des Pakets mit dem Namen 
+            "paket name". 
+ 
+      PROC bulletin 
+      Zweck: Es wird eine Liste aller bisher insertierter Objekte erstellt. 
+             Diese Liste ist paketweise sortiert. 
+ 
+packets 
+      PROC packets 
+      Zweck: Auflisten der Namen aller bisher insertierten Pakete. 
+ 
+ 
+ 
+3. Lexikographische Vergleiche 
+ 
+Die üblichen Operatoren für TEXTe arbeiten mit dem der Reihenfolge des EUMEL- 
+Zeichencodes. Hier wird beschrieben, wie man lexikographische Vergleiche 
+nach DIN erhält. 
+ 
+Für TEXT-Vergleiche nach DIN 5007 gibt es die Operatoren 
+ 
+     LEXEQUAL 
+     LEXGREATER 
+     LEXGREATEREQUAL 
+ 
+Diese Operatoren vergleichen zwei TEXTE nach DIN 5007 mit folgenden 
+Bedingungen: 
+ 
+- Die Reihenfolge enspricht 'ABC...Z', wobei große und kleine Buchstaben 
+  gleich behandelt werden. 
+ 
+- Weitere Entsprechungen: 
+  ö = oe, ä = ae, ü = ue 
+  Ö = Oe, Ü = Ue, Ä = Ae, 
+  Ä = ä, Ü = ü, Ö = ö, 
+  ß = ss 
+  Dadurch ist z.B. 
+ 
+     "muß" LEXGREATER "Muster" --> FALSE 
+     "Goethe" LEXEQUAL "Göthe" --> TRUE 
+ 
+- Alle Sonderzeichen (außer " " und "-") werden ignoriert. 
+ 
+- Ein Leerzeichen und ein Bindestrich zwischen Worten werden gleich behan- 
+  delt. Beispiel: 
+ 
+     "EUMEL System" LEXEQUAL "EUMEL-System" --> TRUE 
+ 
+Anmerkung: Diese drei Operatoren sind - sofern die oben erwähnten Zeichen in 
+den Operanden vorkommen - langsamer als die "normalen" TEXT-Vergleiche 
+(=, >, <, usw.). Das liegt daran, daß die Operanden in solchen Fällen 
+umgewandelt werden. 
+ 
+ 
+ 
+Lexikographische Operatoren 
+ 
+LEXEQUAL 
+     BOOL OP LEXEQUAL (TEXT CONST l, r) 
+     Zweck: Lexikographischer Vergleich von 'l' und 'r' auf Gleichheit. 
+ 
+LEXGREATER 
+     BOOL OP LEXGREATER (TEXT CONST l, r) 
+     Zweck: Lexikographischer Vergleich von 'l' und 'r' auf "Grösser". 
+ 
+LEXGREATEREQUAL 
+     BOOL OP LEXGREATEREQUAL (TEXT CONST l, r) 
+     Zweck: Lexikographischer Vergleich von 'l' und 'r' auf "Grösser Gleich". 
+ 
+ 
+ 
+4. Der 'reporter' 
+ 
+Das Programm 'reporter' dient zur Fehlersuche und/oder Lokalisierung von 
+besonders häufig durchlaufenen Programmteilen. Zu diesem Zweck werden in ein 
+Programm Prozeduraufrufe eingefügt, die veranlassen, daß bestimmte Informa- 
+tionen (normalerweise Ablaufinformationen) in eine Datei (die TRACE-Datei) 
+geschrieben werden. 
+ 
+'reporter' ermöglicht 
+ 
+a) Ablaufinformationen ("trace"); 
+b) Häufigkeitszählung ("frequency count"); 
+c) Programmunterbrechung bei Nichterfüllung einer Bedingung ("assertion"). 
+ 
+ 
+ 
+Installation von 'reporter' 
+ 
+Das Programm befindet sich in der Datei 'reporter' und kann wie üblich in- 
+sertiert werden. Jedoch muß es mit 'check off' übersetzt werden, damit keine 
+Zeilennummern für 'reporter' generiert werden. Dies ist notwendig, damit die 
+Zeilennummern des zu testenden Programms nicht mit den Zeilennummern des 
+Programms 'reporter' verwechselt werden können. Beispiel: 
+ 
+     check off; insert ("reporter"); check on 
+ 
+ 
+ 
+Vorbereitungen 
+ 
+Mit dem Kommando 
+ 
+     generate reports ("testdatei") 
+ 
+werden die oben erwähnten Prozeduraufrufe ('report') in  das zu testende 
+Programm, welches in der Datei 'testdatei' steht, geschrieben. Die Prozedur- 
+aufrufe werden nach jedem Prozedur-, Operator- oder Refinement-Kopf 
+eingefügt und erhalten den entsprechenden Namen als Parameter. Diese 
+Prozeduraufrufe werden gekennzeichnet, damit sie von der Prozedur 
+ 
+     eliminate reports ("testdatei") 
+ 
+automatisch wieder entfernt werden können. Beispiel (für die eingefügten 
+Prozeduraufrufe): 
+ 
+    ... 
+    PROC beispiel (INT CONST mist): 
+    ##report ("beispiel");## 
+    ... 
+ 
+ 
+ 
+Automatische Ablaufinformationen 
+ 
+Ist ein Programm mit 'generate reports' mit 'report'-Aufrufen versehen 
+worden, kann es wie gewohnt übersetzt werden. Wird das Programm vom ELAN- 
+Compiler korrekt übersetzt und dann gestartet, wird bei jedem Antreffen 
+eines 'report'-Aufrufs der Parameter (Name der Prozedur, Operator oder 
+Refinement) in eine Datei, die TRACE-Datei geschrieben. Die TRACE-Datei wird 
+beim Programmlauf automatisch von 'reporter' unter dem Namen 'TRACE' einge- 
+richtet. 
+ 
+Mit Hilfe dieser Datei kann der Programmablauf verfolgt werden. Es ist damit 
+auch möglich festzustellen, wo eine "Endlos-Rekursion" auftritt. Die Ablauf- 
+informationen bestehen nur aus den Namen der angetroffenen Prozeduren und 
+Refinements. Trotzdem können die Anzahl der Informationen sehr umfangreich 
+werden. Deshalb gibt es die Möglichkeit, die Erzeugung der Ablaufinforma- 
+tionen ab- bzw. wieder anzuschalten. Dazu gibt es die Möglichkeit, in das zu 
+testende Programm die Prozeduren 
+ 
+     report on 
+     report off 
+ 
+einzufügen und das zu testende Programm mit diesen Prozeduraufrufen (erneut) 
+zu übersetzen. 
+ 
+ 
+ 
+Benutzereigene Ablaufinformationen 
+ 
+Zusätzlich zu den von 'generate reports' eingefügten 'report'-Aufrufen kann 
+ein Benutzer eigene Aufrufe an geeigneten Stellen in ein Programm schreiben. 
+Dafür werden weitere 'report'-Prozeduren zur Verfügung gestellt, die als 
+ersten Parameter ein TEXT-Objekt (meist Name des Objekts oder der Ausdruck 
+selbst) und als zweiten ein INT/REAL/TEXT/ BOOL-Objekt (der zu überprüfende 
+Wert oder Ausdruck) enthalten. Beispiel: 
+ 
+    ... 
+    PROC beispiel (INT CONST mist): 
+    ##report ("beispiel");##     (* automatisch eingefuegte *) 
+    INT VAR mist :: ...; ... 
+    ##report ("mist:", mist);##  (* vom Benutzer per Hand eingefuegt *) 
+    ... 
+ 
+Folgende 'report'-Routinen stehen zur Verfügung, damit man sie "von Hand" in 
+ein zu testendes Programm einfügen kann: 
+ 
+     PROC report on 
+     PROC report off 
+     PROC report (TEXT CONST message) 
+     PROC report (TEXT CONST message,  INT CONST value) 
+     PROC report (TEXT CONST message, REAL CONST value) 
+     PROC report (TEXT CONST message, TEXT CONST value) 
+     PROC report (TEXT CONST message, BOOL CONST value) 
+ 
+Wichtig: Hier - wie bei allen anderen "von Hand eingefügten" Aufrufen - 
+sollte ein Nutzer sich an die Konvention halten, diese in "##" einzuklammern. 
+Mit 'eliminate reports' werden diese Einfügungen automatisch entfernt. 
+Sollen diese Aufrufe aber immer im Programm erhalten bleiben (jedoch nicht 
+wirksam sein), sollten sie 
+ 
+a) vor 'generate reports'-Aufruf mit jeweils '###' eingefaßt werden. 
+   Beispiel: 
+   ### report ("...") ### 
+   So steht das 'report'-Statement in einem Kommentar. 'generate reports' 
+   wandelt '###' --> '####' um, so daß ein solches Statement wirksam wird. 
+   'eliminate reports' wandelt ein '####' --> '###' zurück. 
+ 
+b) nach 'generate reports' in '####' eingefaßt werden. 
+ 
+ 
+ 
+Häufigkeitszählung 
+ 
+Eine Häufigkeitszählung erhält man, in dem man in das zu testende Programm 
+die Aufrufe 
+ 
+     count on 
+     count off 
+ 
+einfügt. Ist die Häufigkeitszählung eingeschaltet, merkt sich 'reporter' die 
+Anzahl der Durchläufe für jede Prozedur bzw. Refinement. Mit der Prozedur 
+ 
+     generate counts ("zu testende datei") 
+ 
+werden die vermerkten Häufigkeiten in das zu testende Programm direkt einge- 
+fügt. Die Häufigkeiten werden wie oben beschrieben gekennzeichnet, so daß sie 
+mit 'eliminate reports' entfernt werden können. 
+ 
+ 
+ 
+Assertions 
+ 
+Zusätzlich zu den oben erwähnten Möglichkeiten bietet 'reporter' noch die 
+Prozedur 
+ 
+     assert 
+ 
+an. Diese Prozedur kann von einem Programmierer an einer Stelle in das zu 
+testende Programm eingefügt werden, an der bestimmte Bedingungen erfüllt sein 
+müssen. Die Prozedur 'assert' steht in zwei Formen zur Verfügung: 
+ 
+     PROC assert (BOOL CONST zusicherung) 
+     PROC assert (TEXT CONST message, BOOL CONST zusicherung) 
+ 
+Ist der Wert von 'zusicherung' nicht TRUE, wird der Programmlauf abgebrochen. 
+ 
+ 
+ 
+'reporter'-Kommandos 
+ 
+count on 
+    PROC count on 
+    Zweck: Schaltet die Häufigkeitszählung ein. 
+ 
+count off 
+    PROC count off 
+    Zweck: Schaltet die Häufigkeitszählung aus. 
+ 
+eliminate reports 
+    PROC eliminate reports (TEXT CONST datei) 
+    Zweck: Entfernt gekennzeichnete 'report'-Aufrufe aus der Datei 'datei'. 
+ 
+generate reports 
+    PROC generate reports (TEXT CONST datei) 
+    Zweck: Fügt 'report'-Aufrufe in die Datei 'datei' ein und kennzeichnet 
+           diese mit '##'. 
+ 
+report on 
+    PROC report on 
+    Zweck: Schaltet die Ablaufinformationen in die Datei 'TRACE' ein. 
+ 
+report off 
+    PROC report off 
+    Zweck: Schaltet die Ablaufinformationen wieder aus. 
+ 
+generate counts 
+    PROC generate counts (TEXT CONST datei) 
+    Zweck: Bringt die Häufigkeitszählung (wie oft eine Prozedur oder Refine- 
+           ment durchlaufen wurde) in die Programmdatei 'datei'. Mit 
+           'eliminate reports' werden diese wieder automatisch entfernt. 
+ 
+assert 
+    PROC assert (TEXT CONST message, BOOL CONST value) 
+    Zweck: Schreibt 'message' und den Wert von 'value' in die TRACE-Datei. 
+           Ist 'value' FALSE, wird angefragt, ob das Programm fortgesetzt 
+           werden soll. 
+ 
+ 
+ 
+5. Referencer 
+ 
+Das Programm 'referencer' erstellt aus einem (syntaktisch korrektem) ELAN- 
+Programm eine Liste, in der jedes Auftreten eines Objekts mit der betref- 
+fenden Zeilennummer verzeichnet ist. 
+ 
+ 'referencer' wird durch 
+ 
+     referencer ("ref datei", "referenz liste") 
+ 
+aufgerufen, wobei die Datei 'referenz liste' nicht existieren darf. 
+'referenz liste' enthält nach Ablauf des Programms die gewünschte Liste, die 
+sogenannte Referenzliste. 
+ 
+Achtung: 'referencer' arbeitet ausschließlich mit Namen und verarbeitet nur 
+wenige syntaktische Konstrukte. Darum ist es nur erlaubt, ein PACKET auf 
+einmal von 'referencer' verarbeiten zu lassen. Verarbeitet man mehrere 
+PACKETs auf einmal, kann es geschehen, daß gleichnamige Objekte in unter- 
+schiedlichen Paketen zu Warnungen (vergl. die unten beschriebenen Überprü- 
+fungen) führen. 
+ 
+In der Referenzliste sind 
+ 
+- alle Objekte mit ihrem Namen (in der Reihenfolge ihres Auftretens im 
+  Programm) 
+ 
+- alle Zeilennummern, in der das Objekt angesprochen wird 
+ 
+- die Zeilennummern, in der das Objekt deklariert wurde ('L' für ein lokales 
+  und 'G' für ein globales Objekt, 'R' für ein Refinement) 
+ 
+verzeichnet. 
+ 
+Die Referenzliste kann u.a. dazu dienen, zu kontrollieren, ob und wie (bzw. 
+wo) ein Objekt angesprochen wird. Dies lohnt sich selbstverständlich nur bei 
+etwas umfangreicheren Programmen (bei "Mini"-Programmen kann man dies sofort 
+sehen). 
+ 
+Bei der Erstellung der Referenzliste nimmt das Programm 'referencer' gleich- 
+zeitig einige Überprüfungen vor, die helfen können, ein Programm zu ver- 
+bessern: 
+ 
+1. Warnung bei mehrzeiligen Kommentaren. 
+ 
+2. Überdeckungsfehler. Wird ein Objekt global (auf PACKET-Ebene) und noch- 
+   mals lokal in einer Prozedur deklariert, ist das globale Objekt nicht mehr 
+   ansprechbar. Überdeckungen sind nach der gültigen Sprachdefinition z.Zt. 
+   noch erlaubt, werden aber bei einer Revision des Sprachstandards verboten 
+   sein. 
+ 
+3. Mehrmaliges Einsetzen von Refinements. Wird ein Refinement mehrmals einge- 
+   setzt (das ist völlig legal), sollte man überlegen, ob sich dieses Refine- 
+   ment nicht zu einer Prozedur umgestalten läßt. 
+ 
+4. Nicht angewandte Refinements. Wird ein Refinement zwar deklariert, aber 
+   nicht "aufgerufen", erfolgt eine Warnung. 
+ 
+5. Nicht angesprochene Daten-Objekte. Werden Daten-Objekte zwar deklariert, 
+   aber im folgenden nicht angesprochen, wird eine Warnung ausgegeben. 
+   Hinweis: Alle Objekte, die nur wenig angesprochen werden, also nur wenige 
+   Zeilennummern in der Referenzliste besitzen, sind verdächtig (Ausnahmen: 
+   importierte Prozeduren, LET-Objekte u.a.m.). 
+ 
+ 
+ 
+'referencer'-Kommandos 
+ 
+referencer 
+    PROC referencer (TEXT CONST check file, dump file) 
+    Zweck: Überprüft 'check file'. In 'dump file' steht nach Abschluß die 
+           Referenzliste. 
+ 
+ 
+ 
+6. Notizen (Notizbuch, Fehlerprotokoll) 
+ 
+Das Notizbuch erlaubt es u.a., Fehlermeldungen zwischenzeitig zu speichern 
+und am Ende einer Verarbeitung die Fehlermeldungen zusammen mit dem bear- 
+beiteten Text im Paralleleditor anzuzeigen. 
+ 
+Das Notizbuch wird eingesetzt, wenn Texte bearbeitet werden, die gewissen 
+Regeln entsprechen müssen (Beispiele: ELAN-Compiler, Textkosmetik usw.). In 
+solchen Fällen ist es nützlich, die Fehlermeldungen zwischenzeitig zu 
+speichern und erst am Ende einer Verarbeitung gesammelt dem Benutzer zusam- 
+men mit dem Quelltext anzuzeigen. Diese Aufgaben übernimmt das Notizbuch. 
+Mit der Prozedur 
+ 
+     note 
+ 
+kann eine Meldung im Notizbuch gespeichert werden. Mit 
+ 
+     note line 
+ 
+wird der Beginn einer neuen Zeile im Notizbuch signalisiert. Das bedeutet, 
+daß ein Programmierer für alle Zeilenvorschübe in der Fehlermeldungsdatei mit 
+dieser Prozedur zu sorgen hat. 
+ 
+Mit der Informationsprozedur 
+ 
+     anything noted 
+ 
+kann man am Ende einer Verarbeitung abfragen, ob Fehlermeldungen gespeichert 
+wurden. Ist das der Fall, kann man den Paralleleditor aufrufen: 
+ 
+     note edit 
+ 
+In der oberen Hälfte werden die Fehlermeldungen dargestellt, in der unteren 
+den zu bearbeitenden Text. Beispiel: 
+ 
+     PROC verarbeite (TEXT CONST datei): 
+       FILE VAR f :: sequential file (input, datei); 
+       verarbeitung; 
+       ende behandlung. 
+ 
+     verarbeitung: 
+       ... 
+       note (fehlermeldung); 
+       note line. 
+ 
+     ende behandlung: 
+       IF anything noted 
+         THEN note edit (f) 
+       FI 
+     END PROC verarbeite 
+ 
+ 
+ 
+Notizbuch-Kommandos 
+ 
+anything noted 
+    BOOL PROC anything noted 
+    Zweck: Informationsprozedur, ob etwas in das Notizbuch geschrieben wurde. 
+ 
+note edit 
+    PROC note edit 
+    Zweck Bewirkt das Anzeigen des Notizbuchs auf vollem Bildschirm. 
+ 
+    PROC note edit (FILE VAR f) 
+    Zweck: Anzeigen des Notizbuchs und der Datei 'f' durch den Parallel- 
+           editor. 
+ 
+note file 
+    FILE PROC note file 
+    Zweck: Assoziierungsprozedur. Liefert das Notizbuch. 
+ 
+note line 
+     PROC note line 
+     Zweck: Zeilenvorschub im Notizbuch. 
+ 
+note 
+     PROC note (TEXT CONST meldung) 
+     Zweck: Schreibt 'meldung' in das Notizbuch. 
+ 
+     PROC note (INT CONST zahl) 
+     Zweck: Schreibt 'zahl' als TEXT in das Notizbuch (analog 'put'). 
+ 
+ 
+ 
+7. Sortier-Programme 
+ 
+Es stehen zwei verschiedene Sortier-Programme zur Verfügung: 'sort' 
+(Sortierung nach ASCII-Reihenfolge) und 'lex sort' (Sortierung nach 
+deutschem Alphabet). 
+ 
+Das Kommando 
+ 
+   sort ("datei") 
+ 
+sortiert 'datei' zeilenweise. Beispiel: 
+ 
+   Eingabe-Datei: 
+      Berta ist eine Frau. 
+      Adam ist ein Mann. 
+      ... 
+   Sortierte Datei: 
+      Adam ist ein Mann. 
+      Berta ist eine Frau. 
+      ... 
+ 
+Dabei werden die Zeilen-Anfänge solange zeichenweise miteinander verglichen, 
+bis ein Unterschied auftritt und dann ggf. umgeordnet. Werden zwei ungleich 
+lange Zeilen (Anzahl Zeichen/Zeile) miteinander verglichen, dann kann man 
+sich die kürzere Zeile mit Leerzeichen auf die Länge der längeren Zeile 
+verlängert denken. 
+ 
+Die Reihenfolge, in der die Zeilen sortiert werden, erfolgt nach dem ASCII- 
+Zeichensatz in aufsteigender Reihenfolge (vergl. TEIL 3; EUMEL-Zeichencode): 
+ 
+    Leerzeichen 
+    einige Sonderzeichen 
+    Ziffern 
+    einige Sonderzeichen 
+    Große Buchstaben 
+    einige Sonderzeichen 
+    kleine Buchstaben 
+    einige Sonderzeichen 
+    Umlaute und ß 
+ 
+Das bedeutet, daß z.B. folgendermaßen sortiert wird: 
+ 
+   Adam 
+   Ball 
+   Zuruf 
+   aber das ist ein Satz 
+   niemals 
+   Überlauf 
+ 
+Um zu erreichen, daß große und kleine Buchstaben gleichwertig behandelt 
+werden, kann man das Kommando 
+ 
+   lex sort ("datei") 
+ 
+geben. In diesem Fall würde die sortierte Datei folgendermaßen aussehen: 
+ 
+   aber das ist ein Satz 
+   Adam 
+   Ball 
+   niemals 
+   Überlauf 
+   Zuruf 
+ 
+Man beachte, daß der Umlaut 'Ü' wie 'Ue' behandelt wird (für die restlichen 
+Umlaute gilt eine analoge Behandlung; ebenso wird 'ß' wie 'ss' behandelt). 
+Weiterhin werden alle Sonderzeichen bei der Sortierreihenfolge ignoriert. 
+ 
+ 
+ 
+Sortier-Kommandos 
+ 
+sort 
+     PROC sort (TEXT CONST datei) 
+     Zweck: Die Prozedur 'sort' sortiert die Datei 'datei' zeilenweise. Die 
+            Sortierung erfolgt nach der Ordnung, die der EUMEL-Zeichencode 
+            vorschreibt. Beispielsweise werden Zeilen ("Sätze"), die mit 
+            Ziffern beginnen, vor Sätzen, die mit Buchstaben anfangen, ein- 
+            geordnet. Sätze, die mit großen Buchstaben beginnen, werden vor 
+            Sätzen mit kleinen Buchstaben einsortiert. Weiterhin werden die 
+            Umlaute und das "ß" nach allen anderen Buchstaben eingeordnet. 
+ 
+     PROC sort (TEXT CONST datei, INT CONST anfang) 
+     Zweck: Sortiert eine Datei wie obige Prozedur, jedoch wird bei der 
+            Sortierung nicht der Anfang eines Satzes beachtet, sondern die 
+            Position 'anfang'. 
+ 
+lex sort 
+     PROC lex sort (TEXT CONST datei) 
+     Zweck: Wie 'sort', jedoch nach (deutscher) lexikographischer Reihen- 
+            folge nach DIN 5007. Bei den Vergleichen werden die Operatoren 
+            LEXEQUAL, LEXGREATER, LEXGREATEREQUAL (vergl. TEIL 11 des 
+            Benutzerhandbuchs) verwandt. Anmerkung: 'lex sort' ist um 
+            einiges langsamer als 'sort'. 
+ 
+     PROC lex sort (TEXT CONST datei, INT CONST anfang) 
+     Zweck: Wie 'lex sort', jedoch wird bei der Sortierung bei 'anfang' 
+            jeder Zeile begonnen. 
+ 
+ 
+ 
+8. Rechnen im Editor: TeCal 
+ 
+Das Programm TeCal (Abkürzung für "Text Calculator") ermöglicht das einfache 
+Rechnen im EUMEL-Editor. 
+ 
+Das Programm TeCal ermöglicht einfache Rechnungen (ähnlich wie mit einem 
+Taschenrechner) unter der Benutzung des Editors. Gleichzeitig stehen dem 
+Benutzer aber alle Fähigkeiten des Editors zur Verfügung. TeCal ermöglicht 
+Rechnungen auf einfache Weise zu erstellen oder Tabellenspalten zu berechnen. 
+ 
+TeCal wird aus dem Editor heraus durch 'ESC t' oder durch das Editor- 
+Kommando 
+ 
+     tecal 
+ 
+aktiviert. (Anmerkung: TeCal ist nicht standardmäßig insertiert). Dadurch 
+wird in der untersten Zeile des Bildschirms eine Informationszeile aufgebaut, 
+in der die (Zwischen-) Ergebnisse einer Rechnung zur Kontrolle festgehalten 
+werden. 
+ 
+Merke: TeCal ermöglicht einfache Rechnungen im EUMEL-Editor. 
+ 
+ 
+ 
+Ein einfaches Beispiel 
+ 
+Angenommen, Prokurist Meier der Firma 'Software Experts' muß eine Rechnung 
+schreiben. Er schreibt u.a.: 
+ 
+     ... 
+     Wir berechnen Ihnen 
+ 
+     1 Manual  'Software Auswahl leicht gemacht'      112.30 DM 
+     1 Manual  'Ohne Fehler programmieren'            300.- 
+ 
+                                           Summe 
+ 
+Nun kann er die TeCal-Funktionen durch 
+ 
+     ESC t 
+ 
+zuschalten. (Natürlich kann TeCal auch schon während des Schreibens einge- 
+schaltet sein, das Editorfenster ist dann nur um eine Zeile (nämlich die 
+TeCal-Informationszeile) kürzer. Zuerst löscht Prokurist Meier eventuell 
+vorhandene Zwischenergebnisse von TeCal (TeCal vergißt eine angefangene 
+Rechnung durch Abschalten nicht!) mit 
+ 
+     ESC C 
+ 
+Das funktioniert wie eine CLEAR-Taste bei einem Taschenrechner, löscht also 
+ggf. vorhandene Werte. In der Informationszeile (die letzte Zeile des Bild- 
+schirms) erscheint darum als Wert '0.0'. 
+ 
+Nun "fährt" er mit dem Cursor auf den ersten Wert ('112.30'). Dabei ist es 
+belanglos, welche Ziffer er "trifft". Dann betätigt er 
+ 
+     ESC L 
+ 
+(für Lesen). Damit erscheint dieser Wert in der Informationszeile. Durch 
+'ESC L' wird versucht, einen Wert von der Stelle aus der Datei zu lesen, die 
+durch den Cursor angezeigt wird. (Gelingt dies nicht, erfolgt in der 
+obersten Zeile eine Fehlermeldung). Dann betätigt er 
+ 
+     ESC + 
+ 
+weil er ja die zwei Werte addieren will. Das Zwischenergebnis in der TeCal- 
+Informationszeile bleibt dadurch unverändert. Jetzt fährt er auf den zweiten 
+Wert und betätigt erneut 'ESC L'. Nun erscheint der zweite Wert in der An- 
+zeige. Um das Ergebnis der Rechnung zu erfahren, betätigt er 
+ 
+     ESC = 
+ 
+Die Summe der zwei Zahlen erscheint nun in der Informationszeile. Nun fährt 
+er mit dem Cursor auf die Stelle, an der die Summe stehen soll und betätigt 
+hier   
+ 
+     ESC S 
+ 
+(für Schreiben). Damit erscheint die eben errechnete Summe (412.30) an dieser 
+Stelle der Datei. 
+ 
+Man bedient TeCal also wie einen Taschenrechner. Man muß allerdings, um die 
+Rechentasten zu bedienen, ESC zuvor drücken. Dies ist notwendig, um die 
+"normalen" Tasten von den TeCal-Tasten zu unterscheiden. 
+ 
+Merke: Mit einigen einfachen Tastendrücken können Berechnungen vorgenommen 
+werden. 'ESC L' liest einen Wert von der aktuellen Cursor-Position, 'ESC S' 
+schreibt den angezeigten TeCal-Wert an die aktuelle Cursor-Position. 'ESC C' 
+löscht alle Werte im TeCal-Rechner. 
+ 
+ 
+ 
+Einige weitere einfache Rechenoperationen 
+ 
+In diesem Abschnitt werden weitere einfache Operationen von TeCal be- 
+schrieben. 
+ 
+Natürlich kann man mit TeCal nicht nur Addieren. Die folgenden Operationen 
+laufen analog 'ESC +': 
+ 
+     ESC -               (Subtrahieren) 
+     ESC *               (Multiplizieren) 
+     ESC /               (Dividieren) 
+ 
+Beispiel: 
+ 
+     ... 
+     Wir berechnen Ihnen 
+ 
+   Artikelbezeichnung               Anzahl  Einzelpreis Summe 
+ 
+   Schraube, verdreht                 27       1.05     28.35 
+ 
+                                                 Gesamt 28.35 
+ 
+Dazu drückt Prokurist Meier folgende Tasten: 
+ 
+    Cursor auf         Taste             TeCal-Anzeige 
+ 
+       27               ESC C                0.00 
+    unverändert         ESC L               27.00 
+    unverändert         ESC *               27.00 
+       1.05             ESC L                1.05 
+    unverändert         ESC =               28.35 
+    unter Summe         ESC S               28.35 
+    in Gesamtzeile      ESC S               28.35 
+ 
+Wie wir sehen, kann Prokurist Meier jederzeit seine Eingaben kontrollieren 
+mit Hilfe der TeCal-Informationszeile. 
+ 
+Anmerkung: 
+ 
+'ESC S' schreibt den aktuellen Wert wie der Dezimal-Tabulator des Editors 
+(vergleiche Kapitel Editor). Die Stelle, an der der Cursor steht, wird beim 
+Schreiben die letzte Stelle vor dem Dezimalpunkt. Ziffern vor dem Dezimal- 
+punkt werden also nach links, Ziffern nach dem Dezimalpunkt nach rechts ge- 
+schrieben. 
+ 
+Merke: ESC mit den Tasten '-', '+', '*' und '/' haben die gewohnte Wirkung. 
+ 
+ 
+ 
+Die Verwendung von Klammern 
+ 
+TeCal erlaubt bei Rechnungen die Eingabe von Klammern. 
+ 
+Beispiel (wir haben hier die Taste ESC fortgelassen): 
+ 
+     2 * (3 + 5) = 16.00 
+ 
+Merke: Klammern können bei Rechnungen beliebig verwendet werden. 
+ 
+ 
+ 
+Der Prozent-Operator 
+ 
+Angenommen, wir wollen 14 Prozent von 200 DM errechnen. Dann können wir wie 
+gewohnt verfahren (für bessere Lesbarkeit zeigen wir hier für 'ESC L' den 
+jeweiligen Wert): 
+ 
+     200 ESC % ESC = 
+ 
+Der Prozent-Operator berechnet immer einen eingestellten Prozentsatz von dem 
+gerade angezeigten Zwischenergebnis. Der eingestellte Prozentsatz wird in der 
+Informationszeile angezeigt. Er läßt sich mit Hilfe des Kommandos 
+ 
+     prozentsatz ('prozentzahl') 
+ 
+verändern. 
+ 
+Was müssen wir machen, um die 14 Prozent von 200 auf den Wert von 200 zu 
+addieren? Ganz einfach: 
+ 
+     200  ESC +  ESC %  ESC = 
+ 
+Wie wir solche Tastensequenzen einfacher erledigen können, zeigen wir in 
+einem späteren Abschnitt. 
+ 
+Merke: Der Prozent-Operator berechnet immer den eingestellten Prozentanteil 
+vom angezeigten Wert. 
+ 
+ 
+ 
+Spaltenweise summieren 
+ 
+Da es beim Schreiben von Rechnungen o.ä. häufig vorkommt, daß eine ganze 
+Zahlenkolonne addiert werden soll, besitzt TeCal eine Sonderfunktion, die es 
+dem Benutzer erspart, mit dem Cursor auf jeden einzelnen Wert zu fahren und 
+'ESC L' sowie 'ESC +' zu drücken. Durch 
+ 
+     ESC V 
+ 
+addiert TeCal zu der Zahl, auf der der Cursor steht alle, die in gerader 
+Linie darüberstehen, solange bis eine Zeile gefunden wird, in der Text oder 
+andere Zeichen stehen, die nicht zu einer Zahl gehören. Leerzeichen führen 
+also nicht zum Abbruch der Rechnung. Nehmen wir an, Prokurist Meier hätte 
+seine Rechnung soweit fertig : 
+ 
+     ... 
+     Wir berechnen Ihnen 
+ 
+   Artikelbezeichnung               Anzahl  Einzelpreis Summe 
+ 
+   Schraube, verdreht                 27       1.05     28.35 
+   Nagel, m. Kopf                     33       0.50     16.50 
+   Hammer, Spezialausführung m. 
+      Eichenholzgriff                  1      44.70     44.70 
+                                                      -------- 
+ 
+Um nun die Gesamtsumme zu berechnen fährt er einfach mit dem Cursor auf die 
+unterste Zahl (44.70) und betätigt ESC V. In der Anzeige steht direkt die 
+Gesamtsumme, die dann mit ESC S unter dem Strich eingetragen werden kann. 
+ 
+Merke: Zahlenkolonnen können mit ESC V summiert werden. 
+ 
+ 
+ 
+Direkte Eingabe 
+ 
+Es kann ein Wert direkt in die Berechnung eingehen, ohne daß er vorher in 
+der Datei stehen muß. 
+ 
+Durch das Betätigen von 
+ 
+     ESC E 
+ 
+erscheint 'gib wert :' in der TeCal-Informationszeile. Nun kann ein Wert 
+(wie im Editor) eingegeben werden, zugelassen ist auch ein ganzer Ausdruck 
+wie z.B.   
+ 
+     (3.00 DM + 5.00 DM) * 365 Tage   -    2,00 DM * 12 Monate 
+ 
+Dabei sind auch Buchstaben erlaubt, die aber überlesen werden. Betätigt man 
+RETURN, wird der Ausdruck ausgewertet und der Wert in die Anzeige über- 
+nommen. Für das oben gezeigte Beispiel steht die Anzeige also anschließend 
+auf 2896. Auf diese Weise kann man auch einfach Zwischenrechnungen machen, 
+ohne daß die verwendeten Zahlen irgendwo in der Datei stehen. Das Ergebnis 
+kann man dann weiter verrechnen, als wäre es mit ESC L aus der Datei gelesen 
+worden. Natürlich kann man es auch direkt mit ESC S in die Datei schreiben. 
+ 
+Merke: Mit ESC E wird ein Wert direkt in TeCal aufgenommen. Durch Eingabe 
+eines ganzen Rechenausdrucks lassen sich leicht auch Rechnungen durchführen, 
+ohne daß die Zahlen in einer Datei stehen. 
+ 
+ 
+ 
+TeCal und Lernen im Editor 
+ 
+Bei sich wiederholenden Rechnungen ist es sinnvoll, Rechenoperationen "zu 
+lernen" und auf eine Taste zu legen. 
+ 
+Angenommen, Prokurist Meier hat häufig Rechnungen zu schreiben und muß des 
+öfteren die Mehrwertsteuer und Bruttopreis unter die jeweiligen Nettopreise 
+schreiben. Zu diesem Zweck kann er die "Lern"-Einrichtung des Editors 
+benutzen (vergl. EUMEL-Benutzerhandbuch: Editor). Beim Lernen "merkt" sich 
+der Editor jeden Tastendruck (also auch TeCal-Operationen). Die gelernten 
+Tasten kann man anschließend mit einem Tastendruck abrufen. Meier kann die 
+Operationen wie folgt vom Editor lernen lassen: 
+ 
+Er fährt mit dem Cursor zuerst auf den Nettopreis, von der die Mehrwertsteuer 
+errechnet werden soll. Dann betätigt er ESC HOP (es erscheint LEARN in der 
+Kopfzeile des Editors). Dann schreibt er die TeCal-Operationen wie oben 
+gezeigt (in diesem Falle also ESC L  ESC +  ESC % ; dann steht der Mehrwert- 
+steuerbetrag in der Anzeige. Er fährt also mit dem Cursor eine Zeile tiefer 
+und betätigt ESC S, dann geht er noch eine Zeile tiefer und gibt ESC = und 
+wiederum ESC S um den Bruttobetrag zu berechnen und zu schreiben. Mit dem 
+abschließenden ESC HOP und einer weiteren Taste (sagen wir mal 'm' als 
+Abkürzung für Mehrwert) beendet er das Lernen. Nun kann er jederzeit die 
+Mehrwertsteuer und Bruttobetrag unter einen gegebenen Nettobetrag schreiben, 
+indem er ESC m betätigt. 
+ 
+Praktischer Tip: 
+ 
+Tabulator-Bewegungen kann man ebenfalls lernen. So ist es z.B. möglich, die 
+Berechnung von Spalten- oder Reihensummen zu erlernen, indem man mit 
+TAB jeweils zu dem nächsten Wert springt. 
+ 
+Merke: Es können beliebige Rechnungen erlernt und auf eine Taste gelegt 
+werden. Die gelernten Rechnungen können mit Hilfe einer Taste abgerufen 
+werden. 
+ 
+ 
+ 
+Benutzung des Merkregisters 
+ 
+Mit 
+ 
+     ESC M 
+ 
+(für Merken) kann man ein gerade angezeigtes (Zwischen-) Ergebnis im 
+Speicher aufbewahren, um es später an anderer Stelle wieder in die Rechnung 
+einzubeziehen. Das geschieht, in dem man dann statt eine Zahl mit ESC L 
+einzulesen 
+ 
+     ESC K 
+ 
+(für Konstante) eingibt. Dadurch wird die Zahl aus dem Merkregister wieder 
+in die Anzeige übertragen, so daß man damit weiterrechnen kann. 
+ 
+Merke: Man kann Zahlen mit ESC M abspeichern und mit ESC K wiederholen. 
+ 
+ 
+ 
+Auskunft über TeCal-Funktionen 
+ 
+Wenn Sie beim Arbeiten mit TeCal noch nicht so sicher sind oder eine Funktion 
+benutzen möchten, die Sie sonst nur selten verwenden und deren genaue 
+Wirkung sie vielleicht wieder vergessen haben, so hilft Ihnen 
+ 
+     ESC ? 
+ 
+weiter. Nach betätigen dieser Tasten meldet sich die TeCal Auskunft mit 
+Funktionstaste drücken oder <?>. Dann geben Sie das Funktionssymbol ein, das 
+Sie erklärt bekommen möchten. Geben Sie z.B. ein C ein, wenn Sie die Wirkung 
+von ESC C wissen möchten. Daraufhin wird ein Text gezeigt, in dem die 
+entsprechende Auskunft steht. In diesem Text können Sie sich wie im Editor 
+bewegen. Wenn Sie den Text gelesen haben, können Sie das Fenster wieder mit 
+ESC Q verlassen. Dadurch wird der alte Zustand vor der Auskunftsfunktion 
+wiederhergestellt. Durch 
+ 
+     ESC ? ? 
+ 
+erklärt sich die Auskunft selbst. Sie bekommen dort unter anderem die Liste 
+aller TeCal-Funktionen gezeigt. 
+ 
+Merke: Mit ESC ? erhält man Auskünfte über TeCal-Funktionen. 
+ 
+ 
+ 
+Einstellen von Nachkommastellen 
+ 
+Durch das Kommando 
+ 
+     kommastellen ('zahl') 
+ 
+wird die Anzahl der angezeigten Nachkommastellen (0-9) eingestellt. Genau so 
+viele Nachkommastellen werden auch bei ESC S oder ESC T geschrieben (intern 
+wird aber jeweils mit höchster Genauigkeit gerechnet). Mit 
+ 
+     ESC R 
+ 
+kann man ein angezeigtes Zwischenergebnis auch intern auf die angezeigte Zahl 
+von Nachkommastellen runden. Beispiel: 
+ 
+     ESC (   1   ESC /   3   ESC )   ESC *   2   ESC= 
+ 
+führt zur Anzeige von 0.67 (bei zwei eingestellten Nachkommastellen). Gibt 
+man jetzt (aber nach ESC ) noch ESC R ein, so wird das Zwischenergebnis von 
+1/3 auf 0.33 gerundet, so daß das Endergebnis 0.66 beträgt. 
+ 
+Merke: Im Kommandomodus kann man durch das Kommando 'kommastellen' die An- 
+zahl der Nachkommastellen einstellen. 
+

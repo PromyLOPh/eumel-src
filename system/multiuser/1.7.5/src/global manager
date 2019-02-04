@@ -1,0 +1,683 @@
+(* ------------------- VERSION 19     16.05.86 ------------------- *)
+PACKET global manager DEFINES                  (* Autor: J.Liedtke *)
+ 
+  ALL ,
+  begin password ,
+  call ,
+  continue channel ,
+  erase ,
+  exists ,
+  fetch , 
+  free global manager ,
+  free manager ,
+  global manager ,
+  list ,
+  manager message ,
+  manager question ,
+  save , 
+  std manager :
+ 
+ 
+LET ack                  = 0 ,
+    nak                  = 1 ,
+    error nak            = 2 ,
+    message ack          = 3 ,
+    question ack         = 4 ,
+    second phase ack     = 5 ,
+    false code           = 6 , 
+
+    begin code           = 4 ,
+    password code        = 9 ,
+    fetch code           = 11 ,
+    save code            = 12 ,
+    exists code          = 13 ,
+    erase code           = 14 ,
+    list code            = 15 ,
+    all code             = 17 ,
+    free code            = 20 ,
+    continue code        = 100,
+ 
+
+    error pre            = ""7""13""10""5"FEHLER : " , 
+    cr lf                = ""13""10"" ;
+
+INT VAR reply , order , last order, phase number ;
+ 
+DATASPACE VAR ds := nilspace ;
+ 
+BOUND STRUCT (TEXT name, write pass, read pass) VAR msg ;
+BOUND TEXT VAR reply msg ;
+BOUND THESAURUS VAR thesaurus msg ;
+ 
+TASK VAR order task, last order task ; 
+
+FILE VAR list file ;
+ 
+TEXT VAR error message buffer := "" 
+        ,record 
+        ,received name 
+        ,create son password := "" 
+        ,save file name 
+        ,save write password 
+        ,save read password 
+        ;
+ 
+ 
+PROC fetch (TEXT CONST file name) :
+
+  fetch (file name, father)
+ 
+ENDPROC fetch ;
+ 
+PROC fetch (TEXT CONST file name, TASK CONST manager) :
+ 
+  enable stop ;
+  last param (file name) ;
+  IF NOT exists (file name) 
+    THEN call (fetch code, file name, manager)
+  ELIF overwrite permitted
+    THEN call (fetch code, file name, manager) ;
+         forget (file name, quiet) 
+  ELSE LEAVE fetch
+  FI ;
+  IF reply = ack 
+    THEN disable stop ;
+         copy (ds, file name) ; 
+         forget (ds)
+    ELSE forget (ds) ; 
+         errorstop ("Task """ + name (manager) + """antwortet nicht mit ack")
+  FI . 
+ 
+overwrite permitted :
+  say ("eigene Datei """) ;
+  say (file name) ;
+  yes (""" ueberschreiben") .
+
+ENDPROC fetch ;
+
+PROC fetch (DATASPACE VAR dest, TEXT CONST file name, TASK CONST manager) :
+
+  disable stop ;
+  call (fetch code, file name, manager) ;
+  dest := ds ;
+  forget (ds)
+
+ENDPROC fetch ;
+
+
+PROC save :
+ 
+  save (last param)
+ 
+ENDPROC save ;
+ 
+PROC save (TEXT CONST file name) :
+ 
+  save (file name, father)
+ 
+ENDPROC save ;
+ 
+PROC save (TEXT CONST file name, TASK CONST manager) :
+ 
+  last param (file name) ;
+  call (save code, file name, old (file name), manager) ; 
+  forget (ds) 
+ 
+ENDPROC save ;
+
+PROC save (DATASPACE CONST source, TEXT CONST file name, TASK CONST manager):
+
+  call (save code, file name, source, manager) ; 
+  forget (ds) 
+
+ENDPROC save ;
+
+
+BOOL PROC exists (TEXT CONST file name, TASK CONST manager) :
+
+  call (exists code, file name, manager) ; 
+  forget (ds) ;
+  reply = ack .
+
+ENDPROC exists ;
+
+
+PROC erase :
+ 
+  erase (last param)
+ 
+ENDPROC erase ;
+ 
+PROC erase (TEXT CONST file name) :
+ 
+  erase (file name, father)
+ 
+ENDPROC erase ;
+ 
+PROC erase (TEXT CONST file name, TASK CONST manager) :
+ 
+  call (erase code, file name, manager) ; 
+  forget (ds)
+
+ENDPROC erase ;
+
+ 
+PROC list (TASK CONST manager) :
+ 
+  IF manager = myself
+    THEN list
+    ELSE list from manager
+  FI .
+
+list from manager :
+  call (list code, "", manager) ;
+  IF reply = ack
+    THEN DATASPACE VAR save ds := ds ; 
+         forget (ds) ; 
+         list file := sequential file (modify, save ds) ;
+         insert station and name of task in headline if possible ; 
+         show (list file) ;
+         forget (save ds)
+    ELSE forget (ds) 
+  FI . 
+ 
+insert station and name of task in headline if possible :
+  IF headline (list file) = "" 
+    THEN headline (list file, station number if there is one 
+                              + "  Task : " + name (manager))
+  FI . 
+ 
+station number if there is one : 
+  IF station (manager) > 0 
+    THEN "Station : " + text (station (manager)) 
+    ELSE "" 
+  FI . 
+ 
+ENDPROC list ;
+        
+PROC list (FILE VAR f, TASK CONST manager) :
+ 
+  IF manager = myself
+    THEN list (f)
+    ELSE list from manager
+  FI .
+
+list from manager :
+  call (list code, "", manager) ;
+  IF reply = ack
+    THEN DATASPACE VAR save ds := ds ; 
+         forget (ds) ; 
+         list file := sequential file (input, save ds) ;
+         copy attributes (list file, f) ;
+         insert station and name of task in headline if possible ;
+         REP
+           getline (list file, record) ;
+           putline (f, record)
+         UNTIL eof (list file) PER ; 
+         forget (save ds)
+    ELSE forget (ds) 
+  FI . 
+
+insert station and name of task in headline if possible :
+  IF headline (list file) = "" 
+    THEN headline (list file, station number if there is one 
+                              + "  Task : " + name (manager))
+  FI . 
+ 
+station number if there is one : 
+  IF station (manager) > 0 
+    THEN "Station : " + text (station (manager)) 
+    ELSE "" 
+  FI . 
+ 
+ENDPROC list ;
+
+THESAURUS OP ALL (TASK CONST manager) :
+
+  THESAURUS VAR result ;
+  IF manager = myself
+    THEN result := all
+    ELSE get all from manager
+  FI ;
+  result .
+
+get all from manager :
+  call (all code, "", manager) ;
+  IF reply = ack
+    THEN get result thesaurus
+    ELSE result := empty thesaurus
+  FI .
+
+get result thesaurus :
+  thesaurus msg := ds ;
+  result := CONCR (thesaurus msg) ;
+  forget (ds) .
+ 
+ENDOP ALL ; 
+ 
+ 
+PROC call (INT CONST op code, TEXT CONST file name, TASK CONST manager) :
+ 
+  DATASPACE VAR dummy space ;
+  call (op code, file name, dummy space, manager) 
+
+ENDPROC call ;
+
+PROC call (INT CONST op code, TEXT CONST file name,
+           DATASPACE CONST save space, TASK CONST manager) :
+ 
+  enable stop ;
+  send first order first time ;
+  send second order if required first time ;
+  WHILE order restart required REP
+    pause (10) ;
+    send first order (op code, file name, manager) ;
+    send second order if required
+  PER ;
+  error or message if required .
+
+send first order first time :
+  send first order (op code, file name, manager) ;
+  WHILE order restart required REP
+    pause (10) ;
+    send first order (op code, file name, manager)
+  PER .
+
+send second order if required first time :
+  IF reply = question ack
+    THEN reply msg := ds ;
+         IF NOT yes (reply msg)
+           THEN LEAVE call 
+           ELSE send second order (op code, file name, save space, manager)
+         FI
+  ELIF reply = second phase ack
+    THEN send second order (op code, file name, save space, manager)
+  FI .
+
+send second order if required :
+    IF reply = second phase ack OR reply = question ack
+      THEN send second order (op code, file name, save space, manager)
+    FI .
+
+error or message if required :
+  IF reply = message ack
+    THEN reply msg := ds ;
+         say (reply msg) ;
+         say (cr lf)
+  ELIF reply = error nak
+    THEN reply msg := ds ;
+         errorstop (reply msg)
+  FI .
+
+order restart required : reply = nak .
+
+ENDPROC call ;
+
+PROC send first order (INT CONST op code, TEXT CONST file name,
+                       TASK CONST manager) :
+
+  forget (ds) ;
+  ds := nilspace ;
+  msg := ds ;
+  msg.name := file name ;
+  msg.write pass := write password ;
+  msg.read pass  := read password ;
+  call (manager, op code, ds, reply) ;
+  IF reply < 0
+    THEN errorstop ("Task nicht vorhanden")
+  FI .
+
+ENDPROC send first order ;
+
+PROC send second order (INT CONST op code, TEXT CONST file name,
+                        DATASPACE CONST save space, TASK CONST manager) :
+
+  IF op code = save code
+    THEN send save space
+    ELSE send first order (second phase ack, file name, manager)
+  FI .
+
+send save space :
+  forget (ds) ;
+  ds := save space ;
+  call (manager, second phase ack, ds, reply) .
+
+ENDPROC send second order ;
+ 
+ 
+PROC global manager :
+
+  global manager 
+  (PROC (DATASPACE VAR, INT CONST, INT CONST, TASK CONST) std manager)
+
+ENDPROC global manager ;
+
+PROC free global manager :
+
+  global manager 
+  (PROC (DATASPACE VAR, INT CONST, INT CONST, TASK CONST) free manager)
+
+ENDPROC free global manager ;
+
+
+PROC global manager (PROC (DATASPACE VAR, 
+                     INT CONST, INT CONST, TASK CONST) manager) :
+ 
+  DATASPACE VAR local ds := nilspace ;
+  break ; 
+  set autonom ;
+  disable stop ;
+  command dialogue (FALSE) ;
+  remember heap size ;
+  last order task := niltask ;
+  REP
+    forget (local ds) ; 
+    wait (local ds, order, order task) ;
+    IF order <> second phase ack
+      THEN prepare first phase ;
+           manager (local ds, order, phase number, order task)
+    ELIF order task = last order task
+      THEN prepare second phase ;
+           manager (local ds, order, phase number, order task)
+    ELSE   send nak
+    FI ;
+    send error if necessary ;
+    collect heap garbage if necessary
+  PER .
+
+prepare first phase :
+  phase number := 1 ;
+  last order := order ;
+  last order task := order task .
+
+prepare second phase :
+  phase number INCR 1 ;
+  order := last order .
+
+send nak :
+  forget (local ds) ;
+  local ds := nilspace ;
+  send (order task, nak, local ds) .
+
+send error if necessary :
+  IF is error
+    THEN forget (local ds) ;
+         local ds := nilspace ;
+         reply msg := local ds ;
+         CONCR (reply msg) := error message ;
+         clear error ;
+         send (order task, error nak, local ds)
+  FI .
+ 
+remember heap size :
+  INT VAR old heap size := heap size .
+
+collect heap garbage if necessary :
+  IF heap size > old heap size + 8
+    THEN collect heap garbage ;
+         old heap size := heap size
+  FI .
+
+ENDPROC global manager ;
+
+PROC std manager (DATASPACE VAR ds, 
+                  INT CONST order, phase, TASK CONST order task) :
+
+  IF order task < myself OR order = begin code OR order task = supervisor
+    THEN free manager (ds, order, phase, order task)
+    ELSE errorstop ("kein Zugriffsrecht auf Task """ + name (myself) + """")
+  FI .
+
+ENDPROC std manager ;
+
+PROC free manager (DATASPACE VAR ds, 
+                   INT CONST order, phase, TASK CONST order task):
+
+  enable stop ;
+  IF   order > continue code   AND
+       order task = supervisor THEN y maintenance
+  ELIF order = begin code      THEN y begin
+  ELSE                              file manager order
+  FI .
+
+file manager order :
+  get message text if there is one ;
+  SELECT order OF
+    CASE fetch code       : y fetch
+    CASE save code        : y save
+    CASE exists code      : y exists
+    CASE erase code       : y erase
+    CASE list code        : y list
+    CASE all code         : y all
+    OTHERWISE errorstop ("falscher Auftrag fuer Task """+name(myself)+"""")
+  ENDSELECT .
+ 
+get message text if there is one :
+  IF order >= fetch code AND order <= erase code AND phase = 1
+    THEN msg := ds ;
+         received name := msg.name
+  FI .
+ 
+y begin :
+  BOUND STRUCT (TEXT tname, tpass, TASK task, PROCA start proc) VAR sv msg := ds ;
+  IF create son password = sv msg.tpass AND create son password <> "-"
+    THEN create son task
+  ELIF sv msg.tpass = ""
+    THEN ask for password
+  ELSE   errorstop ("Passwort falsch")
+  FI .
+
+create son task :
+  begin (ds, PROC std begin, reply) ;
+  send (order task, reply, ds) .
+
+ask for password :
+  send (order task, password code, ds) .
+
+
+y fetch :
+  IF read permission (received name, msg.read pass)
+    THEN forget (ds) ;
+         ds := old (received name) ;
+         send (order task, ack, ds)
+    ELSE errorstop ("Passwort falsch")
+  FI .
+ 
+y erase :
+  msg := ds ;
+  received name := msg.name ;
+  IF NOT exists (received name)
+    THEN manager message ("""" + received name + """ existiert nicht", order task)
+  ELIF phase = 1
+    THEN manager question ("""" + received name + """ loeschen", order task)
+  ELIF write permission (received name, msg.write pass)
+    THEN forget (received name, quiet) ;
+         send (order task, ack, ds)
+    ELSE errorstop ("Passwort falsch")
+  FI .
+ 
+y save :
+  IF phase = 1
+    THEN y save pre
+    ELSE y save post
+  FI .
+
+y save pre :
+  IF write permission (received name, msg.write pass)
+    THEN save file name := received name ;
+         save write password  := msg.write pass ;
+         save read password   := msg.read pass ;
+         IF exists (received name)
+           THEN manager question 
+                ("""" + received name + """ ueberschreiben", order task)
+           ELSE send (order task, second phase ack, ds) 
+         FI
+    ELSE errorstop ("Passwort falsch")
+  FI .
+ 
+y save post :
+  forget (save file name, quiet) ;
+  copy (ds, save file name) ;
+  enter password (save file name, save write password, save read password) ;
+  forget (ds) ;
+  ds := nilspace ;
+  send (order task, ack, ds) ;
+  cover tracks of save passwords .
+
+cover tracks of save passwords :
+  replace (save write password, 1, LENGTH save write password * " ") ;
+  replace (save read password, 1, LENGTH save read password * " ") .
+
+y exists :
+  IF exists (received name)
+    THEN send (order task, ack, ds)
+    ELSE send (order task, false code, ds)
+  FI .
+
+y list :
+  forget (ds) ;
+  ds := nilspace ;
+  list file := sequential file (output, ds) ;
+  list (list file) ;
+  send (order task, ack, ds) .
+ 
+y all :
+  BOUND THESAURUS VAR all names := ds ;
+  all names := all ;
+  send (order task, ack, ds) .
+ 
+y maintenance :
+  disable stop ;
+  call (supervisor, order, ds, reply) ;
+  forget (ds) ;
+  IF reply = ack
+    THEN put error message if there is one ; 
+         REP 
+           command dialogue (TRUE) ;
+           get command ("maintenance :") ;
+           reset editor ; 
+           do command
+         UNTIL NOT on line PER ;
+         command dialogue (FALSE) ;
+         break ;
+         set autonom ;
+         save error message if there is one 
+  FI ;
+  enable stop .
+
+put error message if there is one : 
+  IF error message buffer <> "" 
+    THEN  out (error pre) ; 
+          out (error message buffer) ; 
+          out (cr lf) ; 
+          error message buffer := ""
+  FI . 
+ 
+reset editor :
+  WHILE aktueller editor > 0 REP
+    quit
+  PER ;
+  clear error .
+
+save error message if there is one : 
+  IF is error 
+    THEN error message buffer := error message ; 
+         clear error 
+  FI . 
+ 
+ENDPROC free manager ;
+ 
+PROC manager message (TEXT CONST message) :
+
+  forget (ds) ;
+  ds := nilspace ;
+  reply msg := ds ;
+  reply msg := message ;
+  send (order task, message ack, ds)
+
+ENDPROC manager message ;
+
+PROC manager question (TEXT CONST question) :
+
+  forget (ds) ;
+  ds := nilspace ;
+  reply msg := ds ;
+  reply msg := question ;
+  send (order task, question ack, ds)
+
+ENDPROC manager question ;
+
+PROC manager message (TEXT CONST message, TASK CONST receiver) :
+
+  forget (ds) ;
+  ds := nilspace ;
+  reply msg := ds ;
+  reply msg := message ;
+  send (receiver, message ack, ds)
+
+ENDPROC manager message ;
+
+PROC manager question (TEXT CONST question, TASK CONST receiver) :
+
+  forget (ds) ;
+  ds := nilspace ;
+  reply msg := ds ;
+  reply msg := question ;
+  send (receiver, question ack, ds)
+
+ENDPROC manager question ;
+
+PROC std begin :
+
+  do ("monitor")
+
+ENDPROC std begin ;
+
+PROC begin password (TEXT CONST password) :
+
+  cover tracks of old create son password ;
+  create son password := password ;
+  say (""3""13""5"") ;
+  cover tracks .
+
+cover tracks of old create son password :
+  replace (create son password, 1, LENGTH create son password * " ") .
+
+ENDPROC begin password ;
+
+
+PROC continue channel (INT CONST channel number) : 
+
+  TASK CONST channel owner := task (channel number) ; 
+  IF i am not channel owner 
+    THEN IF NOT is niltask (channel owner)
+           THEN ask channel owner to release the channel ;
+                IF channel owner does not release channel
+                  THEN errorstop ("Task """ + name (channel owner)
+                                            + """ gibt Kanal " 
+                                            + text (channel number)
+                                            + " nicht frei") 
+                FI 
+         FI ; 
+         continue (channel number) 
+  FI .
+  
+i am not channel owner : 
+  channel <> channel number . 
+ 
+ask channel owner to release the channel :
+  forget (ds) ; 
+  ds := nilspace ; 
+  pingpong (channel owner, free code, ds, reply) . 
+
+channel owner does not release channel : 
+  (reply <> ack) AND task exists . 
+ 
+task exists : 
+  reply <> -1 . 
+ 
+ENDPROC continue channel ;
+
+
+END PACKET global manager ;
+

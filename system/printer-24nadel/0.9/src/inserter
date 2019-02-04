@@ -1,0 +1,793 @@
+ 
+(*************************************************************************) 
+(*   Installationsprogramm für                Stand   :  3. 1.89         *) 
+(*      24-Nadel Drucker                      Version : 0.9              *) 
+(*                                            Autor   : hjh              *) 
+(*************************************************************************) 
+ 
+PACKET driver inst 24 
+ 
+ 
+       DEFINES treiber einrichten: 
+ 
+ 
+LET up = ""3""13""5"", 
+ 
+    generator name = "printer.24.nadel", 
+ 
+    description file name = "beschreibungen24", 
+    module file name = "module24"; 
+ 
+ 
+INT VAR pr channel, 
+        quality,
+        paper format number,
+        service option; 
+TEXT VAR fonttab name :: "", 
+         driver name :: ""; 
+TEXT VAR inp; 
+BOOL VAR was esc; 
+ 
+treiber einrichten 
+ 
+PROC treiber einrichten:
+
+  treiber einrichten (0)
+END PROC treiber einrichten;
+
+PROC treiber einrichten (INT CONST service opt): 
+ 
+  ask for print channel; 
+  main menu; 
+  IF installed 
+    THEN generate printer spool 
+    ELSE inform about restart 
+  FI. 
+ 
+  ask for printchannel: 
+    inits; 
+    page; 
+    headline ("Druckerkanal - Einstellung"); 
+    cursor (1, 15); 
+    putline ("Hinweis: Die Druckerkanalnummer kann auch nachträglich mit"); 
+    putline ("         'serverchannel (Kanalnummer)' in der Task """ + 
+             name (myself) + """"); 
+    putline ("         verändert werden."); 
+    REP 
+      cursor (1, 10);
+      put (""5"EUMEL-Kanalnummer des Druckerkanals:");
+      get (pr channel);
+      disable stop; 
+      serverchannel (pr channel);
+      BOOL VAR no error :: NOT is error; 
+      clear error; 
+      no error := no error CAND
+                  (pr channel <> channel (myself)) CAND  
+                  (pr channel > 1)                 CAND  
+                  (pr channel < 17); 
+      
+      IF NOT no error
+        THEN cursor (1, 7); 
+             put error;
+             putline ("Eingabe korrigiert wiederholen!") 
+      FI; 
+      enable stop 
+    UNTIL no error PER; 
+    IF exists task ("canal " + text (pr channel)) 
+      THEN end (/ ("canal " + text (pr channel))); 
+    FI; 
+ 
+. inits: 
+    line; 
+    IF single task 
+      THEN errorstop ("Dieser Treiber arbeitet nur mit Multi-Tasking-EUMEL") 
+    FI; 
+    command dialogue (TRUE);
+    IF name (myself) <> "PRINTER" 
+      THEN putline ("Diese Task heißt nicht ""PRINTER"", sondern """ + 
+                    name (myself) + """ !"); 
+           IF yes ("Soll die Task in ""PRINTER"" umbenannt werden ?") 
+             THEN rename myself ("PRINTER") 
+           FI 
+    FI; 
+    INT VAR choice;
+    service option := service opt.
+ 
+  single task:  (pcb (9) AND 255) = 1.
+ 
+  main menu: 
+    BOOL VAR installed :: FALSE; 
+    REP 
+      show main menu; 
+      get choice; 
+      treat choice 
+    UNTIL was esc OR installed PER. 
+ 
+  show main menu: 
+    page; 
+    headline("Hauptmenü 24-Nadel-Drucker"); 
+    putline (" 1. Brother");
+    putline (" 2. Epson");
+    putline (" 3. NEC"); 
+    putline (" 4. OKI");
+    putline (" 5. Toshiba").
+
+  get choice: 
+    cursor (1,24); 
+    put ("CR: Eingabe        ESC: Installation abbrechen"); 
+    ask user (5).
+ 
+  treat choice: 
+    SELECT int (inp) OF 
+      CASE 1: brother menu 
+      CASE 2: epson menu 
+      CASE 3: nec menu 
+      CASE 4: oki menu 
+      CASE 5: toshiba menu 
+    END SELECT. 
+ 
+  
+  brother menu: 
+    page;
+    headline ("brother - Menü"); 
+    putline (" 1. M-1724 L"); 
+    cursor (1,24); 
+    put ("CR: Eingabe        ESC: Zurück zum Hauptmenü"); 
+    ask user (1); 
+    page; 
+    choice := int (inp);
+    IF was esc 
+      THEN was esc := FALSE 
+      ELSE headline ("");
+           putline ("Druckertyp:"); 
+           brother m1724l inst
+    FI. 
+  
+    brother m1724l inst: 
+      putline ("brother M-1724 L"); 
+      line; 
+      putline ("Wählen Sie folgende DIP-Schalter Optionen:"); 
+      putline ("Emulationsmodus                IBM Proprinter XL ");
+      putline ("Automatischer Zeilenvorschub       Nein       ");
+      show control options ("paperfeed, std speed, top margin"); 
+      show material options ("slow, fast, draft, nlq"); 
+      show command options ("draft, nlq"); 
+      ask for papersize; 
+      ask for quality; 
+      IF all right 
+        THEN get fonttable ("fonttab.brother"); 
+             generate ("brotherm1724l"); 
+             adjust papersize; 
+             adjust quality; 
+             IF choice = 2 THEN do ("papersize (34.544, 30.48)") FI; 
+             installed := TRUE 
+      FI.
+ 
+ 
+  toshiba menu:
+    page;
+    headline ("TOSHIBA - Menü"); 
+    putline (" 1. P 321"); 
+    cursor (1,24); 
+    put ("CR: Eingabe        ESC: Zurück zum Hauptmenü"); 
+    ask user (1); 
+    page; 
+    choice := int (inp);
+    IF was esc 
+      THEN was esc := FALSE 
+      ELSE headline ("");
+           putline ("Druckertyp:"); 
+           toshiba p321 inst
+    FI. 
+  
+    toshiba p321 inst: 
+       putline ("TOSHIBA P 321"); 
+       putline ("Die DIP-Schalter müssen so eingestellt sein:"); 
+       putline ("S3-8  S3-7  S3-5  übrige Schalter"); 
+       putline ("OFF   OFF   *)    egal           "); 
+       putline ("*) ON: Einzelblatteinzug, OFF: kein Einzug"); 
+       show control options ("std speed, paper feed"); 
+       show material options("slow, fast"); 
+       show command options ("nlq, draft"); 
+       ask for quality; 
+       ask for papersize; 
+       IF all right 
+         THEN get fonttable ("fonttab.toshiba.p321"); 
+              generate ("toshp321"); 
+              adjust papersize; 
+              adjust quality; 
+              do ("papersize(21.0,30.48)"); 
+              installed := TRUE; 
+        FI. 
+ 
+  
+  epson menu: 
+    page; 
+    headline ("Epson - Menü"); 
+    putline (" 1. LQ 850"); 
+    putline (" 2. LQ 1050"); 
+    putline (" 3. LQ 1500"); 
+    cursor (1,24); 
+    put ("CR: Eingabe        ESC: Zurück zum Hauptmenü"); 
+    ask user (3); 
+    page; 
+    choice := int (inp);
+    IF was esc 
+      THEN was esc := FALSE 
+      ELSE headline ("");
+           putline ("Druckertyp:"); 
+           SELECT choice OF 
+             CASE 1 : lq850 inst
+             CASE 2 : lq850 inst
+             CASE 3 : lq1500 inst
+           END SELECT
+    FI. 
+
+    lq850 inst:
+      IF choice = 1 
+         THEN putline ("Epson LQ 850")
+         ELSE putline ("Epson LQ 1050")
+      FI; 
+      putline ("Die DIP-Schalter müssen so eingestellt sein:"); 
+      putline ("SW1-1 SW1-2 SW1-3 SW1-4 SW1-5 SW1-6 SW1-7 SW1-8");
+      putline ("egal  egal  egal  egal  egal  egal  *1)    OFF ");
+      putline ("*1) ON: Einzelblatteinzug, OFF: kein Einzug"); line;
+      putline ("SW2-1 SW2-2 SW2-3 SW2-4 SW2-5 SW2-6 SW2-7 SW2-8"); 
+      putline ("egal  egal  *2)                     OFF   OFF");
+      putline ("*2) SW2-2 bis SW2-6 müssen je nach Art der Schnittstelle "); 
+      putline ("    gesetzt werden (Druckerhandbuch)");
+      show control options ("std speed, top margin, std typeface, paperfeed");
+      show material options ("slow, fast, draft, nlq, roman, sansserif"); 
+      show command options ("draft, nlq, roman, sansserif"); 
+      ask for quality; 
+      ask for papersize; 
+      IF all right 
+        THEN get fonttable ("fonttab.epson.lq850"); 
+             generate ("epsonlq850"); 
+             adjust quality; 
+             adjust papersize; 
+             IF choice = 2 THEN do ("papersize (34.544, 30.48)") FI; 
+             installed := TRUE 
+      FI. 
+ 
+  lq1500 inst:
+      putline ("EPSON LQ-1500");
+      show control options ("");
+      show material options ("draft, nlq"); 
+      show command options ("draft, nlq"); 
+      ask for quality; 
+      IF all right 
+        THEN get fonttable ("fonttab.epson.lq1500"); 
+             generate ("epsonlq1500"); 
+             adjust quality; 
+             installed := TRUE 
+      FI. 
+ 
+  nec menu: 
+    page;
+    headline ("NEC - Menü"); 
+    putline (" 1. PINWRITER P5 "); 
+    putline (" 2. PINWRITER P6 "); 
+    putline (" 3. PINWRITER P7 "); 
+    putline (" 4. PINWRITER P6 PLUS"); 
+    putline (" 5. PINWRITER P7 PLUS"); 
+    cursor (1,24); 
+    put ("CR: Eingabe        ESC: Zurück zum Hauptmenü"); 
+    ask user (5); 
+    page; 
+    choice := int (inp);
+    IF was esc 
+      THEN was esc := FALSE 
+      ELSE headline ("");
+           putline ("Druckertyp:"); 
+           SELECT choice OF 
+             CASE 1   : necp5p7 inst
+             CASE 2   : necp6 inst
+             CASE 3   : necp5p7 inst 
+             CASE 4   : necp6plus inst
+             CASE 5   : necp6plus inst
+           END SELECT
+    FI. 
+  
+     necp5p7 inst: 
+      IF choice = 1 
+         THEN putline ("NEC PINWRITER P5") 
+         ELSE putline ("NEC PINWRITER P7") 
+      FI; 
+      show control options ("paper feed"); 
+      show material options ("draft, nlq"); 
+      show command options ("draft, nlq"); 
+      ask for quality; 
+      ask for papersize; 
+      IF all right 
+        THEN get fonttable ("fonttab.nec.p5.new"); 
+             generate ("necp5p7"); 
+             adjust papersize; 
+             adjust quality; 
+             installed := TRUE 
+      FI. 
+ 
+     necp6 inst: 
+      putline ("NEC PINWRITER P6 "); 
+      show control options ("paper feed"); 
+      show material options ("draft, nlq"); 
+      show command options ("draft, nlq"); 
+      ask for quality; 
+      ask for papersize; 
+      IF all right 
+        THEN get fonttable ("fonttab.nec.p5.new"); 
+             generate ("necp6"); 
+             adjust papersize; 
+             adjust quality; 
+             installed := TRUE 
+      FI. 
+ 
+     necp6plus inst: 
+      IF choice = 4 
+         THEN putline ("NEC PINWRITER P6 PLUS") 
+         ELSE putline ("NEC PINWRITER P7 PLUS") 
+      FI; 
+      putline ("Der Druckertreiber unterstützt auch den Farbdruck mit entsprechendem"); 
+      putline ("Farbband.");
+      line; 
+      putline ("Wählen Sie folgende Optionen im Druckmenü des Druckers:"); 
+      putline ("CR FUNCTION             CR ONLY ");
+      show control options ("std speed, top margin, std typeface, paperfeed");
+      show material options ("slow, fast, draft, nlq, courier, souvenir"); 
+      show command options ("draft, nlq, courier, souvenir"); 
+      ask for papersize; 
+      ask for quality; 
+      IF all right 
+        THEN get fonttable ("fonttab.nec.p6+"); 
+             generate ("necp6+"); 
+             adjust papersize; 
+             adjust quality; 
+             installed := TRUE;
+             IF choice = 5 THEN do ("papersize (34.544, 30.48)") FI; 
+      FI. 
+ 
+  oki menu: 
+    page; 
+    headline ("OKI - Menü"); 
+    putline (" 1. MICROLINE 390 IBM-/EPSON-kompatibel"); 
+    putline (" 2. MICROLINE 391 IBM-/EPSON-kompatibel"); 
+    putline (" 3. MICROLINE 393/393C EPSON-kompatibel");                   
+    putline (" 4. MICROLINE 393/393C IBM-kompatibel");                     
+    cursor (1,24); 
+    put ("CR: Eingabe        ESC: Zurück zum Hauptmenü"); 
+    ask user (4); 
+    page; 
+    choice := int (inp);
+    IF was esc 
+      THEN was esc := FALSE 
+      ELSE headline ("");
+           putline ("Druckertyp:"); 
+           SELECT choice OF 
+             CASE 1   : oki ml390 inst                                 
+             CASE 2   : oki ml390 inst                                 
+             CASE 3   : oki ml393eps inst 
+             CASE 4   : oki ml393ibm inst 
+           END SELECT
+    FI. 
+ 
+    oki ml390 inst:
+      IF choice = 1
+        THEN putline ("OKI Microline 390") ;
+        ELSE putline ("OKI Microline 391") ;
+      FI;
+      line; 
+      putline ("Wählen Sie folgende Optionen im Druckmenü des Druckers:"); 
+      putline ("EMULATION MODE           EPSON LQ ");
+      putline ("AUTO LF                  NO       ");
+      show control options ("paperfeed, std speed, top margin"); 
+      show material options ("slow, fast, draft, nlq"); 
+      show command options ("draft, nlq, courier, kassette"); 
+      ask for papersize; 
+      ask for quality; 
+      IF all right 
+        THEN get fonttable ("fonttab.oki"); 
+             generate ("oki390/391"); 
+             adjust papersize; 
+             adjust quality; 
+             IF choice = 2 THEN do ("papersize (34.544, 30.48)") FI; 
+             installed := TRUE 
+      FI.
+ 
+ 
+    oki ml393eps inst:
+      putline ("OKI Microline 393 EPSON-kompatibel");
+      putline ("Der Druckertreiber unterstützt auch den Farbdruck mit entsprechendem"); 
+      putline ("Farbband.");
+      line; 
+      putline ("Wählen Sie folgende Optionen im Druckmenü des Druckers:"); 
+      putline ("AUTO LF                  NO    ");
+      show control options ("paperfeed, std speed, top margin, std typeface"); 
+      show material options ("slow, fast, draft, nlq"); 
+      show command options ("draft, nlq, courier, kassette, schwarz, rot, blau, violett, gelb, orange, grün"); 
+      ask for papersize; 
+      ask for quality; 
+      IF all right 
+        THEN get fonttable ("fonttab.oki"); 
+             generate ("oki393/393Ceps"); 
+             adjust papersize; 
+             adjust quality;
+             installed := TRUE 
+      FI.
+ 
+    oki ml393ibm inst:
+      putline ("OKI Microline 393 IBM-kompatibel");
+      putline ("Der Druckertreiber unterstützt auch den Farbdruck mit entsprechendem"); 
+      putline ("Farbband.");
+      line; 
+      putline ("Wählen Sie folgende Optionen im Druckmenü des Druckers:"); 
+      putline ("EMULATION MODE           ASCII ");
+      putline ("AUTO LF                  NO    ");
+      show control options ("paperfeed, std speed, top margin, std typeface"); 
+      show material options ("slow, fast, draft, nlq"); 
+      show command options ("draft, nlq, courier, kassette, schwarz, rot, blau, violett, gelb, orange, grün"); 
+      ask for papersize; 
+      ask for quality; 
+      IF all right 
+        THEN get fonttable ("fonttab.oki");
+             generate ("oki393/393Cibm"); 
+             adjust papersize; 
+             adjust quality;
+             installed := TRUE 
+      FI.
+ 
+ 
+ 
+generate printer spool: 
+   IF service opt = 0 
+      THEN forget (generator name, quiet); 
+           forget (driver name, quiet) 
+    FI;
+    eumel must advertise;
+    cursor (1, 10);
+(*  putline ("In allen bestehenden Tasks - insbesondere in der Task ""PUBLIC"" - muß");
+    putline ("die Fonttabelle mit dem Kommando");
+    line;
+    putline ("      font table (""" + font tab name + """)");
+    line;
+    putline ("eingestellt werden!!!");
+    line (2);
+    putline ("Hinweis: Dieses Installationsprogramm kann in der Task """ + name (myself) + """"); 
+    putline ("         mit 'treiber einrichten' aufgerufen werden, wenn ein anderer"); 
+    putline ("         Drucker eingesetzt werden soll."); 
+    line (2); 
+*) 
+(*  put ("Generierung beendet, weiter mit 'SV'");
+    break (quiet);
+*) 
+    putline ("  Generierung beendet."); 
+    putline ("  Weiter: Bitte Taste drücken"); 
+    WHILE incharety <> "" REP ENDREP; 
+    REP UNTIL incharety <> "" ENDREP; 
+    break; 
+    do ("spool manager (PROC printer)").
+ 
+  inform about restart: 
+    page; 
+    putline ("Es ist kein Druckertreiber installiert worden!"); 
+    line; 
+    putline ("Dieses Installationsprogramm kann in der Task """ + name (myself) + """"); 
+    putline ("mit 'treiber einrichten' erneut aufgerufen werden."); 
+    line; 
+    pause(50); 
+    break. 
+ 
+END PROC treiber einrichten; 
+ 
+PROC headline (TEXT CONST header): 
+ 
+  cursor (13,1); 
+  putline ("E U M E L - Druckertreiber - Installations - Programm"); 
+  cursor (40 - LENGTH header DIV 2, 2); 
+  put (header); 
+  line (2) 
+END PROC headline; 
+ 
+PROC ask user (INT CONST max choice): 
+ 
+  TEXT VAR exit; 
+  inp := "";
+  REP 
+    cursor (1,23); 
+    IF inp = "" 
+      THEN put ("Ihre Wahl (Nummer eingeben):")  
+      ELSE put ("FEHLER! Eingabe korrigieren:")
+    FI; 
+    editget (inp, ""27"", "", exit); 
+    was esc :=  exit = ""27"";
+  UNTIL was esc OR ok PER. 
+ 
+  ok: 
+    int (inp) > 0 AND int (inp) <= max choice AND last conversion ok. 
+END PROC ask user;
+
+PROC show control options (TEXT CONST options): 
+ 
+  line; 
+  putline ("Steuerprozeduren in der Task """ + name (myself) + """:"); 
+  write ("papersize, std quality");
+  IF options <> "" 
+    THEN put (","); 
+         putline (options) 
+  FI
+END PROC show control options; 
+
+PROC show material options (TEXT CONST options): 
+ 
+  line; 
+  putline ("Mögliche Materialwerte (#material(""..."")#):"); 
+  putline (options) 
+END PROC show material options; 
+ 
+PROC show command options (TEXT CONST options): 
+ 
+  line; 
+  putline ("Mögliche direkte Druckeranweisungen (#""...""#):"); 
+  putline (options) 
+END PROC show command options; 
+ 
+PROC ask for quality: 
+ 
+  line (1); 
+  putline ("Standard - Druckqualität:"); 
+  line; 
+  REP out (up); 
+    IF yes ("Draft Quality (schneller, aber nicht so schön)") 
+      THEN quality := 1; LEAVE ask for quality 
+    FI;
+    out (up);
+    IF yes ("Near Letter Quality (schöner, aber langsamer)")
+      THEN quality := 2; LEAVE ask for quality 
+    FI;
+  PER 
+END PROC ask for quality; 
+ 
+PROC adjust quality: 
+ 
+  IF quality = 1 
+    THEN do ("std quality (""draft"")") 
+    ELSE do ("std quality (""nlq"")") 
+  FI 
+END PROC adjust quality; 
+ 
+PROC ask for papersize : 
+LET up           = ""3""13""5"";
+ 
+  paper format number := paper format ; 
+ 
+    . paper format :
+        line (1); 
+        putline ("Papierformat:"); 
+        line;
+        REP out (up);
+            IF yes ("Endlospapier, 8 Zoll breit")
+               THEN LEAVE paper format WITH 1 FI;
+            out (up);
+            IF yes ("Endlospapier, 13.2 Zoll breit")
+               THEN LEAVE paper format WITH 2 FI;
+            out (up);
+            IF yes ("Einzelblatteinzug, DINA 4")
+               THEN LEAVE paper format WITH 3 FI;
+        PER;
+        0
+END PROC ask for papersize;
+ 
+ 
+PROC adjust papersize: 
+ 
+    SELECT paper format number OF 
+      CASE 1 : do("papersize ( 8.0 * 2.54, 12.0 * 2.54)");
+               do ("paper feed (""tractor"")") 
+      CASE 2 : do("papersize (13.2 * 2.54, 12.0 * 2.54)");
+               do ("paper feed (""tractor"")") 
+      CASE 3 : do("papersize (21.0, 29.7)");
+               do ("paper feed (""sheet"")") 
+    END SELECT
+ 
+END PROC adjust papersize; 
+ 
+BOOL PROC all right: 
+ 
+  line (3);
+  cursor (1,23); 
+  yes ("Soll der ausgewählte Druckertreiber installiert werden") 
+END PROC all right; 
+ 
+PROC get fonttable (TEXT CONST name): 
+ 
+  fonttab name := name; 
+  from archive ((description file name & module file name & fonttab name) 
+                                                                    - all); 
+  fonttable (fonttab name); 
+  command dialogue (FALSE); 
+  save (fonttab name, /"configurator"); 
+  IF service option = 0 
+    THEN forget (fonttab name) 
+  FI; 
+  command dialogue (TRUE); 
+END PROC get fonttable; 
+ 
+PROC from archive (THESAURUS CONST files):
+ 
+  IF highest entry (files) > 0 
+    THEN fetch from archive; 
+         release (archive);
+         putline ("Archiv abgemeldet !")
+  FI.
+ 
+  fetch from archive: 
+    THESAURUS VAR thes :: files; 
+    REP 
+      ask for archive;
+      reserve archive;
+      fetch (thes / ALL archive, archive);
+      thes := thes - all 
+    UNTIL highest entry (thes) = 0 PER.
+
+ask for archive:
+  TEXT VAR buffer;
+(*line;
+  putline ("Bitte Archiv mit den Dateien"); 
+  INT VAR index :: 0; 
+  REP 
+    get (thes, buffer, index); 
+    putline ("    " + buffer) 
+  UNTIL index = 0 PER; 
+  putline ("einlegen !"); 
+  line; 
+  putline ("Wenn eingelegt: Taste drücken !"); 
+  inchar (buffer)*). 
+ 
+reserve archive :
+  INT VAR p1, p2;
+  archive (" "31" ");
+  disable stop;
+  list (archive);
+  IF is error
+     THEN buffer := errormessage;
+          p1 := pos (buffer, """", 1 ) + 1;
+          p2 := pos (buffer, """", p1) - 1;
+          IF p1 > 0 AND p2 > 0
+             THEN clear error;
+                  buffer := subtext (buffer, p1, p2);
+                  archive (buffer);
+          FI;
+  FI;
+  enable stop.
+
+END PROC from archive;
+
+THESAURUS OP & (TEXT CONST left, right):
+  THESAURUS VAR result := empty thesaurus;
+  insert (result, left);
+  insert (result, right);
+  result
+END OP &;
+
+THESAURUS OP & (THESAURUS CONST left, TEXT CONST right):
+  THESAURUS VAR result := left;
+  insert (result, right);
+  result
+END OP &;
+ 
+PROC generate (TEXT CONST name): 
+ 
+  open files; 
+  read description; 
+  build programme; 
+  insert programme; 
+  forget files. 
+ 
+  open files: 
+    line (5); 
+    cursor (1, 20); 
+    putline (""4"Bitte warten !"); 
+    putline ("    - Der Treiber wird generiert."); 
+    driver name := "printer." + name + "(generiert)"; 
+    IF exists (driver name) 
+      THEN forget (driver name, quiet) 
+    FI; 
+    FILE VAR des file :: sequential file (modify, description file name), 
+             mod file :: sequential file (modify, module file name), 
+             driver file :: sequential file (output, driver name). 
+ 
+  read description: 
+    to line (des file, 1); 
+    col (des file, 1);
+    downety (des file, "$" + name + "$"); 
+    IF eof (des file) 
+      THEN errorstop ("Beschreibung von """ + name + """ nicht im"13""10"" + 
+                      "Descriptions-File enthalten")
+    FI; 
+    TEXT VAR description :: "", 
+             record; 
+    BOOL VAR done :: FALSE; 
+    read record (des file, record); 
+    record := subtext (record, col (des file) + LENGTH name + 2);
+    WHILE NOT eof (des file) AND NOT done REP 
+      treat record
+    PER. 
+ 
+  treat record: 
+    INT VAR dollar pos :: pos (record, "$"); 
+    IF dollar pos = 0
+      THEN description CAT compress (record); 
+           down (des file); 
+           read record (des file, record)  
+      ELSE description CAT compress (subtext (record, 1, dollar pos - 1));
+           col (des file, dollar pos); 
+           done := TRUE; 
+    FI. 
+ 
+  build programme: 
+    get module name; 
+    WHILE still modules REP 
+      find module; 
+      transfer module; 
+      get module name 
+    PER. 
+ 
+  get module name: 
+    INT VAR semicol pos :: pos (description, ";"); 
+    TEXT VAR module name; 
+    IF semicol pos > 0 
+      THEN module name := subtext (description, 1, semicol pos - 1); 
+           description := subtext (description, semicol pos + 1) 
+      ELSE module name := description; 
+           description := "" 
+    FI.
+ 
+  still modules: 
+    module name <> "" OR description <> "". 
+ 
+  find module: 
+    to line (mod file, 1); 
+    col (mod file, 1); 
+    downety (mod file, "$" + module name + "$"); 
+    IF eof (mod file) 
+      THEN errorstop ("Modul """ + module name + """ nicht im"13""10"" + 
+                      "Modul-File enthalten")
+    FI. 
+ 
+  transfer module: 
+    done := FALSE; 
+    read record (mod file, record); 
+    record := subtext (record, col (mod file) + LENGTH module name + 2);
+    WHILE NOT eof (mod file) AND NOT done REP 
+      transfer record
+    PER. 
+ 
+  transfer record: 
+    dollar pos := pos (record, "$"); 
+    IF dollar pos = 0
+      THEN write (driver file, compress (record)); 
+           line (driver file);
+           down (mod file); 
+           read record (mod file, record)  
+      ELSE write (driver file, compress (subtext (record, 1, 
+                                            dollar pos - 1)));
+           col (mod file, dollar pos); 
+           done := TRUE; 
+           cout (line no (mod file)) 
+    FI. 
+ 
+  insert programme: 
+    IF online 
+      THEN putline ("    - Der Treiber wird insertiert.") 
+    FI;
+    check off; 
+    insert (driver name). 
+ 
+  forget files: 
+    IF service option = 0 
+      THEN forget (description file name, quiet); 
+           forget (module file name, quiet)
+    FI  .
+END PROC generate; 
+ 
+END PACKET driver inst 24
+

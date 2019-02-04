@@ -1,0 +1,302 @@
+PACKET net manager DEFINES start,stop,net manager,frei:
+TEXT VAR stand := "Netzsoftware vom  02.09.85";
+                 (*Heinrichs     *)
+ 
+LET
+    ack = 0,
+    nak = 1,
+    error nak = 2,
+    zeichen eingang = 4,
+    list code = 15,
+    fetch code = 11,
+    freigabecode = 29,
+    continue code = 100,
+    erase code = 14,
+    report code = 99, 
+
+    (* Typen von Kommunikationsstr”men *)
+
+    send wait = 0,
+    zustellung = 1,
+    call pingpong = 2,
+    call im wait = 3,
+    call im abbruch = 4,
+    call in zustellung = 5;
+ 
+LET STEUER =
+      STRUCT ( 
+      INT  head, 
+           rechner nummern, 
+           strom,
+      INT  sequenz,
+           seiten nummer,
+      TASK quelle,ziel,
+      INT  sende code); 
+ 
+LET INFO = STRUCT (STEUER steuer, INT typ); 
+ 
+TASK VAR sohn;
+INT VAR strom,c.
+ 
+vx: v.steuer.
+ 
+PROC frei (INT CONST stat,lvl): 
+  DATASPACE VAR ds := nilspace;
+  BOUND STRUCT (INT x,y) VAR msg := ds;
+  msg.x := stat; msg.y := lvl;
+  INT VAR return;
+  call (/"net port", freigabecode, ds, return) ;
+  forget (ds)
+END PROC frei; 
+ 
+PROC net manager (DATASPACE VAR ds, INT CONST order, phase, TASK CONST
+                  ordertask):
+ 
+    IF order = report code
+    THEN 
+      forget ("report",quiet); 
+      copy (ds,"report"); 
+      forget (ds) 
+    ELSE 
+      IF ordertask < myself
+      OR order = list code
+      OR order > continue code
+      THEN
+        IF order = list code 
+        THEN
+          enable stop;
+          forget (ds); ds := old ("report");
+          FILE VAR ff := sequential file (output,ds);
+          putline (ff,stand);
+          putline (ff,"Rechner "+text(station(myself))+"  um "+time of day);
+          send (ordertask, ack, ds)
+        ELSE
+        free manager (ds,order,phase,order task) 
+        FI
+      ELSE
+      errorstop ("nur 'list' ist erlaubt")
+      FI
+    FI 
+END PROC net manager; 
+
+TASK VAR cd,stask;
+ROW 255 INT VAR erlaubt; 
+INT VAR i;
+FOR i FROM 1 UPTO 255 REP erlaubt (i) := 0 PER;
+
+PROC communicate: 
+  enable stop;
+  INT VAR scode;
+  DATASPACE VAR dr := nilspace;
+  neuer start (quit max);
+REP 
+  forget (dr); 
+  wait (dr, scode, stask); 
+  cd := collected destination;
+  IF zeichen da OR zeit abgelaufen 
+  THEN 
+    packet
+  ELIF cd = myself 
+  THEN 
+    netz info und steuerung 
+  ELSE
+    neue sendung (stask, cd, scode, dr)
+  FI 
+PER. 
+ 
+zeichen da: scode < 0 . 
+ 
+zeit abgelaufen: scode = ack AND cd = myself. 
+
+packet: 
+    TEXT VAR t := incharety; 
+    INT VAR snr, ant,err;
+    TASK VAR quelle, ziel;
+    snr := 0;
+    REP 
+      IF t = "" 
+      THEN 
+        zeitueberwachung (snr, quelle, ziel, ant, dr); 
+      ELSE
+        packet eingang (t, snr, quelle, ziel, ant, dr); 
+      FI;
+      IF snr > 0 
+      THEN 
+        IF ant > 5 AND erlaubt(station (quelle)) < 0 
+        THEN unerlaubt
+        ELSE 
+          send (quelle,ziel,ant,dr,err); 
+          fehlerbehandlung ;
+        FI
+      FI 
+    UNTIL snr = 0 OR zeichen da PER.
+
+fehlerbehandlung: 
+  IF ok oder ziel nicht da THEN loesche verbindung (snr) FI. 
+ 
+ok oder ziel nicht da: err=0 OR err=-1. 
+ 
+netz info und steuerung: 
+    IF scode = list code THEN   list status 
+  ELIF scode = erase code THEN strom beenden
+  ELIF scode = freigabe code AND stask = father THEN freigabelevel 
+  ELSE forget (dr); ablehnen ("nicht m”glich") 
+  FI. 
+ 
+freigabelevel: 
+  BOUND STRUCT (INT stat,lvl) VAR lv := dr; 
+  IF lv.stat > 0 AND lv.stat < 256 THEN erlaubt (lv.stat) := lv.lvl FI; 
+  send (stask,ack,dr).
+ 
+unerlaubt: 
+  report ("Fremdzugriff von "+text(station (quelle))+" auf "+nam(ziel)
+          +" code "+text(ant)); 
+  loesche verbindung (snr). 
+ 
+strom beenden:
+  BOUND TEXT VAR stromtext := dr;
+  INT VAR erase strom := int (stromtext);
+  forget (dr);
+  strom := erase strom;
+  IF falsche stromnummer THEN ablehnen ("Strom gibt es nicht")
+  ELSE 
+    BOUND INFO VAR v := verbindung (strom); 
+  IF
+    stask = father OR stask = vx.quelle OR stask = vx.ziel
+  THEN
+    loeschen
+  ELSE ablehnen ("Nur Empf„nger/Absender darf l”schen")
+  FI
+  FI. 
+ 
+loeschen:
+  IF sendeeintrag  THEN
+    IF callee (vx.quelle) = vx.ziel THEN absender warnen FI;
+    loesche verbindung (strom)
+  ELSE
+    IF callee (vx.ziel) = vx.quelle THEN warnen FI; 
+    loesche verbindung (strom)
+  FI; 
+  dr := nilspace;
+  send (stask,ack,dr).
+
+absender warnen:
+ dr := nilspace;
+ send(vx.ziel,vx.quelle,1,dr,err) .
+
+warnen:
+ dr := nilspace;
+BOUND TEXT VAR errtxt := dr; errtxt:= "Station antwortet nicht"; 
+send (vx.quelle,vx.ziel,error nak, dr, err). 
+ 
+falsche stromnummer: strom < 1 OR strom > max verbindungsnummer.
+sendeeintrag: vx.rechnernummern DIV256 = station (myself).
+END PROC communicate;
+
+PROC ablehnen (TEXT CONST t):
+  DATASPACE VAR vdr := nilspace;
+  BOUND TEXT VAR errtxt := vdr; 
+  errtxt := t;
+  send (stask, error nak, vdr).
+END PROC ablehnen;
+
+PROC stop: 
+  disable stop; 
+  end (task ("net port"));
+  end (task ("net timer")); 
+  clear error;
+END PROC stop; 
+ 
+PROC list status: 
+ 
+  DATASPACE VAR ds := nilspace; 
+  FILE VAR f:=sequential file (output, ds);
+  FOR strom FROM 1 UPTO max verbindungsnummer REP 
+    BOUND INFO VAR v := verbindung (strom);
+    IF vx.strom <> 0 THEN info FI 
+  PER; 
+  send (stask, ack, ds). 
+ 
+info: 
+  put (f,"Strom "+text(strom)+" (sqnr"+text(vx.sequenz)+")"); 
+  IF sendeeintrag THEN sendeinfo ELSE empfangsinfo FI; 
+  line (f). 
+ 
+sendeeintrag: vx.rechnernummern DIV 256 = station(myself) . 
+ 
+sendeinfo: 
+  IF v.typ = call im wait THEN put (f,"erwartet Antwort von")
+  ELIF v.typ = call in zustellung THEN put (f,"Ziel busy. Zielstation:") 
+  ELIF v.typ = call im abbruch THEN put (f,"wird gel”scht bei Antwort von") 
+  ELSE put (f,"sendet an") 
+  FI; 
+  put (f,vx.rechnernummernMOD256); 
+  put (f,". Absender ist """+nam (vx.quelle)+"""."). 
+ 
+empfangsinfo: 
+  IF v.typ = zustellung THEN 
+  put (f,"Sendung noch nicht zustellbar")
+  ELSE
+  put (f,"empf„ngt von");
+  put (f,vx.rechnernummernDIV256); 
+  FI;
+  put (f,". Empfaenger ist """+nam (vx.ziel)+""".").
+END PROC list status; 
+
+
+PROC start (INT CONST chan):
+  c:=chan;
+  start
+END PROC start;
+INT VAR quitmax := 3;
+PROC start (INT CONST chan,quit):
+  quitmax := quit;
+  c:=chan;
+  start
+END PROC start;
+
+PROC start: 
+stop;
+IF exists ("report") THEN forget ("report") FI;
+FILE VAR s := sequential file (output,"report"); 
+putline (s," N e u e r   S t a r t "+time of day); 
+begin ("net port",PROC net io, sohn); 
+TASK VAR dummy;
+begin ("net timer",PROC timer,dummy);
+define collector (sohn) 
+END PROC start; 
+ 
+PROC timer: 
+  disable stop;
+  REP 
+    clear error;
+    DATASPACE VAR ds := nilspace;
+    pause (100); 
+    send (sohn, ack, ds) 
+  PER; 
+END PROC timer; 
+
+PROC net io:
+  disable stop; 
+  fetch ("report");
+  commanddialogue (FALSE); 
+  continue (c);
+  communicate;
+  TEXT VAR emsg := "++++++ "+error message +" Zeile "+text(errorline);
+  clear error; 
+  report (emsg);
+  save ("report");
+  end (myself) 
+END PROC net io; 
+
+put ("Netzkanalnummer:"); get (c);line;
+IF yes ("Ist der Netzkanal mit Fluákontrolle verdrahtet") THEN
+   quit max := 10
+ELSE
+   quit max := 3
+FI; 
+END PACKET net manager;
+ 
+ 
+start; global manager (PROC (DATASPACE VAR,INT CONST,INT CONST, TASK
+CONST) net manager ) 

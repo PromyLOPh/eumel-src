@@ -1,0 +1,284 @@
+(* ------------------- VERSION 66 vom 06.03.86 -------------------- *)
+PACKET texter errors and common DEFINES
+   only command line,
+   skip input,
+   char pos move,
+   begin of this char,
+   number chars,
+   display and pause,
+   report text processing error,
+   report text processing warning:
+
+(* Programm zur zentralen Haltung aller Fehlermeldungen der Textkosmetik
+   Autor: Rainer Hahn
+   Stand: 1.7.1 Febr. 1984
+          1.7.3 Juli    "
+          1.7.4 Febr. 1985
+ *)
+
+LET escape = ""27"";
+
+TEXT VAR fehlerdummy;
+
+BOOL PROC only command line (TEXT CONST zeile):
+INT VAR anfang, ende;
+LET kommando zeichen = "#";
+  IF pos (zeile, kommando zeichen) = 1
+    THEN ende := pos (zeile, kommando zeichen, 2); 
+         IF ende > 0
+           THEN zaehle kommandos durch;
+                LEAVE only command line WITH richtiges kommandoende
+         FI
+  FI;
+  FALSE.
+ 
+zaehle kommandos durch:
+  WHILE ende + 1 = pos (zeile, kommando zeichen, ende +1) REP
+    anfang := pos (zeile, kommando zeichen, ende + 1);
+    ende   := pos (zeile, kommando zeichen, anfang + 1)
+  END REP.
+ 
+richtiges kommandoende:
+  ende > 0 AND
+     (ende = length (zeile) OR (ende = length (zeile) - 1 AND absatzzeile)).
+ 
+absatzzeile:
+  (zeile SUB length (zeile)) = " ". 
+END PROC only command line;
+
+PROC skip input:
+  REP
+    TEXT CONST zeichen :: incharety;
+    IF zeichen = escape
+      THEN errorstop ("Abbruch durch ESC")
+    FI
+  UNTIL zeichen = "" END REP
+END PROC skip input;
+
+PROC char pos move (TEXT CONST ein text, INT VAR zpos, INT CONST richtung):
+  zpos INCR richtung;
+  IF within kanji (ein text, zpos)
+    THEN zpos INCR richtung
+  FI
+END PROC char pos move;
+
+PROC begin of this char (TEXT CONST ein text, INT VAR zpos):
+  IF zpos < 1 OR zpos > length (ein text)
+    THEN display and pause (7)
+    ELSE suche zeichenposition
+  FI.
+
+suche zeichenposition:
+  IF within kanji (ein text, zpos)
+    THEN zpos DECR 1
+  FI.
+END PROC begin of this char;
+
+INT PROC number chars (TEXT CONST ein text, INT CONST von pos, bis pos):
+  INT VAR index :: von pos, anz :: 0;
+  WHILE index <= bis pos REP
+   IF index > length (ein text) OR index > bis pos
+     THEN display and pause (5); LEAVE number chars WITH 0
+   FI;
+   IF is kanji esc (ein text SUB index)
+     THEN index INCR 2
+     ELSE index INCR 1
+   FI;
+   anz INCR 1
+ END REP;
+ anz
+END PROC number chars;
+
+PROC display and pause (INT CONST nr):
+  line ; put ("LINER ERROR"); put (nr); pause
+END PROC display and pause;
+
+PROC report text processing error (INT CONST error nr,
+                                  INT CONST line nr,
+                                  TEXT VAR  message, 
+                                  TEXT CONST addition):
+ 
+  einfache meldung aufbauen; 
+  meldung in fehlerdatei ausgeben. 
+ 
+einfache meldung aufbauen: 
+  message := "FEHLER Zeile ";
+  message CAT text (line nr);
+  message CAT ": ";
+  message CAT simple message;
+  message CAT " ";
+  message CAT addition.
+ 
+meldung in fehlerdatei ausgeben: 
+  note (message);
+  note line;
+  fehlerdummy := "   >>> ";
+  fehlerdummy CAT zusatz;
+  note (fehlerdummy);
+  note line.
+ 
+simple message:
+  SELECT error nr OF
+  CASE 1: "Unbekannter Schriftyp ignoriert:"
+  CASE 2: "#-Zeichen fehlt"
+  CASE 3: "foot in Fußnote (ignoriert)"
+  CASE 4: "cm-Angabe fehlt (REAL) (ignoriert):"
+  CASE 5: "INT-Parameter erwartet (ignoriert):"
+  CASE 6: "(versuchte) Trennung in Macro-Text"
+  CASE 7: "ie-Anweisung fehlt bei Seitenende"
+  CASE 8: "Unbekannte Anweisung (ignoriert):"
+  CASE 9: "Nicht kompilierbares Programm:"
+  CASE 10: "Einrückung (Leerzeichen am Zeilenanfang) zu groß"
+  CASE 11: "Anweisung hier nicht erlaubt (ignoriert):"
+  CASE 12: "Tabellen-Position liegt innerhalb eines b pos:"
+  CASE 13: "free-Wert > Textteil der Seite (ignoriert)"
+  CASE 14: "Mehr als 1 Zeichen in pagenr (ignoriert)"
+  CASE 15: "Macro innerhalb eines Macros definiert (ignoriert):"
+  CASE 16: "Mehr als drei Seitenzeichen"
+  CASE 17: "Mehr als zehn Zeilen im Index"
+  CASE 18: "Index Parameter inkorrekt (ignoriert): "
+  CASE 19: "Hinter Anweisung darf nichts mehr stehen (ignoriert):"
+  CASE 20: "Doppelter Index ignoriert:"
+  CASE 21: "ib(..) fehlt:"
+  CASE 22: "Inkorrekte Anweisung:"
+  CASE 23: "2 Byte Zeichen ohne zweites Zeichen am Zeilenende"
+  CASE 24: "free-Wert größer Seitenlänge (ignoriert):"
+  CASE 25: "Seitenende in head, bottom oder foot-Bereich plaziert"
+  CASE 26: "Anzahl columns < 2 ignoriert"
+  CASE 27: "INT-Parameter <= 0 ignoriert:"
+  CASE 28: "Kein Textzeichen vor oder hinter b"
+  CASE 29: "Nochmaliges columns ohne columns end (ignoriert)"
+  CASE 30: "set count-Parameter inkorrekt (ignoriert):"
+  CASE 31: "end ohne vorangehendes head, bottom oder foot"
+  CASE 32: "Max. Anzahl von Tabellen-Positionen überschritten"
+  CASE 33: "Macro-Aufruf oder -Definition in einem Macro (ignoriert):"
+  CASE 34: "counter nicht initialisiert (ignoriert):"
+  CASE 35: "store counter Kennung bereits vorhanden (ignoriert):"
+  CASE 36: "Spaltenbreite > limit"
+  CASE 37: "Zentimeter-Angabe in limit = 0 (ignoriert)"
+  CASE 38: "Zentimeter-Angabe inkorrekt (ignoriert):"
+  CASE 39: "Zentimeter-Angabe > als eingestelltes limit (ignoriert):"
+  CASE 40: "Makro-Definition (ignoriert):"
+  CASE 41: "Nochmaliges table ohne table end (ignoriert)"
+  CASE 42: "pos bereits hier gesetzt (ignoriert):"
+  CASE 43: "Druckposition (pos) nicht vorhanden:"
+  CASE 44: "Text breiter als Spalte bei:"
+  CASE 45: "rpos überschreibt vorherige Spalte bei:"
+  CASE 46: "cpos überschreibt vorherige Spalte bei:"
+  CASE 47: "dpos überschreibt vorherige Spalte bei:"
+  CASE 48: "Geblockter Text breiter als Spalte bei:"
+  CASE 49: "table end fehlt"
+  CASE 50: "Zentrierzeichen für dpos fehlt bei:"
+  CASE 51: "e-Anweisung ohne vorangehendes d oder u"
+  CASE 52: "fehlendes e auf dieser Zeile"
+  CASE 53: "Wort mit Exponent oder Index zu lang"
+  CASE 54: "Modifikation bereits angeschaltet bei on:"
+  CASE 55: "Modifikation nicht angeschaltet bei off:"
+  CASE 56: "Index bereits angeschaltet bei ib:"
+  CASE 57: "Index nicht angeschaltet bei ie:"
+  CASE 58: "Inkorrekte direkte Drucker-Anweisung (TEXT-Denoter):"
+  CASE 59: "tableend ohne vorangehendes table"
+  CASE 60: "put counter fehlt für:"
+  CASE 61: "store counter fehlt für:"
+  OTHERWISE ""
+  ENDSELECT.
+ 
+zusatz:
+  SELECT error nr OF
+  CASE 1: "type-Anweisung korrigieren"
+  CASE 2: "Bitte Einfügen"
+  CASE 3: "Geschachtelte Fußnoten sind nicht möglich"
+  CASE 4: "Beispiel: limit(16.0)"
+  CASE 5: "Beispiele: page(4), pagenr(""%"",4)"
+  CASE 6: "Trennung erscheint nicht im Ausdruck!"
+  CASE 7: "Index in Indexdatei ggf. vervollständigen"
+  CASE 10: "für Zeilenbreite (limit): Leerzeichen entfernen"
+  CASE 11: "(In head-, bottom- und foot-Bereichen)"
+  CASE 13: "Parameterwert verkleinern"
+  CASE 14: "Beispiel: pagenr(""$"",5)"
+  CASE 15: "Macros kontrollieren und ggf. neu laden"
+  CASE 16: "sind z.Z. nicht zugelassen"
+  CASE 17: "ie(..) vergessen?"
+  CASE 18: "1.Parameter gibt die Index-Nummer (1-10) an. Beispiel: ie(9)"
+  CASE 19: "Anweisung muß alleine oder am Zeilenende stehen"
+  CASE 24: "in einem head, bottom oder foot-Bereich"
+  CASE 25: "Vor oder hinter den Bereich plazieren"
+  CASE 26: "1.Parameter in columns korrigieren"
+  CASE 27: "Beispiel: page(20)"
+  CASE 29: "page und columnsend vorher einfügen"
+  CASE 30: "Beispiele: setcount(0); setcount(27)"
+  CASE 31: "end ggf. entfernen" 
+  CASE 34: "Bitte set counter einfuegen"
+  CASE 37: "Muß positiv sein"
+  CASE 38: "Beispiel: limit(16.0)"
+  CASE 40: "pos-Anweisungen vor table plazieren"
+  CASE 41: "tableend vergessen?"
+  CASE 42: "Bitte pos-Anweisungen überprüfen"
+  CASE 43: "in clear pos-Anweisung"
+  CASE 48: "Ggf. lineform über die Spalte"
+  CASE 49: "Bitte vor Dateiende einfügen"
+  CASE 51, 52: "Bitte u und d-Anweisungen kontrollieren"
+  CASE 53: "e-Anweisung vergessen?"
+  CASE 54, 55, 56, 57: "Anweisung in angegebener Zeilennummer überprüfen"
+  CASE 60: "Bitte store counter Anweisungen überprüfen"
+  OTHERWISE "Bitte Korrigieren"
+  END SELECT.
+END PROC report text processing error;
+
+PROC report text processing warning (INT CONST error nr,
+                                     INT CONST line nr,
+                                     TEXT VAR  message, 
+                                     TEXT CONST addition):
+ 
+  einfache meldung aufbauen; 
+  meldung in fehlerdatei ausgeben. 
+ 
+einfache meldung aufbauen: 
+  message := "WARNUNG Zeile ";
+  message CAT text (line nr);
+  message CAT ": ";
+  message CAT simple message;
+  message CAT " ";
+  message CAT addition.
+ 
+meldung in fehlerdatei ausgeben: 
+  note (message);
+  note line;
+  fehlerdummy := "   >>> ";
+  fehlerdummy CAT zusatz;
+  note (fehlerdummy);
+  note line.
+ 
+simple message:
+  SELECT error nr OF
+  CASE 1, 2: ""
+  CASE 3: "Nicht referenziert:"
+  CASE 4: "Ziel-Referenz fehlt:"
+  CASE 5: "Modifikation bei Dateiende nicht ausgeschaltet:"
+  CASE 6: "Index bei Dateiende nicht ausgeschaltet:"
+  CASE 7: "Nicht getrenntes Wort zu lang für Zeilenbreite:"
+  CASE 8: "Umschaltung auf gleichen Schrifttyp:"
+  CASE 9: "Kennzeichen schon vorhanden (Duplikat ignoriert):"
+  CASE 10: "Tabellenzeile breiter als limit"
+  CASE 11: "Mehr Spalten als Tabellen-Positionen bei:"
+  CASE 12: "Überschreibung nach"
+  CASE 13: "Leerzeichen vor:"
+  CASE 14: "Weniger Spalten als Tabellen-Positionen"
+  CASE 15: "counter mit dieser Kennung bereits initialisiert:"
+  OTHERWISE ""
+  ENDSELECT.
+ 
+zusatz:
+  SELECT error nr OF
+  CASE 3: "topage oder value fehlt"
+  CASE 4: "goalpage oder value fehlt" 
+  CASE 7: "Bitte nachträglich trennen!" 
+  CASE 8: "Schrifttyp wurde darum nicht verändert!"
+  CASE 9: "count und goalpage überprüfen"
+  CASE 12: "Bitte fehlende Leerzeichen einfügen"
+  CASE 13: "erzeugt ggf. zusätzliche Leerzeile"
+  OTHERWISE "Bitte überprüfen"
+  END SELECT.
+END PROC report text processing warning;
+END PACKET texter errors and common;
+

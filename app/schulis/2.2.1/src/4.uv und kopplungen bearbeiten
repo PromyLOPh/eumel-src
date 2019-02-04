@@ -1,0 +1,319 @@
+PACKET uvundkopplungenbearbeitenDEFINES uvukstdvproc,uvukspeichern,uvuklisten
+,uvukvorjparaphe,uvukpruefbearb:LET ausknr=746,auskende="*",ra="c02 raeume",
+sj="Schuljahr",hj="Schulhalbjahr",eingmaske="ms eing uv und kopplungen",
+bearbmaske="ms bearb uv und kopplungen",kennzeichnungakt="aktuell",
+kennzeichnunggepl="geplant",ausgparam="#",leereparaphe="",trenner="�",bearbzl
+=18,letztesfld=163,anzeingfld=10,laengekopplung=8,laengejgst=2,laengefach=2,
+krlvjgst=2,fldjgst=3,krlvfa=4,fldfa=5,krlvkopp=6,fldkopp=7,krlvpar=8,fldpar=9
+,fldjahr=10,meldg0=56,meldg1=325,meldg2=326,meldg3=69,meldg4=60,meldg6=305,
+meldg7=355,meldg8=353,meldg9=354,meldg11=149,meldg12=142,meldg13=50,meldg14=
+63,meldg15=327,meldg16=328,meldg17=329,meldg18=360,meldg19=318,meldg20=310,
+meldg21=387,meldg22=388,meldg23=352;ROW anzeingfldTEXT VAR eingbs;ROW bearbzl
+STRUCT (TEXT kopplg,fakenn,lehrer,ROW 4TEXT klgr,ROW 2TEXT rgr)VAR dbinh;INT 
+VAR i,k,z,zz,letztepos:=2,index:=0,fall:=0,aktpos,suchpos,anzdbsaetze;INT 
+VAR aktzeile,jgst,fachsoll,fachist,lehrersoll,lehrerist,lehrerimfach;TEXT 
+VAR lv,sicherungstupel,allefaecher,fachbez,fachgrbez,fach,paraphe,
+lehrbeflehrer,liste;TEXT VAR klgrkatalog,jgstkatalog,rgrkatalog,lehrv:="",
+fachkatalog:="",klgrpruefkatalog,parkatalog,sollstdkatalog,aktschgrkatalog,
+geplschgrkatalog;TEXT VAR schj,schhj:="0",aktschhj:="0",aktschj:="0",
+geplschhj:="0",geplschj:="0",aenderungskennzeichen:="";TEXT VAR plausikopp,
+plausipa,plausilv,jgstsugrp,plausijgst;TEXT VAR kopplung,lvfake,lehrer,sgr1,
+sgr2,sgr3,sgr4,rgr1,rgr2,maskenkopf;BOOL VAR istfehler:=FALSE ,
+koppparnichtgeprueft:=TRUE ,saetzeunveraendert:=TRUE ,ohnefehler:=TRUE ;PROC 
+holeakthj:aktschhj:=schulkenndatum(hj);aktschj:=schulkenndatum(sj);geplschhj
+:=aktschhj;geplschj:=aktschj;geplanteshjundsjberechnen(geplschhj,geplschj)
+END PROC holeakthj;PROC holeaktdatenpruefung:i:=100;statleseschleife(
+dnrfaecher,"","",fnrffach,fnrffach,PROC spezcat);i:=103;statleseschleife(
+dnrlehrer,"","",fnrlparaphe,fnrlparaphe,PROC spezcat);END PROC 
+holeaktdatenpruefung;PROC holeaktdatenspeicherung:i:=101;statleseschleife(
+dnrklassengruppen,"","",fnrkgklassengrp,fnrkgklassengrp,PROC spezcat);i:=102;
+statleseschleife(dnrraumgruppen,"","",fnrrgraumgrp,fnrrgraumgrp,PROC spezcat)
+;i:=104;statleseschleife(dnrschluessel,ra,"",fnrschlsachgebiet,
+fnrschlschluessel,PROC spezcat);i:=105;statleseschleife(dnraktschuelergruppen
+,"","",fnrsgrpsj,fnrsgrphj,PROC spezcat);i:=106;statleseschleife(
+dnraktschuelergruppen,"","",fnrsgrpsj,fnrsgrphj,PROC spezcat);END PROC 
+holeaktdatenspeicherung;PROC initrows:IF fachkatalog=""THEN fachkatalog:=
+trenner;klgrkatalog:=trenner;klgrpruefkatalog:=trenner;jgstkatalog:=
+"�5�05�6�06�7�07�8�08�";jgstkatalogCAT "9�09�10�11�12�13�0�00�";
+aktschgrkatalog:=trenner;geplschgrkatalog:=trenner;rgrkatalog:=trenner;
+parkatalog:=trenner;sollstdkatalog:=trenner;FOR iFROM 1UPTO anzeingfldREP 
+eingbs(i):=""PER ;FOR iFROM 1UPTO bearbzlREP dbinh(i).kopplg:="";dbinh(i).
+fakenn:="";dbinh(i).lehrer:="";dbinh(i).klgr(1):="";dbinh(i).klgr(2):="";
+dbinh(i).klgr(3):="";dbinh(i).klgr(4):="";dbinh(i).rgr(1):="";dbinh(i).rgr(2)
+:="";PER ;FI END PROC initrows;PROC uvukpruefbearb:standardmeldung(meldg3," "
+);IF schhj="0"THEN holeakthjFI ;merkeeingsch;istfehler:=FALSE ;gibteskennz;
+stellejahrfest;putwert(fnrlvsj,schj);putwert(fnrlvhj,schhj);putintwert(
+fnrlvjgst,0);putwert(fnrlvfachkennung,"");search(dnrlehrveranstaltungen,
+FALSE );IF dbstatus<>okCAND wert(fnrlvsj)<>schjCAND wert(fnrlvhj)<>schhjTHEN 
+dateileerFI ;pruefung;erfasstelvausgeben;standardnproc.gibteskennz:letztepos
+:=2;IF eingbs(krlvjgst)<>""THEN fall:=2;LEAVE gibteskennzELIF eingbs(krlvfa)
+<>""THEN fall:=4;LEAVE gibteskennzELIF eingbs(krlvkopp)<>""THEN fall:=6;
+LEAVE gibteskennzELIF eingbs(krlvpar)<>""THEN fall:=8;LEAVE gibteskennzELSE 
+zurueckmitmeldg(meldg0,1,letztepos,"");LEAVE uvukpruefbearbFI ;IF eingbs(fall
++1)<>""THEN letztepos:=fall+1ELSE letztepos:=fallFI .stellejahrfest:IF eingbs
+(fldjahr)=""THEN schhj:=geplschhj;schj:=geplschj;aenderungskennzeichen:=
+kennzeichnunggeplELSE schhj:=aktschhj;schj:=aktschj;aenderungskennzeichen:=
+kennzeichnungaktFI .pruefung:IF fachkatalog=trennerTHEN holeaktdatenpruefung
+FI ;prueferest(fall);IF istfehlerTHEN zurueckmitmeldg(meldg0,1,letztepos,"");
+LEAVE uvukpruefbearbFI ;IF fall=2THEN IF eingbs(fldjgst)<>""THEN pruefejgst;
+FI ;index:=dnrlehrveranstaltungen;ELIF fall=4THEN pruefedbfld(eingbs(fldfa),
+fachkatalog,fldfa);index:=ixlvsjhjkennELIF fall=6THEN pruefekopplungsnr;index
+:=ixlvsjhjkopp;ELSE pruefedbfld(eingbs(fldpar),parkatalog,fldpar);index:=
+ixlvsjhjparFI ;IF istfehlerTHEN LEAVE uvukpruefbearbFI .pruefekopplungsnr:
+putwert(fnrlvsj,schj);putwert(fnrlvhj,schhj);putwert(fnrlvkopplung,eingbs(
+fldkopp));search(ixlvsjhjkopp);IF dbstatus=1COR dbstatus=3THEN 
+koppnichtgefundenFI .koppnichtgefunden:zurueckmitmeldg(meldg1,1,fldkopp,"");
+LEAVE uvukpruefbearb.dateileer:zurueckmitmeldg(meldg2,1,letztepos,"");LEAVE 
+uvukpruefbearb.END PROC uvukpruefbearb;PROC prueferest(INT CONST feldnr):FOR 
+iFROM 2UPTO feldnr-1REP IF eingbs(i)<>""THEN fehlerFI PER ;FOR iFROM feldnr+2
+UPTO 9REP IF eingbs(i)<>""THEN fehlerFI PER .fehler:istfehler:=TRUE ;
+letztepos:=i;LEAVE prueferest.END PROC prueferest;PROC pruefejgst:IF compress
+(eingbs(fldjgst))="0"COR eingbs(fldjgst)="00"THEN LEAVE pruefejgstELIF int(
+eingbs(fldjgst))>4CAND int(eingbs(fldjgst))<14THEN LEAVE pruefejgstELSE 
+zurueckmitmeldg(meldg6,1,fldjgst,"");istfehler:=TRUE ;FI .END PROC pruefejgst
+;PROC pruefedbfld(TEXT CONST objekt,katalog,INT CONST feld):plausijgst:=text(
+standardmaskenfeld(i*9-6),2);IF objekt=""THEN LEAVE pruefedbfldELIF katalog=
+jgstkatalogTHEN IF pos(jgstkatalog,trenner+objekt+trenner)=0THEN 
+pruefeaufschuelergruppeELSE pruefejgstenFI ;ELIF pos(katalog,trenner+objekt+
+trenner)=0THEN istfehler:=TRUE ;IF katalog=fachkatalogTHEN zurueckmitmeldg(
+meldg11,1,feld,objekt+"#")ELIF katalog=parkatalogTHEN zurueckmitmeldg(meldg12
+,1,feld,objekt+"#")ELIF katalog=rgrkatalogTHEN zurueckmitmeldg(meldg16,1,feld
+,objekt+"#")FI FI .pruefeaufschuelergruppe:IF eingbs(fldjahr)<>""THEN IF pos(
+aktschgrkatalog,trenner+text(int(plausijgst))+objekt+trenner)<>0THEN LEAVE 
+pruefedbfldELSE pruefeaufklgrFI ELIF pos(geplschgrkatalog,trenner+text(int(
+plausijgst))+objekt+trenner)<>0THEN LEAVE pruefedbfldELSE pruefeaufklgrFI .
+pruefeaufklgr:IF pos(klgrkatalog,trenner+objekt+trenner)>0THEN IF 
+jgstnichtnullTHEN pruefejgstinklgrFI ELSE istfehler:=TRUE ;zurueckmitmeldg(
+meldg15,1,feld,objekt+"#")FI .pruefejgsten:IF int(plausijgst)<>int(objekt)
+CAND int(plausijgst)<>0THEN istfehler:=TRUE ;zurueckmitmeldg(meldg9,1,feld,
+objekt+"#"+plausijgst+"#");FI .jgstnichtnull:plausijgst<>"00".
+pruefejgstinklgr:zz:=0;jgstsugrp:="";zz:=pos(klgrpruefkatalog,trenner+objekt+
+trenner)+length(objekt)+2;jgstsugrp:=subtext(klgrpruefkatalog,zz,pos(
+klgrpruefkatalog,trenner,zz)-1);FOR zzFROM 1UPTO length(jgstsugrp)DIV 2REP 
+IF subtext(jgstsugrp,zz*2-1,zz*2)<>plausijgstTHEN istfehler:=TRUE ;
+zurueckmitmeldg(meldg9,1,feld,objekt+"#"+plausijgst+"#");LEAVE pruefedbfldFI 
+PER ;END PROC pruefedbfld;PROC pruefekopplgpar(TEXT CONST kopp,lv,pa,INT 
+CONST feldnr):plausikopp:=kopp;plausipa:=pa;plausilv:=lv;pruefeindb;
+pruefeaufbs.pruefeindb:istfehler:=FALSE ;inittupel(dnrlehrveranstaltungen);
+putwert(fnrlvkopplung,plausikopp);z:=feldnr;statleseschleife(ixlvsjhjkopp,
+schj,schhj,fnrlvsj,fnrlvhj,PROC suchekopplungen);IF istfehlerTHEN infeld(
+feldnr);LEAVE pruefekopplgparFI .pruefeaufbs:INT VAR z;FOR zFROM 1UPTO i-1
+REP IF plausikopp=standardmaskenfeld(z*9-7)THEN IF plausipa=
+standardmaskenfeld(z*9-5)THEN istfehler:=TRUE ;zurueckmitmeldg(meldg8,1,
+feldnr,plausipa+"#"+plausikopp+"#"+text(standardmaskenfeld(z*9-6),2)+dbinh(z)
+.fakenn+"#");LEAVE pruefekopplgparFI ;FI ;PER ;FOR zFROM i+1UPTO bearbzlREP 
+IF plausikopp=standardmaskenfeld(z*9-7)THEN IF plausipa=standardmaskenfeld(z*
+9-5)THEN istfehler:=TRUE ;zurueckmitmeldg(meldg8,1,feldnr,plausipa+"#"+
+plausikopp+"#"+text(standardmaskenfeld(z*9-6),2)+dbinh(z).fakenn+"#");LEAVE 
+pruefekopplgparFI ;FI ;PER .END PROC pruefekopplgpar;PROC suchekopplungen(
+BOOL VAR b):IF wert(fnrlvsj)=schjCAND wert(fnrlvhj)=schhjCAND wert(
+fnrlvkopplung)=plausikoppCAND dbstatus=0THEN ueberpruefeparapheELSE b:=TRUE 
+FI .ueberpruefeparaphe:IF wert(fnrlvparaphe)=plausipaCAND nichtplausilvTHEN 
+istfehler:=TRUE ;zurueckmitmeldg(meldg8,1,z,plausipa+"#"+plausikopp+"#"+
+formattext(wert(fnrlvjgst))+wert(fnrlvfachkennung)+"#");b:=TRUE ;LEAVE 
+suchekopplungenFI .nichtplausilv:formattext(wert(fnrlvjgst))<>text(plausilv,2
+)COR wert(fnrlvfachkennung)<>dbinh(i).fakenn.END PROC suchekopplungen;PROC 
+zurueckmitmeldg(INT CONST meldg,ruecksprung,feld,TEXT CONST markiert):IF 
+ruecksprung>0THEN return(ruecksprung)FI ;standardmeldung(meldg,markiert);IF 
+feld>0THEN infeld(feld)FI END PROC zurueckmitmeldg;PROC uvukstdvproc:initrows
+;fachbez:=trenner;fachgrbez:=trenner;gibeingschaus;standardnproc.END PROC 
+uvukstdvproc;PROC gibeingschaus:standardstartproc(eingmaske);gibeingbsaus;
+standardfelderausgeben;infeld(letztepos).gibeingbsaus:FOR iFROM 2UPTO 
+anzeingfldREP standardmaskenfeld(eingbs(i),i);IF eingbs(i)<>""THEN letztepos
+:=iFI PER .END PROC gibeingschaus;PROC erfasstelvausgeben:anzdbsaetze:=0;k:=1
+;pruefobsaetzevorhanden;loeschefelder;maskenkopf:=text(vergleichsknoten)+" "+
+schhj+"."+" "+subtext(schj,1,2)+"/"+subtext(schj,3);standardstartproc(
+bearbmaske);standardkopfmaskeaktualisieren(maskenkopf);startebildschirmblock(
+index,bearbzl-1);bildschirmblock(PROC gibbearbzeileaus,BOOL PROC (INT CONST )
+pruefung,i);standardfelderausgeben;infeld(2).pruefobsaetzevorhanden:putwert(
+fnrlvsj,schj);putwert(fnrlvhj,schhj);putintwert(fnrlvjgst,int(eingbs(fldjgst)
+));putwert(fnrlvfachkennung,eingbs(fldfa));putwert(fnrlvkopplung,eingbs(
+fldkopp));putwert(fnrlvparaphe,eingbs(fldpar));search(index,FALSE );IF 
+dbstatus<>okTHEN zurueckmitmeldg(meldg2,1,letztepos,"");LEAVE 
+erfasstelvausgebenELSE pruefobsatzrichtigFI .pruefobsatzrichtig:IF wert(
+fnrlvsj)=schjCAND wert(fnrlvhj)=schhjTHEN IF fall=1CAND eingbs(fldjgst)<>""
+CAND intwert(fnrlvjgst)<>int(eingbs(fldjgst))THEN gibfehlerausELIF fall=2
+CAND eingbs(fldfa)<>""CAND text(wert(fnrlvfachkennung),2)<>eingbs(fldfa)THEN 
+gibfehlerausELIF fall=3CAND eingbs(fldkopp)<>""CAND wert(fnrlvkopplung)<>
+eingbs(fldkopp)THEN gibfehlerausELIF fall=4CAND eingbs(fldpar)<>""CAND wert(
+fnrlvparaphe)<>eingbs(fldpar)THEN gibfehlerausFI ELSE gibfehlerausFI .
+gibfehleraus:zurueckmitmeldg(meldg2,1,letztepos,"");LEAVE erfasstelvausgeben.
+END PROC erfasstelvausgeben;PROC loeschefelder:FOR iFROM 1UPTO bearbzlREP 
+dbinh(i).kopplg:="";dbinh(i).fakenn:="";dbinh(i).lehrer:="";dbinh(i).klgr(1)
+:="";dbinh(i).klgr(2):="";dbinh(i).klgr(3):="";dbinh(i).klgr(4):="";dbinh(i).
+rgr(1):="";dbinh(i).rgr(2):="";PER ;FOR iFROM 2UPTO letztesfldREP 
+standardmaskenfeld("",i)PER .END PROC loeschefelder;PROC gibbearbzeileaus:
+kopplung:=wert(fnrlvkopplung);lvfake:=wert(fnrlvfachkennung);lehrer:=wert(
+fnrlvparaphe);sgr1:=wert(fnrlvklgrp1);sgr2:=wert(fnrlvklgrp2);sgr3:=wert(
+fnrlvklgrp3);sgr4:=wert(fnrlvklgrp4);rgr1:=wert(fnrlvraumgrp1);rgr2:=wert(
+fnrlvraumgrp2);merkdbwerte;lehrv:=formattext(wert(fnrlvjgst))+text(lvfake,2)+
+text(subtext(lvfake,3),4)+text(intwert(fnrlvwochenstd),2);standardmaskenfeld(
+kopplung,k*9-7);standardmaskenfeld(lehrv,k*9-6);standardmaskenfeld(lehrer,k*9
+-5);standardmaskenfeld(sgr1,k*9-4);standardmaskenfeld(sgr2,k*9-3);
+standardmaskenfeld(sgr3,k*9-2);standardmaskenfeld(sgr4,k*9-1);
+standardmaskenfeld(rgr1,k*9);standardmaskenfeld(rgr2,k*9+1);IF k<bearbzlTHEN 
+kINCR 1FI .merkdbwerte:dbinh(k).kopplg:=kopplung;dbinh(k).fakenn:=lvfake;
+dbinh(k).lehrer:=lehrer;dbinh(k).klgr(1):=sgr1;dbinh(k).klgr(2):=sgr2;dbinh(k
+).klgr(3):=sgr3;dbinh(k).klgr(4):=sgr4;dbinh(k).rgr(1):=rgr1;dbinh(k).rgr(2)
+:=rgr2;anzdbsaetzeINCR 1.END PROC gibbearbzeileaus;BOOL PROC pruefung(INT 
+CONST notwprocparam):schhj=wert(fnrlvhj)CAND schj=wert(fnrlvsj)END PROC 
+pruefung;PROC merkeeingsch:FOR iFROM 2UPTO anzeingfldREP eingbs(i):=
+standardmaskenfeld(i)PER ;END PROC merkeeingsch;TEXT PROC formattext(TEXT 
+CONST jgst):IF int(jgst)<10CAND jgst<>"00"THEN LEAVE formattextWITH "0"+jgst
+FI ;jgstEND PROC formattext;PROC uvukspeichern(BOOL CONST speichern):IF 
+speichernTHEN speicherdaten;naechsterbildschirmELSE zurueckmitmeldg(meldg14,0
+,1,"");naechsterbildschirmFI .speicherdaten:saetzeunveraendert:=TRUE ;IF 
+aktschgrkatalog=trennerTHEN holeaktdatenspeicherungFI ;zurueckmitmeldg(
+meldg17,0,1,"");FOR iFROM 1UPTO anzdbsaetzeREP kopplung:=standardmaskenfeld(i
+*9-7);lehrer:=standardmaskenfeld(i*9-5);sgr1:=standardmaskenfeld(i*9-4);sgr2
+:=standardmaskenfeld(i*9-3);sgr3:=standardmaskenfeld(i*9-2);sgr4:=
+standardmaskenfeld(i*9-1);rgr1:=standardmaskenfeld(i*9);rgr2:=
+standardmaskenfeld(i*9+1);IF satzgeaendertTHEN infeld(i*9-7);pruefedaten;FI 
+PER ;zurueckmitmeldg(meldg13,0,1,"");FOR iFROM 1UPTO anzdbsaetzeREP kopplung
+:=standardmaskenfeld(i*9-7);lehrer:=standardmaskenfeld(i*9-5);sgr1:=
+standardmaskenfeld(i*9-4);sgr2:=standardmaskenfeld(i*9-3);sgr3:=
+standardmaskenfeld(i*9-2);sgr4:=standardmaskenfeld(i*9-1);rgr1:=
+standardmaskenfeld(i*9);rgr2:=standardmaskenfeld(i*9+1);IF satzgeaendertTHEN 
+IF saetzeunveraendertTHEN saetzeunveraendert:=FALSE FI ;infeld(i*9-7);
+speicheraenderungenFI PER ;IF NOT saetzeunveraendertTHEN 
+aenderungsvermerksetzen(aenderungskennzeichen)FI .satzgeaendert:kopplung<>
+dbinh(i).kopplgCOR lehrer<>dbinh(i).lehrerCOR sgr1<>dbinh(i).klgr(1)COR sgr2
+<>dbinh(i).klgr(2)COR sgr3<>dbinh(i).klgr(3)COR sgr4<>dbinh(i).klgr(4)COR 
+rgr1<>dbinh(i).rgr(1)COR rgr2<>dbinh(i).rgr(2).pruefedaten:istfehler:=FALSE ;
+koppparnichtgeprueft:=TRUE ;IF kopplung<>dbinh(i).kopplgTHEN 
+pruefekopplungsnrFI ;IF lehrer<>dbinh(i).lehrerCAND lehrer<>leereparapheTHEN 
+pruefelehrerFI ;IF sgr1<>dbinh(i).klgr(1)COR sgr2<>dbinh(i).klgr(2)COR sgr3<>
+dbinh(i).klgr(3)COR sgr4<>dbinh(i).klgr(4)THEN pruefeklassenFI ;IF rgr1<>
+dbinh(i).rgr(1)COR rgr2<>dbinh(i).rgr(2)THEN prueferaeumeFI .
+pruefekopplungsnr:IF kopplung=""THEN istfehler:=TRUE ;zurueckmitmeldg(meldg7,
+1,i*9-7,"");LEAVE uvukspeichernELIF length(kopplung)>laengekopplungTHEN 
+istfehler:=TRUE ;zurueckmitmeldg(meldg4,1,i*9-7,"");LEAVE uvukspeichernELSE 
+koppparnichtgeprueft:=FALSE ;IF lehrer<>leereparapheTHEN pruefekopplgpar(
+kopplung,standardmaskenfeld(i*9-6),lehrer,i*9-7);abfragefehlerFI FI .
+pruefelehrer:pruefedbfld(lehrer,parkatalog,i*9-5);abfragefehler;IF 
+koppparnichtgeprueftTHEN pruefekopplgpar(kopplung,standardmaskenfeld(i*9-6),
+lehrer,i*9-5);abfragefehlerFI .pruefeklassen:IF sgr1<>dbinh(i).klgr(1)THEN 
+pruefedbfld(sgr1,jgstkatalog,i*9-4);abfragefehlerFI ;IF sgr2<>dbinh(i).klgr(2
+)THEN pruefedbfld(sgr2,jgstkatalog,i*9-3);abfragefehlerFI ;IF sgr3<>dbinh(i).
+klgr(3)THEN pruefedbfld(sgr3,jgstkatalog,i*9-2);abfragefehlerFI ;IF sgr4<>
+dbinh(i).klgr(4)THEN pruefedbfld(sgr4,jgstkatalog,i*9-1);abfragefehlerFI .
+prueferaeume:pruefedbfld(rgr1,rgrkatalog,i*9);abfragefehler;pruefedbfld(rgr2,
+rgrkatalog,i*9+1);abfragefehler.abfragefehler:IF istfehlerTHEN LEAVE 
+uvukspeichernFI .speicheraenderungen:putwert(fnrlvsj,schj);putwert(fnrlvhj,
+schhj);putintwert(fnrlvjgst,int(text(standardmaskenfeld(i*9-6),2)));putwert(
+fnrlvfachkennung,dbinh(i).fakenn);search(dnrlehrveranstaltungen,TRUE );IF 
+dbstatus=0THEN aktualisierenFI .aktualisieren:putwert(fnrlvkopplung,kopplung)
+;putwert(fnrlvparaphe,lehrer);putwert(fnrlvklgrp1,sgr1);putwert(fnrlvklgrp2,
+sgr2);putwert(fnrlvklgrp3,sgr3);putwert(fnrlvklgrp4,sgr4);putwert(
+fnrlvraumgrp1,rgr1);putwert(fnrlvraumgrp2,rgr2);update(dnrlehrveranstaltungen
+).naechsterbildschirm:IF anzdbsaetze<bearbzlTHEN enter(2);LEAVE uvukspeichern
+FI ;k:=1;putwert(fnrlvsj,schj);putwert(fnrlvhj,schhj);putintwert(fnrlvjgst,
+int(text(lehrv,2)));putwert(fnrlvfachkennung,dbinh(anzdbsaetze).fakenn);
+search(dnrlehrveranstaltungen,TRUE );changeindex;succ(index);loeschefelder;
+IF dbstatus<>okTHEN enter(2)ELSE anzdbsaetze:=0;
+standardkopfmaskeaktualisieren(maskenkopf);startebildschirmblock(index,
+bearbzl-1);bildschirmblock(PROC gibbearbzeileaus,BOOL PROC (INT CONST )
+pruefung,i);infeld(1);standardfelderausgeben;infeld(2);return(1)FI .END PROC 
+uvukspeichern;PROC uvuklisten:INT VAR aktfeld:=infeld;WINDOW VAR w:=
+startwindow(42,23,77,1);liste:="";standardmeldung(meldg3,"");aktzeile:=(
+aktfeld-2)DIV 9+1;jgst:=int(text(standardmaskenfeld(aktzeile*9-6),laengejgst)
+);lv:=text(dbinh(aktzeile).fakenn,laengefach);sicherdbposition;
+berechnefachdaten;bereitelisteauf;giballelehreraus;listeCAT "*";listeCAT 
+auskunftstextende;erstelledbposition;IF menuedraussenTHEN reorganizescreenFI 
+;open(w);auskunfterteilung(liste,w,FALSE );reorganizescreen;setlasteditvalues
+;return(1).sicherdbposition:savetupel(index,sicherungstupel);.
+erstelledbposition:restoretupel(index,sicherungstupel).berechnefachdaten:
+allefaecher:=trenner;inittupel(dnrfaecher);putwert(fnrffach,compress(lv));
+search(dnrfaecher,TRUE );IF dbstatus<>okTHEN standardmeldung(meldg20,"");
+return(1);LEAVE uvuklistenELSE IF wert(fnrffachgrp)<>""THEN lv:=text(wert(
+fnrffachgrp),laengefach);ermittleanderefaecherELSE allefaecherCAT lv;
+allefaecherCAT trenner;FI ;ermittlestdenFI .ermittleanderefaecher:IF fachbez=
+trennerTHEN IF records(dnrfaecher)=0.0THEN standardmeldung(meldg21,"");return
+(1);LEAVE uvuklistenELSE statleseschleife(dnrfaecher,"","",fnrffach,fnrffach,
+PROC faecherholen)FI ;FI ;holallefaecher.holallefaecher:allefaecher:=
+allefaecherzu(trenner+lv+trenner).ermittlestden:allestdenberechnen.
+bereitelisteauf:listeCAT "Lehrbefähigte mit Stundenzahl:";listeCAT 
+auskunftstextende;listeCAT "       Soll  Ist im Fach Rest";listeCAT 
+auskunftstextende;listeCAT "Fach:  ----+----+-------+----";listeCAT 
+auskunftstextende;listeCAT text(lv,5);listeCAT text(fachsoll,6);listeCAT text
+(fachist,5);listeCAT text(fachsoll-fachist,13);listeCAT auskunftstextende;
+listeCAT " ";listeCAT auskunftstextende.giballelehreraus:IF fachkatalog=
+trennerTHEN holeaktdatenpruefungFI ;lehrbeflehrer:="";inittupel(
+dnrlehrbefaehigungen);statleseschleife(dnrlehrbefaehigungen,compress(lv),"",
+fnrlbfach,fnrlbparaphe,PROC lehrbeflehrerholen);IF lehrbeflehrer=""THEN 
+meldungkeinelehrbeflehrerELSE giblehrerausFI .meldungkeinelehrbeflehrer:
+standardmeldung(meldg22,lv+ausgparam);return(1);LEAVE uvuklisten.giblehreraus
+:suchpos:=1;aktpos:=1;listeCAT "Lehrer:";listeCAT auskunftstextende;WHILE 
+aktpos>0REP aktpos:=pos(lehrbeflehrer,trenner,suchpos);IF aktpos>0THEN 
+paraphe:=subtext(lehrbeflehrer,suchpos,aktpos-1);standardmeldung(meldg23,
+paraphe+ausgparam);ermittlestdenlehrer;IF ohnefehlerTHEN listeCAT text(
+paraphe,5);listeCAT text(lehrersoll,6);listeCAT text(lehrerist,5);listeCAT 
+text(lehrerimfach,8);listeCAT text(lehrersoll-lehrerist,5);listeCAT 
+auskunftstextendeFI ;suchpos:=aktpos+1FI ;PER ;infeld(1);
+standardfelderausgeben;infeld(aktfeld).END PROC uvuklisten;PROC 
+ermittlestdenlehrer:lehrersoll:=0;lehrerist:=0;lehrerimfach:=0;ohnefehler:=
+TRUE ;ermittlelehrersoll;ermittlelehreristundimfach.ermittlelehrersoll:zz:=
+pos(parkatalog,trenner+paraphe+trenner);IF zz>0THEN lehrersoll:=int((
+sollstdkatalogSUB (zz+1))+(sollstdkatalogSUB (zz+2)))ELSE ohnefehler:=FALSE ;
+LEAVE ermittlestdenlehrerFI .ermittlelehreristundimfach:inittupel(
+dnrlehrveranstaltungen);putwert(fnrlvparaphe,paraphe);statleseschleife(
+ixlvsjhjpar,schj,schhj,fnrlvsj,fnrlvhj,PROC holelehrerstden).END PROC 
+ermittlestdenlehrer;PROC holelehrerstden(BOOL VAR b):TEXT VAR lvfach:=text(
+wert(fnrlvfachkennung),laengefach);IF wert(fnrlvsj)<>schjCOR wert(fnrlvhj)<>
+schhjCOR wert(fnrlvparaphe)<>parapheTHEN b:=TRUE ELSE IF inallefaecher(lvfach
+)THEN lehrerimfachINCR intwert(fnrlvwochenstd)FI ;lehreristINCR intwert(
+fnrlvwochenstd)FI END PROC holelehrerstden;BOOL PROC inallefaecher(TEXT 
+CONST fach):pos(allefaecher,trenner+text(fach,laengefach)+trenner)>0END PROC 
+inallefaecher;PROC lehrbeflehrerholen(BOOL VAR b):IF dbstatus<>okCOR text(
+wert(fnrlbfach),laengefach)<>lvTHEN b:=TRUE ELSE lehrbeflehrerCAT wert(
+fnrlbparaphe);lehrbeflehrerCAT trenner;FI END PROC lehrbeflehrerholen;PROC 
+allestdenberechnen:INT VAR i;fachsoll:=0;fachist:=0;FOR iFROM 1UPTO length(
+allefaecher)DIV (laengefach+1)REP fach:=(subtext(allefaecher,(i-1)*(
+laengefach+1)+2,i*(laengefach+1)));berechnestdenzufachPER END PROC 
+allestdenberechnen;PROC berechnestdenzufach:inittupel(dnrlehrveranstaltungen)
+;putwert(fnrlvfachkennung,fach);statleseschleife(ixlvsjhjkenn,schj,schhj,
+fnrlvsj,fnrlvhj,PROC stdenzufach)END PROC berechnestdenzufach;PROC 
+stdenzufach(BOOL VAR b):TEXT VAR lvfach:=text(wert(fnrlvfachkennung),
+laengefach);INT VAR lvstd;IF wert(fnrlvsj)<>schjCOR wert(fnrlvhj)<>schhjCOR 
+lvfach>fachTHEN b:=TRUE ELSE IF lvfach=fachTHEN lvstd:=intwert(fnrlvwochenstd
+);fachsollINCR lvstd;IF wert(fnrlvparaphe)<>""THEN fachistINCR lvstdFI FI FI 
+END PROC stdenzufach;TEXT PROC allefaecherzu(TEXT CONST bez):suchpos:=1;
+aktpos:=1;WHILE aktpos>0REP aktpos:=pos(fachgrbez,bez,suchpos);IF aktpos>0
+THEN allefaecherCAT (fachbezSUB (aktpos+1));allefaecherCAT (fachbezSUB (
+aktpos+2));allefaecherCAT trenner;suchpos:=aktpos+1;FI PER ;allefaecherEND 
+PROC allefaecherzu;PROC uvukvorjparaphe:IF aenderungskennzeichen=
+kennzeichnungaktTHEN standardmeldung(meldg19,"");return(1)ELSE aktzeile:=(
+infeld-2)DIV 9+1;jgst:=int(text(standardmaskenfeld(aktzeile*9-6),laengejgst))
+;lv:=dbinh(aktzeile).fakenn;IF geplschhj="1"CAND jgst=5THEN standardmeldung(
+meldg19,"");return(1);LEAVE uvukvorjparapheFI ;suchedbsatzundausgabeFI .
+suchedbsatzundausgabe:savetupel(index,sicherungstupel);saveupdateposition(
+index);IF index<>dnrlehrveranstaltungenTHEN changeindex;FI ;inittupel(
+dnrlehrveranstaltungen);putwert(fnrlvsj,aktschj);putwert(fnrlvhj,aktschhj);
+IF aktschhj="2"CAND jgst>5THEN putintwert(fnrlvjgst,jgst-1);ELSE putintwert(
+fnrlvjgst,jgst)FI ;putwert(fnrlvfachkennung,lv);search(dnrlehrveranstaltungen
+,TRUE );IF dbstatus<>okTHEN standardmeldung(meldg18,"Schulj. "+aktschhj+". "+
+text(aktschj,2)+"/"+subtext(aktschj,3)+" Lv. "+text(jgst)+lv+ausgparam);
+return(1);LEAVE uvukvorjparapheELSE standardmaskenfeld(wert(fnrlvparaphe),
+aktzeile*9-5);standardfelderausgebenFI ;IF index<>dnrlehrveranstaltungenTHEN 
+changeindex;FI ;restoreupdateposition(index);restoretupel(index,
+sicherungstupel);return(1).END PROC uvukvorjparaphe;PROC faecherholen(BOOL 
+VAR b):IF dbstatus<>okTHEN b:=TRUE ELSE fachbezCAT text(wert(fnrffach),
+laengefach);fachbezCAT trenner;fachgrbezCAT text(wert(fnrffachgrp),laengefach
+);fachgrbezCAT trennerFI END PROC faecherholen;PROC spezcat(BOOL VAR b):TEXT 
+VAR zwsp:="";IF i=100THEN fachkatalogCAT wert(fnrffach)+trenner;ELIF i=101
+THEN jgstsugrp:="";klgrkatalogCAT wert(fnrkgklassengrp)+trenner;
+klgrpruefkatalogCAT wert(fnrkgklassengrp)+trenner;jgstsugrp:=wert(
+fnrkgschuelergrp);stellejgstzurklgrfest;ELIF i=105THEN IF wert(fnrsgrphj)=
+aktschhjCAND dbstatus=okTHEN aktschgrkatalogCAT wert(fnrsgrpjgst)+wert(
+fnrsgrpkennung)+trenner;ELIF dbstatus<>okTHEN b:=TRUE FI ELIF i=106THEN IF 
+wert(fnrsgrphj)=geplschhjCAND dbstatus=okTHEN geplschgrkatalogCAT wert(
+fnrsgrpjgst)+wert(fnrsgrpkennung)+trenner;ELIF dbstatus<>okTHEN b:=TRUE FI 
+ELIF i=102THEN rgrkatalogCAT wert(fnrrgraumgrp)+trenner;ELIF i=103THEN zwsp:=
+wert(fnrlparaphe)+trenner;parkatalogCAT zwsp;sollstdkatalogCAT text(wert(
+fnrlsollstd),length(zwsp))ELIF i=104THEN IF wert(fnrschlsachgebiet)=raTHEN 
+rgrkatalogCAT wert(fnrschlschluessel)+trenner;ELIF wert(fnrschlsachgebiet)>ra
+THEN b:=TRUE FI FI .stellejgstzurklgrfest:FOR zzFROM 1UPTO length(jgstsugrp)
+DIV 6REP klgrpruefkatalogCAT subtext(jgstsugrp,zz*6-5,zz*6-4)PER ;
+klgrpruefkatalogCAT trenner.END PROC spezcat;END PACKET 
+uvundkopplungenbearbeiten;
+

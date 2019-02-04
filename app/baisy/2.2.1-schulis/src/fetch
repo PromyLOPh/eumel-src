@@ -1,0 +1,108 @@
+PACKET fetchDEFINES fetch,checkfile:LET ascii=1,asciigerman=2,transparent=3,
+rowtext=5,ds=6,dump=7,atarist=10,ibm=11,minlineendchar="
+",maxlineendchar=""
+,lf="
+",cr="",tabcode=9,lfcode=10,ffcode=12,crcode=13,ctrlz="�",pagecmd=
+"#page#",rowtextlength=4000,rowtexttype=1000;BOUND STRUCT (INT size,ROW 
+rowtextlengthTEXT clusterrow)VAR clusterstruct;FILE VAR file;TEXT VAR buffer;
+INT VAR bufferlength;PROC fetch(TEXT CONST name,DATASPACE VAR fileds,INT 
+CONST mode):SELECT modeOF CASE ascii,asciigerman,atarist,ibm,transparent:
+fetchfilemode(fileds,name,mode)CASE rowtext:fetchrowtextmode(fileds,name)
+CASE ds:fetchdsmode(fileds,name)CASE dump:fetchdumpmode(fileds,name)
+OTHERWISE errorstop("Unzulässige Betriebsart")END SELECT .END PROC fetch;
+PROC fetchfilemode(DATASPACE VAR filespace,TEXT CONST name,INT CONST codetype
+):enablestop;initializefetchfilemode;openfetchdosfile(name);WHILE NOT 
+waslastfetchclusterREP gettextofcluster;writelines;IF lines(file)>3900THEN 
+putline(file,">>> FREMDDATEI FUER EUMEL ZU LANG. ES KÖNNEN DATEN FEHLEN <<<")
+;LEAVE fetchfilemodeFI ;UNTIL fileendviactrlzPER ;writelastlineifnecessary;
+closefetchdosfile.initializefetchfilemode:buffer:="";bufferlength:=0;forget(
+filespace);filespace:=nilspace;file:=sequentialfile(output,filespace);BOOL 
+VAR fileendviactrlz:=FALSE .gettextofcluster:catnextfetchdoscluster(buffer);
+IF asciicodeTHEN ctrlzisbufferendFI ;adaptcode(buffer,bufferlength+1,codetype
+);bufferlength:=length(buffer).asciicode:(codetype=ascii)OR (codetype=
+asciigerman).ctrlzisbufferend:INT CONST ctrlzpos:=pos(buffer,ctrlz,
+bufferlength+1);fileendviactrlz:=ctrlzpos>0;IF fileendviactrlzTHEN buffer:=
+subtext(buffer,1,ctrlzpos-1);bufferlength:=length(buffer)FI .writelines:INT 
+VAR linebeginpos:=1,lineendpos;computelineendpos;WHILE lineendpos>0REP 
+putline(file,subtext(buffer,linebeginpos,lineendpos));exec(PROC (TEXT CONST ,
+INT CONST )controlcharconversion,file,codetype);linebeginpos:=lineendpos+1;
+computelineendposPER ;buffer:=subtext(buffer,linebeginpos);bufferlength:=
+length(buffer);IF bufferlength>5000THEN putline(file,buffer);exec(PROC (TEXT 
+CONST ,INT CONST )controlcharconversion,file,codetype);buffer:="";
+bufferlength:=0FI .computelineendpos:lineendpos:=linebeginpos;REP lineendpos
+:=pos(buffer,minlineendchar,maxlineendchar,lineendpos);INT CONST lineendcode
+:=code(bufferSUB lineendpos);SELECT lineendcodeOF CASE lfcode:lookforcrCASE 
+11:lineendposINCR 1CASE crcode:lookforlfEND SELECT UNTIL lineendcode<>11PER .
+lookforcr:IF lineendpos=bufferlengthTHEN lineendpos:=0ELIF (bufferSUB 
+lineendpos+1)=crTHEN lineendposINCR 1FI .lookforlf:IF lineendpos=bufferlength
+THEN lineendpos:=0ELIF (bufferSUB lineendpos+1)=lfTHEN lineendposINCR 1FI .
+writelastlineifnecessary:IF bufferlength>0THEN putline(file,buffer);exec(
+PROC (TEXT CONST ,INT CONST )controlcharconversion,file,codetype);FI .END 
+PROC fetchfilemode;PROC adaptcode(TEXT VAR textbuffer,INT CONST startpos,
+codetype):SELECT codetypeOF CASE ascii:cancelbit8CASE asciigerman:cancelbit8;
+asciigermanadaptionCASE atarist:ataristadaptionCASE ibm:ibmadaptionEND 
+SELECT .cancelbit8:INT VAR setpos:=pos(textbuffer,"�","�",startpos);WHILE 
+setpos>0REP replace(textbuffer,setpos,sevenbitchar);setpos:=pos(textbuffer,
+"�","�",setpos+1)PER .sevenbitchar:code(code(textbufferSUB setpos)AND 127).
+asciigermanadaption:changeallbyreplace(textbuffer,startpos,"[","Ä");
+changeallbyreplace(textbuffer,startpos,"\","Ö");changeallbyreplace(textbuffer
+,startpos,"]","Ü");changeallbyreplace(textbuffer,startpos,"{","ä");
+changeallbyreplace(textbuffer,startpos,"|","ö");changeallbyreplace(textbuffer
+,startpos,"}","ü");changeallbyreplace(textbuffer,startpos,"~","ß").
+ataristadaption:changeallbyreplace(textbuffer,startpos,"Ξ","Ä");
+changeallbyreplace(textbuffer,startpos,"�","Ö");changeallbyreplace(textbuffer
+,startpos,"�","Ü");changeallbyreplace(textbuffer,startpos,"Δ","ä");
+changeallbyreplace(textbuffer,startpos,"Υ","ö");changeallbyreplace(textbuffer
+,startpos,"Α","ü");changeallbyreplace(textbuffer,startpos,"�","ß").
+ibmadaption:changeallbyreplace(textbuffer,startpos,"Ξ","Ä");
+changeallbyreplace(textbuffer,startpos,"�","Ö");changeallbyreplace(textbuffer
+,startpos,"�","Ü");changeallbyreplace(textbuffer,startpos,"Δ","ä");
+changeallbyreplace(textbuffer,startpos,"Υ","ö");changeallbyreplace(textbuffer
+,startpos,"Α","ü");changeallbyreplace(textbuffer,startpos,"�","ß").END PROC 
+adaptcode;PROC changeallbyreplace(TEXT VAR string,INT CONST beginpos,TEXT 
+CONST old,new):INT VAR p:=pos(string,old,beginpos);WHILE p>0REP replace(
+string,p,new);p:=pos(string,old,p+1)PER .END PROC changeallbyreplace;PROC 
+controlcharconversion(TEXT VAR string,INT CONST codetype):IF codetype<>
+transparentTHEN codeconversionFI .codeconversion:INT VAR p:=pos(string,"�",
+"�",1);WHILE p>0REP convertchar;p:=pos(string,"�","�",p)PER .convertchar:INT 
+CONST charcode:=code(stringSUB p);SELECT charcodeOF CASE tabcode:expandtab
+CASE lfcode:change(string,p,p,"")CASE ffcode:change(string,p,p,pagecmd)CASE 
+crcode:change(string,p,p,"")OTHERWISE ersatzdarstellungEND SELECT .expandtab:
+change(string,p,p,(8-(p-1)MOD 8)*" ").ersatzdarstellung:TEXT CONST t:=text(
+charcode);change(string,p,p,"#"+(3-length(t))*"0"+t+"#").END PROC 
+controlcharconversion;PROC fetchrowtextmode(DATASPACE VAR filespace,TEXT 
+CONST name):enablestop;openfetchdosfile(name);initializefetchrowtextmode;
+WHILE NOT waslastfetchclusterREP clusterstruct.sizeINCR 1;clusterstruct.
+clusterrow[clusterstruct.size]:="";catnextfetchdoscluster(clusterstruct.
+clusterrow[clusterstruct.size])PER ;closefetchdosfile.
+initializefetchrowtextmode:forget(filespace);filespace:=nilspace;
+clusterstruct:=filespace;type(filespace,rowtexttype);clusterstruct.size:=0.
+END PROC fetchrowtextmode;PROC fetchdsmode(DATASPACE VAR inds,TEXT CONST name
+):enablestop;openfetchdosfile(name);initfetchdsmode;WHILE NOT 
+waslastfetchclusterREP readnextfetchdoscluster(inds,dsblockno);PER ;
+closefetchdosfile.initfetchdsmode:forget(inds);inds:=nilspace;INT VAR 
+dsblockno:=2.END PROC fetchdsmode;PROC fetchdumpmode(DATASPACE VAR filespace,
+TEXT CONST name):enablestop;openfetchdosfile(name);initializefetchdumpmode;
+WHILE NOT waslastfetchclusterREP TEXT VAR clusterbuffer:="";
+catnextfetchdoscluster(clusterbuffer);dumpclusterUNTIL offset>50000.0PER ;
+closefetchdosfile.initializefetchdumpmode:BOOL VAR fertig:=FALSE ;REAL VAR 
+offset:=0.0;forget(filespace);filespace:=nilspace;file:=sequentialfile(output
+,filespace).dumpcluster:TEXT VAR dumpline;INT VAR line,column;FOR lineFROM 0
+UPTO (clustersizeDIV 16)-1REP builddumpline;putline(file,dumpline);offset
+INCR 16.0UNTIL fertigPER .builddumpline:TEXT VAR charline:="";dumpline:=text(
+offset,6,0);dumpline:=subtext(dumpline,1,5);dumplineCAT "   ";FOR columnFROM 
+0UPTO 7REP convertchar;dumplineCAT " "PER ;dumplineCAT " ";FOR columnFROM 8
+UPTO 15REP convertchar;dumplineCAT " "PER ;dumplineCAT "  ";dumplineCAT 
+charline.convertchar:TEXT CONST char:=clusterbufferSUB (line*16+column+1);IF 
+char=""THEN fertig:=TRUE ;dumplineCAT "  ";LEAVE convertcharFI ;INT CONST 
+charcode:=code(char);LET hexchars="0123456789ABCDEF";dumplineCAT (hexchars
+SUB (charcodeDIV 16+1));dumplineCAT (hexcharsSUB (charcodeMOD 16+1));charline
+CAT showchar.showchar:IF (charcode>31AND charcode<127)THEN charELSE "."FI .
+END PROC fetchdumpmode;PROC checkfile(TEXT CONST name):disablestop;DATASPACE 
+VAR testds:=nilspace;enablecheckfile(name,testds);forget(testds);IF iserror
+THEN clearerror;errorstop("Fehler beim Prüflesen der Datei """+name+"""")FI .
+END PROC checkfile;PROC enablecheckfile(TEXT CONST name,DATASPACE VAR testds)
+:enablestop;openfetchdosfile(name);WHILE NOT waslastfetchclusterREP INT VAR 
+dummy:=2;readnextfetchdoscluster(testds,dummy)PER ;closefetchdosfile.END 
+PROC enablecheckfile;END PACKET fetch;
+

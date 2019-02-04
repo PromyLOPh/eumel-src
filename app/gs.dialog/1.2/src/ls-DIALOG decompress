@@ -1,0 +1,150 @@
+(* 
+        
+          ********************************************************* 
+          ********************************************************* 
+          **                                                     ** 
+          **               ls-DIALOG - DECOMPRESS                ** 
+          **                                                     ** 
+          **                    Version 1.2                      ** 
+          **                                                     ** 
+          **                 (Stand: 04.11.88)                   ** 
+          **                                                     ** 
+          **                                                     ** 
+          **         Autor: Wolfgang Weber, Bielefeld            ** 
+          **                                                     ** 
+          **                                                     ** 
+          ** Copyright (C) 1987, 1988 Eva Latta-Weber, Bielefeld ** 
+          **                                                     ** 
+          ** Copyright (C) 1988 ERGOS GmbH, Siegburg             ** 
+          **                                                     ** 
+          ********************************************************* 
+          ********************************************************* 
+ 
+                                                                           *) 
+PACKET ls dialog decompress DEFINES 
+ 
+       komprimiere, 
+       dekomprimiere: 
+ 
+LET verweis      = "Angegebene Datei existiert nicht!", 
+    falscher typ = "Angegebenen Datei hat falschen Typ!", 
+    filetype     = 1003; 
+ 
+PROC komprimiere (TEXT CONST dateiname):   
+  INT VAR zeiger; 
+  ueberpruefe existenz; 
+  ueberpruefe dateityp; 
+  initialisiere; 
+  FOR zeiger FROM 1 UPTO 24 REP 
+    getline (ein, eingabezeile); 
+    putline (aus, eingabezeile); 
+  PER; 
+  WHILE NOT eof (ein) REP 
+    getline (ein, eingabezeile); 
+    zaehler INCR 1; cout (zaehler); 
+    zwischenzeile := abgeschnitten (eingabezeile); 
+    haenge zeilentrenner an; 
+    haenge zwischenzeile an ausgabezeile; 
+    schreibe ausgabezeile ggf weg 
+  PER; 
+  schreibe ausgabezeile weg; 
+  mache ausgabedatei zur eingabedatei. 
+ 
+  ueberpruefe existenz: 
+    IF NOT exists (dateiname) 
+       THEN errorstop (verweis); 
+    FI. 
+ 
+  ueberpruefe dateityp: 
+    IF type (old (dateiname)) <> filetype 
+       THEN errorstop (falscher typ) 
+    FI. 
+ 
+  initialisiere: 
+    FILE VAR ein := sequential file (input, dateiname); 
+    FILE VAR aus := sequential file (output, "KOMPRIM"); 
+    maxlinelength (aus, 600); 
+    INT VAR zaehler :: 1; 
+    TEXT VAR eingabezeile :: "", zwischenzeile :: "", ausgabezeile :: "". 
+ 
+  haenge zeilentrenner an: 
+    IF zwischenzeile <> "" 
+       THEN zwischenzeile CAT "{}" 
+    FI. 
+ 
+  haenge zwischenzeile an ausgabezeile: 
+    ausgabezeile CAT zwischenzeile. 
+ 
+  schreibe ausgabezeile ggf weg: 
+    IF length (ausgabezeile) > 500 
+       THEN schreibe ausgabezeile weg 
+    FI. 
+ 
+  schreibe ausgabezeile weg: 
+    IF ausgabezeile <> "" 
+       THEN putline (aus, ausgabezeile); 
+            ausgabezeile := "" 
+    FI. 
+ 
+mache ausgabedatei zur eingabedatei: 
+  forget (dateiname, quiet); 
+  rename ("KOMPRIM", dateiname). 
+END PROC komprimiere; 
+ 
+TEXT PROC abgeschnitten (TEXT CONST zeile): 
+  TEXT VAR t :: zeile; 
+  WHILE (t SUB length (t)) = " " REP 
+    t := subtext (t, 1, length (t) - 1) 
+  PER; 
+  t 
+END PROC abgeschnitten; 
+ 
+PROC dekomprimiere (TEXT CONST dateiname): 
+  INT VAR zeiger; 
+  ueberpruefe existenz; 
+  ueberpruefe dateityp; 
+  initialisiere; 
+  FOR zeiger FROM 1 UPTO 24 REP 
+    getline (ein, eingabezeile); 
+    putline (aus, eingabezeile); 
+  PER; 
+  WHILE NOT eof (ein) REP 
+    getline (ein, eingabezeile); 
+    zerlege zeile 
+  PER; 
+  forget (dateiname, quiet); 
+  rename ("DEKOMPRIM", dateiname). 
+ 
+  ueberpruefe existenz: 
+    IF NOT exists (dateiname) 
+       THEN errorstop (verweis) 
+    FI. 
+ 
+  ueberpruefe dateityp: 
+    IF type (old (dateiname)) <> filetype 
+       THEN errorstop (falscher typ) 
+    FI. 
+ 
+  initialisiere: 
+    FILE VAR ein := sequential file (input, dateiname); 
+    FILE VAR aus := sequential file (output, "DEKOMPRIM"); 
+    INT VAR zaehler :: 1; 
+    TEXT VAR eingabezeile :: "",  ausgabezeile :: "". 
+ 
+  zerlege zeile: 
+    WHILE eingabezeile <> "" REP 
+      nimm das erste stueck und schreibe es weg; 
+      entferne den zeilentrenner 
+    PER. 
+ 
+  nimm das erste stueck und schreibe es weg: 
+    ausgabezeile := subtext (eingabezeile, 1, pos (eingabezeile, "{}") - 1); 
+    putline (aus, ausgabezeile); 
+    zaehler INCR 1; 
+    cout (zaehler). 
+ 
+  entferne den zeilentrenner: 
+    eingabezeile := subtext (eingabezeile, pos (eingabezeile, "{}") + 2). 
+END PROC dekomprimiere; 
+END PACKET ls dialog decompress; 
+

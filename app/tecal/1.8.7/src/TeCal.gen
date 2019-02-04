@@ -1,0 +1,55 @@
+LET tecal    = "TeCal",
+    auskunft = "TeCal Auskunft";
+
+IF NOT exists ("TeCal") THEN fetch ("TeCal",archive) FI;
+IF NOT exists ("TeCal Auskunft") THEN fetch ("TeCal Auskunft",archive) FI;
+
+checkoff;
+insert tecal;
+insert auskunft;
+shorten auskunft file;
+forget ("Tecal.gen", quiet).
+
+insert tecal   :
+  display (""13""10""15" TeCal-Rechner wird installiert  "14""13""10"");
+  insert (tecal);
+  forget (tecal, quiet).
+
+insert auskunft:
+  display (""13""15" TeCal-Auskunftfile wird installiert  "14""13""10"");
+  insert (auskunft).
+
+shorten auskunft file :
+  display (""13""10""15" TeCal-Auskunftfile wird komprimiert  "14""13""10"");
+  disable stop;
+  DATASPACE VAR dspace := nil space;
+  FILE      VAR file   := sequential file ( input, auskunft),
+                shorted:= sequential file (output, dspace);
+  TEXT      VAR buffer;
+   INT      VAR i;
+
+  WHILE NOT eof (file)
+  REPEAT get line (file, buffer)
+  UNTIL  (pos ("(*", buffer) > 0) OR is error PER;
+  i:= 1;
+  IF eof (file) COR text not transfered
+     THEN errorstop ("TeCal-Auskunftsfile ist bereits komprimiert!"13""10"" +
+                     "'ESC <?>' funktioniert wahrscheinlich nicht."13""10"" +
+                     "Bitte ORIGINAL Auskunftsfile von Diskette verwenden")
+     ELSE forget (auskunft, quiet);
+          copy (dspace, auskunft)
+  FI;
+  forget (dspace) .
+
+ text not transfered :
+    WHILE NOT eof (file)
+    REPEAT cout (i);
+           get line (file, buffer);
+           IF pos (buffer, "*)") > 0
+              THEN LEAVE text not transfered WITH FALSE
+              ELSE put line (shorted, buffer)
+           FI;
+           i INCR 1
+    UNTIL is error PER;
+    TRUE .
+

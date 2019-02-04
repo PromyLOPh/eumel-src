@@ -1,0 +1,246 @@
+PACKET likwwahlundkursdatensek2DEFINES wahlundkursdatenmaskebearbeiten,
+wahlundkursdatenggfstarten,wahlundkursdatennaechsteliste,
+wahlundkursdatenabschluss,wahlundkursdatenggfbestandueberankreuzliste,
+wahlundkursdatenblaettern,wahldatenlistenseiteaktualisieren:LET objektmaske=
+"mu objektliste",eingangsmaske="ms wahl und kursdaten sek2 eingang",
+fnr2jgstls=2,fnr3jgstneu=3,fnr4famname=4,fnr5rufname=5,fnr6gebdat=6,fnr7bs=7,
+fnr8dr=8,mnrauswahlnichtsinnvoll=56,mnrlistewirdgedruckt=58,
+mnrdatenexistierennicht=59,mnrbittewarten=69,mnrdruckausgabefuerwirdgedruckt=
+125,mnrschuelernichtimentsprbestand=126,mnralledruckausgabenerstellt=128,
+mnrangabenpraezisieren=129,mnrungueltigesdatum=157,mnrjgstfehlt=172,
+mnrjgstoderschueler=318,mnrjgstfalsch=404,mnrkeinekwdatenda=406,
+mnrkeinedatendain=407,mnrjgstoderbestschueler=422,trenner="�",neuang="N",
+mitneuang="",ohneneuang="O";INT VAR mnrallgemein,egmaskefeldnr,status,erster,
+letzter,aktschueler,zaehler,pos1,pos2;TEXT VAR fach,mnrzusatz,ueb2,hilfstext;
+LET null=0,platzhalter="mehr- fach  ",niltext="",punkt=".",blank=" ",dopp=":"
+,doppblank=": ",blanksdopp="   :";LET maxanzfaecher=100,maxanzschulhj=10;ROW 
+maxanzfaecherROW maxanzschulhjTEXT VAR faecherschulhj;INT VAR ixfaecher,
+ixschulhj,anzfaecher;TEXT VAR uebsj,uebjgst,faecherstring,faecher,kennungen,
+klausuren,punkte,kursarten,zeile1,zeile2;BOOL VAR ankreuzliste,
+bildschirmausgabe,lsundneue,nurneue,nurls,bestschueler,faecherstringok;TEXT 
+VAR sj,hj,kwsj,jgstls,jgstneu,famname,rufname,gebdat;FILE VAR ausgabedatei;
+TEXT CONST ueb1:="Wahl- und Kursdaten von";LET fnrerstesankreuzfeld=2,
+felderprolisteneintrag=2,listeneintraegeproseite=18;LET 
+meldungblaetternnichtmöglich=72;LET dummyschueler="",sunamenstrenner=", ",
+sulaengeohnedatum=60,maxankreuzungen=1000,ankreuzung="x",keineankreuzung="",
+kennungnursuname="N",boolvektordatei="Boolvektor";BOOL VAR bearbeitungingang
+:=FALSE ;BOUND ROW maxankreuzungenBOOL VAR boolvektor;INT VAR aktuellezeile;
+PROC wahlundkursdatenmaskebearbeiten:standardvproc(eingangsmaske);
+ankreuzliste:=FALSE ;END PROC wahlundkursdatenmaskebearbeiten;PROC 
+wahlundkursdatenggfbestandueberankreuzliste:IF plausisallgemokAND 
+plausisspezankreuzokAND kurswahldatenraumdaTHEN ankreuzliste:=TRUE ;
+aktuellezeile:=erster;initboolvektor;standardstartproc(objektmaske);
+listezeigenabzeile(aktuellezeile);wahldatenlistenseiteaktualisieren;ELSE 
+standardmeldung(mnrallgemein,niltext);return(1);FI ;.plausisspezankreuzok:
+BOOL VAR ok:=FALSE ;IF bestschuelerTHEN mnrallgemein:=mnrjgstoderbestschueler
+;infeld(fnr4famname);ELSE ok:=TRUE FI ;ok.initboolvektor:boolvektor:=new(
+boolvektordatei);FOR zaehlerFROM ersterUPTO letzterREP boolvektor(zaehler):=
+FALSE PER ;END PROC wahlundkursdatenggfbestandueberankreuzliste;PROC 
+wahlundkursdatenggfstarten:bearbeitungingang:=FALSE ;IF ankreuzlisteTHEN 
+ersterDECR 1;naechsterindex(erster);startenELSE IF NOT plausisallgemokCOR 
+NOT plausisspezokTHEN standardmeldung(mnrallgemein,niltext);return(1);ELSE 
+startenFI ;FI ;.plausisspezok:IF bestschuelerTHEN IF NOT bestschuelerkorrekt
+THEN standardmeldung(mnrangabenpraezisieren,niltext);infeld(egmaskefeldnr);
+LEAVE plausisspezokWITH FALSE ELSE erster:=1;letzter:=1;FI ;ELSE IF lsundneue
+THEN IF int(jgstls)<>int(jgstneu)-1THEN mnrallgemein:=mnrjgstfalsch;infeld(
+fnr2jgstls);LEAVE plausisspezokWITH FALSE FI ;FI ;IF NOT kurswahldatenraumda
+THEN infeld(fnr2jgstls);LEAVE plausisspezokWITH FALSE FI ;FI ;TRUE .
+bestschuelerkorrekt:IF rufname=niltextTHEN IF gebdat=niltextTHEN IF 
+famnameeindeutigTHEN rufname:=wert(fnrsurufnames);gebdat:=wert(fnrsugebdatums
+);LEAVE bestschuelerkorrektWITH TRUE ELSE LEAVE bestschuelerkorrektWITH 
+FALSE ;FI ;ELSE egmaskefeldnr:=fnr5rufname;mnrallgemein:=
+mnrangabenpraezisieren;LEAVE bestschuelerkorrektWITH FALSE ;FI ;ELSE IF 
+gebdat<>niltextTHEN hilfstext:=subtext(gebdat,1,2);hilfstextCAT punkt;
+hilfstextCAT subtext(gebdat,3,4);hilfstextCAT punkt;hilfstextCAT subtext(
+gebdat,5,6);gebdat:=hilfstext;IF kompletterschluesselokTHEN LEAVE 
+bestschuelerkorrektWITH TRUE ELSE LEAVE bestschuelerkorrektWITH FALSE FI ;
+ELSE IF famnameundrufnameeindeutigTHEN gebdat:=wert(fnrsugebdatums);LEAVE 
+bestschuelerkorrektWITH TRUE ELSE LEAVE bestschuelerkorrektWITH FALSE ;FI ;
+FI ;FI ;TRUE END PROC wahlundkursdatenggfstarten;BOOL PROC famnameeindeutig:
+inittupel(dnrschueler);putwert(fnrsufamnames,famname);putwert(fnrsurufnames,
+rufname);putwert(fnrsugebdatums,gebdat);putwert(fnrsustatuss,"ls");search(
+dnrschueler,FALSE );IF wert(fnrsufamnames)<>famnameTHEN egmaskefeldnr:=
+fnr4famname;mnrallgemein:=mnrdatenexistierennicht;LEAVE famnameeindeutigWITH 
+FALSE ;ELSE succ(dnrschueler);IF wert(fnrsufamnames)=famnameTHEN 
+egmaskefeldnr:=fnr5rufname;mnrallgemein:=mnrangabenpraezisieren;LEAVE 
+famnameeindeutigWITH FALSE ;ELSE pred(dnrschueler)FI ;FI ;TRUE END PROC 
+famnameeindeutig;BOOL PROC famnameundrufnameeindeutig:inittupel(dnrschueler);
+putwert(fnrsufamnames,famname);putwert(fnrsurufnames,rufname);putwert(
+fnrsugebdatums,gebdat);putwert(fnrsustatuss,"ls");search(dnrschueler,FALSE );
+IF wert(fnrsufamnames)<>famnameCOR wert(fnrsurufnames)<>rufnameTHEN 
+egmaskefeldnr:=fnr4famname;mnrallgemein:=mnrdatenexistierennicht;LEAVE 
+famnameundrufnameeindeutigWITH FALSE ELSE succ(dnrschueler);IF wert(
+fnrsufamnames)=famnameAND wert(fnrsurufnames)=rufnameTHEN egmaskefeldnr:=
+fnr6gebdat;mnrallgemein:=mnrangabenpraezisieren;LEAVE 
+famnameundrufnameeindeutigWITH FALSE ELSE pred(dnrschueler)FI ;FI ;TRUE END 
+PROC famnameundrufnameeindeutig;BOOL PROC kompletterschluesselok:BOOL VAR 
+insek2:=TRUE ;standardpruefe(6,fnr6gebdat,null,null,niltext,status);IF status
+<>0THEN egmaskefeldnr:=fnr6gebdat;mnrallgemein:=mnrungueltigesdatum;LEAVE 
+kompletterschluesselokWITH FALSE ;FI ;hilfstext:=subtext(gebdat,1,2);
+hilfstextCAT punkt;hilfstextCAT subtext(gebdat,3,4);hilfstextCAT punkt;
+hilfstextCAT subtext(gebdat,5,6);gebdat:=hilfstext;inittupel(dnrschueler);
+putwert(fnrsufamnames,famname);putwert(fnrsurufnames,rufname);putwert(
+fnrsugebdatums,gebdat);putwert(fnrsustatuss,"ls");search(dnrschueler,TRUE );
+IF dbstatus<>0COR intwert(fnrsusgrpjgst)<11THEN egmaskefeldnr:=fnr4famname;
+mnrallgemein:=mnrschuelernichtimentsprbestand;insek2:=FALSE FI ;insek2END 
+PROC kompletterschluesselok;PROC starten:aktschueler:=erster;IF 
+bildschirmausgabeTHEN listeaufbereiten;bearbeitungingang:=TRUE ;rename(
+"liste.1","Wahl- und Kursdaten");zeigedatei("Wahl- und Kursdaten","vr");ELSE 
+IF ankreuzlisteTHEN WHILE aktschueler<>0REP 
+listeaufbereitendruckenundloeschenodermeldung;naechsterindex(aktschueler);
+PER ;ankreuzliste:=FALSE ;bearbeitungingang:=FALSE ;forget(boolvektordatei,
+quiet);standardstartproc(eingangsmaske);egmaskenfelderleerenzurueckundmeldung
+(2);ELSE FOR aktschuelerFROM ersterUPTO letzterREP 
+listeaufbereitendruckenundloeschenodermeldung;PER ;
+egmaskenfelderleerenzurueckundmeldung(1);FI ;FI ;END PROC starten;PROC 
+listeaufbereitendruckenundloeschenodermeldung:IF NOT schuelervorhandenTHEN 
+meldungELSE listemitdatenzumschueleraufbereiten;standardmeldung(
+mnrdruckausgabefuerwirdgedruckt,famname+"#");listedrucken;listeloeschen;FI ;
+END PROC listeaufbereitendruckenundloeschenodermeldung;PROC 
+wahlundkursdatennaechsteliste(BOOL CONST drucken):IF druckenTHEN listedrucken
+FI ;listeloeschen;IF ankreuzlisteTHEN naechsterindex(aktschueler);IF 
+aktschueler=0THEN forget(boolvektordatei,quiet);ankreuzliste:=FALSE ;
+standardstartproc(eingangsmaske);egmaskenfelderleerenzurueckundmeldung(3);
+ELSE listeaufbereiten;rename("liste.1","Wahl- und Kursdaten");return(1)FI ;
+ELSE IF aktschueler=letzterTHEN egmaskenfelderleerenzurueckundmeldung(2);
+ELSE aktschuelerINCR 1;listeaufbereiten;rename("liste.1",
+"Wahl- und Kursdaten");return(1);FI ;FI ;END PROC 
+wahlundkursdatennaechsteliste;PROC listeaufbereiten:IF NOT schuelervorhanden
+THEN listeleeraufbereitenELSE listemitdatenzumschueleraufbereiten;FI ;END 
+PROC listeaufbereiten;PROC meldung:mnrzusatz:="Halbjahresdaten";
+standardmeldung(mnrkeinedatendain,mnrzusatz+"#");END PROC meldung;PROC 
+schuelerdatenauskwdatenraumholen(INT CONST index):hilfstext:=
+wahldatenzumindex(index,kennungnursuname);pos1:=pos(hilfstext,trenner);pos2:=
+pos(hilfstext,trenner,pos1+1);famname:=subtext(hilfstext,1,pos1-1);rufname:=
+subtext(hilfstext,pos1+1,pos2-1);gebdat:=subtext(hilfstext,pos2+1,length(
+hilfstext));END PROC schuelerdatenauskwdatenraumholen;PROC 
+listeleeraufbereiten:dateioeffnenunddruckkopfschreiben;putline(ausgabedatei,
+"Keine Halbjahres-Daten vorhanden für: "+rufname+blank+famname)END PROC 
+listeleeraufbereiten;PROC dateioeffnenunddruckkopfschreiben:ausgabedatei:=
+sequentialfile(output,"liste.1");druckvorbereiten;ueb2:=famname;ueb2CAT blank
+;ueb2CAT rufname;ueb2CAT ", geboren am ";ueb2CAT gebdat;initdruckkopf(ueb1,
+ueb2);druckkopfschreiben;END PROC dateioeffnenunddruckkopfschreiben;PROC 
+rowinitialisieren:FOR ixfaecherFROM 1UPTO maxanzfaecherREP FOR ixschulhjFROM 
+1UPTO maxanzschulhjREP faecherschulhj(ixfaecher)(ixschulhj):=niltextPER ;PER 
+;END PROC rowinitialisieren;PROC listemitdatenzumschueleraufbereiten:
+faecherstringok:=FALSE ;rowinitialisieren;dateioeffnenunddruckkopfschreiben;
+uebsj:=5*blank+doppblank;uebjgst:="Fach "+doppblank;ixfaecher:=1;ixschulhj:=0
+;faecherstring:=wert(fnrhjdfach);WHILE dbstatus=0AND wert(fnrhjdfamnames)=
+famnameAND wert(fnrhjdrufnames)=rufnameAND wert(fnrhjdgebdats)=gebdatREP 
+shjueberschriftenmerken;IF compress(faecherstring)=niltextTHEN succ(
+dnrhalbjahresdaten);faecherstring:=wert(fnrhjdfach);ELSE 
+faecherstringaufbereitenundweiterewertelesen;IF faecherstring=faecherTHEN 
+FOR zaehlerFROM 1UPTO anzfaecherREP datenproshjprofachmerken(zaehler);PER ;
+ELSE pos1:=1;zaehler:=1;WHILE pos1<length(faecher)REP fach:=subtext(faecher,
+pos1,pos1+1);pos2:=pos(faecherstring,fach);WHILE pos2<>0AND pos2MOD 2=0REP 
+pos2:=pos(faecherstring,fach,pos2+1);PER ;IF pos2=0THEN anzfaecherINCR 1;
+ixfaecher:=anzfaecher;faecherstringCAT fach;ELSE ixfaecher:=(pos2+1)DIV 2FI ;
+datenproshjprofachmerken(ixfaecher);pos1INCR 2;PER ;FI ;succ(
+dnrhalbjahresdaten);FI ;PER ;ausgabederrowmatrixindatei;.
+shjueberschriftenmerken:ixschulhjINCR 1;hilfstext:=wert(fnrhjdsj);uebsjCAT 
+subtext(hilfstext,1,2);uebsjCAT "/";uebsjCAT subtext(hilfstext,3,4);uebsjCAT 
+doppblank;hilfstext:=text(wert(fnrhjdjgst),2);hilfstextCAT punkt;hilfstext
+CAT wert(fnrhjdhj);uebjgstCAT hilfstext;uebjgstCAT blank+doppblank;.
+faecherstringaufbereitenundweiterewertelesen:IF NOT faecherstringokTHEN 
+zaehler:=1;pos1:=1;WHILE zaehler<length(faecherstring)REP pos1:=pos(
+faecherstring,subtext(faecherstring,zaehler,zaehler+1),zaehler+2);WHILE pos1
+<>0AND pos1MOD 2=0REP pos1:=pos(faecherstring,subtext(faecherstring,zaehler,
+zaehler+1),pos1+1)PER ;IF pos1=0THEN zaehlerINCR 2;ELSE IF pos1MOD 2=1THEN 
+change(faecherstring,pos1,pos1+1,niltext);FI ;FI ;PER ;anzfaecher:=length(
+faecherstring)DIV 2;faecherstringok:=TRUE ;FI ;faecher:=wert(fnrhjdfach);
+kennungen:=wert(fnrhjdlerngrpkenn);klausuren:=wert(fnrhjdklausurteiln);
+kursarten:=wert(fnrhjdkursart);punkte:=wert(fnrhjdnotepunkte);IF punkte=
+niltextTHEN punkte:=length(faecher)*blankFI ;.ausgabederrowmatrixindatei:
+zeile1:=uebsj;druckzeileschreiben(zeile1);zeile1:=uebjgst;druckzeileschreiben
+(zeile1);zeile1:="-----+"+(10*"------+");druckzeileschreiben(zeile1);INT VAR 
+i;i:=1;FOR pos1FROM 1UPTO anzfaecherREP zeile1:=subtext(faecherstring,i,i+1);
+zeile1CAT blanksdopp;zeile2:=2*blank+blanksdopp;FOR zaehlerFROM 1UPTO 
+ixschulhjREP IF faecherschulhj(pos1)(zaehler)=niltextTHEN zeile1CAT 3*blank+
+blanksdopp;zeile2CAT 3*blank+blanksdopp;ELSE zeile1CAT subtext(faecherschulhj
+(pos1)(zaehler),1,6);zeile1CAT dopp;zeile2CAT subtext(faecherschulhj(pos1)(
+zaehler),7,12);zeile2CAT dopp;FI ;PER ;iINCR 2;druckzeileschreiben(zeile1);
+druckzeileschreiben(zeile2);PER ;END PROC listemitdatenzumschueleraufbereiten
+;PROC datenproshjprofachmerken(INT CONST rowindex):IF faecherschulhj(rowindex
+)(ixschulhj)<>niltextTHEN faecherschulhj(rowindex)(ixschulhj):=platzhalter
+ELSE faecherschulhj(rowindex)(ixschulhj):=subtext(kennungen,1,4)+blank+
+subtext(klausuren,1,1)+subtext(punkte,1,2)+blank+blank+subtext(kursarten,1,2)
+;FI ;kennungen:=subtext(kennungen,5,length(kennungen));klausuren:=subtext(
+klausuren,2,length(klausuren));punkte:=subtext(punkte,3,length(punkte));
+kursarten:=subtext(kursarten,3,length(kursarten));END PROC 
+datenproshjprofachmerken;PROC egmaskenfelderleerenzurueckundmeldung(INT 
+CONST stufe):FOR zaehlerFROM 2UPTO 8REP standardmaskenfeld(niltext,zaehler);
+PER ;return(stufe);standardmeldung(mnralledruckausgabenerstellt,niltext);END 
+PROC egmaskenfelderleerenzurueckundmeldung;PROC listedrucken:IF exists(
+"Wahl- und Kursdaten")THEN print("Wahl- und Kursdaten")ELSE print("liste.1");
+FI ;END PROC listedrucken;PROC listeloeschen:forget("Wahl- und Kursdaten",
+quiet);forget("liste.1",quiet)END PROC listeloeschen;PROC 
+wahlundkursdatenblaettern(INT CONST richtung):SELECT richtungOF CASE 1:
+andenanfangCASE 2:eineseitevorCASE 3:eineseitezurueckCASE 4:andasende
+ENDSELECT ;return(1).andenanfang:aktuellezeile:=erster;listezeigenabzeile(
+aktuellezeile);.andasende:aktuellezeile:=max(1,letzter-
+listeneintraegeproseite+1);listezeigenabzeile(aktuellezeile);.eineseitevor:
+IF aktuellezeile+listeneintraegeproseite>letzterTHEN standardmeldung(
+meldungblaetternnichtmöglich,"")ELSE aktuellezeileINCR 
+listeneintraegeproseite;listezeigenabzeile(aktuellezeile)FI ;.
+eineseitezurueck:IF aktuellezeile=ersterTHEN standardmeldung(
+meldungblaetternnichtmöglich,"")ELSE aktuellezeileDECR 
+listeneintraegeproseite;aktuellezeile:=max(aktuellezeile,erster);
+listezeigenabzeile(aktuellezeile)FI ;END PROC wahlundkursdatenblaettern;PROC 
+wahldatenlistenseiteaktualisieren:INT VAR i,fnr;standardnproc;fnr:=
+fnrerstesankreuzfeld;FOR iFROM aktuellezeileUPTO min(aktuellezeile+
+listeneintraegeproseite,letzter)REP boolvektor(i):=standardmaskenfeld(fnr)<>
+niltext;fnrINCR felderprolisteneintragPER END PROC 
+wahldatenlistenseiteaktualisieren;PROC listezeigenabzeile(INT CONST zeile):
+INT VAR i,j1,j2,fnr;TEXT VAR t,t1;fnr:=fnrerstesankreuzfeld;FOR iFROM zeile
+UPTO zeile+listeneintraegeproseiteREP IF i<=letzterTHEN t:=wahldatenzumindex(
+i,kennungnursuname);feldfrei(fnr);IF boolvektor(i)THEN standardmaskenfeld(
+ankreuzung,fnr);ELSE standardmaskenfeld(keineankreuzung,fnr);FI ;
+bereiteschuelerzeileauf;standardmaskenfeld(t1,fnr+1);ELSE standardmaskenfeld(
+niltext,fnr);feldschutz(fnr);standardmaskenfeld(dummyschueler,fnr+1)FI ;fnr
+INCR felderprolisteneintrag;PER ;infeld(fnrerstesankreuzfeld);
+standardfelderausgeben;.bereiteschuelerzeileauf:j1:=pos(t,trenner);j2:=pos(t,
+trenner,j1+1);t1:=text(t,j1-1);t1CAT sunamenstrenner;t1CAT subtext(t,j1+1,j2-
+1);t1:=text(t1,sulaengeohnedatum);t1CAT " ";t1CAT subtext(t,j2+1).END PROC 
+listezeigenabzeile;PROC naechsterindex(INT VAR index):indexINCR 1;WHILE index
+<=letzterCAND NOT boolvektor(index)REP indexINCR 1PER ;IF index>letzterTHEN 
+index:=0FI END PROC naechsterindex;PROC wahlundkursdatenabschluss:INT VAR 
+ruecksprungweite:=1;IF ankreuzlisteTHEN forget(boolvektordatei,quiet);
+ankreuzliste:=FALSE ;ruecksprungweiteINCR 1FI ;IF bearbeitungingangTHEN 
+bearbeitungingang:=FALSE ;ruecksprungweiteINCR 1FI ;listeloeschen;enter(
+ruecksprungweite);END PROC wahlundkursdatenabschluss;BOOL PROC 
+plausisallgemok:standardmeldung(mnrbittewarten,niltext);ankreuzliste:=FALSE ;
+bestschueler:=FALSE ;lsundneue:=FALSE ;nurneue:=FALSE ;nurls:=FALSE ;
+standardpruefe(5,fnr7bs,fnr8dr,null,niltext,status);IF status<>0THEN infeld(
+fnr7bs);mnrallgemein:=mnrauswahlnichtsinnvoll;LEAVE plausisallgemokWITH 
+FALSE FI ;bildschirmausgabe:=standardmaskenfeld(fnr8dr)=niltext;jgstls:=
+standardmaskenfeld(fnr2jgstls);jgstneu:=standardmaskenfeld(fnr3jgstneu);
+famname:=standardmaskenfeld(fnr4famname);rufname:=standardmaskenfeld(
+fnr5rufname);gebdat:=standardmaskenfeld(fnr6gebdat);IF famname<>niltextCOR 
+rufname<>niltextCOR gebdat<>niltextTHEN bestschueler:=TRUE ;IF jgstls<>
+niltextCOR jgstneu<>niltextTHEN infeld(fnr4famname);mnrallgemein:=
+mnrjgstoderbestschueler;LEAVE plausisallgemokWITH FALSE FI ;ELSE IF jgstls=
+niltextAND jgstneu=niltextTHEN infeld(fnr2jgstls);mnrallgemein:=mnrjgstfehlt;
+LEAVE plausisallgemokWITH FALSE ;FI ;IF jgstls<>niltextTHEN standardpruefe(2,
+fnr2jgstls,null,null,niltext,status);IF status<>0COR (int(jgstls)<10COR int(
+jgstls)>13)THEN mnrallgemein:=mnrjgstfalsch;infeld(fnr2jgstls);LEAVE 
+plausisallgemokWITH FALSE ;FI ;FI ;IF jgstneu<>niltextTHEN standardpruefe(2,
+fnr3jgstneu,null,null,niltext,status);IF status<>0COR (int(jgstneu)<11COR int
+(jgstneu)>13)THEN mnrallgemein:=mnrjgstfalsch;infeld(fnr3jgstneu);LEAVE 
+plausisallgemokWITH FALSE ;FI ;FI ;IF jgstls=niltextTHEN nurneue:=TRUE ELIF 
+jgstneu=niltextTHEN nurls:=TRUE ELSE lsundneue:=TRUE FI ;FI ;TRUE END PROC 
+plausisallgemok;BOOL PROC schuelervorhanden:IF NOT bestschuelerTHEN 
+schuelerdatenauskwdatenraumholen(aktschueler);FI ;inittupel(
+dnrhalbjahresdaten);putwert(fnrhjdfamnames,famname);putwert(fnrhjdrufnames,
+rufname);putwert(fnrhjdgebdats,gebdat);putwert(fnrhjdsj,niltext);putwert(
+fnrhjdhj,niltext);search(dnrhalbjahresdaten,FALSE );dbstatus=0AND wert(
+fnrhjdfamnames)=famnameAND wert(fnrhjdrufnames)=rufnameAND wert(fnrhjdgebdats
+)=gebdatEND PROC schuelervorhanden;BOOL PROC kurswahldatenraumda:INT VAR 
+fehler;sj:=schulkenndatum("Schuljahr");hj:=schulkenndatum("Schulhalbjahr");
+IF nurlsTHEN kurswahlinitialisieren(jgstls,jgstls,hj,ohneneuang,kwsj);ELIF 
+nurneueTHEN jgstls:=text(int(jgstneu)-1);kurswahlinitialisieren(jgstls,jgstls
+,hj,neuang,kwsj);ELSE kurswahlinitialisieren(jgstls,jgstls,hj,mitneuang,kwsj)
+FI ;kurswahlbasisholen(fehler);IF fehler<>0THEN mnrallgemein:=
+mnrkeinekwdatenda;infeld(fnr2jgstls);ELSE erster:=ersterschueler;letzter:=
+letzterschuelerFI ;fehler=0END PROC kurswahldatenraumda;END PACKET 
+likwwahlundkursdatensek2
+

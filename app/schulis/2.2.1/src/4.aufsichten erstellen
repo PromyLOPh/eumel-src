@@ -1,0 +1,194 @@
+PACKET aufsichtenerstellenDEFINES aufsichtsplandatenbearbeiten,
+aufsichtsplandatenspeichern,aufsichtsplanlehrerlistezeigen:LET feldeingtag=2,
+feldeingnr=3,feldeingakthj=4,feldbearbtag=2,feldbearbnr=3,feldbearbname=4,
+feldbearbort1=5,feldbearbpar1=6,letztesbearbfeld=38,leerereintrag="    ",
+bestandorte="c02 aufsichtsorte",trenner="�",schuljahr="Schuljahr",halbjahr=
+"Schulhalbjahr",ausgparam="#",bearbmaske="ms aufsichtsplan erstellen bearb",
+kennungparaphe="P",kennunglv="L",kennungraum="R",laengetagbeschr=17,
+laengeparaphe=4,laengeaufsort=4,laengeraumminus=3,maxanzorte=17,
+meldungserverfehler=376,meldungbearbwird=352,meldungkeinstdplan=366,
+meldungkeinesugruppen=334,meldungzuvielesugruppen=356,meldungkeinelv=326,
+meldungzuvielelv=358,meldungbasisinkon=378,meldunglisteerstellen=7,
+meldungfalschertag=385,meldungfalschepar=142,meldungwarten=69,
+meldungzuvieleorte=398,meldungkeinelehrer=337,meldungkeineorte=399,
+meldungkeinedaten=59,meldungschonaufs=401,meldungspeichern=50,
+meldungfalscherwert=54,meldungnichtsp=63,meldungspfehler=364,meldungplausi=57
+;ROW maxanzorteTEXT VAR datenausplan;TEXT VAR alletage:=
+"�01�1� 1�MO�mo�Mo�02�2� 2�DI�di�Di�"+"03�3� 3�MI�mi�Mi�04�4� 4�DO�do�Do�"+
+"05�5� 5�FR�fr�Fr�06�6� 6�SA�sa�Sa��";TEXT VAR tag:="",nr:="",komprpar:="",
+lehrerliste:="",orteliste:="",aufslehrerliste:="",schhj,schj,hjsjanhang:="",
+eintragtag,eintragnr,eintragname;INT VAR i,j,fstat,stdvor,stdnach,rowindex:=1
+,anzaufsorte:=0,hjkennalt:=-1,hjkennneu:=0,anzaufs:=0;BOOL VAR 
+aenderungsfehler:=FALSE ,stundenplannichtda:=TRUE ,zuvieleorte:=FALSE ;
+WINDOW VAR w:=startwindow(27,23,77,1);TEXT VAR liste,aktpar,lvvor,lvnach,
+raumvor,raumnach,paraphenvorstd:="",paraphennachstd:="",lvvorstd:="",
+lvnachstd:="",raeumevorstd:="",raeumenachstd:="";PROC 
+aufsichtsplandatenbearbeiten:standardmeldung(meldungwarten," ");
+pruefeingabedaten;holedaten;aufsichtsplandatenzeigen.pruefeingabedaten:
+prueftag;pruefnr.prueftag:tag:=standardmaskenfeld(feldeingtag);i:=pos(
+alletage,trenner+tag+trenner);IF i=0THEN return(1);infeld(feldeingtag);
+standardmeldung(meldungfalschertag,"");LEAVE aufsichtsplandatenbearbeiten
+ELSE IF tag=""THEN tag:="1"ELSE tag:=text(iDIV laengetagbeschr+1)FI FI .
+pruefnr:nr:=standardmaskenfeld(feldeingnr);IF nr=""THEN nr:="01"ELSE i:=int(
+nr);IF i<1COR i>15THEN return(1);infeld(feldeingnr);standardmeldung(
+meldungfalscherwert,"");LEAVE aufsichtsplandatenbearbeitenELSE nr:="0"+text(i
+);nr:=subtext(nr,length(nr)-1);FI ;FI .holedaten:IF akthj<>""THEN hjkennneu:=
+0ELSE hjkennneu:=1FI ;IF hjkennneu<>hjkennaltTHEN hjkennalt:=hjkennneu;schj:=
+schulkenndatum(schuljahr);schhj:=schulkenndatum(halbjahr);IF hjkennneu=1THEN 
+geplanteshjundsjberechnen(schhj,schj)FI ;stundenplanhalbjahrsetzen(schhj,schj
+);hjsjanhang:=schhj+". "+text(schj,2)+"/"+subtext(schj,3);FI ;IF records(
+dnraufsichtszeiten)=0.0THEN fehlermeldungkeineaufszeitenFI ;IF orteliste=""
+THEN holeorteFI ;holestartzeit;holeparaphenzurstartzeit.akthj:
+standardmaskenfeld(feldeingakthj).fehlermeldungkeineaufszeiten:return(1);
+infeld(feldeingnr);standardmeldung(meldungkeinedaten,"");LEAVE 
+aufsichtsplandatenbearbeiten.holeorte:IF records(dnrschluessel)=0.0THEN 
+fehlermeldungkeineorteELSE zuvieleorte:=FALSE ;inittupel(dnrschluessel);
+statleseschleife(dnrschluessel,bestandorte,"",dnrschluessel+1,dnrschluessel+2
+,PROC erstelleorteliste);IF orteliste=""THEN fehlermeldungkeineorteELIF 
+anzaufsorte>maxanzorteTHEN orteliste:=text(orteliste,maxanzorte*laengeaufsort
+);anzaufsorte:=maxanzorte;zuvieleorte:=TRUE FI FI .fehlermeldungkeineorte:
+return(1);infeld(feldeingtag);standardmeldung(meldungkeineorte,"");LEAVE 
+aufsichtsplandatenbearbeiten.holestartzeit:inittupel(dnraufsichtszeiten);
+putwert(fnrazsj,schj);putwert(fnrazhj,schhj);putwert(fnrazaufsichtszeit,tag+
+nr);search(dnraufsichtszeiten,TRUE );IF dbstatus<>0THEN 
+fehlermeldungkeineaufszeitenELSE eintragtag:=tagesangabe(tag);eintragnr:=text
+(int(nr),2);eintragname:=wert(fnrazbezeichnung);stdvor:=intwert(
+fnraztagstdvor);stdnach:=intwert(fnraztagstdnach)FI .holeparaphenzurstartzeit
+:IF records(dnraufsichtsplan)=0.0THEN LEAVE holeparaphenzurstartzeitELSE 
+inittupel(dnraufsichtsplan);aufslehrerliste:="";putwert(fnrapaufsichtszeit,
+tag+nr);statleseschleife(dnraufsichtsplan,schj,schhj,fnrapsj,fnraphj,PROC 
+parderaufsicht)FI .END PROC aufsichtsplandatenbearbeiten;PROC 
+aufsichtsplandatenzeigen:standardstartproc(bearbmaske);
+standardkopfmaskeaktualisieren("Aufsichtsplan erstellen für "+hjsjanhang);
+fuellemaske;standardnprocEND PROC aufsichtsplandatenzeigen;PROC fuellemaske:
+INT VAR aktpos,aktfeld;TEXT VAR ort,paraphe;infeld(1);standardmaskenfeld(
+eintragtag,feldbearbtag);standardmaskenfeld(eintragnr,feldbearbnr);
+standardmaskenfeld(eintragname,feldbearbname);gibaufsorteaus;
+standardfelderausgeben;infeld(feldbearbpar1);liste:="";aenderungsfehler:=
+FALSE ;IF zuvieleorteTHEN standardmeldung(meldungzuvieleorte,"");zuvieleorte
+:=FALSE FI .gibaufsorteaus:aktpos:=1;rowindex:=1;aktfeld:=feldbearbort1;
+WHILE aktpos<length(orteliste)REP ort:=subtext(orteliste,aktpos,aktpos+
+laengeaufsort-1);paraphe:=holeaufsicht(ort);datenausplan(rowindex):=paraphe;
+standardmaskenfeld(ort,aktfeld);standardmaskenfeld(paraphe,aktfeld+1);
+rowindexINCR 1;aktposINCR laengeaufsort;aktfeldINCR 2PER ;FOR iFROM aktfeld
+UPTO letztesbearbfeldREP standardmaskenfeld(leerereintrag,i);IF iMOD 2=0THEN 
+feldschutz(i)FI PER .END PROC fuellemaske;TEXT PROC holeaufsicht(TEXT CONST 
+ort):INT VAR aktpos;aktpos:=pos(aufslehrerliste,trenner+trenner+ort+trenner);
+IF aktpos>0THEN subtext(aufslehrerliste,aktpos+7,pos(aufslehrerliste,trenner,
+aktpos+7)-1)ELSE ""FI END PROC holeaufsicht;PROC aufsichtsplandatenspeichern(
+BOOL CONST speichern):TEXT VAR zeit,eintragort,eintragpar,weiterereintragpar;
+INT VAR aktfeld:=5,feld;aenderungsfehler:=FALSE ;IF speichernTHEN 
+aenderungenspeichernELSE standardmeldung(meldungnichtsp,"")FI ;IF 
+aenderungsfehlerTHEN fehlermeldungspfehlerFI ;naechstezeit.
+aenderungenspeichern:standardmeldung(meldungplausi,"");aenderungsfehler:=
+FALSE ;aktfeld:=5;FOR iFROM 1UPTO anzaufsorteREP eintragpar:=
+standardmaskenfeld(aktfeld+1);IF eintragpar<>""THEN IF NOT 
+bezeichnungzulaessig("P",eintragpar)THEN fehlermeldungfalscheparapheELIF 
+eintragpar<>datenausplan(i)THEN pruefanderebseintraegeFI FI ;aktfeldINCR 2
+PER ;standardmeldung(meldungspeichern,"");aktfeld:=5;FOR iFROM 1UPTO 
+anzaufsorteREP eintragort:=standardmaskenfeld(aktfeld);eintragpar:=
+standardmaskenfeld(aktfeld+1);IF datenausplan(i)<>eintragparTHEN 
+speicheraenderungenFI ;aktfeldINCR 2PER .pruefanderebseintraege:feld:=6;FOR j
+FROM 1UPTO anzaufsorteREP IF feld<>aktfeld+1THEN weiterereintragpar:=
+standardmaskenfeld(feld);IF eintragpar=weiterereintragparTHEN 
+fehlermeldungparaphedoppeltFI ;FI ;feldINCR 2PER .fehlermeldungparaphedoppelt
+:standardmeldung(meldungschonaufs,eintragpar+ausgparam+standardmaskenfeld(
+feld-1)+ausgparam);infeld(aktfeld+1);return(1);LEAVE 
+aufsichtsplandatenspeichern.fehlermeldungfalscheparaphe:standardmeldung(
+meldungfalschepar,eintragpar+ausgparam);infeld(aktfeld+1);return(1);LEAVE 
+aufsichtsplandatenspeichern.fehlermeldungspfehler:standardmeldung(
+meldungspfehler,"");infeld(feldbearbpar1);return(1);LEAVE 
+aufsichtsplandatenspeichern.speicheraenderungen:IF datenausplan(i)=""CAND 
+eintragpar<>""THEN insertsatzELIF datenausplan(i)<>""CAND eintragpar=""THEN 
+deletesatzELSE updatesatzFI .insertsatz:inittupel(dnraufsichtsplan);putwert(
+fnrapsj,schj);putwert(fnraphj,schhj);putwert(fnrapaufsichtszeit,tag+nr);
+putwert(fnrapaufsichtsort,compress(eintragort));putwert(fnrapparaphe,
+eintragpar);insert(dnraufsichtsplan);IF dbstatus<>okTHEN aenderungsfehler:=
+TRUE FI .updatesatz:inittupel(dnraufsichtsplan);putwert(fnrapsj,schj);putwert
+(fnraphj,schhj);putwert(fnrapaufsichtszeit,tag+nr);putwert(fnrapaufsichtsort,
+compress(eintragort));putwert(fnrapparaphe,datenausplan(i));search(
+dnraufsichtsplan,TRUE );IF dbstatus=okTHEN putwert(fnrapparaphe,eintragpar);
+update(dnraufsichtsplan);IF dbstatus<>okTHEN aenderungsfehler:=TRUE FI ELSE 
+aenderungsfehler:=TRUE FI .deletesatz:inittupel(dnraufsichtsplan);putwert(
+fnrapsj,schj);putwert(fnraphj,schhj);putwert(fnrapaufsichtszeit,tag+nr);
+putwert(fnrapaufsichtsort,compress(eintragort));putwert(fnrapparaphe,
+datenausplan(i));search(dnraufsichtsplan,TRUE );IF dbstatus=okTHEN delete(
+dnraufsichtsplan);IF dbstatus<>okTHEN aenderungsfehler:=TRUE FI ELSE 
+aenderungsfehler:=TRUE FI .naechstezeit:succ(dnraufsichtszeiten);IF wert(
+fnrazsj)<>schjCOR wert(fnrazhj)<>schhjCOR dbstatus<>0THEN verlasseanwendung
+ELSE zeit:=wert(fnrazaufsichtszeit);tag:=text(zeit,1);nr:=subtext(zeit,2);
+eintragtag:=tagesangabe(tag);eintragnr:=text(int(nr),2);eintragname:=wert(
+fnrazbezeichnung);stdvor:=intwert(fnraztagstdvor);stdnach:=intwert(
+fnraztagstdnach);inittupel(dnraufsichtsplan);aufslehrerliste:="";putwert(
+fnrapaufsichtszeit,zeit);statleseschleife(dnraufsichtsplan,schj,schhj,fnrapsj
+,fnraphj,PROC parderaufsicht);fuellemaske;return(1)FI .verlasseanwendung:
+enter(2).END PROC aufsichtsplandatenspeichern;PROC 
+aufsichtsplanlehrerlistezeigen:INT VAR parpos,anfpos,aktfeld:=infeld;
+standardmeldung(meldunglisteerstellen,"");IF liste=""THEN IF lehrerliste=""
+THEN holelehrerFI ;IF stundenplannichtdaTHEN 
+stundenplanbasisundstundenplanholen(fstat);IF fstat<>0CAND fstat<>8THEN 
+meldungausgeben(fstat);return(1);LEAVE aufsichtsplanlehrerlistezeigenELSE 
+stundenplannichtda:=FALSE FI ;FI ;IF stdvor<>0THEN paraphenvorstd:=
+datenderzeit(stdvor,kennungparaphe);lvvorstd:=datenderzeit(stdvor,kennunglv);
+raeumevorstd:=datenderzeit(stdvor,kennungraum)ELSE paraphenvorstd:="";
+lvvorstd:="";raeumevorstd:="";FI ;IF stdnach<>0THEN paraphennachstd:=
+datenderzeit(stdnach,kennungparaphe);lvnachstd:=datenderzeit(stdnach,
+kennunglv);raeumenachstd:=datenderzeit(stdnach,kennungraum)ELSE 
+paraphennachstd:="";lvnachstd:="";raeumenachstd:=""FI ;fuelleliste;FI ;IF 
+menuedraussenTHEN reorganizescreenFI ;infeld(1);standardfelderausgeben;open(w
+);auskunfterteilung(liste,w,FALSE );reorganizescreen;setlasteditvalues;infeld
+(aktfeld);return(1).fuelleliste:listeCAT "Aufsicht möglich durch:";listeCAT 
+auskunftstextende;listeCAT "Paraphe Anz. Unterr. vorher  Unterr. nachher";
+listeCAT auskunftstextende;FOR iFROM 1UPTO length(lehrerliste)DIV 
+laengeparapheREP lvvor:="";lvnach:="";raumvor:="";raumnach:="";aktpar:=
+subtext(lehrerliste,(i-1)*laengeparaphe+1,i*laengeparaphe);parpos:=suchpos(
+paraphenvorstd,aktpar,laengeparaphe);IF parpos>0THEN anfpos:=(parpos-1)*2;
+lvvor:=subtext(lvvorstd,anfpos+1,anfpos+8);raumvor:=subtext(raeumevorstd,
+parpos,parpos+laengeraumminus)FI ;parpos:=suchpos(paraphennachstd,aktpar,
+laengeparaphe);IF parpos>0THEN anfpos:=(parpos-1)*2;lvnach:=subtext(lvnachstd
+,anfpos+1,anfpos+8);raumnach:=subtext(raeumenachstd,parpos,parpos+
+laengeraumminus)FI ;IF lvvor<>""COR lvnach<>""THEN schreiblisteneintragFI ;
+PER ;listeCAT "*";listeCAT auskunftstextende.holelehrer:IF records(dnrlehrer)
+=0.0THEN fehlermeldungkeinelehrerELSE inittupel(dnrlehrer);statleseschleife(
+dnrlehrer,"","",fnrlparaphe,fnrlfamname,PROC erstellelehrerliste)FI .
+fehlermeldungkeinelehrer:return(1);infeld(feldeingtag);standardmeldung(
+meldungkeinelehrer,"");LEAVE aufsichtsplanlehrerlistezeigen.END PROC 
+aufsichtsplanlehrerlistezeigen;PROC schreiblisteneintrag:standardmeldung(
+meldungbearbwird,aktpar+ausgparam);listeCAT text(aktpar,8);komprpar:=compress
+(aktpar);listeCAT text(aufsichtenderparaphe,2);IF lvvor=""THEN listeCAT 
+"                  ";ELSE listeCAT "   ";listeCAT text(lvvor,2);listeCAT " ";
+listeCAT subtext(lvvor,3,4);listeCAT " ";listeCAT subtext(lvvor,5);listeCAT 
+"/";listeCAT raumvorFI ;IF lvnach=""THEN listeCAT "                ";ELSE 
+listeCAT " ";listeCAT text(lvnach,2);listeCAT " ";listeCAT subtext(lvnach,3,4
+);listeCAT " ";listeCAT subtext(lvnach,5);listeCAT "/";listeCAT raumnachFI ;
+listeCAT auskunftstextende.END PROC schreiblisteneintrag;INT PROC 
+aufsichtenderparaphe:inittupel(dnraufsichtsplan);anzaufs:=0;statleseschleife(
+ixappar,komprpar,"",fnrapparaphe,fnrapsj,PROC anzaufsichtenzaehlen);anzaufs
+END PROC aufsichtenderparaphe;PROC anzaufsichtenzaehlen(BOOL VAR b):IF 
+dbstatus<>okCOR wert(fnrapparaphe)>komprparTHEN dbstatus(1);b:=TRUE ELIF wert
+(fnrapsj)=schjCAND wert(fnraphj)=schhjTHEN anzaufsINCR 1FI END PROC 
+anzaufsichtenzaehlen;INT PROC suchpos(TEXT CONST quelle,muster,INT CONST 
+musterlaenge):INT VAR suchab:=1,aktpos;IF quelle<>""THEN WHILE pos(quelle,
+muster,suchab)>0REP aktpos:=pos(quelle,muster,suchab);IF aktposMOD 
+musterlaenge=1THEN LEAVE suchposWITH aktposELSE suchab:=aktpos+1FI ;PER ;FI ;
+0END PROC suchpos;PROC erstellelehrerliste(BOOL VAR b):IF dbstatus<>0THEN b:=
+TRUE ELSE lehrerlisteCAT text(wert(fnrlparaphe),laengeparaphe)FI END PROC 
+erstellelehrerliste;PROC erstelleorteliste(BOOL VAR b):IF wert(dnrschluessel+
+1)>bestandorteCOR dbstatus<>0THEN b:=TRUE ELSE ortelisteCAT text(wert(
+dnrschluessel+2),laengeaufsort);anzaufsorteINCR 1FI END PROC 
+erstelleorteliste;PROC parderaufsicht(BOOL VAR b):IF wert(fnrapsj)<>schjCOR 
+wert(fnraphj)<>schhjCOR wert(fnrapaufsichtszeit)<>tag+nrCOR dbstatus<>0THEN 
+dbstatus(1);b:=TRUE ELSE aufslehrerlisteCAT trenner;aufslehrerlisteCAT 
+trenner;aufslehrerlisteCAT text(wert(fnrapaufsichtsort),laengeaufsort);
+aufslehrerlisteCAT trenner;aufslehrerlisteCAT wert(fnrapparaphe);
+aufslehrerlisteCAT trennerFI END PROC parderaufsicht;TEXT PROC tagesangabe(
+TEXT CONST tag):IF tag="1"THEN "Mo"ELIF tag="2"THEN "Di"ELIF tag="3"THEN "Mi"
+ELIF tag="4"THEN "Do"ELIF tag="5"THEN "Fr"ELSE "Sa"FI END PROC tagesangabe;
+PROC meldungausgeben(INT VAR fstat):IF fstat=2THEN standardmeldung(
+meldungserverfehler,"");ELIF fstat=3THEN standardmeldung(meldungkeinstdplan,
+"");ELIF fstat=4THEN standardmeldung(meldungkeinesugruppen,"");ELIF fstat=5
+THEN standardmeldung(meldungzuvielesugruppen,"")ELIF fstat=6THEN 
+standardmeldung(meldungkeinelv,"")ELIF fstat=7THEN standardmeldung(
+meldungzuvielelv,"")ELIF fstat=9THEN standardmeldung(meldungbasisinkon,"");
+FI END PROC meldungausgeben;END PACKET aufsichtenerstellen
+

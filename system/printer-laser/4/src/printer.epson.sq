@@ -1,0 +1,585 @@
+PACKET epson sq printer
+ 
+(**************************************************************************)
+(*                                                Stand   : 03.12.86      *)
+(*   EPSON  SQ-2500                               Version : 4             *)
+(*                                                Autor   : Rudolf Ruland *)
+(**************************************************************************)
+ 
+       DEFINES open,
+               close,
+               execute,
+ 
+               paper size,
+           (*  paper feed,    *)  (* <-- nicht getestet *)
+               std typeface,
+               std quality:
+ 
+LET
+(*  underline           =  1,
+    bold                =  2,
+    italics             =  4,
+    reverse             =  8, *)
+ 
+    underline linetype  =  1,
+ 
+    c document          =  1,
+    c page              =  2,
+ 
+    c write text        =  1,           cmd draft      =  1,
+    c write cmd         =  2,           cmd nlq        =  2,
+    c carriage return   =  3,           cmd roman      =  3,
+    c move              =  4,           cmd sansserif  =  4,
+    c draw              =  5,           cmd courier    =  5,
+    c on                =  6,           cmd prestige   =  6,
+    c off               =  7,           cmd script     =  7,
+    c type              =  8;
+ 
+INT VAR font nr, x rest, high, low, font bits, modification bits, blank pitch,
+        factor 1, factor 2, steps;
+BOOL VAR is nlq, sheet feed;
+REAL VAR x size, y size;
+TEXT VAR std quality name, std typeface name, buffer, symbol, font text;
+THESAURUS VAR commands := empty thesaurus;
+
+insert (commands, "draft");
+insert (commands, "nlq");
+insert (commands, "roman");
+insert (commands, "sansserif");
+insert (commands, "courier");
+insert (commands, "prestige");
+insert (commands, "script");
+
+. is prop        : bit (font bits, 1)
+. is double      : bit (font bits, 5)
+.;
+ 
+(*********************************************************************)
+ 
+paper size  (13.6 * 2.54, 12.0 * 2.54);
+paper size  ( 8.0 * 2.54, 12.0 * 2.54);
+paper feed ("tractor");
+std typeface ("roman");
+std quality ("draft");
+ 
+PROC paper size (REAL CONST x, y) :
+ 
+  x size := x;
+  y size := y;
+ 
+END PROC paper size;
+ 
+PROC paper size : 
+ 
+  line;
+  putline ("Papierbreite  =  " + text (x size, 5, 2) + " cm  =  " + text (x size / 2.54, 5, 2) + " Zoll");
+  putline ("Papierlaenge  =  " + text (y size, 5, 2) + " cm  =  " + text (y size / 2.54, 5, 2) + " Zoll");
+ 
+END PROC paper size;
+ 
+ 
+PROC paper feed (TEXT CONST paper) :
+ 
+  IF   pos (paper, "sheet") <> 0
+       THEN sheet feed := TRUE;
+  ELIF pos (paper, "tractor") <> 0
+       THEN sheet feed := FALSE;
+       ELSE errorstop ("unzulaessige Papiereinfuehrung")
+  FI;
+ 
+END PROC paper feed;
+ 
+TEXT PROC paper feed :
+ 
+  IF sheet feed
+     THEN "sheet"
+     ELSE "tractor"
+  FI
+
+END PROC paper feed;
+ 
+ 
+PROC std typeface (TEXT CONST typeface) :
+ 
+  buffer := typeface;
+  changeall (buffer, " ", "");
+  IF link (commands, buffer) >= cmd roman
+     THEN std typeface name := buffer
+     ELSE errorstop ("unzulaessige Schriftart")
+  FI;
+ 
+END PROC std typeface;
+ 
+TEXT PROC std typeface : std typeface name END PROC std typeface;
+ 
+ 
+PROC std quality (TEXT CONST quality) :
+ 
+  IF quality = "nlq" OR quality = "draft"
+     THEN std quality name := quality;
+     ELSE errorstop ("unzulaessige Betriebsart")
+  FI;
+ 
+END PROC std quality;
+ 
+TEXT PROC std quality : std quality name END PROC std quality;
+ 
+(*********************************************************************)
+ 
+PROC open (INT CONST op code, INT VAR param1, param2) :
+ 
+SELECT op code OF
+  CASE c document : open document 
+  CASE c page     : open page
+END SELECT; 
+ 
+ 
+. x steps : param1
+. y steps : param2
+. 
+  open document :
+    x steps := x step conversion ( x size );
+    y steps := y step conversion ( y size );
+    y steps := (y steps DIV 30) * 30;
+    modification bits := 0;
+    out (""24""27""64"");                  (* Reset des Druckers            *)
+    out (""27"C" + code (y steps DIV 30)); (* Formularlaenge                *)
+    out (""27"x"0"");                      (* Entwurfsqualität              *) 
+    out (""27"R"0"");                      (* Amerikanischer Zeichensatz    *)
+    out (""27"t"1""27"6");                 (* Erweiterung des Zeichensatzes *)
+    IF sheet feed THEN out (""27""25"4") FI; (* Sheetmode ein               *)
+    IF   pos (material, "roman") <> 0
+         THEN out (""27"k"0"")
+    ELIF pos (material, "sansserif") <> 0
+         THEN out (""27"k"1"")
+    ELIF pos (material, "courier") <> 0
+         THEN out (""27"k"2"")
+    ELIF pos (material, "prestige") <> 0
+         THEN out (""27"k"3"")
+    ELIF pos (material, "script") <> 0
+         THEN out (""27"k"4"")
+         ELSE out (""27"k" + code (link (commands, std typeface) - cmd roman));
+    FI;
+    IF   pos (material, "nlq") <> 0 
+         THEN is nlq := TRUE;
+    ELIF pos (material, "draft") <> 0 
+         THEN is nlq := FALSE;
+         ELSE is nlq := std quality = "nlq"
+    FI;
+ 
+ 
+. x start : param1
+. y start : param2
+. 
+  open page :
+    x start := 0;
+    IF sheet feed
+       THEN y start := y step conversion (8.466667e-1)    (* 2/6 Inch *)
+       ELSE y start := 0;
+    FI;
+    x rest  := 0;
+    out (""13"");
+ 
+END PROC open;
+ 
+ 
+PROC close (INT CONST op code, INT CONST param1) :
+ 
+SELECT op code OF
+  CASE c document : close document 
+  CASE c page     : close page
+END SELECT; 
+ 
+. 
+  close document :
+ 
+ 
+. remaining y steps : param1
+.
+  close page :
+    IF   sheet feed
+         THEN out (""27""25"R")
+    ELIF remaining y steps > 0
+         THEN out (""12"")
+    FI;
+ 
+END PROC close;
+ 
+ 
+PROC execute (INT CONST op code, TEXT CONST string, INT CONST param1, param2) :
+ 
+SELECT op code OF
+  CASE c write text       :  write text
+  CASE c write cmd        :  write cmd
+  CASE c carriage return  :  carriage return
+  CASE c move             :  move
+  CASE c draw             :  draw
+  CASE c on               :  on
+  CASE c off              :  off
+  CASE c type             :  type
+END SELECT
+
+ 
+. from : param1
+. to   : param2
+.
+  write text :
+    out subtext (string, from, to)
+ 
+.
+  write cmd :
+    buffer := subtext (string, from, to);
+    scan (buffer);
+    next symbol (symbol);
+    SELECT link (commands, symbol) OF
+      CASE cmd draft     : IF     is nlq THEN switch to draft FI; is nlq := FALSE;
+      CASE cmd nlq       : IF NOT is nlq THEN switch to nlq   FI; is nlq := TRUE;
+      CASE cmd roman     : out (""27"k"0"")
+      CASE cmd sansserif : out (""27"k"1"")
+      CASE cmd courier   : out (""27"k"2"")
+      CASE cmd prestige  : out (""27"k"3"")
+      CASE cmd script    : out (""27"k"4"")
+      OTHERWISE : out (buffer);
+    END SELECT;
+ 
+ 
+(*. x steps to left margin : param1*)
+.
+  carriage return :
+    x rest := 0;
+    out (""13"");
+ 
+ 
+. x steps : param1
+. y steps : param2
+.
+  move :
+    IF x steps < 0 OR y steps < 0
+       THEN stop
+       ELSE IF x steps > 0 THEN x move FI;
+            IF y steps > 0 THEN y move FI;
+    FI;
+ 
+    . x move :
+        x rest INCR x steps; 
+        IF not is underline
+           THEN simple x move
+           ELSE underline x move
+        FI;
+
+        . not is underline :
+            NOT bit (modification bits, 7)
+ 
+        . simple x move :
+            high   := x rest DIV factor 1;
+            x rest := x rest MOD factor 1;
+            out (""27"\");
+            out (code (high MOD 256));
+            out (code (high DIV 256));
+ 
+        . underline x move :
+            high   := x rest DIV factor 2;
+            x rest := x rest MOD factor 2;
+            IF high < blank pitch
+               THEN stop
+               ELSE low  := high MOD 127;
+                    high := high DIV 127;
+                    IF low >= blank pitch
+                       THEN low  DECR blankpitch;
+                       ELSE high DECR 1;
+                            low  DECR (blankpitch - 127);
+                    FI;
+                    IF high > 0 
+                       THEN out (""27" ");
+                            out (code (127 - blankpitch));
+                            high TIMESOUT " ";
+                    FI;
+                    out (""27" ");
+                    out (code (low)); 
+                    out (" "27" "0"");
+            FI;
+ 
+     . y move :
+         low  := y steps MOD 255;
+         high := y steps DIV 255;
+         IF high > 0 THEN high TIMESOUT (""27"J"255"")    FI;
+         IF low  > 0 THEN out (""27"J"); out (code (low)) FI;
+. 
+  draw :
+    IF   x steps < 0 OR y steps <> 0 OR linetype <> underline linetype
+         THEN stop
+    ELIF x steps > 0
+         THEN x draw
+    FI;
+ 
+    . x draw :
+        x rest INCR x steps;
+        steps  := x rest DIV 6;
+        x rest := x rest MOD 6;
+        IF steps > 0
+           THEN low  := steps MOD 256;
+                high := steps DIV 256;
+                out (""27"L");
+                out (code (low));
+                out (code (high));
+                steps TIMESOUT ""1"";
+        FI;
+ 
+ 
+. modification : param1
+.
+  on :
+    buffer := on string (modification);
+    IF buffer <> ""
+       THEN modification bits := modification bits OR code (buffer);
+            switch to font;
+       ELSE stop
+    FI
+ 
+.
+  off :
+    buffer := off string (modification);
+    IF buffer <> ""
+       THEN modification bits := modification bits XOR code (buffer);
+            switch to font;
+       ELSE stop
+    FI
+ 
+.
+  type :
+    font nr   := param1;
+    buffer    := font string (font nr);
+    font bits := code (buffer SUB 1);
+    font text := subtext (buffer, 2);
+    IF is prop
+       THEN factor 1 := 4;
+            factor 2 := 4;
+       ELSE factor 1 := 6;
+            factor 2 := 6;
+    FI;
+    IF is double THEN factor 2 INCR factor 2 FI;
+    blank pitch := char pitch (font nr, " ") DIV factor 2; 
+    switch to font;
+    IF is nlq THEN switch to nlq FI;
+ 
+END PROC execute;
+ 
+ 
+PROC switch to font :
+ 
+  out (""27"!");
+  out (code (font bits OR modification bits));
+  out (font text);
+ 
+END PROC switch to font;
+ 
+ 
+PROC switch to nlq :
+ 
+  IF NOT is prop
+     THEN factor 1   := 4;
+          factor 2   := (4 * factor 2) DIV 6;
+          blankpitch := (6 * blankpitch) DIV 4;
+          out (""27"x"1"");
+     ELSE out (""27"x"0"");
+  FI;
+ 
+END PROC switch to nlq;
+ 
+ 
+PROC switch to draft :
+ 
+  IF NOT is prop
+     THEN factor 1   := 6;
+          factor 2   := (6 * factor 2) DIV 4;
+          blankpitch := (4 * blankpitch) DIV 6;
+          out (""27"x"0"");
+  FI;
+ 
+END PROC switch to draft;
+
+ 
+END PACKET epson sq printer;
+ 
+ 
+ 
+#page# 
+(******************************************************************)
+(***                                                            ***)
+(***   Generierung des Printers                                 ***)
+(***                                                            ***)
+(******************************************************************)
+ 
+LET printer name = "printer.epson.sq",
+    up           = ""3""13""5"";
+ 
+TEXT VAR fonttab name := "fonttab.epson.sq";
+ 
+BOOL CONST multi user := (pcb (9) AND 255) <> 1;
+ 
+INT VAR pr channel;
+TEXT VAR buffer;
+ 
+command dialogue (TRUE);
+IF NOT multi user 
+  THEN errorstop ("Dieser Treiber arbeitet nur mit Multi-Tasking-EUMEL") 
+FI; 
+ask for print channel;
+ask for paper format;
+ask for typeface;
+ask for print quality;
+load font table;
+forget (printer name, quiet);
+IF multi user THEN generate printer spool FI;
+check on;
+.
+  ask for print channel : 
+    line;
+    put ("gib Druckerkanal:");
+    get (pr channel);
+    do ("serverchannel(" + text (pr channel) + ")" ) ;
+    line;
+. 
+  ask for paper format :
+    SELECT paper format OF
+      CASE 1 : papersize ( 8.0 * 2.54, 12.0 * 2.54)
+      CASE 2 : papersize (13.6 * 2.54, 12.0 * 2.54)
+      CASE 3 : papersize (21.0, 29.7)
+    END SELECT
+
+    . paper format :
+        line;
+        REP out (up);
+            IF yes ("Papierformat : endlos, 8 Zoll breit")
+               THEN LEAVE paper format WITH 1 FI;
+            out (up);
+            IF yes ("Papierformat : endlos, 13.6 Zoll breit")
+               THEN LEAVE paper format WITH 2 FI;
+            out (up);
+            IF yes ("Papierformat : DINA 4")
+               THEN LEAVE paper format WITH 3 FI;
+        PER;
+        0
+.
+  ask for typeface :
+    line;
+    std typeface (typeface)
+ 
+    . typeface :
+        REP out (up);
+            IF yes ("standardmäßige Schriftart : roman")
+               THEN LEAVE typeface WITH "roman" FI;
+            out (up);
+            IF yes ("standardmäßige Schriftart : sansserif")
+               THEN LEAVE typeface WITH "sansserif" FI;
+            out (up);
+            IF yes ("standardmäßige Schriftart : courier")
+               THEN LEAVE typeface WITH "courier" FI;
+            out (up);
+            IF yes ("standardmäßige Schriftart : prestige")
+               THEN LEAVE typeface WITH "prestige" FI;
+            out (up);
+            IF yes ("standardmäßige Schriftart : script")
+               THEN LEAVE typeface WITH "script" FI;
+        PER;
+        ""
+.
+  ask for print quality :
+    line;
+    std quality (quality);
+ 
+    . quality :
+        REP out (up);
+            IF yes ("standardmäßige Druckqualität : draft quality")
+               THEN LEAVE quality WITH "draft" FI;
+            out (up);
+            IF yes ("standardmäßige Druckqualität : near letter quality")
+               THEN LEAVE quality WITH "nlq" FI;
+        PER;
+        ""
+.
+  load font table :
+    IF NOT exists (fonttab name)
+       THEN command dialogue (TRUE); 
+            REP line (2); 
+                putline ("Bitte Archiv mit der Fonttabelle """ +
+                          fonttab name + """ einlegen!");
+                line;
+            UNTIL yes ("Archiv eingelegt") PER;
+            reserve archive;
+            fetch (fonttab name, archive);
+            release (archive);
+    FI;
+    font table (fonttab name);
+    IF multi user
+       THEN command dialogue (FALSE); 
+            do ("save(""" + font tab name + """,task(""configurator""))") 
+    FI;
+    forget (fonttab name, quiet);
+ 
+    . reserve archive :
+        INT VAR p1, p2;
+        archive (" "31" ");
+        disable stop;
+        list (archive);
+        IF is error
+           THEN buffer := errormessage;
+                p1 := pos (buffer, """", 1 ) + 1;
+                p2 := pos (buffer, """", p1) - 1;
+                IF p1 > 0 AND p2 > 0
+                   THEN clear error;
+                        buffer := subtext (buffer, p1, p2);
+                        archive (buffer);
+                FI;
+        FI;
+        enable stop;
+ 
+. generate printer spool :
+    eumel must advertise;
+    cursor (1, 12);
+    putline ("In allen bestehenden Tasks - insbesondere in der Task ""PUBLIC"" - muß");
+    putline ("die Fonttabelle mit dem Kommando");
+    line;
+    putline ("      font table (""" + font tab name + """)");
+    line;
+    putline ("eingestellt werden!!!");
+    line (4);
+    putline ("Generierung beendet, weiter mit 'SV'");
+    generate printer server;
+    do (buffer);
+ 
+. generate printer server :
+    buffer :=  "break (quiet);";
+    buffer CAT "spool manager (PROC printer);";
+    buffer CAT "INT VAR reply; DATASPACE VAR ds; FILE VAR file;";
+    buffer CAT "PROC printer:";
+    buffer CAT "  disable stop;";
+    buffer CAT "  continue (server channel);";
+    buffer CAT "  check error (error message);";
+    buffer CAT "  ds := nilspace;";
+    buffer CAT "  REP forget (ds);";
+    buffer CAT "      execute print;";
+    buffer CAT "      IF is error AND online THEN put error; clear error; FI;";
+    buffer CAT "  PER;";
+    buffer CAT "END PROC printer;";
+    buffer CAT "PROC execute print:";
+    buffer CAT "  LET ack = 0, fetch code = 11, file type = 1003;";
+    buffer CAT "  enable stop;";
+    buffer CAT "  ds := nilspace;";
+    buffer CAT "  call (father, fetch code, ds, reply);";
+    buffer CAT "  IF reply = ack CAND type (ds) = file type";
+    buffer CAT "     THEN file := sequential file (input, ds);";
+    buffer CAT "          print (file,";
+    buffer CAT "            PROC (INT CONST, INT VAR, INT VAR) open,";
+    buffer CAT "            PROC (INT CONST, INT CONST) close,";
+    buffer CAT "            PROC (INT CONST, TEXT CONST, INT CONST, INT CONST) execute);";
+    buffer CAT "  FI;";
+    buffer CAT "END PROC execute print;"; 
+    buffer CAT "PROC check error(TEXT CONST message):";
+    buffer CAT "  IF is error";
+    buffer CAT "     THEN clear error; rename myself (message);";
+    buffer CAT "          IF is error THEN end(myself) FI;"; 
+    buffer CAT "          pause (9000); end(myself);";
+    buffer CAT "  FI;";
+    buffer CAT "END PROC check error;"; 
+

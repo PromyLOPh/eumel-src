@@ -1,0 +1,77 @@
+PACKET halbjahreswechselfuerkursdatenDEFINES 
+halbjahreswechselfuerkursdatenvorbereiten,
+halbjahreswechselfuerkursdatenstarten,halbjahreswechselfuerkursdatendrucken:
+LET maske="ms halbjahreswechsel fuer kursdaten";INT VAR fnraktsj:=2,fnrakthj
+:=3,fnrgeplsj:=4,fnrgeplhj:=5,fnrauskunft:=6;LET 
+meldnrhalbjahreswechsellaeuft=156,meldnrinbearbeitung=352,
+meldnrkurswahlfehler=416;FILE VAR prot;LET protname=
+"Protokoll zum Halbjahreswechsel";FILE VAR f,faus;LET datei="Ausgangsliste",
+bearbdatei="Bearbeitungsliste";LET schuljahr="Schuljahr",schulhalbjahr=
+"Schulhalbjahr",schulname="Schulname",schulort="Schulort";LET ueberschrift=
+"Schulhalbjahreswechsel für Kursdaten Sek. 2",untertitel1=
+"Wechsel von Schuljahr ",untertitel2="        zum Schuljahr ",halbjahr=
+". Halbjahr",protokollanfang="Planblockschema und Hilfsdateien zu";LET strich
+="-",schraegstrich="/",kennzhell="#";LET beginnjgst=12,beginnhj=15,beginnsj=
+17,beginnjgstsort=6,beginndateiname=8;LET kurswahlpraefix="Kurswahl-",
+kurswahl2praefix="Kurswahl-2",sperrepraefix="Sperre Kurswahl-";TEXT VAR aktsj
+:="",akthj:="",geplsj,geplhj;TEXT VAR vergleichshj:="",vergleichsjgst,
+aktuelleshj;TEXT VAR zeile,neuezeile,auszeile;LET tasknameserver=
+"kurswahl server";TASK VAR kurswahlserver;THESAURUS VAR thes;LET 
+logbucheintraghjwechsel="Anw. 2.2.4.1 Halbjahreswechsel für Kursdaten Sek. 2"
+;PROC halbjahreswechselfuerkursdatenvorbereiten:standardstartproc(maske);IF 
+aktsj=""THEN aktsj:=schulkenndatum(schuljahr);akthj:=schulkenndatum(
+schulhalbjahr)FI ;geplsj:=aktsj;geplhj:=akthj;geplanteshjundsjberechnen(
+geplhj,geplsj);standardmaskenfeld(aktsj,fnraktsj);standardmaskenfeld(akthj,
+fnrakthj);standardmaskenfeld(geplsj,fnrgeplsj);standardmaskenfeld(geplhj,
+fnrgeplhj);infeld(fnraktsj);standardfelderausgeben;infeld(fnrauskunft);
+standardnprocEND PROC halbjahreswechselfuerkursdatenvorbereiten;PROC 
+halbjahreswechselfuerkursdatenstarten:IF NOT existstask(tasknameserver)THEN 
+standardmeldung(meldnrkurswahlfehler,"");return(1)ELSE kurswahlserver:=/
+tasknameserver;standardmeldung(meldnrhalbjahreswechsellaeuft,"");logeintrag(
+logbucheintraghjwechsel+" Start");dateienverzeichnissortierterstellen;
+dateienverzeichnisbehandeln;logeintrag(logbucheintraghjwechsel+" Ende");
+zeigedatei(protname,"")FI .dateienverzeichnissortierterstellen:forget(datei,
+quiet);forget(bearbdatei,quiet);thes:=ALL kurswahlserver;dateiFILLBY thes;f:=
+sequentialfile(input,datei);faus:=sequentialfile(output,bearbdatei);WHILE 
+NOT eof(f)REP getline(f,zeile);IF pos(zeile,kurswahlpraefix)=1THEN 
+sortierkriterienanzeilenanfangkopierenELSE neuezeile:=zeileFI ;putline(faus,
+neuezeile)PER ;forget(datei,quiet);sort(bearbdatei).
+sortierkriterienanzeilenanfangkopieren:neuezeile:=subtext(zeile,beginnsj);
+neuezeileCAT (zeileSUB beginnhj);neuezeileCAT subtext(zeile,beginnjgst,
+beginnjgst+1);neuezeileCAT zeile.dateienverzeichnisbehandeln:aktuelleshj:=
+aktsj;aktuelleshjCAT akthj;f:=sequentialfile(input,bearbdatei);forget(
+protname,quiet);prot:=sequentialfile(output,protname);
+kopfinausgabedateischreiben;commanddialogue(FALSE );WHILE NOT eof(f)REP 
+getline(f,zeile);zeileuntersuchenPER ;forget(bearbdatei,quiet);
+commanddialogue(TRUE ).zeileuntersuchen:IF pos(zeile,kurswahlpraefix)=0THEN 
+erase(zeile,kurswahlserver)ELIF pos(zeile,sperrepraefix)>0THEN erase(zeile,
+kurswahlserver)ELSE IF subtext(zeile,1,5)<>vergleichshjTHEN vergleichshj:=
+subtext(zeile,1,5);vergleichsjgst:="";line(prot);standardmeldung(
+meldnrinbearbeitung,(vergleichshjSUB 5)+". "+subtext(vergleichshj,1,2)+
+schraegstrich+subtext(vergleichshj,3,4)+kennzhell)FI ;IF vergleichshj<=
+aktuelleshjTHEN meldeloeschung(zeile,TRUE );erase(subtext(zeile,
+beginndateiname),kurswahlserver)ELIF pos(zeile,kurswahl2praefix)>0THEN erase(
+subtext(zeile,beginndateiname),kurswahlserver)ELSE meldeloeschung(zeile,
+FALSE )FI FI .kopfinausgabedateischreiben:putline(prot,schulkenndatum(
+schulname));putline(prot,text(schulkenndatum(schulort),65)+date);line(prot);
+putline(prot,ueberschrift);putline(prot,length(ueberschrift)*strich);line(
+prot);auszeile:=untertitel1;auszeileCAT subtext(aktsj,1,2);auszeileCAT 
+schraegstrich;auszeileCAT subtext(aktsj,3,4);auszeileCAT " , ";auszeileCAT 
+akthj;auszeileCAT halbjahr;putline(prot,auszeile);auszeile:=untertitel2;
+auszeileCAT subtext(geplsj,1,2);auszeileCAT schraegstrich;auszeileCAT subtext
+(geplsj,3,4);auszeileCAT " , ";auszeileCAT geplhj;auszeileCAT halbjahr;
+putline(prot,auszeile);line(prot);putline(prot,protokollanfang)END PROC 
+halbjahreswechselfuerkursdatenstarten;PROC meldeloeschung(TEXT CONST 
+ausdatname,BOOL CONST loeschen):IF vergleichsjgst<>jgstinausdatnameTHEN 
+vergleichsjgst:=jgstinausdatname;TEXT VAR auszeile:="Jgst. ";auszeileCAT 
+vergleichsjgst;auszeileCAT " in ";auszeileCAT subtext(vergleichshj,1,2);
+auszeileCAT "/";auszeileCAT subtext(vergleichshj,3,4);auszeileCAT " ";
+auszeileCAT (vergleichshjSUB 5);auszeileCAT ". Halbjahr  ";IF loeschenTHEN 
+auszeileCAT "wurden gelöscht"ELSE auszeileCAT "existieren"FI ;putline(prot,
+auszeile)FI .jgstinausdatname:subtext(ausdatname,beginnjgstsort,
+beginnjgstsort+1).END PROC meldeloeschung;PROC 
+halbjahreswechselfuerkursdatendrucken(BOOL CONST drucken):IF druckenTHEN 
+print(protname)FI ;forget(protname,quiet);enter(2)END PROC 
+halbjahreswechselfuerkursdatendrucken;END PACKET 
+halbjahreswechselfuerkursdaten
+

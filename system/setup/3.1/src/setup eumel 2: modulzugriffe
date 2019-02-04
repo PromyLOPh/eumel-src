@@ -1,0 +1,441 @@
+
+(* Pakete:
+ 1. setup eumel modulzugriffe
+       Abstrakter Datentyp MODUL : Typ, Datenraumtyp, Zugriffsoperationen
+ 2. setup eumel modul und shard zugriffe
+       Zugriffe in Module und SHards (Datentyp MODUL) mit Strukturwissen
+*)
+ 
+(**************************************************************************)
+(***** Datentyp MODUL und Zugriffsoperationen dafür        ****************)
+(***** Copyright (c) 1987, 1988 by                         ****************)
+(***** Lutz Prechelt, Karlsruhe                            ****************)
+(**************************************************************************)
+
+PACKET setup eumel modulzugriffe            (* Copyright (c) 1987 by    *)
+DEFINES int, byte, text, unsigned,          (* Lutz Prechelt, Karlsruhe *)
+        dtcb abfragen,    ccb abfragen,     (* Stand : 12.03.88   1.1   *)
+        dtcb refinements, ccb refinements,  (* Eumel 1.8.1              *)
+        info,
+        page,
+        copy,
+        datenraumtyp modul,
+        MODUL :
+
+
+(* Dies Paket realisiert gezielte Zugriffe in einen Struct vom Typ MODUL.
+   Dies ist das Format eines SHard Moduls. Der Typ wird auch verwendet, um
+   das SHard-Hauptmodul oder einzelne ccbs zu handhaben!
+   Für die Adressierung der Bytes werden REAL-Werte verwendet, damit die
+   Größe nicht auf maxint beschränkt ist. Dies ist normalerweise sicher
+   (wegen der BCD-Arithmetik des Eumel), jedoch sind sinnlose nichtganzzahlige
+   Adressen dadurch möglich. Das wird aus Effizienzgründen nicht abgefangen,
+   die korrekte Benutzung liegt in der Verantwortung des Aufrufers.
+   Es sollen alle Zugriffe auf Module nur mit den Prozeduren dieses Pakets
+   abgewickelt werden.
+*) 
+ 
+ 
+INT CONST high only ::-256,
+          low  only :: 255;
+
+LET  max page = 128;
+
+TYPE MODUL =   STRUCT (ALIGN dummy, ROW 256 INT header,
+                      ROW max page ROW 256 INT b, 
+                      INT dtcb abfragen, ccb abfragen, 
+                      TEXT dtcb ref, ccb ref, info);
+
+(* Der Typ kann wegen des ALIGN direkt auf einen Datenraum (für ein Modul)
+   gelegt werden. Der Teil b fasst 64kB Daten und kann direkt für blockout
+   verwendet werden. Die restlichen Teile sind nur für Module relevant. 
+*) 
+ 
+INT CONST datenraumtyp modul :: 5687;  (* Typ eines MODUL als Datenraum *)
+
+(*********************** INT ********************************************)
+
+INT PROC int (MODUL CONST m, REAL CONST byte nr) : 
+  (* liefert das INT aus dem Modul m, das bei Byte "byte nr" beginnt *)
+  INT VAR   page :: int (byte nr DIV 512.0) + 1,
+            nr   :: int (byte nr MOD 512.0) DIV 2 + 1;
+  INT VAR   whole int :: m.b[page][nr];
+  IF byte nr MOD 2.0 <> 0.0 
+  THEN rotate (whole int, 8); (* high und low byte vertauschen *)
+       (whole int AND low only) + next byte in high
+  ELSE whole int  FI.
+
+next byte in high :
+  IF nr = 256 THEN nr := 1; page INCR 1 ELSE nr INCR 1  FI;
+  INT VAR help :: m.b[page][nr] AND low only;
+  rotate (help, 8);
+  help.
+END PROC int;
+
+INT PROC int (MODUL CONST m, INT CONST byte nr) :
+  int (m, real (byte nr))
+END PROC int;
+
+PROC int (MODUL VAR m, REAL CONST byte nr, INT CONST new) :
+  (* schreibt den neuen 16-Bit Wert new ab dem Byte "byte nr" in den Teil b
+     des Moduls m. Hier kommt es nicht sehr aufs Tempo an, deshalb benutzen
+     wir hier einfach "byte".
+  *)
+  INT VAR value :: new;
+  rotate (value, 8); (* high byte zu low byte machen *)
+  byte (m, byte nr,       new   AND low only);
+  byte (m, byte nr + 1.0, value AND low only);
+END PROC int;
+
+PROC int (MODUL VAR m, INT CONST byte nr, INT CONST new) :
+  int (m, real (byte nr), new)
+END PROC int;
+
+(************************** BYTE *******************************************)
+
+INT PROC byte (MODUL CONST m, REAL CONST byte nr) : 
+  (* liefert das Byte mit der Nummer "byte nr" aus dem Teil b des Moduls m.
+     Das erste Byte hat die Nummer 0
+  *)
+  INT CONST page :: int (byte nr DIV 512.0) + 1,
+            nr   :: int (byte nr MOD 512.0) DIV 2 + 1;
+  INT VAR   whole int :: m.b[page][nr];
+  IF byte nr MOD 2.0 <> 0.0 
+  THEN rotate (whole int, 8); (* high und low byte vertauschen *)  FI; 
+  whole int AND low only. 
+END PROC byte; 
+ 
+INT PROC byte (MODUL CONST m, INT CONST byte nr) :
+  byte (m, real (byte nr))
+END PROC byte;
+
+PROC byte (MODUL VAR m, REAL CONST byte nr, INT CONST new) :
+  (* Schreibt die unteren 8 bit von new an das Byte der Stelle byte nr im
+     Modul m
+  *)
+  INT CONST page :: int (byte nr DIV 512.0) + 1,
+            nr   :: int (byte nr MOD 512.0) DIV 2 + 1;
+  INT VAR   new byte  :: new AND low only,
+            whole int :: m.b[page][nr];
+  m.b[page][nr] := new int.
+
+new int :
+  IF byte nr MOD 2.0 = 0.0  (* low byte ändern ? *)
+  THEN (whole int AND high only) + new byte
+  ELSE rotate (new byte, 8); (* new nach high rotieren *)
+       new byte + (whole int AND low only)
+  FI.
+END PROC byte;
+
+PROC byte (MODUL VAR m, INT CONST byte nr, INT CONST new) :
+  byte (m, real (byte nr), new)
+END PROC byte;
+
+(*********************** TEXT ********************************************)
+
+TEXT PROC text (MODUL CONST m, REAL CONST first byte nr, INT CONST length) : 
+  (* Extrahiert die naechsten length bytes aus m ab byte nr als TEXT *) 
+  REAL VAR i :: first byte nr;
+  TEXT VAR result :: ""; 
+  WHILE i < first byte nr + real (length) REP
+    result CAT code (byte (m, i)); 
+    i INCR 1.0
+  PER; 
+  result. 
+END PROC text; 
+ 
+TEXT PROC text (MODUL CONST m, INT CONST first byte nr, INT CONST length) : 
+  text (m, real (first byte nr), length)
+END PROC text;
+
+(* Ein schreibendes Analogon zu "text" gibt es nicht. *)
+
+(*********************** unsigned *****************************************)
+
+REAL PROC unsigned (INT CONST sixteen bits) :
+  (* hiermit kann man die Vorzeichenprobleme umschiffen, die der Eumel bei
+     INTs über maxint macht.
+     Liefert das INT als 16-Bit unsigned Wert interpretiert im REAL-Format.
+  *)
+  real (text (sixteen bits, dec))
+END PROC unsigned;
+
+INT PROC unsigned (REAL CONST sixteen bit value) :
+  (* Umkehrung des obigen : REAL 0..65536 rein, passenden 16 bit unsigned
+     Wert raus
+  *)
+  TEXT CONST t :: text (sixteen bit value);
+  int (unsigned (value text)).
+
+value text :
+  IF pos (t, ".") <> 0
+  THEN subtext (t, 1, pos (t, ".") - 1)
+  ELSE t
+  FI.
+END PROC unsigned;
+
+(******************** dtcb, ccb, info **************************************)
+
+INT PROC dtcb abfragen (MODUL CONST m) :
+  m.dtcb abfragen
+END PROC dtcb abfragen;
+
+PROC dtcb abfragen (MODUL VAR m, INT CONST neu) :
+  m.dtcb abfragen := neu
+END PROC dtcb abfragen;
+
+TEXT PROC dtcb refinements (MODUL CONST m) :
+  m.dtcb ref
+END PROC dtcb refinements;
+
+PROC dtcb refinements (MODUL VAR m, TEXT CONST neu) :
+  m.dtcb ref := neu
+END PROC dtcb refinements;
+
+INT PROC ccb abfragen (MODUL CONST m) :
+  m.ccb abfragen
+END PROC ccb abfragen;
+
+PROC ccb abfragen (MODUL VAR m, INT CONST neu) :
+  m.ccb abfragen := neu
+END PROC ccb abfragen;
+
+TEXT PROC ccb refinements (MODUL CONST m) :
+  m.ccb ref
+END PROC ccb refinements;
+
+PROC ccb refinements (MODUL VAR m, TEXT CONST neu) :
+  m.ccb ref := neu
+END PROC ccb refinements;
+
+TEXT PROC info (MODUL CONST m) :
+  m.info
+END PROC info;
+
+PROC info (MODUL VAR m, TEXT CONST neu) :
+  m.info := neu
+END PROC info;
+
+(********************* page **********************************************)
+
+(* Die Prozedur page dient dazu, aus dem Datenbereich b eines MODULs
+   einzelne Seiten (512 Byte Blöcke) in Form eines ROW 256 INT anzusprechen
+   um damit blockin/blockout zu machen.
+   Die Seitennummern gehen von 1 bis max page
+*)
+
+ROW 256 INT PROC page (MODUL CONST m, INT CONST page nr) :
+  m.b[page nr]
+END PROC page;
+
+PROC page (MODUL VAR m, INT CONST page nr, ROW 256 INT CONST new page) :
+  m.b[page nr] := new page
+END PROC page;
+
+(*********************** copy ********************************************)
+
+PROC copy (MODUL CONST from, REAL CONST origin,
+           MODUL VAR   to,   REAL CONST destination, INT CONST length) :
+  (* Kopiert schnell eine Anzahl von Bytes aus einem Modul in ein anderes
+     die Optimierung klappt nur, wenn von einer geraden Adresse an eine
+     gerade Adresse kopiert wird oder von ungerade nach ungerade.
+     Macht cout.
+  *)
+  INT  VAR i, interval :: cout interval;
+  REAL VAR offset :: 0.0;
+  IF length < 0 THEN errorstop ("copy : length = " + text (length))  FI;
+  IF origin MOD 2.0 <> destination MOD 2.0
+  THEN copy slow
+  ELSE copy fast  FI;
+  cout (length).
+
+cout interval :
+  IF   length > 1024   THEN 32
+  ELIF length >   64   THEN  8
+  ELSE                       1  FI.
+
+copy slow :
+  FOR i FROM 1 UPTO length REP
+    IF i MOD 2*interval = 0 THEN cout (i)  FI;
+    byte (to, destination + offset, byte (from, origin + offset));
+    offset INCR 1.0
+  PER.
+
+copy fast :
+  IF origin MOD 2.0 <> 0.0 AND length > 0
+  THEN byte (to, destination, byte (from, origin));
+       offset := 1.0
+  FI;
+  FOR i FROM 1 UPTO (length - int (origin MOD 2.0))  DIV 2 REP
+    INT CONST page1 :: int ((origin+offset) DIV 512.0) + 1,
+              nr1   :: int ((origin+offset) MOD 512.0) DIV 2 + 1,
+              page2 :: int ((destination+offset) DIV 512.0) + 1,
+              nr2   :: int ((destination+offset) MOD 512.0) DIV 2 + 1;
+    to.b[page2][nr2] := from.b[page1][nr1];
+    IF i MOD interval = 0 THEN cout (2*i)  FI;
+    offset INCR 2.0
+  PER;
+  IF length - int (offset) = 1
+  THEN byte (to, destination + offset, byte (from, origin + offset))  FI.
+END PROC copy;
+
+(************************ Hilfsprozeduren ********************************)
+
+REAL OP DIV (REAL CONST a, b) :
+  floor (a/b)
+END OP DIV;
+
+END PACKET setup eumel modulzugriffe;
+
+ 
+(**************************************************************************)
+(***** Zugriffe in Module mit Strukturwissen               ****************)
+(***** Copyright (c) 1988 by                               ****************)
+(***** Lutz Prechelt, Karlsruhe                            ****************)
+(**************************************************************************)
+
+PACKET setup eumel modul und shard zugriffe (* Copyright (c) 1988 by    *)
+DEFINES sh dtcb offset,                     (* Lutz Prechelt, Karlsruhe *)
+        sh ccb offset,                      (* Stand : 23.04.88   1.2   *)
+        get new channel table,              (* Eumel 1.8.1              *)
+        init modules list,
+        all modules,
+        module type,
+        module name:
+
+(* Dieses Paket definiert Operationen zum Zugriff auf bestimmte Daten in 
+   SHardmodulen und SHards. Es ist hierin Wissen über die Struktur dieser 
+   Teile enthalten. 
+   Beschreibung des SHardformats siehe setup eumel 4: modulkonfiguration
+*) 
+
+LET nr of channels total          = 40,
+    offset channel table pointer  = 10;
+
+THESAURUS VAR all the beautiful modules we know :: emptythesaurus;
+ 
+(******************* Kanaltabelle lesen/schreiben **************************)
+
+(* Hier geht schöne Struktur (und damit zugleich einfache Programmierung)
+   über gute Performance. (Wir lesen einiges mehrfach)
+*)
+
+REAL PROC sh dtcb offset (MODUL CONST shard, INT CONST kanal) :
+  unsigned (int (shard, ct + 4 * kanal)).
+
+ct :
+  int (shard, offset channel table pointer).
+END PROC sh dtcb offset;
+
+REAL PROC sh ccb offset (MODUL CONST shard, INT CONST kanal) :
+  unsigned (int (shard, ct + 4 * kanal + 2)).
+
+ct :
+  int (shard, offset channel table pointer).
+END PROC sh ccb offset;
+
+PROC sh dtcb offset (MODUL VAR shard, INT CONST kanal, REAL CONST value) :
+  int (shard, ct + 4 * kanal, unsigned (value)).
+
+ct :
+  int (shard, offset channel table pointer).
+END PROC sh dtcb offset;
+
+PROC sh ccb offset (MODUL VAR shard, INT CONST kanal, REAL CONST value) :
+  int (shard, ct + 4 * kanal + 2, unsigned (value)).
+
+ct :
+  int (shard, offset channel table pointer).
+END PROC sh ccb offset;
+
+PROC get new channel table (MODUL CONST new shard,
+                            ROW 256 INT VAR channel table of new shard) :
+  (* Kopiert die Kanaltabelle aus new shard nach
+     channel table of new shard
+  *)
+  INT VAR offset :: int (new shard, offset channel table pointer);
+  INT VAR  i;
+  FOR i FROM 1 UPTO 2 * nr of channels total REP
+    channel table of new shard [i] := int (new shard, offset);
+    offset INCR 2
+  PER.
+END PROC get new channel table;
+
+(********************* modules list handling *****************************)
+
+TEXT VAR m list;
+
+PROC init modules list :
+  (* Baut in der Variablen m list einen "Assoziativspeicher" für
+     Modulnamen <--> Modultyp auf und erstellt eine Liste aller
+     Shardmoduldateinamen für "all modules"
+     Der Text m list enthält für jede Datei, die ein SHardmodul enthält,
+     einen Eintrag folgender Form :
+     ""0"", modultyp, ""0"", Dateiname, ""0""
+     Dabei ist modultyp genau 4 Byte lang.
+     Diese Eintragsform ermöglicht ein (auf dem Eumel) sehr effizientes
+     Suchen, sowohl von Modultypen zu Modulnamen als auch umgekehrt.
+     Die Prozedur macht cout (dateinummer)
+  *)
+  INT VAR i;
+  TEXT VAR t;
+  m list := ""; all the beautiful modules we know := empty thesaurus;
+  FOR i FROM 1 UPTO highest entry (all) REP
+     cout (i);
+     t := name (all, i);
+     IF t <> "" CAND type (old (t)) = datenraumtyp modul
+     THEN add t  FI
+  PER.
+
+add t :
+  insert (all the beautiful modules we know, t);
+  TEXT CONST typ :: read module type (t);
+  m list cat typmarker;
+  m list CAT t;
+  m list CAT ""0"".
+
+m list cat typmarker :
+  m list CAT ""0"";
+  m list CAT typ;
+  m list CAT ""0"".
+END PROC init modules list;
+
+THESAURUS PROC all modules :
+  all the beautiful modules we know.
+END PROC all modules;
+
+TEXT PROC read module type (TEXT CONST datei) : 
+  (* Liefert den 4-Byte Modultyp des in der Datei datei enthaltenen 
+     SHardmoduls, falls möglich, andernfalls "" 
+  *) 
+  IF NOT exists (datei) COR type (old (datei)) <> datenraumtyp modul 
+  THEN ""
+  ELSE BOUND MODUL CONST m :: old (datei); 
+       text (m, int (m, 8), 4)
+  FI.
+END PROC read module type; 
+ 
+TEXT PROC module type (TEXT CONST module name) :
+  (* Liefert den 4-Byte Modultyp zu module name aus m list, sofern vorhanden
+     andernfalls ""
+  *)
+  INT CONST p :: pos (m list, ""0"" + module name + ""0"");
+  IF p = 0
+  THEN ""
+  ELSE subtext (m list, p - 4, p - 1)  FI.
+END PROC module type;
+
+TEXT PROC module name (TEXT CONST module type) :
+  (* Liefert den Moduldateinamen zum 4-Byte Modultyp module type, oder
+     "" falls kein solches Modul vorhanden.
+  *)
+  INT VAR p :: pos (m list, ""0"" + module type + ""0"");
+  IF p = 0
+  THEN ""
+  ELSE p INCR 6;
+       subtext (m list, p, pos (m list, ""0"", p) - 1)
+  FI.
+END PROC module name;
+
+END PACKET setup eumel modul und shard zugriffe;
+

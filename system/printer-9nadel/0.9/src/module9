@@ -1,0 +1,1099 @@
+ 
+(*************************************************************************)
+(*                                            Stand   : 01.10.88         *)
+(*   Module-Datei für 9-Nadel-Drucker         Version : 0.9              *)
+(*                                            Autoren : mov/hjh          *)
+(*************************************************************************)
+
+$head$ 
+PACKET printer driver 
+ 
+       DEFINES printer,
+               open,
+               close,
+               execute,
+               paper size,
+               top margin,
+
+$hfx85$        std speed:
+(* Treiber für EPSON FX85/105, automatisch generiert *)
+
+$hfx800$       std quality,
+               std typeface:
+(* Treiber für EPSON FX800/1000, automatisch generiert *) 
+BOOL VAR was tall font;
+ 
+$hmx$          std speed:
+(* Treiber für EPSON MX80/100, Typ III *) 
+(* Treiber automatisch generiert *)
+BOOL VAR is condensed, is small;
+
+$hlx800$       std speed, 
+               std quality,
+               std typeface:
+(* Treiber für EPSON LX800/1000, automatisch generiert *) 
+BOOL VAR was tall font;
+
+$hgp$          std speed: 
+(* Treiber für IBM-Grafikdrucker *) 
+(* Treiber automatisch generiert *) 
+
+$hpp$          std speed, 
+               std quality:
+(* Treiber für IBM-Proprinter *) 
+(* Treiber automatisch generiert *) 
+ 
+$hml182i$      std speed,
+               std quality:
+(* Treiber für OKI ML182/183 IBM-kompatibel *) 
+(* Treiber automatisch generiert *) 
+ 
+$hml192el$     paper feed,
+               std speed:
+(* Treiber für OKI ML192/193 Elite *) 
+(* Treiber automatisch generiert *) 
+BOOL VAR prop font;
+ 
+$hml292el$     std quality, 
+               std typeface, 
+               paper feed: 
+(* Treiber für OKI ML292/293 Elite *) 
+(* Treiber automatisch generiert *) 
+BOOL VAR was tall font;
+
+$hml294i$      std speed, 
+               paper feed,
+               std quality:
+(* Treiber für OKI ML294 IBM-kompatibel *)
+(* Treiber automatisch generiert *) 
+
+$hml320$       std speed:
+(* Treiber für OKI ML320 IBM/EPSON-kompatibel *) 
+(* Treiber automatisch generiert *) 
+BOOL VAR prop font;
+ 
+$hlc10$        std quality, 
+               std typeface:
+(* Treiber für Star LC-10 oder LC-10 Colour *) 
+(* Treiber automatisch generiert *) 
+BOOL VAR was tall font;
+ 
+$hdmp4000$     std speed:
+(* Treiber für Schneider DMP4000, automatisch generiert *)
+ 
+$hnx15$        std speed:
+(* Treiber für Star NX-15, ND-10, ND-15, NR-10 und NR-15 *)
+(* Treiber automatisch generiert *)
+ 
+$hmt230$       paper feed, 
+               std speed: 
+(* Treiber für Mannesmann-Tally MT 230 *) 
+(* Treiber automatisch generiert *) 
+ 
+$hmt340$       paper feed,
+               std speed:
+(* Treiber für Mannesmann-Tally MT 340 *) 
+(* Treiber automatisch generiert *) 
+BOOL VAR prop font := FALSE; 
+ 
+$h120d$        : 
+(* Treiber für Citizen 120-D *) 
+(* Treiber automatisch generiert *) 
+ 
+$hc310$        paper feed,
+               std speed:
+(* Treiber für C. Itoh C 310/315 CXP *) 
+(* Treiber automatisch generiert *) 
+
+$hci3500$      std speed: 
+(* Treiber für C. Itoh CI-3500 *) 
+(* Treiber automatisch generiert *) 
+ 
+$hdx2100$     paper feed,
+              std speed:
+(* Treiber für Fujitsu DX 2100 *)
+(* Treiber automatisch generiert *)
+BOOL VAR prop font := FALSE ;
+ 
+$decl$
+INT VAR blankbreite, x rest, y rest, high, low, small, modifikations;
+REAL VAR x size, y size, y margin;
+TEXT VAR buffer :: "";
+ 
+PROC paper size (REAL CONST x, y) :
+ 
+  x size := x;
+  y size := y;
+END PROC paper size;
+ 
+PROC paper size : 
+ 
+  line;
+  putline ("Papierbreite  =  " + text (x size, 5, 2) + " cm  =  " + text (x size / 2.54, 5, 2) + " Zoll");
+  putline ("Papierlaenge  =  " + text (y size, 5, 2) + " cm  =  " + text (y size / 2.54, 5, 2) + " Zoll");
+END PROC paper size;
+ 
+papersize (20.32, 30.48); 
+ 
+PROC top margin (REAL CONST margin): 
+ 
+  y margin := margin 
+END PROC top margin; 
+ 
+REAL PROC top margin:   y margin   END PROC top margin;
+ 
+top margin (0.0); 
+ 
+$speed$
+BOOL VAR is slow; 
+TEXT VAR std speed name :: "slow";
+ 
+PROC std speed (TEXT CONST speed) :
+ 
+  IF speed = "fast" OR speed = "slow"
+     THEN std speed name := speed
+     ELSE errorstop ("unzulässige Geschwindigkeit")
+  FI
+END PROC std speed;
+ 
+TEXT PROC std speed : std speed name END PROC std speed;
+ 
+$quality$ 
+TEXT VAR std quality name :: "draft";
+ 
+PROC std quality (TEXT CONST quality) :
+ 
+  IF quality = "nlq" OR quality = "draft"
+     THEN std quality name := quality
+     ELSE errorstop ("unzulässige Qualitätsbezeichnung")
+  FI
+END PROC std quality;
+ 
+TEXT PROC std quality : std quality name END PROC std quality;
+ 
+$typeface$ 
+TEXT VAR std typeface name :: "";
+ 
+PROC std typeface (TEXT CONST typeface) :
+ 
+  IF typeface = "" OR typeface = "roman" OR typeface = "sansserif"
+     THEN std typeface name := typeface
+     ELSE errorstop ("unzulässige Schriftart")
+  FI
+END PROC std typeface;
+ 
+TEXT PROC std typeface : std typeface name END PROC std typeface;
+ 
+$typeface292$ 
+TEXT VAR std typeface name :: "";
+ 
+PROC std typeface (TEXT CONST typeface) :
+ 
+  IF typeface = "" OR typeface = "courier" OR typeface = "sansserif"
+     THEN std typeface name := typeface
+     ELSE errorstop ("unzulässige Schriftart")
+  FI
+END PROC std typeface;
+ 
+TEXT PROC std typeface : std typeface name END PROC std typeface;
+ 
+$typefacelc10$ 
+TEXT VAR std typeface name :: "";
+ 
+PROC std typeface (TEXT CONST typeface) :
+ 
+  IF typeface = "" OR typeface = "courier" OR typeface = "sansserif" 
+                   OR typeface = "orator1" OR typeface = "orator2" 
+     THEN std typeface name := typeface
+     ELSE errorstop ("unzulässige Schriftart")
+  FI
+END PROC std typeface;
+ 
+TEXT PROC std typeface : std typeface name END PROC std typeface;
+ 
+$feed$ 
+TEXT VAR feeder name :: "tractor";
+ 
+PROC paper feed (TEXT CONST feeder) :
+ 
+  IF feeder = "sheet" OR feeder = "tractor"
+     THEN feeder name := feeder
+     ELSE errorstop ("unzulässige Einzugsart")
+  FI
+END PROC paper feed;
+ 
+TEXT PROC paper feed: feeder name END PROC paper feed;
+ 
+$feedschacht$
+TEXT VAR act feeder :: "", 
+         feeder name :: "tractor";
+ 
+PROC paper feed (TEXT CONST feeder) :
+ 
+  IF feeder = "tractor" OR feeder = "schacht1" OR feeder = "schacht2" 
+     THEN feeder name := feeder
+  ELIF feeder = "sheet" 
+     THEN feeder name := "schacht1" 
+     ELSE errorstop ("unzulässige Einzugsart")
+  FI
+END PROC paper feed;
+ 
+TEXT PROC paper feed: feeder name END PROC paper feed;
+ 
+$openh$
+PROC open (INT CONST op code, INT VAR param1, param2) :
+ 
+SELECT op code OF
+  CASE 1: open document 
+  CASE 2: open page
+END SELECT.
+ 
+$opendoch$
+  open document :
+    modifikations := 0; 
+    param 1 := x step conversion ( x size );
+    param 2 := y step conversion ( y size );
+$initspeed$ 
+    IF pos (material, "slow") <> 0 
+         THEN is slow := TRUE;
+    ELIF pos (material, "fast") <> 0 
+         THEN is slow := FALSE;
+         ELSE is slow := std speed name = "slow"
+    FI;
+$opendocfx85$ 
+    param 2 := (param 2 DIV 36) * 36;
+    out (""27""64""27""64"");              (* Reset des Druckers *)
+    out (""27"R"0""27"2"27"6");
+    out (""27"C" + code (param 2 DIV 36)). (* Formularlaenge *)
+ 
+$opendocfx800$ 
+    param 2 := (param 2 DIV 36) * 36;
+    was tall font := TRUE; 
+    out (""27""64""27""64"");              (* Reset des Druckers *)
+    out (""27"t"1""27"6");                 (* Zeichentabelle 4 (Grafik) *)
+    out (""27"R"0""27"9"27"O"27"2"); 
+    out (""27"C" + code (param 2 DIV 36)); (* Formularlaenge *)
+    IF pos (material, "nlq") <> 0 
+      THEN out (""27"x"1"") 
+    ELIF pos (material, "draft") <> 0 
+      THEN out (""27"x"0"") 
+    ELIF std quality name = "nlq"
+      THEN out (""27"x"1"") 
+      ELSE out (""27"x"0"")
+    FI; 
+    IF pos (material, "roman") <> 0 
+         THEN out (""27"k"0"") 
+    ELIF pos (material, "sansserif") <> 0 
+         THEN out (""27"k"1"") 
+    ELIF std typeface name = "roman" 
+      THEN out (""27"k"0"") 
+    ELIF std typeface name = "sansserif" 
+      THEN out (""27"k"1"") 
+    FI. 
+ 
+$opendocmx$ 
+    param 2 := (param 2 DIV 36) * 36;
+    out (""27"R"0""27""64"");               (* Reset des Druckers *) 
+    out (""27"R"0""27"2");
+    out (""27"C" + code (param 2 DIV 36));  (* Formularlaenge *) 
+    out (""27"9"27"O").
+ 
+$opendocgp$ 
+    param 2 := (param 2 DIV 36) * 36;
+    out (""27"6");                               (* Zeichensatz 2 *)
+    out (""18""27"F"27"H"27"W"0""27"T"27"-"0""); (* Modifikationen rücksetzen *) 
+    out (""27"9"27"O"27"A"12""27"2"); 
+    out (""27"C" + code (param 2 DIV 36)).       (* Formularlaenge *)
+ 
+$opendocpp$ 
+    param 2 := (param 2 DIV 36) * 36;
+    out (""27"6");                               (* Zeichensatz 2 *)
+    out (""18""27"F"27"W"0""27"T"27"-"0"");      (* Modifikationen rücksetzen *) 
+    out (""27"9"27"O"27"A"12""27"2"); 
+    out (""27"C" + code (param 2 DIV 36));       (* Formularlaenge *)
+    IF pos (material, "nlq") <> 0 
+      THEN out (""27"G")
+    ELIF pos (material, "draft") <> 0 
+      THEN out (""27"H") 
+    ELIF std quality name = "nlq" 
+      THEN out (""27"G") 
+      ELSE out (""27"H") 
+    FI. 
+    
+$opendocml182i$ 
+    IF pos (material, "nlq") <> 0 
+      THEN out (""27"I3") 
+    ELIF pos (material, "draft") <> 0 
+      THEN out (""27"I1") 
+    ELIF std quality name = "nlq"
+      THEN out (""27"I3") 
+      ELSE out (""27"I1")
+    FI; 
+    out (""27"N"0"");           (* Kein Sprung über Perf. *)
+
+$opendocml192el$ 
+    param 2 := (param 2 DIV 36) * 36;
+    prop font := FALSE;
+    out (""27""64""27""64"");              (* Reset des Druckers *)
+    out (""27"R"0""27"2");
+    out (""27"C" + code (param 2 DIV 36)); (* Formularlaenge *) 
+    out (""27"6");                         (* Erweiterung des Zeichensatzes  *)
+    out (""27"9"27"O"27"x"0"").
+ 
+$opendocml292el$ 
+    param 2 := (param 2 DIV 36) * 36;
+    was tall font := TRUE; 
+    out (""27""64""27""64"");              (* Reset des Druckers *)
+    out (""27"t"1""27"6");                 (* Zeichentabelle 4 (Grafik) *)
+    out (""27"R"0""27"2");
+    out (""27"C" + code (param 2 DIV 36)); (* Formularlaenge *)
+    out (""27"9"27"O"27"r0"); 
+    IF pos (material, "nlq") <> 0 
+      THEN out (""27"x"1"") 
+    ELIF pos (material, "draft") <> 0 
+      THEN out (""27"x"0"") 
+    ELIF std quality name = "nlq"
+      THEN out (""27"x"1"") 
+      ELSE out (""27"x"0"")
+    FI; 
+    IF pos (material, "courier") <> 0 
+         THEN out (""27"k"0"") 
+    ELIF pos (material, "sansserif") <> 0 
+         THEN out (""27"k"1"") 
+    ELIF std typeface name = "courier" 
+      THEN out (""27"k"0"") 
+    ELIF std typeface name = "sansserif" 
+      THEN out (""27"k"1"") 
+    FI. 
+ 
+$opendocml294i$ 
+    param 2 := (param 2 DIV 36) * 36;
+    out (""27"6");                               (* Zeichensatz 2 *)
+    out (""18""27"F"27"W0"27"T"27"-0"27"%H");    (* Modifikationen rücksetzen *) 
+    out (""27"9"27"O"27"A"12""27"2");
+    out (""27"C" + code (param 2 DIV 36));       (* Formularlaenge *)
+    IF pos (material, "nlq") <> 0 
+      THEN out (""27"G")
+    ELIF pos (material, "draft") <> 0 
+      THEN out (""27"H") 
+    ELIF std quality name = "nlq" 
+      THEN out (""27"G") 
+      ELSE out (""27"H") 
+    FI. 
+ 
+$opendocml320$ 
+    param 2 := (param 2 DIV 36) * 36;
+    prop font := FALSE;
+    out (""27"{"99""27"{"40"");            (* Umschaltung auf EPSON-Emulation *) 
+    out (""27""64""27""64"");              (* Reset des Druckers *)
+    out (""27"R"0""27"2");
+    out (""27"C" + code (param 2 DIV 36)); (* Formularlaenge *) 
+    out (""27"6");                         (* Erweiterung des Zeichensatzes  *)
+    out (""27"9"27"O"27"x"0"").
+ 
+$opendoclc10$ 
+    param 2 := (param 2 DIV 36) * 36;
+    was tall font := TRUE; 
+    out (""27""64""27""64"");              (* Reset des Druckers *)
+    out (""27"t"1""27"6");                 (* Zeichentabelle 4 (Grafik) *)
+    out (""27"R"0""27"2");
+    out (""27"C" + code (param 2 DIV 36)); (* Formularlaenge *)
+    out (""27"9"27"r"0"");
+    IF pos (material, "nlq") <> 0 
+      THEN out (""27"x"1"") 
+    ELIF pos (material, "draft") <> 0 
+      THEN out (""27"x"0"") 
+    ELIF std quality name = "nlq"
+      THEN out (""27"x"1"") 
+      ELSE out (""27"x"0"")
+    FI; 
+    IF pos (material, "courier") <> 0 
+         THEN out (""27"k"0"") 
+    ELIF pos (material, "sansserif") <> 0 
+         THEN out (""27"k"1"") 
+    ELIF pos (material, "orator1") <> 0 
+         THEN out (""27"k"2"") 
+    ELIF pos (material, "orator2") <> 0 
+         THEN out (""27"k"3"") 
+    ELIF std typeface name = "courier" 
+      THEN out (""27"k"0"") 
+    ELIF std typeface name = "sansserif" 
+      THEN out (""27"k"1"") 
+    ELIF std typeface name = "orator1" 
+      THEN out (""27"k"2"") 
+    ELIF std typeface name = "orator2" 
+      THEN out (""27"k"3"") 
+    FI. 
+ 
+$opendocnx15$ 
+    param 2 := (param 2 DIV 36) * 36;
+    out (""27""64""27""64"");              (* Reset des Druckers *)
+    out (""27"R"0""27"2"); 
+    out (""27"C" + code (param 2 DIV 36)); (* Formularlaenge *)
+    out (""27"6");                         (* Erweiterung des Zeichensatzes  *)
+    out (""27"9"27"x"0"").
+ 
+$opendocdmp4000$ 
+    param 2 := (param 2 DIV 36) * 36;
+    out (""27""64""27""64"");              (* Reset des Druckers *) 
+    out (""27"m"0""27"R"0""27"9"27"O"27"2"27"6");
+    out (""27"C" + code (param 2 DIV 36)). (* Formularlaenge *)
+ 
+$opendocmt$ 
+    param 2 := (param 2 DIV 36) * 36;
+    out (""27""64""27""64"");              (* Reset des Druckers *)
+    out (""27"R"0""27"2");
+    out (""27"C" + code (param 2 DIV 36)); (* Formularlaenge *)
+    out (""27"O"27"x"0""27"r"0""27"6"); 
+    IF feeder name = "tractor" 
+      THEN act feeder := feeder name; 
+           out (""27"[5{") 
+      ELSE out (""27"[0{");
+           IF pos (material, "schacht1") <> 0 
+             THEN act feeder := "schacht1" 
+           ELIF pos (material, "schacht2") <> 0 
+             THEN act feeder := "schacht2" 
+             ELSE act feeder := feeder name 
+           FI 
+    FI.
+ 
+$opendocdx2100$
+param 2 := (param 2 DIV 36) * 36;
+out (""24""27""64"");                            (* Reset des Druckers *) 
+out (""27"R"0"");                                (* US-Zeichensatz *)
+out (""27"2" + ""27"C" + code (param 2 DIV 36)); (* Formularlaenge *)
+out (""27"N"0"");                                (* skip perforation *)
+out (""27"x"0"" + ""27"r"0"").                   (* draft und black *)
+ 
+ 
+$opendoc120d$ 
+    param 2 := (param 2 DIV 36) * 36;
+    out (""27""64""27""64"");              (* Reset des Druckers *)
+    out (""27"R"0""27"9"27"O"27"x0"27"2");
+    out (""27"C" + code (param 2 DIV 36)). (* Formularlaenge *)
+
+$opendocc310$ 
+    param 2 := (param 2 DIV 36) * 36;
+    out (""27""64""27""64"");              (* Reset des Druckers *)
+    out (""27"R"0""27"2");
+    out (""27"C" + code (param 2 DIV 36)); (* Formularlaenge *)
+    out (""27"O"27"x"0""27"r"0""27"6"); 
+    IF feeder name = "tractor" 
+      THEN act feeder := feeder name; 
+      ELSE IF pos (material, "schacht1") <> 0 
+             THEN act feeder := "schacht1" 
+           ELIF pos (material, "schacht2") <> 0 
+             THEN act feeder := "schacht2" 
+             ELSE act feeder := feeder name 
+           FI 
+    FI.
+ 
+$openpge$
+  open page :
+    param 1 := 0;
+    param 2 := y step conversion (y margin);
+    x rest  := 0;
+    y rest  := 0;
+    small   := 0;
+    out (""13"").
+$openpgemlsf$ 
+  open page :
+    param 1 := 0;
+    param 2 := 0;
+    x rest  := 0;
+    y rest  := 0;
+    small   := 0;
+    IF feeder name = "sheet" THEN out (""12"") FI; 
+    out (""13"").
+$openpgemtsf$ 
+  open page :
+    param 1 := 0;
+    param 2 := 0;
+    x rest  := 0;
+    y rest  := 0;
+    small   := 0;
+    IF feeder name = "schacht1" 
+      THEN out (""27"[21{"12"") 
+    ELIF feeder name = "schacht2" 
+      THEN out (""27"[22{"12"") 
+    FI; 
+    out (""13"").
+  
+$openpgec310sf$ 
+  open page :
+    param 1 := 0;
+    param 2 := 0;
+    x rest  := 0;
+    y rest  := 0;
+    small   := 0;
+    IF feeder name = "schacht1" 
+      THEN out (""27""25"1"12"") 
+    ELIF feeder name = "schacht2" 
+      THEN out (""27""25"2"12"") 
+    FI; 
+    out (""13"").
+  
+$betwoc$
+END PROC open; 
+ 
+PROC close (INT CONST op code, INT CONST param1) :
+ 
+SELECT op code OF
+  CASE 1: close document 
+  CASE 2: close page
+END SELECT.
+close document : 
+$clpge$
+. close page :
+    IF param 1 > 0 THEN out (""12"") FI.
+$clmlsf$ 
+.close page :
+  IF feeder name = "sheet" 
+    THEN out (""27""25""3"") 
+  ELIF param 1 > 0 
+    THEN out (""12"") 
+  FI. 
+$clmtsf$ 
+.close page :
+  IF feeder name <> "tractor" 
+    THEN out (""27"[2J") 
+  ELIF param 1 > 0 
+    THEN out (""12"") 
+  FI.
+$clc310sf$ 
+.close page :
+  IF feeder name = "sheet" 
+    THEN out (""27""25"R") 
+  ELIF param 1 > 0 
+    THEN out (""12"") 
+  FI. 
+ 
+$betwce$
+END PROC close;
+ 
+PROC execute (INT CONST op code, TEXT CONST string, INT CONST param1, param2) :
+ 
+SELECT op code OF
+  CASE 1:  write text
+  CASE 2:  write cmd
+  CASE 3:  carriage return
+  CASE 4:  move
+  CASE 5:  draw
+  CASE 6:  on
+  CASE 7:  off
+  CASE 8:  type
+END SELECT.
+
+is underline: bit (modifikations, 0).
+is bold     : bit (modifikations, 1). 
+is italics  : bit (modifikations, 2). 
+ 
+  write text :
+    out subtext (string, param 1, param 2).
+$cmd$ 
+  write cmd :
+    out subtext (string, param 1, param 2). 
+$cmdfx800$ 
+  write cmd :
+    buffer := subtext (string, param 1, param 2); 
+    IF buffer = "draft" 
+      THEN out (""27"x"0"") 
+    ELIF buffer = "nlq"
+      THEN out (""27"x"1"") 
+    ELIF buffer = "roman" 
+      THEN out (""27"k"0"") 
+    ELIF buffer = "sansserif" 
+      THEN out (""27"k"1"") 
+      ELSE out (buffer) 
+    FI. 
+$cmdpp$ 
+  write cmd :
+    buffer := subtext (string, param 1, param 2); 
+    IF buffer = "draft" 
+      THEN out (""27"H")
+    ELIF buffer = "nlq"
+      THEN out (""27"G") 
+      ELSE out (buffer) 
+    FI. 
+$cmdml182i$ 
+  write cmd :
+    buffer := subtext (string, param 1, param 2); 
+    IF buffer = "draft" 
+      THEN out (""27"I1") 
+    ELIF buffer = "nlq"
+      THEN out (""27"I3") 
+      ELSE out (buffer) 
+    FI. 
+$cmdml292el$ 
+  write cmd :
+    buffer := subtext (string, param 1, param 2); 
+    IF buffer = "draft" 
+      THEN out (""27"x"0"") 
+    ELIF buffer = "nlq"
+      THEN out (""27"x"1"") 
+    ELIF buffer = "courier" 
+      THEN out (""27"k"0"") 
+    ELIF buffer = "sansserif" 
+      THEN out (""27"k"1"") 
+    ELIF buffer = "schwarz" 
+      THEN out (""27"r0")
+    ELIF buffer = "rot" 
+      THEN out (""27"r1")
+    ELIF buffer = "blau" 
+      THEN out (""27"r2")
+    ELIF buffer = "violett" 
+      THEN out (""27"r3")
+    ELIF buffer = "gelb" 
+      THEN out (""27"r4")
+    ELIF buffer = "orange" 
+      THEN out (""27"r5")
+    ELIF buffer = "grün" 
+      THEN out (""27"r6")
+      ELSE out (buffer) 
+    FI. 
+$cmdml294i$ 
+  write cmd :
+    buffer := subtext (string, param 1, param 2); 
+    IF buffer = "draft" 
+      THEN out (""27"H") 
+    ELIF buffer = "nlq"
+      THEN out (""27"G") 
+    ELIF buffer = "schwarz" 
+      THEN out (""27"r0")
+    ELIF buffer = "rot" 
+      THEN out (""27"r1")
+    ELIF buffer = "blau" 
+      THEN out (""27"r2")
+    ELIF buffer = "violett" 
+      THEN out (""27"r3")
+    ELIF buffer = "gelb" 
+      THEN out (""27"r4")
+    ELIF buffer = "orange" 
+      THEN out (""27"r5")
+    ELIF buffer = "grün" 
+      THEN out (""27"r6")
+      ELSE out (buffer) 
+    FI. 
+$cmdlc10$ 
+  write cmd :
+    buffer := subtext (string, param 1, param 2); 
+    IF buffer = "draft" 
+      THEN out (""27"x"0"") 
+    ELIF buffer = "nlq"
+      THEN out (""27"x"1"") 
+    ELIF buffer = "courier" 
+      THEN out (""27"k"0"") 
+    ELIF buffer = "sansserif" 
+      THEN out (""27"k"1"") 
+    ELIF buffer = "orator1" 
+      THEN out (""27"k"2"") 
+    ELIF buffer = "orator2" 
+      THEN out (""27"k"3"") 
+    ELIF buffer = "schwarz" 
+      THEN out (""27"r"0"")
+    ELIF buffer = "rot" 
+      THEN out (""27"r"1"")
+    ELIF buffer = "blau" 
+      THEN out (""27"r"2"")
+    ELIF buffer = "violett" 
+      THEN out (""27"r"3"")
+    ELIF buffer = "gelb" 
+      THEN out (""27"r"4"")
+    ELIF buffer = "orange" 
+      THEN out (""27"r"5"")
+    ELIF buffer = "grün" 
+      THEN out (""27"r"6"")
+      ELSE out (buffer) 
+    FI. 
+$cmdmt230$ 
+  write cmd :
+    buffer := subtext (string, param 1, param 2); 
+    IF feeder name <> "tractor" 
+      THEN IF buffer = "schacht1" OR buffer = "schacht2" 
+             THEN act feeder := buffer 
+           FI 
+    ELIF buffer = "schwarz" 
+      THEN out (""27"r"0"")
+    ELIF buffer = "magenta" 
+      THEN out (""27"r"1"")
+    ELIF buffer = "cyan" 
+      THEN out (""27"r"2"")
+    ELIF buffer = "blau" 
+      THEN out (""27"r"3"")
+    ELIF buffer = "gelb" 
+      THEN out (""27"r"4"")
+    ELIF buffer = "rot" 
+      THEN out (""27"r"5"")
+    ELIF buffer = "grün" 
+      THEN out (""27"r"6"")
+      ELSE out (buffer) 
+    FI. 
+ 
+$cmdc310$ 
+  write cmd :
+    buffer := subtext (string, param 1, param 2); 
+    IF feeder name <> "tractor" 
+      THEN IF buffer = "schacht1" OR buffer = "schacht2" 
+             THEN act feeder := buffer 
+           FI 
+    ELIF buffer = "schwarz" 
+      THEN out (""27"r"0"")
+    ELIF buffer = "rot" 
+      THEN out (""27"r"1"")
+    ELIF buffer = "blau" 
+      THEN out (""27"r"2"")
+    ELIF buffer = "violett" 
+      THEN out (""27"r"3"")
+    ELIF buffer = "gelb" 
+      THEN out (""27"r"4"")
+    ELIF buffer = "orange" 
+      THEN out (""27"r"5"")
+    ELIF buffer = "grün" 
+      THEN out (""27"r"6"")
+      ELSE out (buffer) 
+    FI. 
+ 
+$cmddx2100$ 
+   write cmd :
+     buffer := subtext (string, param 1, param 2); 
+     IF buffer = "schwarz"
+       THEN out (""27"r"0"")
+     ELIF buffer = "rot"
+       THEN out (""27"r"1"")
+     ELIF buffer = "blau"
+       THEN out (""27"r"2"")
+     ELIF buffer = "violett"
+       THEN out (""27"r"3"")
+     ELIF buffer = "gelb"
+       THEN out (""27"r"4"")
+     ELIF buffer = "orange"
+       THEN out (""27"r"5"")
+     ELIF buffer = "grün"
+       THEN out (""27"r"6"")
+     ELSE out (buffer)
+     FI.
+ 
+$crs$
+  carriage return :
+    y rest INCR small;
+    x rest := 0;
+    small  := 0;
+    out (""13"").
+$moh$ 
+x steps : param1.
+y steps : param2.
+
+move :
+  IF x steps < 0 OR y steps < 0 THEN stop FI; 
+  IF x steps > 0 THEN x move FI; 
+  IF y steps > 0 THEN y move FI. 
+
+$mofx85$ 
+x move :
+  high   := (x steps + x rest) DIV blankbreite;
+  x rest := (x steps + x rest) MOD blankbreite;
+  IF high   > 0 THEN high TIMESOUT " " FI;
+  IF x rest > 0 AND is slow
+     THEN IF is underline THEN out (" "8"") FI;
+          out (""27"Y"+ code (x rest) + ""0"");
+          x rest TIMESOUT ""0"";
+          x rest := 0
+  FI. 
+ 
+ 
+$mofx800$
+x move :
+  IF is underline
+    THEN underline x move
+    ELSE simple x move
+  FI. 
+ 
+underline x move: 
+  high   := (x steps + x rest) DIV blankbreite;
+  low    := (x steps + x rest) MOD blankbreite;
+  IF high > 0 THEN high TIMESOUT " " FI;
+  IF low > 0
+     THEN out (" "8""27"\"+ code (low) + ""0"")
+  FI. 
+ 
+simple x move:
+  out (""27"\");
+  out (code (x steps MOD 256));
+  out (code (x steps DIV 256)). 
+ 
+$modrmx$ 
+x move :
+  high := (x steps + x rest) DIV blankbreite;
+  low  := (x steps + x rest) MOD blankbreite;
+  IF high > 0 THEN high TIMESOUT " " FI;
+  IF low  > 0 AND is slow
+     THEN IF is underline THEN out ("_"8"") FI;
+          IF is condensed 
+             THEN high := low;
+                  low  := 0;
+                  out (""27"L"+ code (high) + ""0"");
+             ELSE high := low DIV 2;
+                  low  := low MOD 2;
+                  out (""27"K"+ code (high) + ""0"");
+          FI;
+          high TIMESOUT ""0"";
+          IF is small
+             THEN out (""27"S"1"");
+                  small DECR 1;
+          FI;
+  FI;
+  x rest := low. 
+ 
+y move : 
+  y rest INCR y steps;
+  IF y rest > 0
+     THEN high := y rest DIV 255;
+          low  := y rest MOD 255;
+          IF high > 0 THEN high TIMESOUT ""27"J"255""      FI;
+          IF low  > 0 THEN out (""27"J"); out (code (low)) FI;
+          y rest := 0
+  FI. 
+ 
+draw :
+  IF x steps < 0 OR y steps <> 0 OR linetype <> 1 
+    THEN stop
+  ELIF x steps > 0
+    THEN x draw
+  FI. 
+ 
+x draw :
+  out (""27"L");
+  out (code (x steps MOD 256));
+  out (code (x steps DIV 256));
+  x steps TIMESOUT ""1"";
+  IF is small THEN out (""27"S"1"") FI. 
+ 
+$mogp$ 
+x move :
+  high   := (x steps + x rest) DIV blankbreite;
+  x rest := (x steps + x rest) MOD blankbreite;
+  IF high   > 0 THEN high TIMESOUT " " FI;
+  IF x rest > 0 AND is slow
+     THEN IF is underline 
+            THEN out (" "13""27"Y"); 
+                 out (code (x pos MOD 256)); 
+                 out (code (x pos DIV 256)); 
+                 x pos TIMESOUT ""0"" 
+            ELSE out (""27"Y"+ code (x rest) + ""0"");
+                 x rest TIMESOUT ""0"" 
+          FI;
+          x rest := 0 
+  FI. 
+ 
+$moml192el$ 
+x move :
+  high   := (x steps + x rest) DIV blankbreite;
+  x rest := (x steps + x rest) MOD blankbreite;
+  IF high   > 0 THEN high TIMESOUT " " FI;
+  IF x rest > 0 AND is slow
+    THEN  IF is underline THEN 
+             IF prop font THEN 
+               out (""27"p"0"" + " "8"" + ""27"p"1"") 
+             ELSE 
+               out (" "8"") 
+             FI; 
+          FI;
+          out (""27"Y"+ code (x rest) + ""0"");
+          x rest TIMESOUT ""0"";
+          x rest := 0
+  FI.
+ 
+$ymodr$ 
+y move : 
+  y rest INCR y steps;
+  IF y rest > 0
+    THEN high := y rest DIV 255;
+         low  := y rest MOD 255;
+         IF high > 0 THEN high TIMESOUT ""27"J"255""      FI;
+         IF low  > 0 THEN out (""27"J"); out (code (low)) FI;
+         y rest := 0 
+  FI.
+ 
+draw :
+  IF x steps < 0 OR y steps <> 0 OR linetype <> 1 
+    THEN stop
+  ELIF x steps > 0
+    THEN x draw
+  FI. 
+ 
+x draw :
+  out (""27"Y");
+  out (code (x steps MOD 256));
+  out (code (x steps DIV 256));
+  x steps TIMESOUT ""1"".
+ 
+$onoff$              
+  on :
+    IF on string (param 1) <> ""
+       THEN out (on string (param 1));
+            modifikations := modifikations OR param 1
+       ELSE stop
+    FI. 
+ 
+  off :
+    IF off string (param 1) <> ""
+       THEN out (off string (param 1));
+            modifikations := modifikations AND (param 1 XOR -1) 
+       ELSE stop
+    FI.
+ 
+$onoffpp$              
+  on :
+    IF on string (param 1) <> "" AND param 1 <> 2
+       THEN out (on string (param 1));
+            modifikations := modifikations OR param 1
+       ELSE stop
+    FI. 
+ 
+  off :
+    IF off string (param 1) <> "" AND param 1 <> 2 
+       THEN out (off string (param 1));
+            modifikations := modifikations AND (param 1 XOR -1) 
+       ELSE stop
+    FI.
+ 
+$tyfx85$ 
+  type :
+    buffer := font string (param 1);
+    out (buffer);
+    restore modifikations; 
+    blankbreite  := char pitch (param 1, " ");
+    IF pos (buffer, ""27"S") <> 0 THEN small DECR 1 FI.  
+
+$tyfx800$ 
+ type :
+    buffer := font string (param 1);
+    IF was tall font 
+      THEN out (""27"w"0"") 
+    FI; 
+    out (buffer);
+    restore modifikations;
+    blankbreite  := char pitch (param 1, " "); 
+    was tall font := pos (buffer, ""27"w"1"") <> 0.
+
+$tymx$ 
+  type :
+    buffer := font string (param 1);
+    blankbreite  := char pitch (param 1, " ");
+    is condensed := pos (buffer, ""15"") <> 0;
+    IF pos (buffer, ""27"S") <> 0 
+       THEN small DECR 1;
+            is small := TRUE;
+       ELSE is small := FALSE;
+    FI;
+    out (buffer);
+    restore modifikations.
+
+$tyohnesmall$
+ type :
+    buffer := font string (param 1);
+    out (buffer);
+    restore modifikations;
+    blankbreite  := char pitch (param 1, " ").
+
+$tyml192el$ 
+  type :
+    buffer := font string (param 1);
+    out (buffer);
+    restore modifikations; 
+    blankbreite  := char pitch (param 1, " ");
+    prop font    := pos (buffer, ""27"p"1"") <> 0;
+    IF pos (buffer, ""27"S") <> 0 THEN small DECR 1 FI.
+
+$tyml292el$ 
+  type :
+    buffer := font string (param 1);
+    IF was tall font 
+      THEN out (""27""31"0"27"U0") 
+    FI; 
+    was tall font := pos (buffer, ""27"w"1"") <> 0;
+    change all (buffer, ""27"w"0"", ""27""31"0"27"U0"); 
+    change all (buffer, ""27"w"1"", ""27""31"1"27"U1"); 
+    out (buffer);
+    restore modifikations; 
+    blankbreite  := char pitch (param 1, " ").
+ 
+$ontyml294i$ 
+  on :
+    IF on string (param 1) <> "" AND param 1 <> 2 
+       THEN out (on string (param 1));
+            modifikations := modifikations OR param 1 
+    ELIF param 1 = 4
+       THEN out (""27"%G"); 
+            modifikations := modifikations OR param 1 
+       ELSE stop
+    FI. 
+ 
+  off :
+    IF off string (param 1) <> "" AND param 1 <> 2
+       THEN out (off string (param 1));
+            modifikations := modifikations AND (param 1 XOR -1) 
+    ELIF param 1 = 4 
+       THEN out (""27"%H"); 
+            modifikations := modifikations AND (param 1 XOR -1) 
+       ELSE stop
+    FI.
+ 
+  type :
+    buffer := font string (param 1);
+    out (buffer);
+    IF is underline THEN out (on string (1)) FI; 
+    IF is bold      THEN out (on string (2)) FI; 
+    IF is italics   THEN out (""27"%G") FI;
+    blankbreite  := char pitch (param 1, " ");
+    IF pos (buffer, ""27"S") <> 0 THEN small DECR 1 FI.
+
+$end$
+  restore modifikations: 
+    IF is underline THEN out (on string (1)) FI; 
+    IF is bold      THEN out (on string (2)) FI; 
+    IF is italics   THEN out (on string (4)) FI. 
+ 
+END PROC execute;
+
+INT VAR reply; DATASPACE VAR ds; FILE VAR file;
+ 
+PROC printer:
+ 
+  disable stop;
+  continue (server channel);
+  check error (error message);
+  ds := nilspace;
+  REP forget (ds);
+      execute print;
+      IF is error AND online THEN put error; clear error; FI;
+  PER;
+END PROC printer;
+ 
+PROC execute print:
+ 
+  LET ack = 0, fetch code = 11, file type = 1003;
+  enable stop;
+  ds := nilspace;
+  call (father, fetch code, ds, reply);
+  IF reply = ack CAND type (ds) = file type
+     THEN file := sequential file (input, ds);
+          print (file,
+            PROC (INT CONST, INT VAR, INT VAR) open,
+            PROC (INT CONST, INT CONST) close,
+            PROC (INT CONST, TEXT CONST, INT CONST, INT CONST) execute);
+  FI;
+END PROC execute print;
+ 
+PROC check error(TEXT CONST message):
+ 
+  IF is error
+     THEN clear error; rename myself (message);
+          IF is error THEN end(myself) FI;
+          pause (9000); end(myself);
+  FI;
+END PROC check error;
+ 
+END PACKET printerdriver
+ 
+

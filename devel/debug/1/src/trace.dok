@@ -1,0 +1,387 @@
+#type ("trium8")##limit (13.0)# 
+#start(3.0,1.5)# 
+#pagelength(18.5)# 
+#block# 
+#type("trium36.b")# 
+#free(3.5)# 
+#center#EUMEL 
+#center#DEBUG 
+#type("trium18.b")# 
+#free(1.4)# 
+#center#Version 1 
+#center#87-04-24 
+ 
+#center#G. Szalay 
+#page(1)# 
+#type ("trium8")##limit (13.0)# 
+#head# 
+#center#- % - 
+ 
+ 
+#end# 
+#type ("trium14.b")# 
+#center#E U M E L - D E B U G 
+ 
+#type ("trium12.b")# 
+#center#Task-local Debugging Tools for EUMEL: 
+#center##type("trium12.bc")#info, disasm, #type("trium12.b")#and #type("trium12.bc")#trace 
+ 
+ 
+#b("1.  Features")# 
+ 
+#it("info:")#    display and modification of a dataspace on the users terminal in the conventional dump
+         format; search for a bytestring; 
+ 
+#it("disasm:")#  disassembly of EUMEL-0-code out of the standard dataspace using symbolic opcodes
+         and procedure heads; 
+ 
+#it("trace:")#   tracing of user programs, protocolling of executed instructions and their actual operands,
+         trap at a given code address, single-step-mode, multiple-step-mode (interruptable at
+         any time) 
+ 
+The procedures have no effect outside the task. Especially no other task will be halted by using the
+single-step mode. 
+ 
+ 
+#b("2.  Installation")# 
+ 
+The debugging tools need a suitable system kernel ("Urlader"). They can be used with kernels for
+processors Z80, 8086 and 80286 with versions 190 \#14, 181 \#347 \#1347, 180 \#347 \#1347 and higher,
+and with 68000-kernel version \#3600 and higher. 
+ 
+The archive diskette "trace" contains all necessary files. The commands 
+#inb# 
+   archive ("trace"); 
+   fetchall (archive); 
+   run ("gen.trace") 
+#ine# 
+insert all source files and generate a dataspace "procheads" containing procedure heads of all
+inserted procedures (including the standard ones). Then the current task becomes a local mana­
+ger. Now a son task may be created, in which the debugging tools are available. 
+ 
+The first time when (in a son task) #it("disasm")# or #it("trace")# protocols a CALL-instruction the dataspace
+'procheads' will be fetched from the father task for subsequent usage. If for any reason (e.g. after
+inserting new packets, see below) the user will change or re-install 'procheads'  he has to inform
+the debugging procedures by issuing the command 
+#inb#   set procheads ("procheads") #ine# 
+ 
+Access to the dataspace "procheads" may be suppressed by 
+#inb#   set procheads ("") #ine# 
+ 
+Procedures inserted at a later time by the user should be added to the dataspace "procheads" (in the
+current task!) by typing the commands 
+#inb# 
+   bulletin m ("<packetname>"); 
+   run ("gen.procheads") 
+#ine# 
+ 
+ 
+ 
+#b("3.  Description of the debugging procedures")# 
+ 
+#b1("3.1  PROC info ")# 
+ 
+The standard output is a hexadecimal dump of a dataspace in the following format: 
+ 
+#outb# 
+---------------------------- dsid=xx -------------------- 
+xxxxx: -xx-xx xx xx xx xx xx xx   xx xx xx xx xx xx xx xx  yyyyyyy......... 
+xxxxx:  xx xx xx ...                                       ..... 
+xxxxx:  xx xx ...                                          ... 
+xxxxx:  xx xx xx xx xx xx xx xx   xx xx xx xx xx xx xx xx  .........yyyyyyy 
+#re("INFO: more, address, dsid, lines, find, or quit")# 
+#oute# 
+ 
+ 
+The first line displays the dataspace identifier (4 <= dsid <= ff, dsid=4 identifies the standard
+dataspace). 
+The dump lines begin with the hexadecimal word (!) address of the first word on this line. The order
+of bytes is the same as on EUMEL-'Hintergrund': low byte, high byte. Following the hexadecimal
+display of 16 bytes they will be shown as ascii-characters, too. Non-ascii characters will be
+displayed as '.'. 
+ 
+The last line shows (as with #it("disasm")# and #it("trace")#, too) possible commands which will be recognized by
+their first letter. If a parameter is needed, it has to be typed as a hexadecimal number followed by a
+<CR>. The <RUBOUT> key may be used to delete the last input character(s). 
+Possible commands and their effect: 
+ 
+m (more):     continues displaying at the next higher address 
+ 
+a (address):  specifies a new address 
+ 
+d (dsid):     specifies a new dataspace identifier 
+ 
+l (lines):    specifies a new line count (=window height); this value may be larger than the
+              number of lines of the terminal screen. 
+ 
+f (find):     (tries to) find a hexadecimal or character bytestring. The prompting message 
+#outb# 
+                   find: hex, char, or last param? (h/H/c/C/<CR>) 
+#oute# 
+              may be answered in several ways. Examples: 
+ 
+              #inb#h41<CR>#ine#    looks for a byte 41h, beginning at the actual position, marked by -xx-. 
+ 
+              #inb#Hcafe<CR>#ine#  searches the bytestring 0cafeh, beginning at the actual word address.
+                         Only strings at word addresses will be concerned for a comparison. 
+ 
+              #inb#challo<CR>#ine# searches the character string "hallo", beginning at the actual position. 
+ 
+              #inb#Ca<CR>#ine#     searches the letter "a", which has to be located at a word address.
+                         #inb#H41<CR> #ine#has the same effect. 
+ 
+              #inb#<CR>#ine#       searches the last bytestring explicitly specified in a search command,
+                         beginning #bo("behind")# the marked position. The last parameter will be shown
+                         during the search. 
+ 
+              The search can be interrupted at any time by pressing a key. It may then be conti­
+              nued by a new 'find' command and <CR>. 
+ 
+q (quit):  leaves #it("info")# . 
+ 
+Instead of a command the dataspace can be modified within the displayed area by the key-
+sequence 
+   <UP>                       positions the cursor to the first displayed byte; 
+   <Cursorkey>...             moves the cursor within the hexadecimal display; 
+   <2 hexadecimal digits>...  overwrite the byte under the cursor; 
+   <CR>                       leaves the window. 
+ 
+Note: in the standard dataspace changes within the address range 20000...2ffff are only allowed in
+      conjunction with a 68000-kernel (see also 3.3, note a.). 
+ 
+ 
+ 
+#b1("3.2  PROC disasm ")# 
+ 
+EUMEL-0-code in the address range 20000...3ffff of the standard dataspace will be disassem­
+bled. The code will be listed one instruction per line, using symbolic opcodes and (in case of a CALL
+instruction) procedure heads as found in the dataspace "procheads". 
+ 
+The following example shows the disassembled code of the standard procedure 
+ 
+REAL OP MOD (REAL CONST left, right): 
+  REAL VAR result := left - floor (left/right) * right; 
+  IF result < 0.0 
+     THEN result + abs (right) 
+     ELSE result 
+  FI 
+ENDOP MOD; 
+ 
+#outb# 
+23edd:  LN      2000 
+23ede:  PENTER  15fe 
+23edf:  FDIV    09c4 0d80 2880 
+23ee2:  FLOOR   637f 2880 2880 
+23ee5:  FMUL    28c0 0d80 2880 
+23ee8:  FSUB    09bc 2880 1880 
+23eeb:  FLSEQ   6049 1880 
+23eed:  BT      f700 
+23eee:  PP      0dec 
+23eef:  PP      28ec 
+23ef0:  CALL    5d79   abs (REAL C) --> REAL 
+23ef1:  FADD    18b8 2880 2880 
+23ef4:  REF     28dc 2080 
+23ef6:  B       f970 
+23ef7:  REF     18dc 2080 
+23ef9:  FMOV    21b4 1180 
+23efb:  RTN     007f 
+#re("DISASM: step, more, address, lines, info, or quit")# 
+#oute# 
+ 
+Possible commands: 
+ 
+s (step):     shows the next instruction on the terminal. The command line will be rewritten. 
+ 
+m (more):     shows the next instructions. The output will stop after 'lines' (standard=12) lines. It
+              can be interrupted at any time by pressing any key. The output list terminates, when
+              an invalid opcode has been detected or when the instruction count exceeds 3ffff. 
+ 
+a (address):  specifies a new code address. Disassembly continues at this address. 
+ 
+l (lines):    specifies a new line count; this value may be larger than the number of lines of the
+              terminal screen. 
+ 
+i (info):     calls #it("info")#. The first line of dump contains the first word of the next instruction not yet
+              disassembled. This word will be marked. (After leaving #it("info")# disassembly would
+              continue with this instruction.) 
+ 
+q (quit):     leaves #it("disasm")#. 
+ 
+ 
+#b1("3.3  PROC trace ")# 
+ 
+#it("trace")# allowes controlled execution of subsequent EUMEL-0-code. The effect of the trace-mode
+can be demonstrated by showing the protocol produced by 
+ 
+    #inb#trace; putline ("hallo")<CR> 
+ 
+    #ine##outb##re("TRACE: step, more, trap, regs, lines, info, disasm, or quit")# 
+#oute##inb# 
+    p 
+ 
+#ine##outb# 
+        34afb: PP       006d   >00009000 
+        34afc: CALL     f37a   putline (TEXT C) 
+          28d63: PENTER   38fe 
+          28d64: TEST     c828   >0 
+          28d65: BF       6b70 
+          28d66: OUT      3c7f 0980   >"hallo" hallo 
+          28d68: OUT      3c7f 6c01   >""13""10"" 
+ 
+          28d6a: B        6e70 
+          28d6e: RTN      007f   --> STOPEN NOERR ARITS 
+        34afd: RTN      007f   --> STOPEN NOERR ARITS 
+      20944: RTN      007f   --> STPDIS NOERR ARITU 
+  trace ended by returning to nontraceable caller 
+#oute# 
+ 
+Comments on this output: 
+-  the indentation of the protocol lines shows the call depth. 
+-  in order to get 1 line per instruction as often as possible, some abbreviations are used in the
+   procedure heads: 'C' for 'CONST', 'V' for 'VAR', 'DS' for 'DATASPACE'. 
+-  the first occurrence of the string 'hallo' is part of the protocol. The second one is a result of the
+   execution of the (first) OUT-instruction. The blank line is produced by the second OUT-instruc­
+   tion! 
+-  the flags given with a RTN-instruction reflect the flag settings #bo("after")# execution of the RTN: 
+      STOPEN = stop enabled         STPDIS = stop disabled 
+      NOERR  = no error             ERROR  = error occurred 
+      ARITS  = signed arith mode    ARITU  = unsigned arith mode 
+ 
+ 
+Possible commands: 
+ 
+s (step):    executes and protocols one instruction (=single-step-mode). For reasons of the
+             implementation, consecutive PP-instructions will be executed as one single step. The
+             same holds for instructions followed by a conditional branch (e.g. EQU+BT). 
+ 
+             The protocol contains also actual operand values. Example: 
+#inb# 
+ 
+                 trace;INT VAR a:= 2 + 11 
+#ine##outb# 
+ 
+                 34afb: ADD      001d 0101 5400   >2 >11(000b) 13(000d)> 
+#oute# 
+ 
+             '>' in front of a value indicates input-operand; 
+             '>' behind a value indicates output-operand. (For the instructions MOV, FMOV and
+             TMOV only 1 (output-)operand will be shown.) 
+             INT-objects are shown decimal and (in parentheses) hexadecimal (4 digits). The
+             numbers 0 to 9 will be shown only decimal. 
+             REAL-objects will be shown in the internal representation (e.g. 11.5 as
+             0115000000000082) 
+             TEXT-objects will be shown as text denoters. Non-ascii characters will be converted
+             (see example). For long texts only the first 14 characters will be shown, followed by
+             the (correct) number of characters. 
+             All other objects (TASKs, DATASPACEs and effective virtual addresses) will be shown
+             hexadecimal (4 or 8 digits). 
+ 
+m (more):    executes and protocols up to 'line count' (standard=12) instructions. Execution can be
+             interrupted at any time by any key, and resumed by commands 's' or 'm'. 
+ 
+t (trap):    sets a trap on a code address. As soon as the instruction count reaches the specified
+             value, the message 
+#outb# 
+                trap at address ..... 
+#oute# 
+             will be displayed and the execution stopped. (The instruction at the trap address is the
+             next one to be executed!) At the same time the trap is deleted. 
+ 
+r (regs):    shows the relevant EUMEL-0-registers 'icount' (address of the instruction to be
+             executed next), 'pbase' (=packet base, base address for packet data), 'lbase' (=local
+             base, base address for local data on stack) as well as flag registers
+             (STOPEN/STPDIS, NOERR/ERROR, ARITS/ARITU). 
+ 
+l (lines):   specifies a new line count; this value may be larger than the number of lines of the
+             terminal screen. 
+ 
+i (info):    calls #it("info")#, s. 3.1. The instruction word pointed to by the instruction count is the actual
+             position, marked on the first line. 
+ 
+d (disasm):  calls #it("disasm")#, s. 3.2. Disassembly begins at the next instruction not yet executed. 
+ 
+q (quit):    leaves the trace-mode. However, a trap (see above) may still be in effect! Tracing
+             will be #bo("implicitly")# finished as soon as a RTN-instruction returns to a procedure
+             running in the 'unsigned arithmetic'-mode. (Regularly this is the ELAN-Compiler.) 
+ 
+ 
+#bo("Important Notes ")# 
+ 
+Erroneous use of #it("info")# and #it("trace")# may destruct your task. Therefore read carefully and observe follow­
+ing notes: 
+ 
+a. In order to gain control at proper points of the code area, #it("trace")# temporarily modifies the user code
+   by inserting instructions (CALLs to itself) into it. On EUMEL-hardware based on Z80, 8086, or
+   80286, #it("trace")# does not allow modification of address range 20000...2ffff for reasons of storage
+   management strategy. Therefore calls to procedures occupying this address range will be marked
+   in the protocol by "(*n.t.*)" (for 'nontraceable') and executed normally, i.e. not protocolled. 
+ 
+   WARNING:   execution of a nontraceable procedure cannot be interrupted by <SV> and 'halt'. So
+              be careful! 
+ 
+b. Traps may only be set on the first word of an instruction. In a sequence of consecutive PP-
+   instructions only the first one may be trapped. In the same manner, a conditional branch (BT / BF)
+   following another instruction (e.g. EQU) may not be trapped. 
+ 
+c. On inserting #it("trace")# it may get a module number > 2047. In that case the CALL to #it("trace")# occupies
+   2 words. The user will be informed of this fact at the time just after inserting #it("trace")#: 
+      #outb# 
+      WARNING: call to trace needs 2 words! 
+      #oute# 
+   In this situation special care has to be taken to set a trap, e.g.: 
+ 
+#outb# 
+            LSEQ    xxxx xxxx 
+            BT      xxxx        (*branch on true to address a*) 
+            ... 
+            ... 
+      a-1:  B       xxxx 
+        a:  ... 
+#oute# 
+ 
+   In this example the branch instruction at address 'a-1' may not be trapped because the following
+   instruction (at 'a') would be destroyed by a 2-word-CALL to #it("trace")#. A jump to 'a' would have an
+   undefined effect. So be careful! First inspect the code environment by using #it("disasm")# and then set
+   a trap at a suitable address! 
+ 
+d. In the current version of #it("trace")# a trap will be implicitly deleted as soon as it has become active. If
+   the user wants (e.g. in a loop) to trap a given address again and again, he has to choose a
+   second suitable address, too, and alternately set a trap at these addresses. (A trap may be 
+   #bo("explicitly")# deleted by specifying 0 as trap address.) 
+ 
+e. One may be tempted to trace the ELAN-compiler by writing 
+ #inb# 
+      trace; do ("..........") 
+ #ine# 
+   which seems to work indeed for dozens of lines but at some point it begins to deliver wrong
+   results even with such trivial instructions as an integer ADD. This trouble arises from a storage
+   assignment policy during compilation of the ELAN compiler: temporary storage (e.g. for calculating
+   the value of an expression) will be assigned above the stack top of a procedure if it does not call
+   any other one. An #bo("implicit")# CALL to #it("trace")# causes a further stack frame to be established thus
+   possibly overwriting some temporary values of a compiler procedure. (Of course, the compiler
+   cannot know anything about CALLs inserted by #it("trace")# into the code area!) 
+ 
+f. Errors (e.g. overflow) in user programs will be detected by #it("trace")# at the point of their occurrence
+   and reported in the protocol. However, #it("trace")# has no influence on the error handling, i.e. it does
+   not turn off the error flag by itself, nor causes it an error stop on the users level. (#it("trace")# may be
+   seen as an extension of the virtual EUMEL-0-machine offering some additional features but still
+   fully controlled by the users program.) 
+ 
+g. Each time when the user has control within #it("trace")#, the users code area contains no other patches
+   than a possible CALL at the trap address if specified. 
+ 
+h. The procedures #it("trace, disasm, info")#, and some others used by them are nontraceable. The body of
+   these procedures will not be protocolled. CALLs to them will be marked as nontraceable. Explicit
+   CALLs to #it("trace")# (i.e. in addition to the first call to switch on the trace mode) will be ignored. 
+ 
+i. In trace-mode the EUMEL-0-instruction KE has the same effect as an explicit call to #it("info")#. 
+ 
+j. Protocolling the execution produces output in addition to output programmed by the user. This
+   may lead to unexpected results when the user program specifies cursor positioning. The cursor
+   will always be moved to the position (10,13) instead of the position specified by the user. This is
+   due to the fact that cursor positioning takes place in two steps. One OUT instruction sends the
+   escape character for 'cursor positioning' (=""6""), and a second one sends two bytes containing
+   the coordinate values. The protocol line containing the first OUT will be followed by a lf-cr-
+   sequence (""10""13"") before the next protocol line can be written.  
+
+

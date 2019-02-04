@@ -1,0 +1,1351 @@
+#start(2.5,1.5)# 
+#pageblock# 
+#block# 
+#page (35)# 
+#headeven# 
+ 
+%#center#EUMEL-Systemhandbuch 
+ 
+ 
+#end# 
+#headodd# 
+ 
+#center#3. ELAN-Programme#right#% 
+ 
+ 
+#end# 
+ 
+ 
+#ib(9)#3. #ib#ELAN-Programme#ie##ie(9)# 
+ 
+ 
+ 
+ 
+#ib(9)#3.1. #ib#Wertebereich#ie#e und #ib#Speicherbedarf#ie##ie(9)# 
+ 
+ 
+#ib#INT-Objekte#ie# 
+ 
+ 
+Jedes #ib#Datenobjekt#ie# vom Typ INT belegt im Speicher 2 Bytes. Mögliche INT-Werte sind
+die ganzen Zahlen von -32768 bis +32767 einschließlich. 
+ 
+ 
+ 
+ 
+#ib#REAL-Objekte#ie# 
+ 
+ 
+Jedes Datenobjekt vom Typ REAL belegt im Speicher 8 Bytes. 
+ 
+REALs haben eine 13-stellige #ib#Mantisse#ie#, die im Rechner dezimal geführt wird. (Das
+heißt, bei Konversionen zwischen interner und TEXT-Darstellung treten keine Run­
+dungsfehler auf.) Der Wertebereich wird durch folgende Eckwerte abgelegt: 
+ 
+      9.999999999999e+126    größter REAL-Wert 
+      0.000000000001         kleinster positiver REAL-Wert mit x + 1.0 > 1.0 
+      9.999999999999e-126    kleinster positiver REAL-Wert > 0.0 
+     -9.999999999999e-126    größter negativer REAL-Wert 
+     -9.999999999999e+126    kleinster REAL-Wert 
+ 
+ 
+ 
+ 
+ 
+#ib#BOOL-Objekte#ie# 
+ 
+ 
+Jedes Datenobjekt vom Typ BOOL belegt im Speicher 2 Bytes. 
+ 
+ 
+ 
+ 
+ 
+#ib#TEXT-Objekte#ie# 
+ 
+ 
+Jedes Datenobjekt vom Typ TEXT besteht aus einem festen Teil von 16 Bytes und
+möglicherweise aus einem flexiblen Teil auf dem #on("i")##on("b")##ib#Heap#ie##off("i")##off("b")#. Im festen Teil werden #ib#Texte bis
+zur Länge von 13 Zeichen#ie# untergebracht. Wenn eine TEXT-Variable einen Wert mit
+mehr als 13 Zeichen Länge annimmt, werden alle Zeichen auf dem Heap unterge­
+bracht. Genauer ergibt sich folgendes Bild: 
+ 
+     kurzer Text (LENGTH <= 13): 
+ 
+          Heap-Link    2 Bytes 
+          Textlänge    1 Byte 
+          Text        13 Bytes 
+ 
+     langer Text (LENGTH > 13): 
+ 
+          Heap-Link    2 Bytes 
+          255          1 Byte 
+          Länge        2 Bytes 
+          ungenutzt   11 Bytes 
+ 
+Wenn eine Variable einmal Platz auf dem Heap bekommen hat, behält sie diesen
+vorbeugend auch dann, wenn sie wieder einen kurzen Text als Wert erhält. So muß
+wahrscheinlich kein neuer Platz auf dem Heap zugewiesen werden, wenn sie wieder
+länger wird. Das gilt allerdings nur bis zur nächsten #ib#Garbage Collection#ie# auf den
+TEXT-Heap, denn dabei werden alle Heap-Container minimal gemacht bzw. gelöscht,
+wenn sie nicht mehr benötigt werden. Der Platz auf dem Heap wird in Vielfachen von
+16 Bytes vergeben. In Fremddatenräumen wird in jedem #ib#Container#ie# neben dem eigent­
+lichen Text auch die Containerlänge untergebracht. 
+ 
+Beispiele:     TEXT-Länge    Speicherbedarf (Byte) 
+ 
+                   0                 16 
+                  13                 16 
+                  14                 32 
+                  15                 48 
+                  30                 48 
+                  31                 64 
+                  46                 64 
+                  47                 80 
+                  62                 80 
+ 
+ 
+Die Heapgröße eines Fremddatenraums berechnet sich als: 
+ 
+      1024 * 1024 - 520 = 1048056 - stat  Bytes 
+ 
+'stat' ist dabei die statistische Größe der Datenstruktur, die dem Datenraum aufgeprägt
+wurde. Bei einem BOUND ROW 1000 TEXT ergibt sich also eine Heapgröße von 
+ 
+      1048056 - (1000 * 16) = 1032056  Bytes. 
+ 
+ 
+ 
+ 
+ 
+ 
+#ib#ROW- und STRUCT-Objekte#ie# 
+ 
+ 
+Bei der Berechnung des Speicherbedarfs von #ib#STRUCT#ie#s und #ib#ROW#ie#s muß man beden­
+ken, daß längere Datenobjekte ausgerichtet werden. Und zwar werden alle Objekte, die
+mindestens die Länge eines REAL-Objektes haben, auf durch 8 teilbare Speichera­
+dressen ausgerichtet. Man bedenke, daß bei ROWs alle Elemente entsprechend ihres
+Elementtyps ausgerichtet sind. 
+ 
+Beispiele:                                 Länge (Byte) 
+ 
+   ROW 2 BOOL                                    4 
+   ROW 4 INT                                     8 
+   ROW 5 INT                                    16 
+   ROW 2 STRUCT (INT, BOOL)                      4 
+   ROW 100 STRUCT (INT,INT)                    400 
+   ROW 100 STRUCT (INT,REAL)                  1600 
+   ROW 100 STRUCT (INT,INT,INT,INT,REAL)      1600 
+   ROW 100 STRUCT (REAL, REAL)                1600 
+   ROW 100 STRUCT (INT,TEXT)                  2400 
+   ROW 100 STRUCT (INT,INT,INT,INT,TEXT)      2400 
+   ROW 100 STRUCT (INT,TEXT,INT,TEXT)         4800 
+   ROW 100 STRUCT (INT,INT,TEXT,TEXT)         4000 
+   ROW 100 ROW 3 INT                           600 
+   ROW 100 ROW 4 INT                           800 
+   ROW 100 ROW 5 INT                          1600 
+aber: 
+   ROW 500 INT                                1000 
+ 
+#on("i")#Anmerkung: Bei der #ib#Speichervergabe#ie# der einfachen Variablen und Konstanten eines
+           Programms spielen Verluste aufgrund von Ausrichtungen in der Regel
+           keine Rolle. Der ELAN-Compiler optimiert dabei soweit möglich.#off("i")# 
+#page# 
+#headeven# 
+ 
+%#center#EUMEL-Systemhandbuch 
+ 
+ 
+#end# 
+#headodd# 
+ 
+#center#4. Standardpakete für Systemprogrammierer#right#% 
+ 
+ 
+#end# 
+ 
+ 
+#ib(9)#4. #ib#Standardpakete für 
+   Systemprogrammierer#ie(9)##ie# 
+ 
+ 
+#ib(9)#4.1. #ib#Fehlerbehandlung#ie##ie(9)# 
+ 
+ 
+Übersicht 
+ 
+ 
+#on("italics")# 
+        Fehler treten auf, wenn ein Programm eine gewünschte Leistung
+        nicht erbringen kann. Solche Situationen müssen von System-
+        Programmen kontrolliert behandelt werden. Die folgenden Aus­
+        führungen sind somit nur für diejenigen interessant, die "Sy­
+        stem"-Programme schreiben wollen.#off("italics")# 
+ 
+#ib#Fehler#ie# treten in Operationen auf, wenn diese eine geforderte Leistung nicht erbringen
+können (z.B. das Drucken einer nicht vorhandenen Datei). Da folgende Anweisungen
+aber davon ausgehen, daß die gewünschten Leistungen erbracht wurden, ist es nicht
+sinnvoll, die Operation weiter auszuführen. Wir sprechen vom #ib#Abbruch einer Operation#ie#,
+wenn nach einem Fehler keine Anweisungen mehr ausgeführt werden, sondern die
+Operation verlassen wird. Im EUMEL-System kann durch folgende drei Maßnahmen
+ein Abbruch verursacht werden: 
+ 
+-  Aufruf der Prozedur '#ib#errorstop#ie#': 
+   Die Operation wird mit einer Fehlermeldung abgebrochen, die man dem Aufruf von
+   'errorstop' als Parameter beifügt werden kann. 
+ 
+-  Aufruf der Prozedur '#ib#stop#ie#': 
+   Die Operation wird abgebrochen. Wirkt wie 'errorstop' mit der Meldung "stop". 
+ 
+-  Umschalten in den Supervisor: 
+   Durch Betätigen der Taste SV und Eingabe des Kommandos '#ib#halt#ie#'. Die laufende
+   Operation wird abgebrochen. Wirkt wie ein 'errorstop', der von "außen" in das
+   Programm induziert wird. 
+ 
+Da alle drei Maßnahmen zum Abbruch führen können und somit eine anormale (vor­
+zeitige) Beendigung eines Programms bewirken, werden sie im folgenden zusammen­
+fassend als #ib#Fehler#ie# bezeichnet. 
+ 
+Für solche Fehler bietet das EUMEL-System die Möglichkeit, den Abbruch zu unter­
+drücken. Dies kann notwendig werden, wenn 
+ 
+a) bestimmte Fehlerfälle vom aufrufenden Programm selbst behandelt werden sollen.
+   Beispiel: 
+ 
+   Der EUMEL-Editor wird aufgerufen, um eine Datei zu bearbeiten. Er versucht als
+   erstes, die Datei zu assoziieren. Existiert die Datei nicht, wird die Prozedur
+   (z.B. 'old'), mit der die Datei angemeldet werden soll, normalerweise mit der Feh­
+   lermeldung ' "datei" gibt es nicht' abgebrochen. Diesen Fehlerzustand fängt der
+   Editor jedoch ab und versucht, eine neue Datei einzurichten (Anmerkung: In Wirk­
+   lichkeit fragt der Editor natürlich vor der Assoziierung mit 'exists' ab, ob die Datei
+   existiert). 
+ 
+b) eine Operation die Kontrolle auf jeden Fall behalten soll. 
+ 
+   Dies ist z.B. beim Monitor notwendig. Gleich welche Fehler vom Monitor gerufene
+   Programme produzieren, der Monitor muß in der Lage sein, die weitere Bearbei­
+   tung zu ermöglichen. 
+ 
+c) eine Operation nicht unterbrechbar sein darf. 
+ 
+   Beispielsweise dürfen Programm(teil)e, die Daten transportieren, nicht unterbro­
+   chen werden, da sonst ein Verlust dieser Daten eintreten könnte. 
+ 
+ 
+ 
+#ib(9)##ib#Fehlerbehandlung#ie# und #ib#Fängerebenen#ie##ie(9)# 
+ 
+ 
+Der Aufruf einer der Prozeduren 
+ 
+     #ib#errorstop#ie# 
+     #ib#stop#ie# 
+     #ib#halt#ie# 
+ 
+(wobei letztere vom Supervisor gegeben werden muß) werden zusammenfassend als
+#ib#Fehler#ie# bezeichnet. Bei einem Fehler wird ein #ib#Fehlerzustand#ie# gesetzt. Im Fehlerzustand
+merkt sich das EUMEL-System, daß ein Fehler vorliegt. Die Prozeduren 
+ 
+    #ib#enable stop#ie# 
+    #ib#disable stop#ie# 
+ 
+bestimmen, ob Operationen im Fehlerzustand weiter bearbeitet oder abgebrochen
+werden. Beispiel: 
+ 
+ 
+     INT VAR x; 
+     get (x); 
+     ... 
+     disable stop; 
+     x := x * x; 
+     ... 
+ 
+ 
+Hier wird mit 'disable stop' verhindert, daß ein Abbruch beispielsweise durch 'INT-
+Ueberlauf' auftreten kann. Die Anweisungen nach 'x * x' werden also weiter bearbei­
+tet. 
+ 
+Welchen Wert hat aber nun die Variable 'x', nachdem der Fehler auftrat? Offensicht­
+lich war die den Fehler auslösende Operation '*' nicht in der Lage, den richtigen Wert
+zu errechnen. #ib#Abgebrochene Operationen#ie# liefern in der Regel keinen Wert. Dadurch ist
+der Wert von 'x' in unserem Beispiel nach einem Fehler bei '*' undefiniert. Es ist nun
+ersichtlich, daß mit der Anwendung der 'disable stop'-Prozedur äußerst vorsichtig zu
+verfahren ist, weil u.U. Werte verloren gehen können bzw. mit unerwarteten Werten
+weitergerechnet wird. 
+ 
+Damit Programmierer erfahren können, ob ein Fehler aufgetreten ist, gibt es die Infor­
+mations-Prozedur 
+ 
+     #ib#is error#ie# 
+ 
+über den Fehlerzustand. Die Prozedur liefert den Wert TRUE, wenn ein Fehler vorliegt,
+andernfalls FALSE. Die Prozedur 
+ 
+     #ib#clear error#ie# 
+ 
+"löscht" den Fehlerzustand, d.h. anschließende Abfragen mit 'is error' liefern FALSE.
+(Die "richtige" Reaktion auf den Fehler muß ein Programmierer natürlich selbst be­
+stimmen). 
+ 
+Beispiel: 
+ 
+ 
+     INT VAR x; 
+     get (x); 
+     ... 
+     disable stop; 
+     x := x * x; 
+     IF is error 
+       THEN put ("'x'-Wert zu groß"); 
+            x := 0; 
+            clear error 
+     FI; 
+     ... 
+ 
+ 
+Leider würden jetzt aber auch alle folgenden Anweisungen bei eventuellen Fehlern
+nicht abgebrochen, also auch in Situationen, in denen ein Abbruch erwünscht ist, um
+#ib#Programmierfehler#ie# zu erkennen. Deshalb können durch 
+ 
+     #ib#enable stop#ie# 
+ 
+Abbrüche wieder zugelassen werden. Wenn wir jetzt also schreiben: 
+ 
+ 
+     INT VAR x; 
+     get (x); 
+     ... 
+     disable stop; 
+     x := x * x; 
+     IF is error 
+       THEN put ("'x'-wert zu gross"); 
+            x := 0; 
+            clear error 
+     FI; 
+     enable stop; 
+     ... 
+ 
+ 
+dann würden - wie gewünscht - eventuelle Fehler in den Anweisungen nach 'enable
+stop' zu einem Abbruch führen. 
+ 
+Nicht mit '#ib#clear error#ie#' gelöschte Fehler führen bei '#ib#enable stop#ie#' ebenfalls zu einem
+Abbruch. In dem Programmteil 
+ 
+ 
+     ... 
+     disable stop; 
+     x := x * x; 
+     enable stop; 
+     ... 
+ 
+ 
+würde der eventuell auftretender Fehler 'INT Ueberlauf' nicht abgefangen, sondern nur
+verzögert wirksam, weil er nicht mit 'clear error' gelöscht wurde. 
+ 
+Für die Behandlung von Fehlern durch Benutzer gibt es Prozeduren, die eine adäquate
+Reaktion auf den Fehler erlauben. Mit 
+ 
+     #ib#error message#ie# 
+ 
+können Sie auf die erste Fehlermeldung (eines 'error stop') nach dem letzen 'clear
+error' zugreifen (d.h. Folgefehler verändern nicht die Originalmeldung). Die Prozedur 
+ 
+     #ib#error code#ie# 
+ 
+liefert den #ib#Fehlercode#ie#, der bei der Prozedur 'errorstop' zusätzlich zum #ib#Fehlertext#ie#
+angegeben werden kann. 
+ 
+     #ib#error line#ie# 
+ 
+liefert die Zeilennummer des zuletzt aufgetretenen Fehlers. Mit 
+ 
+     #ib#put error#ie# 
+ 
+kann eine noch anstehende Fehlermeldung ausgegeben werden. Beispiel: 
+ 
+ 
+     INT VAR x; 
+     get (x); 
+     ... 
+     disable stop; 
+     x := x * x; 
+     IF is error 
+       THEN IF error message = "INT-Ueberlauf" 
+              THEN put ("'x'-wert zu gross"); 
+              ELSE put error 
+            FI; 
+            clear error 
+     FI; 
+     enable stop; 
+     ... 
+ 
+ 
+Tritt ein Fehler auf, so wird die den Fehler auslösende Operation entweder abgebro­
+chen oder "normal" weiter bearbeitet, je nachdem, ob 'enable stop' oder 'disable stop'
+gesetzt ist. Auf jeden Fall wird der #ib#Fehlerzustand#ie# an die aufrufende Operation weiter­
+gemeldet, die wiederum abgebrochen oder weiterbearbeitet werden kann usw. Die
+#ib#Weitermeldung#ie# eines Fehlers kann auch über mehrere Stufen erfolgen, solange bis der
+Fehler gelöscht wird. Andererseits gilt 'enable/ disable stop' nicht nur für die aktuelle
+Operation, sondern auch für gerufene Operationen ("Vererbung"). Die gerufenen Ope­
+rationen können allerdings 'enable/disable stop' neu festlegen. Beispiel: 
+ 
+ 
+        PROC a:             PROC b:          PROC c: 
+        ...                 ...              ROW 10 INT VAR x; 
+        disable stop;       enable stop;     ... 
+        b;                  ...              INT VAR i :: 4711; 
+        IF is error         c;               x [i] := ...; 
+          THEN ...          ...              ... 
+               clear error  END PROC b       END PROC c 
+        FI; 
+        enable stop 
+        END PROC a; 
+ 
+ 
+In der Prozedur 'a' wird die Prozedur 'b' aufgerufen. Diese ruft wiederum eine Prozedur
+'c' auf. Für die Prozedur 'c' gilt nun der Zustand 'enable stop' der Prozedur 'b' (#ib#Verer­
+bung von 'enable stop'#ie#). Tritt jetzt in 'c' der Subskriptions-Fehler auf, wird 'c' abgebro­
+chen. Die Wirkung der fehlerauslösenden Operation ist nicht definiert. 
+ 
+Da aber auch die Prozedur 'b' im 'enable stop' Zustand ist, wird auch die Prozedur 'b'
+abgebrochen. Der Fehler bleibt jedoch erhalten, wird also weitergemeldet. Dies wirkt
+sich so aus, daß die Anweisung 'c' nicht ausgeführt wird. Da die Prozedur 'a' 'disable
+stop' gesetzt hat, werden die auf den Aufruf von 'b' folgenden Anweisungen durchlau­
+fen und somit durch 'clear error' der Fehler gelöscht. In diesem Beispiel "fängt" die
+Prozedur 'a' Fehler auf, die in den Prozeduren 'b' und 'c' entstehen können. 
+ 
+Ein solcher #ib#Fänger#ie# wird durch zwei Prozeduren konstruiert. Der eigentliche Fänger
+(hier: Prozedur 'a') ruft eine ausführende Prozedur (hier: 'b') im 'disable stop'-Zustand
+auf. Die gerufene Prozedur setzt sofort 'enable stop' und führt dann die eigentlichen
+Aktionen aus. So wird die gerufene Prozedur abgebrochen (kann also im Fehlerfall
+nicht zuviel Schaden anrichten). Der Abbruch führt bis zur Fängerprozedur ('a') hinter
+den Aufruf der gerufenen Prozedur ('b'). Nach Löschung eventuell auftretender Fehler
+ist somit sichergestellt, daß der Fänger immer weiterarbeiten kann. 
+ 
+ 
+ 
+#ib(9)#Wichtiger Hinweis#ie(9)# 
+ 
+ 
+ 
+     1. #on("italics")##on("bold")#Da im 'disable stop'-Zustand kein Fehler zum Abbruch führt, kann
+        eine Operation in diesem Zustand auch nicht durch 'halt' abge­
+        brochen werden. Einerseits ist das für manche Systemteile wün­
+        schenswert, andererseits können Operationen, die auf Grund von
+        Programmierfehlern nicht terminieren (Endlosschleifen), nicht
+        unter Kontrolle gebracht werden. Also Vorsicht! (Letztes Mittel:
+        Task löschen)#off("italics")##off("bold")# 
+ 
+     2. #on("i")##on("b")#Es ist nicht (!) garantiert, daß im Fehlerzustand aufgerufene
+        Prozeduren ihre normale Wirkung haben. Garantiert ist dies je­
+        doch für alle Prozeduren und Operatoren, die in diesem Kapi­
+        tel aufgeführt werden.#off("i")##off("b")# 
+ 
+#on("italics")##on("bold")#Merke:  Fehler sind im EUMEL-System Aufrufe der Prozeduren 'errorstop',
+        'stop' oder das Betätigen der SV Taste und dem Supervisor-
+        Kommando 'halt'. Ein Fehler gilt solange, bis er mit Hilfe der
+        Prozedur 'clear error' gelöscht wurde. Die Prozeduren 'enable/
+        disable stop' steuern die Abarbeitung der Operationen im Fehler­
+        fall. Gilt für eine Operation 'enable stop', wird die Operation
+        abgebrochen, d.h. die restlichen Anweisungen der Operation
+        nach der Fehler auslösenden Anweisung werden nicht durchlau­
+        fen. Ist 'disable stop' gesetzt, werden die restlichen Operationen
+        weiterhin abgearbeitet. 'enable/disable stop' gilt für alle - auch
+        indirekt - aufgerufenen Operationen ("Vererbung"), es sei denn, in
+        den gerufenen Operationen wird ein erneutes 'enable/disable
+        stop' gesetzt. Über die Aufrufkette werden ggf. auch die Fehler
+        zurück gemeldet.#off("italics")##off("bold")# 
+ 
+ 
+        #on("italics")##on("bold")#Eine Fänger-Ebene ist eine Prozedur, die 'disable stop' setzt und
+        dann andere Operationen aufruft. Nach jedem dieser Aufrufe
+        kann eine Fehlerbehandlung mit 'clear error' durchgeführt wer­
+        den. Damit ist gewährleistet, daß Fehler immer von der Fänger-
+        Ebene "aufgefangen" und entsprechend behandelt werden.#off("italics")##off("bold")# 
+ 
+ 
+ 
+#ib(9)##ib#Prozeduren zur Fehlerbehandlung#ie##ie(9)# 
+ 
+ 
+#ib#clear error#ie# 
+     PROC clear error 
+     Zweck: Löscht den Fehlerzustand. 'is error' liefert anschließend wieder FALSE.
+            'error message', 'error code' und 'error line' werden nicht gelöscht. 
+ 
+#ib#disable stop#ie# 
+     PROC disable stop 
+     Zweck: Unterbindet den Abbruch in aufgerufenen Operationen. 'disable stop'
+            gilt für die Prozedur, in der sie aufgerufen wird und in allen folgenden
+            gerufenen Prozeduren, es sei denn, sie wird durch 'enable stop' außer
+            Kraft gesetzt. Wird die Operation verlassen, in der 'disable stop' aufge­
+            rufen wurde, wird der "alte" Zustand wiederhergestellt, der vor dem
+            Aufruf der Operation galt. 'disable stop' kann weiterhin in einer aufge­
+            rufenen Operation durch den Aufruf von 'enable stop' in dieser und den
+            folgenden Operationen außer Kraft gesetzt werden. 
+ 
+#ib#enable stop#ie# 
+     PROC enable stop 
+     Zweck: Setzt die Wirkung eines Aufrufs von 'disable stop' zurück. Fehler ('error­
+            stop', 'stop' oder 'halt') in der aktuellen Operation oder den folgenden
+            aufgerufenen Operationen führen zum Abbruch. Bisher nicht gelöschte
+            Fehler (siehe 'clear error') führen sofort zum Abbruch. 
+ 
+#ib#error code#ie##--goalpage ("fehlercodes")# 
+     INT PROC error code 
+     Zweck: Liefert den durch 'errorstop' gesetzten #ib#Fehlercode#ie#. Beispiel: 
+ 
+               PROC test: 
+                 enable stop; 
+                 error stop (110, "Dies ist mein Abbruch!"); 
+               END PROC test; 
+ 
+               ... 
+               disable stop; 
+               test; 
+               put (error code);   (* liefert 110 *) 
+               clear error; 
+               enable stop 
+ 
+ 
+#ib#error line#ie# 
+     INT PROC error line 
+     Zweck: Liefert die Zeilennummmer des Fehlers (Voraussetzung : Die Überset­
+            zung erfolgt im 'checkon-Modus). 
+ 
+#ib#error message#ie# 
+     TEXT PROC error message 
+     Zweck: Liefert die Fehlermeldung als Text. Anhand dieser Meldung kann ent­
+            schieden werden, welcher Fehler vorliegt. 
+     Hinweis: Eine Fehlermeldung "" (also: 'error stop ("")') führt zum Fehlerabbruch
+            mit der Bedeutung "Fehlermeldung wurde bereits ausgegeben". Dem­
+            entsprechend erfolgt bei der Fehlermeldung 'niltext' keine Reaktion bei
+            'put error'. 
+ 
+#ib#errorstop#ie# 
+     PROC error stop (TEXT CONST message) 
+     Zweck: Bricht ab und setzt die Zeilennummer (wenn man sich im 'checkon'-
+            Modus befindet), in der der Fehler aufgetreten ist, sowie den Text 'mes­
+            sage'. Der Abbruch kann mit 'disable stop' unterbunden werden. 'error­
+            stop' hat keine Wirkung, wenn ein noch nicht gelöschter Fehler vorliegt.
+            Zu einer Fehlermeldung "" siehe auch die Prozedur 'error message'. Als
+            'error-code' wird 0 gesetzt. 
+ 
+ 
+     PROC error stop (INT CONST code, TEXT CONST message) 
+     Zweck: Analog obiger 'errorstop'-Prozedur, aber mit Angabe des Fehlercodes,
+            der durch die Prozedur 'error code' in einer Fängerebene erfragt wer­
+            den kann. 
+ 
+#ib#is error#ie# 
+     BOOL PROC is error 
+     Zweck: Informationsprozedur auf das Vorhandensein eines Fehlers. 
+ 
+#ib#put error#ie# 
+     PROC put error 
+     Zweck: Gibt die durch 'errorstop' gesetzte Fehlermeldung aus, falls ein Fehler
+            noch nicht gelöscht ist (siehe auch: 'error message'). 
+ 
+ 
+ 
+ 
+#ib##ib(9)#Fehlercode#ie#s#ie(9)# 
+ 
+ 
+Einige Fehlercodes sind bereits belegt: 
+ 
+               0       kein Fehlercode spezifiziert (Standardwert) 
+               1       'halt' vom Terminal 
+               2       Stack-Ueberlauf 
+               3       Heap-Ueberlauf 
+               4       INT-Ueberlauf 
+               5       DIV durch 0 
+               6       REAL-Ueberlauf 
+               7       TEXT-Ueberlauf 
+               8       zu viele DATASPACEs 
+               9       Ueberlauf bei Subskription 
+               10      Unterlauf bei Subskription 
+               11      falscher DATASPACE-Zugriff 
+               12      INT nicht initialisiert 
+               13      REAL nicht initialisiert 
+               14      TEXT nicht initialisiert 
+               15      nicht implementiert 
+               16      Block unlesbar 
+               17      Codefehler 
+               100     Syntax-Fehler beim Übersetzen 
+ 
+ 
+ 
+ 
+ 
+#ib(9)#4.2. #ib#THESAURUS#ie##ie(9)# 
+ 
+ 
+ 
+Ein #ib#Thesaurus#ie# ist ein #ib#Namensverzeichnis#ie#, das bis zu 200 Namen beinhalten kann.
+Dabei muß jeder Namen mindestens ein Zeichen und darf höchstens 100 Zeichen lang
+sein. Steuerzeichen (code < 32) sind in Namen nicht erlaubt. 
+ 
+Ein Thesaurus ordnet jedem eingetragenen Namen einen Index zwischen 1 und 200
+(einschließlich) zu. Diese Indizes bieten dem Anwender die Möglichkeit, Thesauri zur
+Verwaltung benannter Objekte zu verwenden. (Der Zugriff erfolgt dann über den Index
+eines Namens in einem Thesaurus). So werden Thesauri u.a. von der Dateiverwaltung
+benutzt. Sie bilden die Grundlage der ALL- und SOME-Operatoren. 
+ 
+ 
+ 
+ 
+#ib(9)#Grundoperationen#ie(9)# 
+ 
+ 
+#ib#CONTAINS#ie# 
+     BOOL OP CONTAINS (THESAURUS CONST t, TEXT CONST name) 
+     Zweck: Liefert genau dann TRUE, wenn 't' den Namen 'name' enthält. Falls
+            'name=""' oder 'LENGTH name > 100', wird FALSE geliefert. 
+ 
+#ib#delete#ie# 
+     PROC delete (THESAURUS VAR t, TEXT CONST name, INT VAR index) 
+     Zweck: Falls der Name 'name' im Thesaurus 't' enthalten ist, wird er dort ge­
+            löscht. In 'index' wird dann sein alter Index geliefert, unter dem er im
+            Thesaurus eingetragen war. Ist der Name nicht im Thesaurus enthalten,
+            wird 0 als Index geliefert. 
+ 
+     PROC delete (THESAURUS VAR t, INT CONST index) 
+     Zweck: Der Eintrag mit dem angegebenen Index wird aus dem Thesaurus 't'
+            gelöscht. 
+ 
+#ib#empty thesaurus#ie# 
+     THESAURUS PROC empty thesaurus 
+     Zweck: Für Initialisierungszwecke wird ein leerer Thesaurus geliefert. 
+ 
+#ib#get#ie# 
+     PROC get (THESAURUS CONST t, TEXT VAR name, INT VAR index) 
+     Zweck: Liefert den "nächsten" Eintrag aus dem Thesaurus 't'. "Nächster" heißt
+            hier, der kleinste vorhandene mit einem Index größer als 'index'. Dabei
+            wird in 'name' der Name und in 'index' der Index des Eintrags geliefert.
+            D.h. 'index' wird automatisch weitergeschaltet. Den ersten Eintrag erhält
+            man entsprechend durch Aufruf mit 'index=0'. Nach dem letzten Ein­
+            trag wird 'name=""' und 'index=0' geliefert. Beispiel: 
+ 
+ 
+                         TEXT VAR name; 
+                         INT VAR index := 0 ; 
+                         get (thesaurus, name, index) ; 
+                         WHILE index > 0 REP 
+                           putline (name) ; 
+                           get (thesaurus, name, index) 
+                         PER 
+ 
+ 
+#ib#highest entry#ie# 
+     INT PROC highest entry (THESAURUS CONST t) 
+     Zweck: Liefert den höchsten belegten Index des Thesaurus 't'. 
+            Achtung: Das ist nicht die Anzahl der vorhandenen Namen, da durch
+                     Löschungen Lücken entstanden sein können. 
+ 
+#ib#insert#ie# 
+     PROC insert (THESAURUS VAR t, TEXT CONST name, INT VAR index) 
+     Zweck: Der Name 'name' wird als zusätzlicher Eintrag in den Thesaurus 't'
+            eingetragen und der dafür vergebene Index geliefert. Falls der Thesau­
+            rus schon voll ist und der Name nicht mehr eingetragen werden kann,
+            wird 0 als Index geliefert. 
+            Achtung: Mehrfacheintragungen sind möglich. Wenn man diese verhin­
+                     dern will, muß man entsprechend vermittels 
+ 
+ 
+                         IF NOT t CONTAINS name 
+                           THEN insert (t, name, index) 
+                         FI 
+ 
+ 
+                     eintragen. 
+     Fehlerfall: 
+           * Name unzulaessig 
+ 
+     PROC insert (THESAURUS VAR t, TEXT CONST name) 
+     Zweck: s.o. Allerdings wird der Index des Namens nicht geliefert. Ein Thesau­
+            rusüberlauf wird entsprechend als 'errorstop' gemeldet. 
+     Fehlerfälle: 
+          * Name unzulaessig 
+          * THESAURUS-Ueberlauf 
+ 
+#ib#link#ie# 
+     INT PROC link (THESAURUS CONST t, TEXT CONST name) 
+     Zweck: Liefert den Index des Namens 'name' im Thesaurus 't'. Falls der Name
+            nicht enthalten ist, wird 0 geliefert. Ist der Name mehrfach im Thesau­
+            rus enthalten, ist nicht definiert, welcher der möglichen Indizes geliefert
+            wird. 
+ 
+#ib#name#ie# 
+     TEXT PROC name (THESAURUS CONST t, INT CONST index) 
+     Zweck: Liefert den Namen des Eintrags mit dem Index 'index' aus dem The­
+            saurus 't'. Falls kein solcher Eintrag im Thesaurus enthalten ist, wird
+            Niltext geliefert. 
+ 
+#ib#rename#ie# 
+     PROC rename (THESAURUS VAR t, TEXT CONST old, new) 
+     Zweck: Ändert im Thesaurus 't' einen Eintrag mit dem alten Namen 'old' in 'new'
+            um. Falls 'old' nicht im Thesaurus enthalten ist, wird keine Leistung
+            erbracht. Falls 'old' mehrfach in 't' enthalten ist, ist nicht definiert, wel­
+            cher der möglichen Einträge geändert wird. 
+     Fehlerfall: 
+            * Name unzulaessig 
+ 
+     PROC rename (THESAURUS VAR t, INT CONST index, TEXT CONST new) 
+     Zweck: Ändert im Thesaurus 't' den Namen des durch 'index' identifizierten
+            Eintrags in 'new'. 
+     Fehlerfall: 
+            * Name unzulaessig 
+ 
+#ib#THESAURUS#ie# 
+     TYPE THESAURUS 
+     Zweck: Bezeichnet Thesaurus-Datenobjekte 
+ 
+:= 
+     OP := (THESAURUS VAR dest, THESAURUS CONST source) 
+     Zweck: Zuweisung 
+ 
+ 
+ 
+ 
+ 
+ 
+#ib(9)#Verknüpfungsoperationen#ie(9)# 
+ 
+Das Paket '#ib#nameset#ie#' bietet die Möglichkeit, Operationen nicht nur auf einzelnen Datei­
+en, sondern auf (geordneten) Mengen ablaufen zu lassen: 
+ 
+#ib#ALL#ie# 
+     THESAURUS OP ALL (TASK CONST task) 
+     Zweck: Liefert einen Thesaurus, der alle Dateinamen der angegebenen Task
+            enthält. 
+ 
+     THESAURUS OP ALL (TEXT CONST file name) 
+     Zweck: Liefert einen Thesaurus, der die in der angegebenen Datei vorhande­
+            nen Namen (jede Zeile ein Name) enthält. 
+ 
+#ib#all#ie# 
+     THESAURUS PROC all 
+     Zweck: Liefert einen Thesaurus, der alle Dateinamen der eigenen Task enthält.
+            Entspricht 'ALL myself'. 
+ 
+#ib#LIKE#ie# 
+     THESAURUS OP LIKE (THESAURUS CONST thesaurus, TEXT CONST muster) 
+     Zweck: Alle im Thesaurus enthaltenen Dateien, die dem 'muster' entsprechen
+            sind im Ergebnisthesaurus enthalten. 
+            (Die Syntax von 'muster' findet man bei der Beschreibung des Pattern-
+            Matching) 
+ 
+#ib#SOME#ie# 
+     THESAURUS OP SOME (THESAURUS CONST thesaurus) 
+     Zweck: Bietet den angegebenen Thesaurus im EUMEL-Editor zum Ändern an.
+            Es können nicht erwünschte Namen gestrichen werden. 
+ 
+     THESAURUS OP SOME (TASK CONST task) 
+     Zweck: Aufruf von: SOME ALL task. 
+ 
+     THESAURUS OP SOME (TEXT CONST file name) 
+     Zweck: Aufruf von: SOME ALL filename. 
+ 
+#ib#FILLBY#ie# 
+     OP FILLBY (THESAURUS VAR thesaurus, FILE VAR file) 
+     Zweck: Schreibt 'file' in den Thesaurus. Dabei werden Zeilen, die schon im
+            Thesaurus sind, nicht mehr in den Thesaurus geschrieben. Jede Zeile
+            kommt im Thesaurus also nur einmal vor. 
+ 
+     OP FILLBY (FILE VAR file, THESAURUS CONST thesaurus) 
+     Zweck: Schreibt den Thesaurus in die Datei 'file'. 
+ 
+     OP FILLBY (TEXT CONST filename, 
+                          THESAURUS CONST thesaurus) 
+     Zweck: Richtet eine Datei mit dem Namen 'filename' ein und schreibt den The­
+            saurus in die Datei. 
+ 
++ 
+     THESAURUS OP + (THESAURUS CONST left, right) 
+     Zweck: Liefert die Vereinigungsmenge von 'left' und 'right'. 
+            Achtung: Die Vereinigungsmenge enthält keine Namen mehrfach. 
+ 
+     THESAURUS OP + (THESAURUS CONST left, TEXT CONST right) 
+     Zweck: Fügt dem Thesaurus 'right' zu, wenn 'right' noch nicht im Thesaurus
+            enthalten ist. 
+ 
+- 
+     THESAURUS OP - (THESAURUS CONST left, right) 
+     Zweck: Liefert die Differenzmenge. Achtung: Die Differenzmenge enthält keine
+            Namen mehrfach. 
+ 
+     THESAURUS OP - (THESAURUS CONST left, TEXT CONST right) 
+     Zweck: Nimmt den Namen 'right' aus dem Thesaurus. 
+ 
+/ 
+     THESAURUS OP / (THESAURUS CONST left, right) 
+     Zweck: Liefert die Schnittmenge 
+            Achtung: Die Schnittmenge enthält keine Namen mehrfach. 
+ 
+#ib#do#ie# 
+     PROC do (PROC (TEXT CONST) operate, THESAURUS CONST thesaurus) 
+     Zweck: Ruft 'operate' nacheinander mit allen im Thesaurus enthaltenen Namen
+            auf. 
+ 
+     PROC do (PROC (TEXT CONST, TASK CONST) operate, 
+              THESAURUS CONST thesaurus, TASK CONST task) 
+     Zweck: s.o. 
+ 
+#ib#erase#ie# 
+     PROC erase (THESAURUS CONST thesaurus) 
+     Zweck: Löscht alle aufgeführten Dateien in der Vater-Task. 
+ 
+     PROC erase (THESAURUS CONST thesaurus, TASK CONST manager) 
+     Zweck: Löscht alle aufgeführten Dateien in der Task 'manager'. 
+ 
+#ib#fetch#ie# 
+     PROC fetch (THESAURUS CONST thesaurus) 
+     Zweck: Holt alle aufgeführten Dateien vom Vater. 
+ 
+     PROC fetch (THESAURUS CONST thesaurus, TASK CONST manager) 
+     Zweck: Holt alle aufgeführten Dateien vom 'manager'. 
+ 
+#ib#fetch all#ie# 
+     PROC fetch all (TASK CONST manager) 
+     Zweck: Holt alle Dateien vom 'manager'. Diese Prozedur entspricht dem Aufruf
+            der Prozedur 'fetch (ALL manager, manager)'. 
+ 
+     PROC fetch all 
+     Zweck: Aufruf der Prozedur 'fetch all (father)'. 
+ 
+#ib#forget#ie# 
+     PROC forget (THESAURUS CONST thesaurus) 
+     Zweck: Löscht alle aufgeführten Dateien in der Benutzer-Task. 
+ 
+#ib#insert#ie# 
+     PROC insert (THESAURUS CONST thesaurus) 
+     Zweck: Insertiert alle aufgeführten Dateien in der Benutzer-Task. 
+ 
+#ib#remainder#ie# 
+     PROC remainder 
+     Zweck: Liefert nach einem 'errorstop' die noch nicht bearbeiteten Dateien. 
+            Beispiel: 
+              'save all (archive)' 
+                 kann dazu führen, daß nicht alle Dateien auf das Archiv geschrie­
+                 ben werden können. Fehlermeldung: 
+              '"....." kann nicht geschrieben werden (Archiv voll)' 
+                 Nachdem man eine neue Floppy ins Archivlaufwerk gelegt hat,
+                 kann man mit 
+              'save (remainder, archive)' 
+                 den Rest der Dateien auf der Floppy sichern. 
+ 
+#ib#save#ie# 
+     PROC save (THESAURUS CONST thesaurus) 
+     Zweck: Schickt alle aufgeführten Dateien zur Vater-Task. 
+ 
+     PROC save (THESAURUS CONST thesaurus, TASK CONST manager) 
+     Zweck: s.o. 
+ 
+#ib#save all#ie# 
+     PROC save all (TASK CONST manager) 
+     Zweck: Schickt alle eigenen Dateien zum 'manager'. Diese Prozedur entspricht
+            dem Aufruf der Prozedur 'save (ALL myself, manager)'. 
+ 
+     PROC save all 
+     Zweck: Aufruf der Prozedur 'save all (father)'. 
+ 
+ 
+Beispiele: 
+ 
+                    save (ALL myself) 
+                    forget (ALL myself) 
+                    forget (all) 
+                    fetch (SOME father) 
+                    fetch (ALL father - ALL myself) 
+                    insert (ALL "gen datei") 
+                    save (ALL myself - ALL archive, archive) 
+ 
+ 
+ 
+ 
+#ib(9)#4.3. #ib#Kommandos und Dialog#ie(9)##ie# 
+ 
+ 
+ 
+#ib##ib(9)#Kommandodialog#ie##ie(9)# 
+ 
+ 
+Das Paket "#ib#command dialogue#ie#" dient zur zentralen Steuerung und einfachen Durch­
+führung von #ib#Kommando-Dialog#ie#en wie 
+ 
+     "datei" loeschen (j/n)? 
+ 
+Er wird von allen Systemteilen verwandt, die einen Kommandodialog mit dem Benut­
+zer aufnehmen. Anwenderprozeduren mit ähnlichen Problemen sollten genauso damit
+arbeiten. 
+ 
+Der Kommandodialog kann zentral aus- und eingeschaltet werden. 
+ 
+ 
+ 
+#ib#command dialogue#ie# 
+     BOOL PROC command dialogue 
+     Zweck: Liefert den aktuellen Zustand des Kommandodialogs: 
+            TRUE   -  Dialog soll geführt werden! 
+            FALSE  -  Dialog soll nicht geführt werden! 
+ 
+     PROC command dialogue (BOOL CONST status) 
+     Zweck: Schaltet den Kommandodialog ein ('status' = TRUE) oder aus ('status'
+            = FALSE). Der alte Zustand wird überschrieben. Soll später wieder in
+            den alten Zustand zurückgeschaltet werden, muß er vorher erfragt und
+            gesichert werden. 
+ 
+#ib#yes#ie# 
+     BOOL PROC yes (TEXT CONST question) 
+     Zweck: a) Kommandodialog soll geführt werden (command dialogue = TRUE) 
+               Der übergebene Fragetext wird durch " (j/n)?" ergänzt auf dem Ter­
+               minal ausgegeben. Als Antwort wird eine der Tasten <j>, <J>,
+               <y>, <Y>, <n>, <N> akzeptiert; jede andere Eingabe führt zu
+               einem akustischen Signal und der Fragewiederholung. Das Resultat
+               der Prozedur ist 
+                      TRUE  bei  bejahender Antwort (j,J,y,Y) 
+                      FALSE bei  verneinender Antwort (n,N) 
+            b) Kommandodialog soll nicht geführt werden (command dialogue =
+               FALSE) 
+               Keine Aktion, das Resultat ist TRUE. 
+ 
+#ib#no#ie# 
+     BOOL PROC no (TEXT CONST question) 
+     Zweck: a) Kommandodialog soll geführt werden (command dialogue = TRUE) 
+               Frage und Antwort wie bei 'yes'. Das Resultat ist 
+                      TRUE  bei  verneinender Antwort (n,N) 
+                      FALSE bei  bejahender Antwort (j,J,y,Y) 
+            b) Kommandodialog soll nicht geführt werden (command dialogue =
+               FALSE) 
+               Keine Aktion, das Resultat ist FALSE. 
+ 
+#ib#say#ie# 
+     PROC say (TEXT CONST message) 
+     Zweck: IF command dialogue THEN out (text) FI 
+ 
+#ib#last param#ie# 
+     TEXT PROC last param 
+     Zweck: Liefert den zuletzt gesetzten Parameter-Text (siehe folgende Proze­
+            dur). Falls 'command dialogue' = TRUE und die 'param position' > 0
+            ist, wird der Parametertext als Standardparameter an der angegebenen
+            x-Position eine Zeile höher in der Form ("...") ausgegeben. Diese Proze­
+            dur wird von den parameterlosen Kommandos bzw. Prozeduren wie
+            'edit', 'run' usw. verwandt, um mit dem Standardparameter weiterzuar­
+            beiten. 
+ 
+     PROC last param (TEXT CONST new) 
+     Zweck: Setzt 'last param' auf 'new'. (Das Setzen muß explizit durchgeführt
+            werden und geschieht nicht implizit durch den 'command handler'. 'Last
+            param' wird beispielsweise von den einparametrigen Prozeduren 'edit'
+            und 'run' gesetzt. 
+ 
+#ib#param position#ie# 
+     PROC param position (INT CONST x) 
+     Zweck: Setzt die Echoposition für 'last param'. Bei x=0 wird ein Echo unter­
+            drückt. 
+ 
+#ib#std#ie# 
+     TEXT PROC std 
+     Zweck: Liefert wie 'last param' den zuletzt gesetzten Parameter. Im Gegensatz
+            dazu wird der Parameter aber nicht ausgegeben. 
+ 
+ 
+ 
+ 
+ 
+#ib##ib(9)#Kommandoverarbeitung#ie##ie(9)# 
+ 
+ 
+Das Paket '#ib#command handler#ie#' stellt Prozeduren zur #ib#Kommandoanalyse#ie# und zum
+Führen des kompletten Kommandodialogs zur Verfügung. 
+ 
+ 
+#ib#get command#ie# 
+     PROC get command (TEXT CONST dialogue text, TEXT VAR command line) 
+     Zweck: Falls eine Fehlermeldung aussteht, ('is error' liefert TRUE), wird sie über
+            'put error' ausgegeben und der Fehlerzustand zurückgesetzt. Der 'dialo­
+            gue text' wird als Dialogaufforderung ausgegeben und der Benutzer
+            kann eine Kommandozeile eingeben. Die letzte Kommandozeile wird
+            ihm dabei automatisch (zum Ändern) angeboten, wenn vorher eine
+            Fehlermeldung anstand. Der Benutzer kann dies ebenfalls erreichen,
+            wenn er zu Beginn <ESC k> gibt. Die Kommandozeile wird dem Auf­
+            rufer in der Variablen 'command line' geliefert. 
+ 
+     PROC get command (TEXT CONST dialogue text) 
+     Zweck: s.o. Allerdings wird eine interne Kommandozeile des Pakets 'command
+            handler' als 'command line' verwandt. Dadurch wird es möglich, alle
+            Spuren einer Kommandoeingabe durch 'cover tracks' zu beseitigen. 
+ 
+#ib#analyze command#ie# 
+     PROC analyze command (TEXT CONST command list, command line, 
+                           INT CONST permitted type, 
+                           INT VAR command index, number of params, 
+                           TEXT VAR param 1, param 2) 
+     Zweck: Die übergebene Kommandozeile ('command line') wird anhand der
+            übergebenen 'command list' analysiert. Sie ist ein TEXT, der aus einer
+            Folge von Kommandospezifikationen besteht. Jede hat die Form 
+                          K:I.P 
+ 
+                  K    Kommandotext, Prozedurname nach ELAN-Syntax 
+                  I    Hauptindex, Form eines INT-Denoters 
+                  P    Parameterspezifikation, eine Folge der Ziffern 0, 1 und 2. 
+ 
+             Beispiele: 
+               -  'edit:15.012' 
+                  Das Kommando 'edit' wird in drei verschieden parametrisierten
+                  Formen spezifiziert: 
+                     edit mit 0 Parameter   erhält Index 15 
+                     edit mit 1 Parameter   erhält Index 16 
+                     edit mit 2 Parametern  erhält Index 17 
+ 
+               -  'fetch:18.1' 
+                  Das Kommando 'fetch' wird in einer Form spezifiert: 
+                     fetch mit 1 Parameter  erhält Index 18 
+ 
+            Die Analyse erfolgt gemäß ELAN-Syntaxregeln. Dabei sind als Para­
+            meter Denoter vom Typ TEXT und vom übergebenen ' permitted type'
+            zugelassen. Diese Typen werden wie beim Scanner (s. Benutzerhand­
+            buch Programmierung Kap. 5.6) angegeben: 
+ 
+                1    tag 
+                2    bold 
+                3    number 
+                4    text 
+                5    operator 
+                6    delimiter 
+ 
+            Falls das Kommando in der Kommandoliste gefunden wird (und die
+            Syntax in Ordnung ist), wird der entsprechende 'command index' zu­
+            rückgemeldet. Die Parameter werden (falls vorhanden) in 'param 1' und
+            'param 2' abgelegt. Undefinierte oder nicht vorhandene Parameter
+            werden als Niltext geliefert. Wenn ein  Kommando vorhanden ist, die
+            Anzahl der Parameter aber nicht stimmt, wird der negative Hauptindex
+            geliefert. Ist es vollkommen unbekannt oder ist die Eingabe zu komplex
+            (mehrere Kommandos, Ausdrücke oder komplexere ELAN-Statements),
+            wird 0 geliefert. Der Anwender kann in solchen Fällen die Analyse mit
+            einer anderen Kommandoliste fortsetzen, das Kommando dem ELAN-
+            Compiler übergeben oder eine Fehlermeldung auslösen (s. 'command
+            error'). 
+ 
+     PROC analyze command (TEXT CONST command list, 
+                           INT CONST permitted type, 
+                           INT VAR command index, number of params, 
+                           TEXT VAR param 1, param 2) 
+     Zweck: s.o. Allerdings wird die interne Kommandozeile des Pakets 'command
+            handler' als 'command line' verwandt. 
+ 
+#ib#command error#ie# 
+     PROC command error 
+     Zweck: Falls bei der Kommandoanalyse ein Fehler gefunden wurde, führt er
+            nicht zum 'errorstop', sondern wird nur hinterlegt. (Soll das Kommando
+            dem Compiler übergeben werden, liegt ja evt. überhaupt kein Fehler
+            vor.) Diese hinterlegte Meldung kann mit 'command error' als 'errorstop'
+            gegeben werden. Mögliche Meldungen: 
+                    "ungueltiger name" 
+                    ") fehlt" 
+                    "( fehlt" 
+                    "Parameter ist kein TEXT ("fehlt)" 
+                    "Kommando zu schwierig" 
+ 
+#ib#cover tracks#ie# 
+     PROC cover tracks 
+     Zweck: Die Spuren der letzten Kommandoanalyse werden gelöscht. Das dient
+            u.a. dazu, daß später eingerichtete Sohntasks keine Relikte des Kom­
+            mandos mehr auf dem Textheap vorfinden und evtl. mittels nicht initiali­
+            sierter TEXT VARs herausfinden können. Vollständig können die Spuren
+            aber nur dann gelöscht werden, wenn für die Kommandoanalyse die
+            'get command'- und 'analyze command'-Prozeduren benutzt wurden,
+            die auf der internen Kommandozeile des Pakets 'command handler'
+            arbeiten. 
+ 
+#ib#do command#ie# 
+     PROC do command 
+     Zweck: Die interne Kommandozeile des Pakets 'command handler' wird dem
+            ELAN-Compiler zur Ausführung übergeben. 
+ 
+ 
+ 
+ 
+ 
+#ib(9)#Beispiele zur Kommandoverarbeitung#ie(9)# 
+ 
+ 
+#ib##ub#Kleiner Monitor#ue##ie# 
+ 
+ 
+LET command list = "otto:1.12emil:3.012hugo:6.0" ; 
+ 
+LET   number = 3 , 
+      text   = 4 ; 
+ 
+INT VAR command index, params ; 
+TEXT VAR param 1, param 2 ; 
+ 
+PROC monitor : 
+ 
+     disable stop ; 
+     command dialogue (TRUE) ; 
+     REP  get command ("gib kleines kommando:") ; 
+          analyze command (command list, text, 
+                           command index, params, 
+                           param 1, param 2) ; 
+          execute command 
+     PER 
+ 
+ENDPROC monitor ; 
+ 
+PROC execute command : 
+ 
+     enable stop ; 
+     SELECT command index OF 
+          CASE 1 : otto (param 1) 
+          CASE 2 : otto (param 1, param 2) 
+          CASE 3 : emil 
+          CASE 4 : emil (param 1) 
+          CASE 5 : emil (param 1, param 2) 
+          CASE 6 : hugo 
+       OTHERWISE do command line 
+     END SELECT 
+ 
+ENDPROC execute command ; 
+ 
+ 
+ 
+#ib(9)##ub#Steuerkommando-Analyse#ue##ie(9)# 
+ 
+ 
+PROC command (TEXT CONST command text) : 
+ 
+     disable stop ; 
+     command dialoge (FALSE) ; 
+     analyze command (command list, command text, number, 
+                      command index, params, param 1, param 2) ; 
+     execute command ; 
+     IF is error 
+       THEN put error ; 
+            clear error 
+     FI 
+ 
+ENDPROC command ; 
+ 
+PROC execute command : 
+ 
+     enable stop ; 
+     SELECT command index OF 
+          CASE .... 
+        OTHERWISE    IF command index = 0 
+                        THEN errorstop ("unbekanntes Kommando") ELSE command error 
+                     FI 
+     END SELECT 
+ 
+ENDPROC execute command ; 
+ 
+ 
+ 
+ 
+ 
+#ib(9)#4.4. Verschiedenes#ie(9)# 
+ 
+ 
+#ib(9)##ib#SESSION#ie(9)##ie# 
+ 
+ 
+Mit Hilfe von 'session' kann man feststellen, ob das System neu gestartet wurde. Dabei
+spielt es keine Rolle, ob es korrekt ('shutup') abgeschaltet wurde, oder ob es sich um
+einen "RERUN" handelt. 
+ 
+#ib#session#ie# 
+     INT PROC session 
+     Zweck: Liefert eine "Sitzungsnummer". Diese wird automatisch bei jedem
+            Systemstart erhöht. 
+ 
+Beispiel: 
+ 
+ 
+     REP 
+       INT VAR old session := session ; 
+       WHILE session = old session REP pause (100) PER ; 
+       putline ("Neuer Systemstart") 
+     PER. 
+ 
+ 
+ 
+ 
+#ib(9)##ib#INITFLAG#ie##ie(9)# 
+ 
+ 
+Im Multi-User-System ist es oft notwendig, Pakete beim Einrichten einer neuen Task in
+dieser neu zu initialisieren. Das muß z.B. bei der Dateiverwaltung gemacht werden, da
+die neue Task ja nicht die Dateien des Vaters erbt. Mit Hilfe von INITFLAG-Objekten
+kann man zu diesem Zweck feststellen, ob ein Paket #on("b")##on("i")#in dieser Task#off("b")##off("i")# schon initialisiert
+wurde. 
+ 
+ 
+#ib#INITFLAG#ie# 
+     TYPE INITFLAG 
+     Zweck: Erlaubt die Deklaration entsprechender Flaggen. 
+ 
+:= 
+     OP := (INITFLAG VAR flag, BOOL CONST flagtrue) 
+     Zweck: Erlaubt die Initialisierung von INITFLAGs 
+ 
+#ib#initialized#ie# 
+     BOOL PROC initialized (INITFLAG VAR flag) 
+     Zweck: Wenn die Flagge in der Task A auf TRUE oder FALSE gesetzt wurde,
+            dann liefert sie beim ersten Aufruf den entsprechenden Wert, danach
+            immer TRUE (in der Task A!). 
+            Beim Einrichten von Söhnen wird die Flagge in den Sohntasks automa­
+            tisch auf FALSE gesetzt. So wird erreicht, daß diese Prozedur in den neu
+            eingerichteten Söhnen und Enkeltasks genau beim ersten Aufruf FALSE
+            liefert. 
+ 
+ 
+Beispiel: 
+ 
+          PACKET stack DEFINES push, pop: 
+ 
+          INITFLAG VAR in this task := FALSE ; 
+          INT VAR stack pointer ; 
+          ROW 1000 INT VAR stack ; 
+ 
+          PROC push (INT CONST value) : 
+ 
+            initialize stack if necessary ; 
+            .... 
+ 
+          ENDPROC push ; 
+ 
+          PROC pop (INT VAR value) : 
+ 
+            initialize stack if necessary ; 
+            .... 
+ 
+          ENDPROC pop ;. 
+ 
+          initialize stack if necessary : 
+            IF NOT initialized (in this task) 
+              THEN stack pointer := 1 
+            FI . 
+ 
+          ENDPACKET stack 
+ 
+ 
+ 
+ 
+ 
+#ib(9)##ib#Bit-Handling#ie##ie(9)# 
+ 
+ 
+Die #ib#Bit-Operationen#ie# arbeiten auf INT-Objekten. Sie können z.B. für die Systempro­
+grammierung benutzt werden, wenn es um Bitmasken u.ä. geht. 
+ 
+Ein INT besteht aus 16 Bits. Dabei hat das niederwertigste die Nummer 0, das höch­
+stwertige die Nummer 15. 
+ 
+ 
+#ib#AND#ie# 
+     INT OP AND (INT CONST left, right) 
+     Zweck: Bitweise UND-Verknüpfung von 'left' mit 'right'. 
+ 
+#ib#OR#ie# 
+     INT OP OR (INT CONST left, right) 
+     Zweck: Bitweise ODER-Verknüpfung von 'left' mit 'right'. 
+ 
+#ib#XOR#ie# 
+     INT OP XOR (INT CONST left, right) 
+     Zweck: Bitweise EXCLUSIV-ODER-Verknüpfung von 'left' mit 'right'. 
+ 
+#ib#bit#ie# 
+     BOOL PROC bit (INT CONST bits, bit no) 
+     Zweck: Liefert TRUE genau dann, wenn das Bit mit der Nummer 'bit no' in dem
+            INT 'bits' gesetzt ist. 
+ 
+#ib#set bit#ie# 
+     PROC set bit (INT VAR bits, INT CONST bit no) 
+     Zweck: Das Bit mit der Nummer 'bit no' wird in 'bits' auf 1 gesetzt. 
+ 
+#ib#reset bit#ie# 
+     PROC reset bit (INT VAR bits, INT CONST bit no) 
+     Zweck: Das Bit mit der Nummer 'bit no' wird in 'bits' auf 0 gesetzt. 
+ 
+#ib#rotate#ie# 
+     PROC rotate (INT VAR bits, INT CONST number of bits) 
+     Zweck: Bits können mit dieser Prozedur zyklisch geschiftet werden. 
+            Bsp.: rotate (1,1)      ---> 2 
+                  rotate (1,2)      ---> 4 
+                  rotate (1,-3)     ---> 16384 
+                  rotate (16384,3)  ---> 1 
+ 
+#ib#lowest set#ie# 
+     INT PROC lowest set (INT CONST bits) 
+     Zweck: Liefert die Nummer des niederwertigsten 1-Bits in 'bits'. Ist kein Bit auf 1
+            gesetzt, wird -1 geliefert. 
+ 
+#ib#lowest reset#ie# 
+     INT PROC lowest reset (INT CONST bits) 
+     Zweck: Liefert die Nummer des niederwertigsten 0-Bits in 'bits'. Ist kein Bit auf 0
+            gesetzt, wird -1 geliefert. 
+ 
+ 
+ 
+ 
+ 
+#ib(9)#4.5. #ib#Blockorientierte Ein-/Ausgabe#ie##ie(9)# 
+ 
+ 
+ 
+Die blockorientierte Ein-/Ausgabe dient dazu, Datenraumseiten (#ib#Blöcke#ie#) oder Teile
+davon über die #ib#Kanäle#ie# zu transferieren. Sie wird vom System u.a. beim Archivzugriff
+und bei der Konfigurierung der Kanäle eingesetzt. 
+ 
+Die Wirkung der blockorientierten Ein-/Ausgabeoperationen kann dabei kanal- und
+rechnerspezifisch unterschiedlich sein. 
+Auf dem Archivkanal (31) und allen anderen Block-IO-Kanälen werden bei 
+'code 1 = 0' die normalen Blocklese- bzw. -schreiboperationen durchgeführt. 'code 2'
+gibt dabei die Blocknummer an. Andere (positive) Werte von 'code 1' sind zur Zeit
+nicht offiziell definiert. Negative Werte können vom SHard für Spezialaufgaben verge­
+ben werden. 
+ 
+ 
+ 
+#ib#blockin#ie# 
+     PROC blockin (DATASPACE VAR ds, INT CONST page nr, code1, code2, 
+                   INT VAR return code) 
+     Zweck: Die Seite 'page nr' des Datenraums 'ds' wird "eingelesen". Die Opera­
+            tion kann durch 'code1' und 'code2' näher gesteuert werden. 
+ 
+     PROC blockin (ROW 256 INT VAR block, INT CONST code1, code2, 
+                   INT VAR return code) 
+     Zweck: Wie oben, nur wird der Block direkt als Datenstruktur übergeben. 
+ 
+#ib#blockout#ie# 
+     PROC blockout (DATASPACE CONST ds, INT CONST page nr, 
+                    code1, code2, INT VAR return code) 
+     Zweck: Die Seite 'page nr' des Datenraums 'ds' wird "ausgegeben". Die Opera­
+            tion kann durch 'code1' und 'code2' näher gesteuert werden. 
+ 
+     PROC blockout (ROW 256 INT CONST block, INT CONST code1, code2, 
+                    INT VAR return code) 
+     Zweck: Wie oben, nur wird der Block als Datenstruktur übergeben. 
+ 
+#ib#control#ie# 
+     PROC control (INT CONST code1, code2, code3, INT VAR return code) 
+     Zweck: Diese Prozedur dient zur Kanalsteuerung. 
+ 
+#ib#ds pages#ie# 
+     INT PROC ds pages (DATASPACE CONST ds) 
+     Zweck: Liefert die Anzahl der belegten Seiten eines Datenraums. (Jede Seite ist
+            512 Byte groß.) 
+ 
+#ib#next ds page#ie# 
+     INT PROC next ds page (DATASPACE CONST ds, INT CONST page nr) 
+     Zweck: Liefert die Nummer der nächsten (von 'page nr' an gerechneten) Seite
+            des Datenraums. Die erste belegte Seite erhält man durch 
+ 
+                     next ds page (ds, -1) 
+ 
+            #on ("b")#Achtung: Die Seitennummern müssen nicht lückenlos sein.#off ("b")# 
+

@@ -1,0 +1,3473 @@
+PACKET eumel printer                           (* Autor   : Rudolf Ruland *)
+                                               (* Version : 5             *)
+                                               (* Stand   : 25.04.88      *)
+       DEFINES print, 
+               with elan listings,
+               is elan source,
+               bottom label for elan listings,
+               x pos,
+               y pos,
+               y offset index,
+               line type,
+               material,
+               pages printed,
+ 
+(* >>> ***************************************************************** <<< *)
+(* >>> Aus Kompatibilitätsgründen zur Textverarbeitung der Version 1.8.0 <<< *)
+(* >>> siehe bei 'Berechnung des Zeilenvorschubs'                        <<< *)
+ 
+               old linefeed :
+ 
+BOOL VAR old linefeed calculation := TRUE;
+ 
+PROC old linefeed (BOOL CONST value) : old linefeed calculation := value END PROC old linefeed;
+ 
+BOOL PROC old linefeed : old linefeed calculation END PROC old linefeed;
+ 
+(* >>> ***************************************************************** <<< *)
+ 
+INT CONST int length  :=  length of one int;
+
+. length of one int :
+    INT VAR int counter := 0, int value := max int;
+    REP int counter INCR 1;
+        int value   := int value DIV 256;
+    UNTIL int value = 0 PER;
+    int counter
+.;
+
+(* >>> ***************************************************************** <<< *)
+ 
+LET std x wanted                   =  2.54,
+    std y wanted                   =  2.35,
+    std limit                      =  16.0,
+    std pagelength                 =  25.0,
+    std linefeed faktor            =  1.0,
+    std material                   =  "";
+ 
+LET blank                          =  " ",
+    blank code 1                   =  33,
+    geschuetztes blank             =  ""223"", 
+    keine blankanalyse             =  0,
+    einfach blank                  =  1,
+    doppel blank                   =  2,
+ 
+    anweisungszeichen              =  "#",
+    anweisungszeichen code 1       =  36,
+    geschuetztes anweisungszeichen =  ""222"",
+    druckerkommando zeichen        =  "/",
+    quote                          =  """",
+    kommentar zeichen              =  "-",
+ 
+    punkt                          =  ".",
+ 
+    leer                           =   0,
+ 
+    kommando token                 =  0,
+    text token                     =  1,
+ 
+    underline linetype             =  1,
+(*  fraction  linetype             =  2,
+    root      linetype             =  3,
+*)
+    underline bit                  =  0,
+    bold bit                       =  1,
+    italics bit                    =  2,
+    modifikations liste            =  "ubir",
+    anzahl modifikationen          =  4, 
+ 
+    document                       =  1,
+    page                           =  2,
+ 
+    write text                     =  1,
+    write cmd                      =  2,
+    carriage return                =  3, 
+    move                           =  4,
+    draw                           =  5,
+    on                             =  6, 
+    off                            =  7,
+    type                           =  8,
+ 
+    text code                      =  1, 
+(*  error code                     =  2, *)
+    token code                     =  3,
+     
+    tag type                       =  1,
+    bold type                      =  2,
+    number type                    =  3,
+    text type                      =  4,
+    delimiter type                 =  6,
+    eof type                       =  7;
+ 
+ 
+INT CONST null ausgang            :=  minint,
+          erweiterungs ausgang    :=  maxint,
+          blank ausgang           :=  maxint - 1,
+          anweisungs ausgang      :=  maxint - 2,
+          d code ausgang          :=  maxint - 3,
+          max breite              :=  maxint - 4,
+ 
+          linien token            := -1;
+ 
+ROW anzahl modifikationen INT CONST modifikations werte :=
+                               ROW anzahl modifikationen INT : (1, 2, 4, 8);
+ 
+TEXT CONST anweisungsliste := 
+    "type:1.1on:2.1off:3.1center:4.0right:5.0u:6.0d:7.0e:8.0b:9.0" +
+    "fillchar:10.1mark:11.2markend:12.0" +
+    "ub:13.0ue:14.0fb:15.0fe:16.0" +
+    "block:20.0columns:21.2columnsend:22.0free:23.1limit:24.1linefeed:25.1" + 
+    "material:26.1page:27.01pagelength:29.1start:30.2" + 
+    "table:31.0tableend:32.0clearpos:33.01" + 
+    "lpos:35.1rpos:36.1cpos:37.1dpos:38.2bpos:39.2" +
+    "textbegin:40.02textend:42.0" +
+    "indentation:43.1ytab:44.1";
+ 
+LET a type             =   1,      a block            =  20,
+    a on               =   2,      a columns          =  21,
+    a off              =   3,      a columnsend       =  22,
+    a center           =   4,      a free             =  23,
+    a right            =   5,      a limit            =  24,
+    a up               =   6,      a linefeed         =  25,
+    a down             =   7,      a material         =  26,
+    a end up or down   =   8,      a page0            =  27,
+    a bsp              =   9,      a page1            =  28,
+    a fill char        =  10,      a pagelength       =  29,
+    a mark             =  11,      a start            =  30,
+    a markend          =  12,      a table            =  31,
+    a ub               =  13,      a tableend         =  32,
+    a ue               =  14,      a clearpos0        =  33,
+    a fb               =  15,      a clearpos1        =  34,
+    a fe               =  16,      a lpos             =  35,
+                                   a rpos             =  36,
+                                   a cpos             =  37,
+                                   a dpos             =  38,
+                                   a bpos             =  39,
+                                   a textbegin0       =  40,
+                                   a textbegin2       =  41,
+                                   a textend          =  42,
+                                   a indentation      =  43,
+                                   a y tab            =  44;
+ 
+INT VAR  a xpos, a breite, a font, a modifikationen,
+         a modifikationen fuer x move, a ypos, aktuelle ypos,
+         letzter font, letzte modifikationen,
+         d ypos, d xpos, d font, d modifikationen, 
+ 
+         zeilenpos, alte zeilenpos, zeilen laenge, anzahl zeichen, ausgang,
+         anzahl einrueck blanks, blankbreite, fuehrende anweisungen,
+         einrueckbreite, aktuelle einrueckbreite, alte einrueckbreite,
+         aktuelle zeilentiefe der letzten zeile,
+         blankmodus, alter blankmodus,
+         token zeiger, erstes token der zeile, 
+ 
+         erstes tab token, tab anfang, anzahl blanks, 
+         d code 1, d pitch, fuell zeichen breite, erstes fuell token, 
+         letztes fuell token, 
+ 
+         x size, y size, x wanted, y wanted, x start, y start,
+         pagelength, limit, indentation,
+         left margin, top margin, seitenlaenge,
+         papierlaenge, papierbreite,
+         luecke, anzahl spalten, aktuelle spalte,
+ 
+         verschiebung, linien verschiebung,
+         rest, neue modifikationen, modifikations modus, pass,
+ 
+         int param, anweisungs index, anzahl params,
+ 
+         gedruckte seiten;
+ 
+BOOL VAR zeile ist absatzzeile, letzte zeile war absatzzeile,
+         zeile muss geblockt werden, rechts, a block token, offsets,
+         tabellen modus, block modus, center modus, right modus,
+         seite ist offen, vor erster seite;
+ 
+REAL VAR linefeed faktor, real param;
+ 
+TEXT VAR zeile, anweisung, par1, par2, material wert, replacements,
+         fuell zeichen, d string, font offsets;
+ 
+ROW 256 INT VAR zeichenbreiten, replacement tabelle, zeichen zaehler;
+ 
+INITFLAG VAR in dieser task := FALSE;
+ 
+. zeile ist zu ende               : zeilenpos > zeilen laenge
+ 
+. zeilen breite                   : a xpos - left margin
+ 
+. naechstes zeichen ist blank     : pos (zeile, blank, zeilenpos + 1, zeilenpos + 1) <> 0
+ 
+. naechstes nicht blankes zeichen : pos (zeile, ""33"", ""255"", zeilenpos)
+ 
+. in letzter spalte               : aktuelle spalte >= anzahl spalten
+ 
+. anfangs blankmodus :
+    INT VAR dummy;
+    IF   center modus OR right modus
+         THEN dummy
+    ELIF index zaehler = 0
+         THEN blankmodus
+         ELSE alter blankmodus
+    FI
+ 
+. initialisiere tab variablen : 
+    erstes tab token := token index f + 1;
+    tab anfang       := zeilen breite;
+    anzahl blanks    := 0;
+    a block token    := FALSE;
+.;
+ 
+(******************************************************************)
+ 
+LET zeilen nr laenge  =  4,
+    teil einrueckung  =  5,
+ 
+    headline pre  = "Zeile    ****   E L A N    EUMEL 1.8.2  ****   ",
+    headline post = "   ****    ";
+ 
+INT  VAR zeilen nr, rest auf seite,
+         max zeichen zeile, max zeichen fuss, layout laenge, layout laenge name,
+         symbol type, naechster symbol type, select counter;
+ 
+BOOL VAR vor erstem packet, innerhalb einer liste;
+ 
+TEXT VAR bottom label, dateiname, layout blanks, refinement layout zeile;
+ 
+ 
+. symbol           : fuell zeichen
+. naechstes symbol : d string
+. elan text        : d token. text
+.; 
+ 
+(******************************************************************)
+(*** Berechnung des Zeilenvorschubs                             ***)
+ 
+INT VAR                 fonthoehe,                fonttiefe, fontdurchschuss,
+         groesste       fonthoehe, groesste       fonttiefe,
+         groesste analysatorhoehe, groesste analysatortiefe,
+         letzte   zeilenhoehe, letzte   zeilentiefe, 
+         aktuelle zeilenhoehe, aktuelle zeilentiefe;
+REAL VAR real fontgroesse;
+ 
+.          fontgroesse   :          fonthoehe   +          fonttiefe
+. groesste fontgroesse   : groesste fonthoehe   + groesste fonttiefe
+. letzte   zeilengroesse : letzte   zeilenhoehe + letzte   zeilentiefe
+. aktuelle zeilengroesse : aktuelle zeilenhoehe + aktuelle zeilentiefe
+ 
+.
+  initialisiere zeilenvorschub :
+    aktuelle zeilenhoehe     := letzte zeilenhoehe;
+    aktuelle zeilentiefe     := letzte zeilentiefe;
+    groesste fonthoehe       := fonthoehe;
+    groesste fonttiefe       := fonttiefe;
+    groesste analysatorhoehe := 0;
+    groesste analysatortiefe := 0;
+ 
+.
+  ueberpruefe groesste fontgroesse :
+    IF old linefeed calculation
+       THEN
+(* >>> Maximumsbestimmung über Fontgröße ******************************* <<< *)
+            IF fontgroesse >= groesste fontgroesse
+               THEN groesste fonthoehe := fonthoehe;
+                    groesste fonttiefe := fonttiefe;
+            FI;
+       ELSE
+(* >>> Maximumsbestimmung über Fonthöhe und Fonttiefe ****************** <<< *)
+            groesste fonthoehe := max (fonthoehe, groesste fonthoehe);
+            groesste fonttiefe := max (fonttiefe, groesste fonttiefe);
+    FI;
+ 
+.
+  berechne fontgroesse :
+    fonthoehe INCR (fontdurchschuss DIV 2 + fontdurchschuss MOD 2);
+    fonttiefe INCR  fontdurchschuss DIV 2;
+    real fontgroesse := real (fontgroesse);
+ 
+.
+  berechne letzte zeilengroesse :
+    REAL CONST zeilengroesse := real fontgroesse * linefeed faktor;
+    letzte zeilenhoehe := int (real (fonthoehe) * zeilengroesse / real fontgroesse + 0.5);
+    letzte zeilentiefe := int (zeilengroesse + 0.5) - letzte zeilenhoehe;
+.;
+ 
+PROC berechne aktuelle zeilengroesse :
+ 
+    IF linefeed faktor >= 1.0
+       THEN aktuelle zeilenhoehe := max (groesste fonthoehe, letzte zeilenhoehe);
+            aktuelle zeilentiefe := max (groesste fonttiefe, letzte zeilentiefe);
+       ELSE
+            IF old linefeed calculation
+               THEN
+(* >>> Maximumsbestimmung über Fontgröße ******************************* <<< *)
+                    IF letzte zeilengroesse >= aktuelle zeilengroesse
+                       THEN aktuelle zeilenhoehe := letzte zeilenhoehe;
+                            aktuelle zeilentiefe := letzte zeilentiefe;
+                    FI;
+               ELSE
+(* >>> Maximumsbestimmung über Fonthöhe und Fonttiefe ****************** <<< *)
+                    aktuelle zeilenhoehe := max (letzte zeilenhoehe, aktuelle zeilenhoehe);
+                    aktuelle zeilentiefe := max (letzte zeilentiefe, aktuelle zeilentiefe);
+            FI;
+    FI;
+    aktuelle zeilenhoehe := max (groesste analysatorhoehe, aktuelle zeilenhoehe);
+    aktuelle zeilentiefe := max (groesste analysatortiefe, aktuelle zeilentiefe);
+ 
+END PROC berechne aktuelle zeilengroesse;
+ 
+(******************************************************************)
+(*** tokenspeicher                                              ***)
+ 
+LET max number token  = 3000,
+    max number ypos   = 1000,
+ 
+    TOKEN      = STRUCT (TEXT text,
+                         INT  xpos, breite, font, modifikationen,
+                              modifikationen fuer x move, 
+                              offset index, naechster token index, 
+                         BOOL block token ),
+ 
+    YPOS       = STRUCT (INT ypos, vorheriger ypos index, naechster ypos index,
+                             erster token index, letzter token index ), 
+ 
+    TOKENLISTE = STRUCT (ROW max number token TOKEN token liste,
+                         ROW max number ypos  YPOS  ypos  liste );
+ 
+DATASPACE VAR ds;
+ 
+BOUND TOKENLISTE VAR tokenspeicher;
+ 
+TOKEN VAR d token, offset token;
+ 
+INT VAR erster ypos index a, letzter ypos index a, 
+        erster ypos index d, letzter ypos index d, 
+        ypos  index, ypos  index f, ypos  index a, ypos  index d, 
+        token index, token index f;
+ 
+. t  : tokenspeicher. token liste (token index)
+. tf : tokenspeicher. token liste (token index f)
+ 
+. y  : tokenspeicher. ypos  liste (ypos  index) 
+. yf : tokenspeicher. ypos  liste (ypos  index f) 
+. ya : tokenspeicher. ypos  liste (ypos  index a)
+. yd : tokenspeicher. ypos  liste (ypos  index d)
+ 
+. loesche druckspeicher :
+    erster ypos index d := 0;
+           ypos index f := 0;
+          token index f := 0;
+ 
+. druckspeicher ist nicht leer :
+    erster ypos index d <> 0
+ 
+. loesche analysespeicher :
+    erster ypos index a := 0;
+ 
+. analysespeicher ist nicht leer :
+    erster ypos index a <> 0
+.; 
+ 
+(******************************************************************)
+(*** anweisungsspeicher                                         ***)
+ 
+INT  VAR anweisungszaehler;
+TEXT VAR anweisungs indizes, params1 zeiger, params2 zeiger;
+THESAURUS VAR params1, params2; 
+ 
+PROC loesche anweisungsspeicher :
+ 
+    anweisungs zaehler := 0;
+    anweisungs indizes := "";
+    params1 zeiger     := "";
+    params2 zeiger     := "";
+    params1            := empty thesaurus;
+    params2            := empty thesaurus;
+ 
+END PROC loesche anweisungsspeicher; 
+ 
+(******************************************************************)
+(*** indexspeicher                                              ***)
+ 
+INT  VAR index zaehler, hoechster index zaehler;
+TEXT VAR letzte index breite, xpos vor index, zeilenpos nach index, grosse fonts,
+         index verschiebung;
+ 
+PROC loesche indexspeicher :
+ 
+    index zaehler           := 0;
+    hoechster index zaehler := 0;
+    letzte index breite     := "";
+    xpos vor index          := "";
+    zeilenpos nach index    := "";
+    index verschiebung      := "";
+    grosse fonts            := "";
+ 
+END PROC loesche indexspeicher; 
+ 
+ 
+PROC loesche hoehere index level :
+ 
+    IF hoechster index zaehler > index zaehler
+       THEN letzte index breite  := subtext (letzte index breite, 1, int length * index zaehler);
+            xpos vor index       := subtext (xpos vor index, 1, int length * index zaehler);
+            zeilenpos nach index := subtext (zeilenpos nach index, 1, int length * index zaehler);
+            index verschiebung   := subtext (index verschiebung, int length * index zaehler);
+            grosse fonts         := subtext (grosse fonts, 1, int length * index zaehler);
+            hoechster index zaehler := index zaehler;
+    FI;
+ 
+END PROC loesche hoehere index level;
+ 
+(******************************************************************)
+(*** tabellenspeicher                                           ***)
+ 
+LET max tabs          =  30,
+    TABELLENEINTRAG   =  STRUCT (INT tab typ, tab position, tab param);
+ 
+TEXT VAR tab liste, fill char;
+THESAURUS VAR d strings;
+ROW max tabs TABELLENEINTRAG VAR tabspeicher;
+ 
+INT VAR tab index;
+ 
+. tab typ       : tab speicher (tab liste ISUB tab index). tab typ
+. tab position  : tab speicher (tab liste ISUB tab index). tab position
+. tab param     : tab speicher (tab liste ISUB tab index). tab param 
+. anzahl tabs   : LENGTH tab liste DIV int length 
+.;
+ 
+PROC loesche tabellenspeicher :
+ 
+    fill char := " ";
+    tabliste  := "";
+    d strings := empty thesaurus;
+    FOR tab index FROM 1 UPTO max tabs
+        REP tab speicher (tab index). tab typ := leer PER;
+ 
+END PROC loesche tabellenspeicher;
+ 
+(******************************************************************)
+(*** markierungsspeicher                                        ***)
+ 
+INT VAR mark index l, mark index r, alter mark index l, alter mark index r;
+ 
+ROW 4 TOKEN VAR mark token;
+ 
+. markierung links  : mark index l > 0
+. markierung rechts : mark index r > 0
+.;
+ 
+PROC loesche markierung :
+ 
+     mark index l := 0;
+     mark index r := 0;
+ 
+END PROC loesche markierung;
+ 
+ 
+PROC loesche alte markierung :
+ 
+     alter mark index l := 0;
+     alter mark index r := 0;
+ 
+END PROC loesche alte markierung;
+ 
+ 
+PROC initialisiere markierung :
+ 
+     FOR mark index l FROM 1 UPTO 4
+     REP mark token (mark index l). modifikationen fuer x move := 0;
+         mark token (mark index l). offset index               := text token;
+         mark token (mark index l). block token                := FALSE;
+         mark token (mark index l). naechster token index      := 0;
+     PER;
+ 
+END PROC initialisiere markierung;
+ 
+(******************************************************************)
+(*** durchschuss                                                ***)
+ 
+INT VAR durchschuss 1, durchschuss 2, anzahl durchschuss 1, 
+        anzahl durchschuss, zeilen zaehler;
+ 
+BOOL VAR wechsel := TRUE;
+ 
+INT PROC durchschuss :
+ 
+     zeilen zaehler INCR 1;
+     IF   zeilen zaehler <= anzahl durchschuss 1
+          THEN durchschuss 1
+     ELIF zeilen zaehler <= anzahl durchschuss 
+          THEN durchschuss 2
+          ELSE 0
+     FI
+ 
+END PROC durchschuss;
+ 
+ 
+PROC neuer durchschuss (INT CONST anzahl, rest l) :
+ 
+     zeilen zaehler     := 0;
+     anzahl durchschuss := anzahl;
+     IF anzahl > 0 
+        THEN IF wechsel
+                THEN durchschuss 1        := rest l DIV anzahl durchschuss;
+                     durchschuss 2        := durchschuss 1 + sign (rest l);
+                     anzahl durchschuss 1 := anzahl durchschuss -
+                                             abs (rest l) MOD anzahl durchschuss;
+                     wechsel              := FALSE;
+                ELSE durchschuss 2        := rest l DIV anzahl durchschuss; 
+                     durchschuss 1        := durchschuss 2 + sign (rest l);
+                     anzahl durchschuss 1 := abs (rest l) MOD anzahl durchschuss;
+                     wechsel              := TRUE;
+             FI;
+        ELSE loesche durchschuss
+     FI;
+ 
+END PROC neuer durchschuss;
+ 
+ 
+PROC loesche durchschuss :
+ 
+     durchschuss 1           := 0;
+     durchschuss 2           := 0;
+     anzahl durchschuss 1    := 0;
+     anzahl durchschuss      := 0;
+     zeilen zaehler          := 0;
+ 
+END PROC loesche durchschuss;
+ 
+(****************************************************************)
+ 
+PROC initialisierung :
+ 
+  INT VAR index;
+  forget (ds);
+  ds := nilspace; tokenspeicher := ds;
+  loesche druckspeicher;
+  loesche anweisungsspeicher;
+  loesche indexspeicher;
+  initialisiere markierung;
+  right  modus                 := FALSE;
+  center modus                 := FALSE;
+  seite ist offen              := FALSE;
+  pass                         := 0;
+  a breite                     := 0;
+  a modifikationen fuer x move := 0;
+  aktuelle zeilentiefe der letzten zeile := 0;
+  d code 1                     := leer;
+  erstes fuell token           := leer;
+  IF two bytes
+     THEN FOR index FROM   1 UPTO 129 REP zeichen zaehler (index) := 1 PER; 
+          FOR index FROM 130 UPTO 160 REP zeichen zaehler (index) := - maxint PER;
+          FOR index FROM 161 UPTO 224 REP zeichen zaehler (index) := 1 PER;
+          FOR index FROM 225 UPTO 240 REP zeichen zaehler (index) := - maxint PER;
+          FOR index FROM 241 UPTO 256 REP zeichen zaehler (index) := 1 PER;
+     ELSE FOR index FROM   1 UPTO 256 REP zeichen zaehler (index) := 1 PER; 
+  FI;
+ 
+END PROC initialisierung;
+ 
+(****************************************************************)
+(*** print - Kommando                                         ***)
+ 
+BOOL VAR elan listings erlaubt;
+FILE VAR eingabe;
+THESAURUS VAR elan bolds := empty thesaurus;
+ 
+insert (elan bolds, "PACKET");       insert (elan bolds, "PROC");
+insert (elan bolds, "PROCEDURE");    insert (elan bolds, "OP");
+insert (elan bolds, "OPERATOR");     insert (elan bolds, "LET");
+insert (elan bolds, "ROW");          insert (elan bolds, "STRUCT");
+insert (elan bolds, "TYPE");         insert (elan bolds, "BOUND");
+insert (elan bolds, "IF");           insert (elan bolds, "REP");
+insert (elan bolds, "REPEAT");       insert (elan bolds, "FOR");
+insert (elan bolds, "WHILE");        insert (elan bolds, "SELECT");
+ 
+with elan listings (TRUE);
+ 
+PROC with elan listings (BOOL CONST flag) :
+     elan listings erlaubt := flag;
+END PROC with elan listings;
+ 
+BOOL PROC with elan listings : elan listings erlaubt END PROC with elan listings;
+ 
+ 
+PROC print (FILE VAR file,
+            PROC (INT CONST, INT VAR, INT VAR) open,
+            PROC (INT CONST, INT CONST) close,
+            PROC (INT CONST, TEXT CONST, INT CONST, INT CONST) execute) :
+ 
+  eingabe := file;
+  input (eingabe);
+  print (PROC (TEXT VAR) lese zeile, BOOL PROC is eof,
+         PROC (INT CONST, INT VAR, INT VAR) open,
+         PROC (INT CONST, INT CONST) close,
+         PROC (INT CONST, TEXT CONST, INT CONST, INT CONST) execute, 
+         PROC (INT CONST, TEXT VAR,
+               INT VAR, INT VAR, INT VAR, INT VAR, INT VAR, INT VAR, INT VAR) std analysator,
+         elan listings erlaubt CAND is elan source (eingabe), 
+         headline (eingabe) );
+ 
+END PROC print;
+ 
+ 
+PROC print (FILE VAR file,
+            PROC (INT CONST, INT VAR, INT VAR) open,
+            PROC (INT CONST, INT CONST) close,
+            PROC (INT CONST, TEXT CONST, INT CONST, INT CONST) execute,
+            PROC (INT CONST, TEXT VAR,
+                  INT VAR, INT VAR, INT VAR, INT VAR, INT VAR, INT VAR, INT VAR) analysator ) :
+ 
+  eingabe := file;
+  input (eingabe);
+  print (PROC (TEXT VAR) lese zeile, BOOL PROC is eof,
+         PROC (INT CONST, INT VAR, INT VAR) open,
+         PROC (INT CONST, INT CONST) close,
+         PROC (INT CONST, TEXT CONST, INT CONST, INT CONST) execute, 
+         PROC (INT CONST, TEXT VAR,
+               INT VAR, INT VAR, INT VAR, INT VAR, INT VAR, INT VAR, INT VAR) analysator,
+         elan listings erlaubt CAND is elan source (eingabe), 
+         headline (eingabe) );
+ 
+END PROC print;
+ 
+PROC lese zeile (TEXT VAR zeile l) : getline (eingabe, zeile l) END PROC lese zeile;
+ 
+BOOL PROC is eof : eof (eingabe) END PROC is eof;
+ 
+ 
+BOOL PROC is elan source (FILE VAR eingabe l) :
+ 
+hole erstes symbol;
+elan programm tag COR elan programm bold COR kommentar COR elanlist anweisung
+ 
+. elan programm tag :
+    symbol type = tag type CAND pos (zeile, ";") > 0 
+ 
+. elan programm bold :
+    symbol type = bold type CAND is elan bold
+ 
+    . is elan bold :
+        (elan bolds CONTAINS symbol) COR deklaration COR proc oder op (naechstes symbol)
+ 
+    . deklaration :
+        next symbol (naechstes symbol);
+        naechstes symbol = "VAR" OR naechstes symbol = "CONST"
+ 
+. kommentar :
+    pos (zeile, "(*") > 0 OR pos (zeile, "{") > 0 
+ 
+. elanlist anweisung :
+    symbol = "#" AND elanlist folgt
+ 
+    . elanlist folgt :
+        next symbol (naechstes symbol);
+        naechstes symbol = "elanlist"
+ 
+. 
+  hole erstes symbol :
+    hole erstes nicht blankes symbol; 
+    scan (zeile);
+    next symbol (symbol, symbol type);
+ 
+    . hole erstes nicht blankes symbol :
+        IF eof (eingabe l) THEN LEAVE is elan source WITH FALSE FI;
+        REP getline (eingabe l, zeile);
+        UNTIL pos (zeile, ""33"",""254"", 1) > 0 OR eof (eingabe l) PER;
+        reset (eingabe l);
+ 
+END PROC is elan source;
+ 
+(****************************************************************)
+ 
+bottom label for elan listings ("");
+ 
+PROC bottom label for elan listings (TEXT CONST label) :
+     bottom label := label;
+END PROC bottom label for elan listings;
+ 
+TEXT PROC bottom label for elan listings : bottom label END PROC bottom label for elan listings;
+ 
+ 
+PROC print (PROC (TEXT VAR) next line, BOOL PROC eof, 
+            PROC (INT CONST, INT VAR, INT VAR) open,
+            PROC (INT CONST, INT CONST) close,
+            PROC (INT CONST, TEXT CONST, INT CONST, INT CONST) execute,
+            PROC (INT CONST, TEXT VAR,
+                  INT VAR, INT VAR, INT VAR, INT VAR, INT VAR, INT VAR, INT VAR) analysator,
+            BOOL CONST elan listing, TEXT CONST file name) :
+ 
+disable stop;
+gedruckte seiten := 0;
+drucke datei (PROC (TEXT VAR) next line, BOOL PROC eof,
+              PROC (INT CONST, INT VAR, INT VAR) open,
+              PROC (INT CONST, INT CONST) close,
+              PROC (INT CONST, TEXT CONST, INT CONST, INT CONST) execute,
+              PROC (INT CONST, TEXT VAR,
+                    INT VAR, INT VAR, INT VAR, INT VAR, INT VAR, INT VAR, INT VAR) analysator,
+              elan listing, file name );
+IF is error THEN behandle fehlermeldung FI;
+ 
+. behandle fehlermeldung :
+    TEXT CONST fehler meldung := error message;
+    INT  CONST fehler zeile   := error line,
+               fehler code    := error code;
+    clear error;
+    IF NOT vor erster seite
+       THEN IF seite ist offen
+               THEN schliesse seite ab (PROC (INT CONST, INT CONST) close,
+                    PROC (INT CONST, TEXT CONST, INT CONST, INT CONST) execute )
+            FI;
+            clear error;
+            close (document, 0);
+            clear error;
+    FI;
+    initialisierung;
+    errorstop (fehler code, fehler meldung (* + " -> " + text (fehler zeile) *) );
+ 
+END PROC print; 
+ 
+d xpos                := 0;
+d ypos                := 0;
+d token. offset index := 1;
+material wert         := "";
+gedruckte seiten      := 0;
+ 
+INT PROC x pos          :   d xpos                END PROC x pos;
+INT PROC y pos          :   d ypos                END PROC y pos;
+INT PROC y offset index :   d token. offset index END PROC y offset index;
+INT PROC linetype       : - d token. offset index END PROC linetype;
+TEXT PROC material      : material wert           END PROC material;
+INT PROC pages printed  : gedruckte seiten        END PROC pages printed;
+ 
+(****************************************************************)
+ 
+PROC drucke datei (PROC (TEXT VAR) next line, BOOL PROC eof,
+                   PROC (INT CONST, INT VAR, INT VAR) open,
+                   PROC (INT CONST, INT CONST) close,
+                   PROC (INT CONST, TEXT CONST, INT CONST, INT CONST) execute,
+                   PROC (INT CONST, TEXT VAR,
+                         INT VAR, INT VAR, INT VAR, INT VAR, INT VAR, INT VAR, INT VAR) analysator,
+                   BOOL CONST elan listing, TEXT CONST file name ) :
+ 
+ 
+enable stop;
+IF elan listing
+   THEN dateiname := file name;
+        drucke elan listing;
+   ELSE drucke text datei;
+FI;
+ 
+.
+  drucke text datei :
+    initialisiere druck; 
+    WHILE NOT eof
+    REP next line (zeile); 
+        analysiere zeile (PROC (INT CONST, TEXT VAR,
+          INT VAR, INT VAR, INT VAR, INT VAR, INT VAR, INT VAR, INT VAR) analysator);
+        drucke token soweit wie moeglich;
+        werte anweisungsspeicher aus;
+    PER;
+    schliesse druck ab; 
+ 
+. 
+  initialisiere druck :
+    IF NOT initialized (in dieser task)
+       THEN ds := nilspace;
+            initialisierung
+    FI;
+    vor erster seite               := TRUE;
+    tabellen modus                 := FALSE;
+    block modus                    := FALSE;
+    zeile ist absatzzeile          := TRUE;
+    x wanted                       := x step conversion (std x wanted);
+    y wanted                       := y step conversion (std y wanted);
+    limit                          := x step conversion (std limit);
+    pagelength                     := y step conversion (std pagelength);
+    linefeed faktor                := std linefeed faktor;
+    material wert                  := std material;
+    indentation                    := 0;
+    modifikations modus            := maxint; 
+    seitenlaenge                   := maxint;
+    papierlaenge                   := maxint;
+    left margin                    := 0;
+    top  margin                    := 0;
+    a ypos                         := top margin;
+    a font                         := -1;
+    a modifikationen               := 0;
+    aktuelle spalte                := 1;
+    anzahl spalten                 := 1;
+    stelle neuen font ein (1);
+    loesche tabellenspeicher;
+    loesche markierung;
+    loesche alte markierung;
+    loesche durchschuss;
+ 
+. 
+  schliesse druck ab :
+    IF NOT vor erster seite
+       THEN IF seite ist offen
+               THEN schliesse seite ab (PROC (INT CONST, INT CONST) close,
+                    PROC (INT CONST, TEXT CONST, INT CONST, INT CONST) execute )
+            FI;
+            close (document, 0);
+    FI;
+ 
+.
+  drucke token soweit wie moeglich :
+    IF analysespeicher ist nicht leer
+       THEN letztes token bei gleicher ypos; 
+            IF NOT seite ist offen
+               THEN eroeffne seite (x wanted, y wanted,
+                                  PROC (INT CONST, INT VAR, INT VAR) open);
+            FI;
+            IF seitenlaenge ueberschritten OR papierlaenge ueberschritten 
+               THEN neue seite oder spalte;
+                    analysiere zeile nochmal;
+               ELSE sortiere neue token ein;
+                    IF in letzter spalte
+                       THEN drucke tokenspeicher (a ypos,
+                            PROC (INT CONST, TEXT CONST, INT CONST, INT CONST) execute);
+                    FI;
+            FI;
+    FI;
+ 
+    . seitenlaenge ueberschritten :
+        a ypos + aktuelle zeilentiefe > seitenlaenge 
+ 
+    . papierlaenge ueberschritten :
+        a ypos + aktuelle zeilentiefe > papierlaenge 
+ 
+    . neue seite oder spalte :
+        IF in letzter spalte
+           THEN INT CONST aktuelles y wanted := y wanted bei seitenwechel ohne page;
+                schliesse seite ab (PROC (INT CONST, INT CONST) close,
+                      PROC (INT CONST, TEXT CONST, INT CONST, INT CONST) execute);
+                eroeffne seite (x wanted, aktuelles y wanted,
+                      PROC (INT CONST, INT VAR, INT VAR) open);
+           ELSE neue spalte;
+        FI;
+ 
+        . y wanted bei seitenwechel ohne page :
+            IF seitenlaenge ueberschritten
+               THEN y wanted
+               ELSE 0
+            FI
+ 
+    . analysiere zeile nochmal :
+        setze auf alte werte zurueck;
+        loesche anweisungsspeicher;
+        analysiere zeile (PROC (INT CONST, TEXT VAR,
+          INT VAR, INT VAR, INT VAR, INT VAR, INT VAR, INT VAR, INT VAR) analysator);
+        letztes token bei gleicher ypos;
+        sortiere neue token ein;
+ 
+        . setze auf alte werte zurueck :
+           zeile ist absatzzeile := letzte zeile war absatzzeile;
+           a modifikationen      := letzte modifikationen;
+           stelle neuen font ein (letzter font);
+ 
+.
+  werte anweisungsspeicher aus :
+    INT VAR index;
+    FOR index FROM 1 UPTO anweisungszaehler
+    REP
+        SELECT anweisungs indizes ISUB index OF
+          CASE a block             : block anweisung
+          CASE a columns           : columns anweisung
+          CASE a columnsend        : columnsend anweisung
+          CASE a free              : free anweisung
+          CASE a limit             : limit anweisung
+          CASE a linefeed          : linefeed anweisung
+          CASE a material          : material anweisung
+          CASE a page0, a page1    : page anweisung
+          CASE a pagelength        : pagelength anweisung
+          CASE a start             : start anweisung
+          CASE a table             : table anweisung
+          CASE a tableend          : tableend anweisung 
+          CASE a clearpos0         : clearpos0 anweisung
+          CASE a clearpos1         : clearpos1 anweisung
+          CASE a lpos, a rpos, a cpos, a dpos
+                                   : lpos rpos cpos dpos anweisung
+          CASE a bpos              : bpos anweisung
+          CASE a fillchar          : fillchar anweisung
+          CASE a textbegin0        : textbegin0 anweisung
+          CASE a textbegin2        : textbegin2 anweisung
+          CASE a textend           : textend anweisung
+          CASE a indentation       : indentation anweisung
+          CASE a y tab             : y tab anweisung
+        END SELECT
+   PER; 
+   loesche anweisungsspeicher;
+ 
+   . block anweisung :
+       blockmodus := TRUE;
+ 
+   . columns anweisung :
+       IF anzahl spalten = 1 AND int  conversion ok (param1)
+                             AND real conversion ok (param2) 
+          THEN anzahl spalten := max (1, int param); 
+               luecke         := x step conversion (real param);
+       FI;
+ 
+   . columnsend anweisung :
+       anzahl spalten  := 1;
+       aktuelle spalte := 1; 
+       left margin     := x wanted - x start + indentation;
+ 
+   . free anweisung :
+       IF real conversion ok (param1) THEN a ypos INCR y step conversion (real param) FI;
+ 
+   . limit anweisung :
+       IF real conversion ok (param1) THEN limit := x step conversion (real param) FI;
+ 
+   . linefeed anweisung :
+       IF real conversion ok (param1)
+          THEN linefeed faktor    := real param;
+               berechne letzte zeilengroesse;
+       FI;
+ 
+   . material anweisung :
+       material wert := param1;
+ 
+   . page anweisung :
+       IF seite ist offen
+          THEN IF NOT in letzter spalte
+                  THEN neue spalte
+                  ELSE schliesse seite ab (PROC (INT CONST, INT CONST) close,
+                         PROC (INT CONST, TEXT CONST, INT CONST, INT CONST) execute);
+                       papier laenge := maxint;
+               FI;
+          ELSE a ypos        := top margin;
+               papier laenge := maxint;
+       FI;
+ 
+   . pagelength anweisung :
+       IF real conversion ok (param1)
+          THEN pagelength   := y step conversion (real param);
+       FI;
+ 
+   . start anweisung :
+       IF real conversion ok (param1) THEN x wanted := x step conversion (real param) FI;
+       IF real conversion ok (param2) THEN y wanted := y step conversion (real param) FI;
+ 
+   . table anweisung :
+       tabellenmodus := TRUE;
+ 
+   . tableend anweisung :
+       tabellenmodus := FALSE;
+ 
+   . clearpos0 anweisung :
+       loesche tabellenspeicher;
+ 
+   . clearpos1 anweisung :
+       IF real conversion ok (param1) 
+          THEN int param := x step conversion (real param);
+               FOR tab index FROM 1 UPTO anzahl tabs
+               REP IF tab position = int param
+                      THEN tab typ := leer;
+                           delete int (tab liste, tab index);
+                           LEAVE clearpos1 anweisung;
+                   FI;
+               PER;
+       FI; 
+ 
+   . lpos rpos cpos dpos anweisung :
+       IF real conversion ok (param1)
+          THEN neuer tab eintrag (anweisungs indizes ISUB index, param2) FI; 
+ 
+   . bpos anweisung :
+       IF real conversion ok (param2) CAND real conversion ok (param1)
+            CAND real (param2) > real param
+          THEN neuer tab eintrag (a bpos, param2) FI;
+ 
+   . fillchar anweisung :
+        fill char := param1;
+ 
+   . textbegin0 anweisung :
+       aktuelle einrueckbreite := alte einrueckbreite;
+       mark index l            := alter mark index l;
+       mark index r            := alter mark index r;
+       loesche alte markierung;
+ 
+   . textbegin2 anweisung :
+       aktuelle einrueckbreite := alte einrueckbreite;
+       mark index l            := alter mark index l;
+       mark index r            := alter mark index r;
+       loesche alte markierung;
+       neuer durchschuss (int (param1), y step conversion (real (param 2)));
+ 
+   . textend anweisung :
+       alte einrueckbreite := aktuelle einrueckbreite;
+       alter mark index l  := mark index l;
+       alter mark index r  := mark index r;
+       loesche markierung;
+       loesche durchschuss;
+ 
+   . indentation anweisung :
+(**)   IF real conversion ok (param1)
+          THEN int param   := x step conversion (real param);
+               left margin INCR (int param - indentation);
+               indentation :=    int param;
+       FI;
+(**)
+   . y tab anweisung :
+(**)   IF real conversion ok (param1)
+          THEN int param := y step conversion (real param);
+               IF int param <= seitenlaenge THEN a ypos := int param FI;
+       FI;
+(**)
+       . param1 :
+           IF (params1 zeiger ISUB index) <> 0
+              THEN name (params1, params1 zeiger ISUB index)
+              ELSE ""
+           FI
+ 
+       . param2 :
+           IF (params2 zeiger ISUB index) <> 0
+              THEN name (params2, params2 zeiger ISUB index)
+              ELSE ""
+           FI
+ 
+ 
+.
+  drucke elan listing :
+    initialisiere elan listing;
+    WHILE NOT eof
+    REP next line (zeile);
+        zeilen nr INCR 1;
+        drucke elan zeile;
+    PER;
+    schliesse elan listing ab;
+ 
+.
+  initialisiere elan listing :
+    open document cmd;
+    hole elan list font;
+    initialisiere variablen;
+    elan fuss und kopf (1,
+               PROC (INT CONST, INT CONST) close,
+               PROC (INT CONST, INT VAR, INT VAR) open,
+               PROC (INT CONST, TEXT CONST, INT CONST, INT CONST) execute);
+ 
+    . open document cmd :
+        material wert         := "";
+        d token. offset index := 1;
+        erster ypos index d   := 0; 
+        vor erster seite      := FALSE;
+        seite ist offen       := TRUE;
+        open (document, x size, y size);
+        vor erster seite      := FALSE;
+ 
+    . hole elan list font :
+        d font := max (1, font ("elanlist"));
+        get replacements (d font, replacements, replacement tabelle);
+        einrueckbreite := indentation pitch (d font) ;
+        font hoehe     := font lead (d font) + font height (d font) + font depth (d font);
+ 
+    . initialisiere variablen :
+        innerhalb einer liste := FALSE;
+        vor erstem packet     := TRUE;
+        zeilen nr             := 0;
+        select counter        := 0;
+        y wanted              := y size DIV 23;
+        pagelength            := y size - y wanted - y wanted; 
+        x wanted              := (min (x size DIV 10, x step conversion (2.54))
+                                        DIV einrueckbreite) * einrueckbreite; 
+        max zeichen zeile     := (x size - x wanted - (x wanted DIV 3)) DIV einrueckbreite;
+        max zeichen fuss      := fusszeilenbreite;
+        layout laenge         := min (38, max zeichen zeile DIV 3);
+        layout laenge name    :=  layout laenge - zeilen nr laenge - 8; 
+        layout blanks         := (layout laenge - zeilen nr laenge - 1) * " "; 
+        refinement layout zeile := (layout laenge - 1) * " " ;
+        refinement layout zeile CAT "|" ;
+        IF pagelength DIV fonthoehe - 6 < 35 OR max zeichen zeile < 65
+           THEN errorstop ("Schreibfeld fuer 'elan listing' zu klein") FI;
+ 
+        . fusszeilenbreite :
+            INT CONST dina 4 breite := x step conversion (21.0);
+            IF   x size <= dina 4 breite
+                 THEN (x size - 2 * x wanted) DIV einrueckbreite 
+            ELIF 120 * einrueckbreite <= dina 4 breite - 2 * x wanted
+                 THEN (dina 4 breite - 2 * x wanted) DIV einrueckbreite 
+                 ELSE min (120, (x size - 2 * x wanted) DIV einrueckbreite)
+            FI
+ 
+.
+  schliesse elan listing ab :
+    elan fuss und kopf (-1,
+               PROC (INT CONST, INT CONST) close,
+               PROC (INT CONST, INT VAR, INT VAR) open,
+               PROC (INT CONST, TEXT CONST, INT CONST, INT CONST) execute);
+    close (document, 0);
+ 
+. 
+  drucke elan zeile :
+    IF   pos (zeile, "#page#") = 1 
+         THEN IF nicht am seiten anfang THEN seiten wechsel FI;
+    ELIF pos (zeile, "#elanlist#") <> 1 
+         THEN bestimme elan layout;
+              bestimme elan zeile;
+              gib elan text aus (PROC (INT CONST, TEXT CONST, INT CONST, INT CONST) execute); 
+              seitenwechsel wenn noetig;
+    FI;
+ 
+    . nicht am seitenanfang :
+        rest auf seite < pagelength - 3 * font hoehe
+ 
+    . seiten wechsel :
+        elan fuss und kopf (0,
+               PROC (INT CONST, INT CONST) close,
+               PROC (INT CONST, INT VAR, INT VAR) open,
+               PROC (INT CONST, TEXT CONST, INT CONST, INT CONST) execute);
+ 
+. 
+  bestimme elan layout :
+    IF   innerhalb einer liste
+         THEN leeres layout;
+              pruefe ende der liste 
+    ELIF pos (zeile, "P") <> 0 COR pos (zeile, ":") <> 0
+         THEN analysiere elan zeile
+    ELIF innerhalb einer select kette  
+         THEN leeres layout;
+              pruefe ende der select kette
+    ELIF pos (zeile, "SELECT") <> 0
+         THEN analysiere select kette
+         ELSE leeres layout 
+    FI;
+    elan text CAT "|";
+ 
+    . leeres layout :
+        elan text := text (zeilen nr, zeilen nr laenge);
+        elan text CAT layout blanks;
+ 
+    . analysiere elan zeile :
+        scan (zeile);
+        next symbol (symbol, symbol type);
+        next symbol (naechstes symbol, naechster symbol type);
+        IF   packet anfang
+             THEN packet layout 
+        ELIF type anfang
+             THEN type layout
+        ELIF proc op anfang
+             THEN proc op layout
+             ELSE IF   innerhalb einer select kette
+                       THEN pruefe ende der select kette;
+                            leeres layout
+                  ELIF refinement anfang
+                       THEN refinement layout
+                       ELSE leeres layout
+             FI;
+        FI;
+
+ 
+    . packet anfang :
+        symbol = "PACKET"
+ 
+    . type anfang :
+        symbol = "TYPE"
+ 
+    . proc op anfang :
+        IF   proc oder op (symbol)
+             THEN naechster symbol type <> delimiter type
+        ELIF (symbol <> "END") AND proc oder op (naechstes symbol)
+             THEN symbol := naechstes symbol;
+                  next symbol (naechstes symbol, naechster symbol type);
+                  naechster symbol type <> delimiter type
+             ELSE FALSE
+        FI
+ 
+    . refinement anfang :
+        symbol type = tag type AND naechstes symbol = ":" 
+ 
+    . packet layout :
+        IF nicht am seiten anfang AND
+           (NOT vor erstem packet OR gedruckte seiten > 1)
+          THEN seiten wechsel
+        FI;
+        layout ("   ", naechstes symbol, "*") ;
+        vor erstem packet     := FALSE;
+        select counter        := 0;
+        innerhalb einer liste := TRUE;
+        pruefe ende der liste;
+ 
+    . type layout :
+        layout ("   ", naechstes symbol, ".");
+        select counter        := 0;
+
+    . proc op layout :
+        IF   keine vier zeilen mehr
+             THEN seiten wechsel
+        ELIF nicht am seitenanfang
+             THEN cr plus lf (2, PROC (INT CONST, TEXT CONST, INT CONST, INT CONST) execute); 
+        FI ; 
+        layout ("   ", naechstes symbol, ".");
+        select counter        := 0;
+        innerhalb einer liste := TRUE;
+        pruefe ende der liste;
+ 
+        . keine vier zeilen mehr :
+            rest auf seite <= 8 * font hoehe 
+ 
+    . refinement layout :
+        IF   keine drei zeilen mehr
+             THEN seiten wechsel
+        ELIF nicht am seitenanfang
+             THEN elan text := refinement layout zeile;
+                  gib elan text aus
+                       (PROC (INT CONST, TEXT CONST, INT CONST, INT CONST) execute);
+        FI ; 
+        layout ("      ", symbol, " ");
+ 
+        . keine drei zeilen mehr :
+            rest auf seite <= 7 * font hoehe 
+ 
+    . pruefe ende der liste :
+        IF pos (zeile, ":") <> 0
+           THEN scan (zeile);
+                WHILE innerhalb einer liste
+                REP next symbol (symbol);
+                    IF symbol = ":" THEN innerhalb einer liste := FALSE FI;
+                UNTIL symbol = "" PER;
+        FI;
+
+    . innerhalb einer select kette :
+        select counter > 0
+
+    . analysiere select kette :
+        scan (zeile);
+        naechstes symbol := "";
+        REP symbol := naechstes symbol;
+            next symbol (naechstes symbol);
+            IF naechstes symbol = "SELECT" CAND symbol <> "END"
+               THEN select counter := 1;
+                    untersuche select kette;
+            FI;
+        UNTIL naechstes symbol = "" PER;
+        leeres layout;
+ 
+    . pruefe ende der select kette :
+        IF pos (zeile, "SELECT") <> 0
+           THEN scan (zeile);
+                naechstes symbol := "";
+                untersuche select kette;
+        FI;
+
+        . untersuche select kette :
+            REP symbol := naechstes symbol;
+                next symbol (naechstes symbol);
+                IF   naechstes symbol = "SELECT"
+                     THEN select counter INCR select step
+                ELIF naechstes symbol = "ENDSELECT"
+                     THEN select counter DECR 1
+                FI;
+             UNTIL naechstes symbol = "" PER;
+
+             . select step :
+                 IF symbol = "END" THEN -1 ELSE 1 FI
+
+. 
+  bestimme elan zeile : 
+    IF zeile ist nicht zu lang
+       THEN elan text CAT zeile;
+       ELSE drucke zeile in teilen 
+    FI;
+ 
+    . zeile ist nicht zu lang :
+        zeilen laenge := LENGTH zeile;
+        zeilen laenge <= rest auf zeile
+ 
+       . rest auf zeile :
+           max zeichen zeile - LENGTH elan text
+ 
+    . drucke zeile in teilen :
+        zeilen pos := 1;
+        bestimme einrueckung;
+        WHILE zeile noch nicht ganz gedruckt REP teil layout PER;
+ 
+    . bestimme einrueckung :
+        anzahl einrueck blanks := naechstes nicht blankes zeichen - 1;
+        IF anzahl einrueck blanks > rest auf zeile - 20
+           THEN anzahl einrueck blanks := 0 FI;
+ 
+    . zeile noch nicht ganz gedruckt :
+        bestimme zeilenteil;
+        NOT zeile ist zu ende
+ 
+        . bestimme zeilenteil :
+            bestimme laenge;
+            zeilen teil := subtext (zeile, zeilen pos, zeilen pos + laenge - 1);
+            elan text CAT zeilen teil;
+            zeilen pos INCR laenge;
+ 
+            . zeilen teil : par1
+ 
+            . bestimme laenge :
+               INT VAR laenge := zeilen laenge - zeilen pos + 1;
+               IF laenge > rest auf zeile
+                  THEN laenge := rest auf zeile;
+                       WHILE (zeile SUB (zeilen pos + laenge - 1)) <> " "
+                       REP laenge DECR 1 UNTIL laenge = 0 PER;
+                       IF laenge = 0 THEN laenge := rest auf zeile FI;
+               FI;
+ 
+    . teil layout :
+        gib elan text aus (PROC (INT CONST, TEXT CONST, INT CONST, INT CONST) execute); 
+        elan text :=  (zeilen nr laenge - 1) * " "; 
+        elan text CAT "+";
+        elan text CAT layout blanks;
+        elan text CAT "|";
+        elan text cat blanks (anzahl einrueck blanks + teil einrueckung);
+ 
+. 
+  seiten wechsel wenn noetig :
+    IF keine zeilen mehr AND NOT eof THEN seiten wechsel FI; 
+ 
+    . keine zeilen mehr :
+        rest auf seite <= 4 * font hoehe 
+ 
+END PROC drucke datei;
+ 
+ 
+BOOL PROC real conversion ok (TEXT CONST param) :
+     real param := real (param);
+     last conversion ok AND real param >= 0.0
+END PROC real conversion ok;
+ 
+ 
+BOOL PROC int conversion ok (TEXT CONST param) :
+     int param := int (param);
+     last conversion ok AND int param >= 0 
+END PROC int conversion ok;
+ 
+ 
+PROC neuer tab eintrag (INT CONST typ, TEXT CONST param) :
+ 
+     suche neuen eintrag;
+     sortiere neue tab position ein;
+     tab typ      := typ;
+     tab position := neue tab position;
+     tab param    := eventueller parameter;
+ 
+     . suche neuen eintrag :
+         INT VAR index := 0;
+         REP index INCR 1;
+             IF tab speicher (index). tab typ = leer
+                THEN LEAVE suche neuen eintrag FI;
+         UNTIL index = max tabs PER;
+         LEAVE neuer tab eintrag;
+ 
+     . sortiere neue tab position ein :
+         INT VAR neue tab position := x step conversion (real param);
+         FOR tab index FROM 1 UPTO anzahl tabs
+         REP IF   tab position = neue tab position
+                THEN LEAVE neuer tab eintrag
+             ELIF tab position > neue tab position
+                THEN insert int (tab liste, tab index, index);
+                     LEAVE sortiere neue tab position ein;
+             FI;
+         PER;
+         tab liste CAT index;
+         tab index :=  anzahl tabs;
+ 
+     . eventueller parameter :
+         INT VAR link;
+         SELECT typ OF
+           CASE a dpos : insert (d strings, param, link); link
+           CASE a bpos : x step conversion (real(param))
+             OTHERWISE : 0
+         END SELECT
+ 
+END PROC neuer tab eintrag;
+ 
+ 
+PROC neue spalte :
+     a ypos :=  top margin;
+     aktuelle zeilentiefe der letzten zeile := 0;
+     left margin     INCR (limit + luecke);
+     aktuelle spalte INCR 1;
+END PROC neue spalte ;
+ 
+ 
+BOOL PROC proc oder op (TEXT CONST symbol) :
+ 
+  symbol = "PROC" OR symbol = "PROCEDURE"
+    OR symbol = "OP" OR symbol = "OPERATOR" 
+ 
+ENDPROC proc oder op ;
+ 
+ 
+PROC layout (TEXT CONST pre, TEXT VAR name, TEXT CONST post) :
+ 
+name := subtext (name, 1, layout laenge name) ;
+elan text :=  text (zeilen nr, zeilen nr laenge);
+elan text CAT pre;
+elan text CAT name;
+elan text CAT " ";
+generiere strukturiertes layout;
+ 
+. generiere strukturiertes layout :
+    INT VAR index;
+    FOR index FROM 1 UPTO layout laenge - LENGTH elan text - 1
+        REP elan text CAT post PER;
+ 
+END PROC layout ;
+ 
+ 
+PROC elan text cat blanks (INT CONST anzahl) :
+ 
+  par2 := anzahl * " ";
+  elan text CAT par2;
+ 
+END PROC elan text cat blanks;
+ 
+ 
+(***********************************************************************)
+ 
+PROC analysiere zeile (PROC (INT CONST, TEXT VAR,
+    INT VAR, INT VAR, INT VAR, INT VAR, INT VAR, INT VAR, INT VAR) analysator) :
+ 
+loesche analysespeicher;
+behandle fuehrende blanks;
+pruefe ob markierung links;
+ 
+IF   tabellen modus
+     THEN analysiere tabellenzeile
+ELIF letzte zeile war absatzzeile 
+     THEN analysiere zeile nach absatzzeile 
+     ELSE analysiere zeile nach blockzeile
+FI; 
+ 
+pruefe center und right modus;
+pruefe ob tabulation vorliegt;
+werte indexspeicher aus;
+IF zeile ist keine anweisungszeile  
+   THEN berechne zeilenvorschub;
+        pruefe ob markierung rechts;
+   ELSE behandle anweisungszeile;
+FI;
+ 
+.
+  analysiere zeile nach absatzzeile :
+    test auf aufzaehlung;
+    IF zeile muss geblockt werden 
+       THEN analysiere blockzeile nach absatzzeile 
+       ELSE analysiere absatzzeile nach absatzzeile 
+    FI; 
+.
+  analysiere zeile nach blockzeile :
+    IF zeile muss geblockt werden 
+       THEN analysiere blockzeile nach blockzeile 
+       ELSE analysiere absatzzeile nach blockzeile
+    FI; 
+ 
+ 
+.
+  behandle fuehrende blanks :
+    zeilenpos := 1;
+    zeilenpos := naechstes nicht blankes zeichen; 
+    letzte zeile war absatzzeile := zeile ist absatzzeile; 
+    IF letzte zeile war absatzzeile THEN neue einrueckung FI;
+    IF zeilenpos = 0
+       THEN behandle leerzeile;
+            LEAVE analysiere zeile;
+       ELSE initialisiere analyse;
+    FI;
+ 
+    . behandle leerzeile :
+        a ypos INCR (letzte zeilenhoehe +
+                         aktuelle zeilentiefe der letzten zeile + durchschuss);
+        aktuelle zeilentiefe der letzten zeile := letzte zeilentiefe;
+        zeile ist absatzzeile := LENGTH zeile > 0;
+        pruefe ob markierung links;
+        pruefe ob markierung rechts;
+ 
+    . neue einrueckung :
+        aktuelle einrueckbreite := einrueckbreite;
+ 
+    . initialisiere analyse :
+        zeile ist absatzzeile        := (zeile SUB LENGTH zeile) = blank;
+        zeile muss geblockt werden   := block modus AND NOT zeile ist absatzzeile;
+        erstes token der zeile       := token index f + 1;
+        zeilen laenge                := laenge der zeile;
+        anzahl einrueck blanks       := zeilen pos - 1; 
+        anzahl zeichen               := anzahl einrueck blanks;
+        a xpos                       := left margin + anzahl zeichen * aktuelle einrueckbreite; 
+        a modifikationen fuer x move := 0;
+        letzter font                 := a font;
+        letzte modifikationen        := a modifikationen;
+        fuehrende anweisungen        := 0;
+        initialisiere zeilenvorschub;
+        IF zeile muss geblockt werden THEN initialisiere tab variablen FI;
+        IF hoechster index zaehler > 0 THEN loesche index speicher FI;
+ 
+        . laenge der zeile :
+            IF zeile ist absatzzeile
+               THEN LENGTH zeile - 1
+               ELSE LENGTH zeile 
+            FI
+ 
+.
+  pruefe ob markierung links :
+    INT VAR linkes markierungs token;
+    IF markierung links
+       THEN mark token (mark index l). xpos := 
+                             left margin - mark token (mark index l). breite;
+            linkes markierungs token := token index f + 1;
+            lege markierungs token an (mark index l);
+            erstes token der zeile := token index f + 1;
+            initialisiere tab variablen;
+       ELSE linkes markierungs token := 0;
+    FI;
+ 
+. 
+  analysiere tabellenzeile : 
+    anfangs blankmodus := doppel blank;
+    alte zeilenpos     := zeilen pos;
+    a xpos             := left margin;
+    FOR tab index FROM 1 UPTO anzahl tabs
+    REP lege fuell token an wenn noetig;
+        initialisiere tab variablen; 
+        SELECT tab typ OF
+          CASE a lpos  :  linksbuendige spalte
+          CASE a rpos  :  rechtsbuendige spalte
+          CASE a cpos  :  zentrierte spalte
+          CASE a dpos  :  dezimale spalte
+          CASE a bpos  :  geblockte spalte
+        END SELECT;
+        berechne fuell token wenn noetig;
+        tabulation;
+    PER;
+    analysiere rest der zeile;
+ 
+    . lege fuell token an wenn noetig :
+        IF fill char <> blank
+           THEN fuellzeichen                 := fill char;
+                fuellzeichen breite          := string breite (fuellzeichen);
+                token zeiger                 := zeilen pos;
+                erstes fuell token           := token index f + 1;
+                lege token an (zeile, token zeiger, zeilen pos - 1, text token);
+                letztes fuell token          := token index f;
+                a modifikationen fuer x move := a modifikationen
+        FI;
+ 
+    . berechne fuell token wenn noetig :
+        IF erstes fuell token <> leer
+           THEN IF letztes fuell token <> token index f 
+                   THEN berechne fuell token;
+                   ELSE loesche letzte token;
+                FI;
+                erstes fuell token := leer
+        FI;
+ 
+        . berechne fuell token :
+            INT VAR anzahl fuellzeichen, fuell breite;
+            token index         := erstes fuell token;
+            anzahl fuellzeichen := (tab anfang - t. xpos + left margin) 
+                                                 DIV fuellzeichen breite;
+            rest                := (tab anfang - t. xpos + left margin) 
+                                                 MOD fuellzeichen breite;
+            IF anzahl fuell zeichen > 0
+               THEN fuell text   := anzahl fuellzeichen * fuellzeichen; 
+                    fuell breite := anzahl fuellzeichen * fuellzeichen breite; 
+                    FOR token index FROM erstes fuell token UPTO letztes fuell token
+                    REP t. text   := fuell text;
+                        t. breite := fuell breite;
+                        IF erstes fuell token <> erstes token der zeile
+                           THEN t. xpos INCR rest DIV 2;
+                                t. modifikationen fuer x move := t. modifikationen;
+                        FI;
+                    PER;
+            FI;
+ 
+            . fuell text : par1
+ 
+        . loesche letzte token :
+            FOR token index FROM letztes fuell token DOWNTO erstes fuell token
+            REP loesche letztes token PER;
+ 
+    . tabulation :
+        alte zeilenpos := zeilenpos;
+        zeilenpos := naechstes nicht blankes zeichen; 
+        IF zeilenpos = 0
+           THEN zeilenpos := zeilenlaenge + 1; 
+                LEAVE analysiere tabellenzeile;
+        FI;
+        anzahl zeichen INCR zeilenpos - alte zeilenpos; 
+ 
+    . linksbuendige spalte : 
+        a xpos     := left margin + tab position;
+        tab anfang := tab position;
+        bestimme token bis terminator oder zeilenende
+          (PROC (INT CONST, TEXT VAR,
+           INT VAR, INT VAR, INT VAR, INT VAR, INT VAR, INT VAR, INT VAR) analysator);
+ 
+    . rechtsbuendige spalte :
+        bestimme token bis terminator oder zeilenende
+          (PROC (INT CONST, TEXT VAR,
+           INT VAR, INT VAR, INT VAR, INT VAR, INT VAR, INT VAR, INT VAR) analysator);
+        schreibe zeile rechtsbuendig (tab position);
+ 
+    . zentrierte spalte :
+        bestimme token bis terminator oder zeilenende
+          (PROC (INT CONST, TEXT VAR,
+           INT VAR, INT VAR, INT VAR, INT VAR, INT VAR, INT VAR, INT VAR) analysator);
+        zentriere zeile (tab position);
+ 
+    . dezimale spalte :
+        d string                  := name (d strings, tab param);
+        d code 1                  := code (d string SUB 1) + 1;
+        d pitch                   := zeichenbreiten (d code 1);
+        zeichenbreiten (d code 1) := d code ausgang;
+        bestimme token bis terminator oder zeilenende
+          (PROC (INT CONST, TEXT VAR,
+           INT VAR, INT VAR, INT VAR, INT VAR, INT VAR, INT VAR, INT VAR) analysator);
+        zeichenbreiten (d code 1) := d pitch;
+        d code 1                  := leer;
+        schreibe zeile rechtsbuendig (tab position);
+        IF zeichen ist dezimal zeichen
+           THEN IF tab position <> zeilen breite
+                   THEN a xpos     := left margin + tab position;
+                        tab anfang := tab position;
+                FI;
+                bestimme token bis terminator oder zeilenende
+                (PROC (INT CONST, TEXT VAR,
+                 INT VAR, INT VAR, INT VAR, INT VAR, INT VAR, INT VAR, INT VAR) analysator);
+        FI;
+ 
+        . zeichen ist dezimal zeichen :
+            pos (zeile, d string,  zeilen pos) = zeilen pos
+ 
+    . geblockte spalte :
+        blankmodus := einfach blank;
+        a xpos     := left margin + tab position;
+        tab anfang := tab position;
+        REP bestimme token bis terminator oder zeilenende
+             (PROC (INT CONST, TEXT VAR,
+              INT VAR, INT VAR, INT VAR, INT VAR, INT VAR, INT VAR, INT VAR) analysator);
+            IF zeile ist zu ende OR naechstes zeichen ist blank
+               THEN blocke spalte wenn noetig;
+                    LEAVE geblockte spalte;
+               ELSE dehnbares blank gefunden;
+            FI;
+        PER;
+ 
+        . blocke spalte wenn noetig :
+            IF letztes zeichen ist kein geschuetztes blank
+               THEN blocke zeile (tab param) FI;
+            blank modus := doppel blank;
+ 
+        . letztes zeichen ist kein geschuetztes blank :
+            pos (zeile, geschuetztes blank,  zeilen pos - 1, zeilen pos - 1) = 0
+              AND NOT within kanji (zeile, zeilen pos - 2)
+ 
+    . analysiere rest der zeile :
+        blankmodus := keine blankanalyse;
+        zeilen pos := alte zeilenpos;
+        bestimme token bis terminator oder zeilenende
+          (PROC (INT CONST, TEXT VAR,
+           INT VAR, INT VAR, INT VAR, INT VAR, INT VAR, INT VAR, INT VAR) analysator);
+ 
+.
+  test auf aufzaehlung : 
+    anfangs blankmodus := einfach blank;
+    bestimme token bis terminator oder zeilenende
+      (PROC (INT CONST, TEXT VAR,
+       INT VAR, INT VAR, INT VAR, INT VAR, INT VAR, INT VAR, INT VAR) analysator);
+    IF zeile ist zu ende
+       THEN LEAVE analysiere zeile nach absatzzeile
+       ELSE aufzaehlung moeglich
+    FI;
+ 
+    . aufzaehlung moeglich :
+        bestimme letztes zeichen;
+        IF    (anzahl zeichen bei aufzaehlung < 2  AND letztes zeichen = "-")
+           OR (anzahl zeichen bei aufzaehlung < 20 AND letztes zeichen = ":")
+           OR (anzahl zeichen bei aufzaehlung < 7
+                                        AND pos (".)", letztes zeichen) <> 0)
+           OR naechstes zeichen ist blank
+          THEN tabulator position gefunden;
+        ELIF zeile muss geblockt werden
+          THEN dehnbares blank gefunden;
+        FI;
+ 
+        . bestimme letztes zeichen : 
+            token index := token index f;
+            WHILE token index >= erstes token der zeile
+            REP IF token ist text token 
+                   THEN letztes zeichen := t. text SUB LENGTH t. text;
+                        LEAVE bestimme letztes zeichen;
+                FI;
+                token index DECR 1;
+            PER;
+            letztes zeichen := "";
+ 
+        . letztes zeichen : par1
+ 
+        . anzahl zeichen bei aufzaehlung :
+            anzahl zeichen - anzahl einrueck blanks
+ 
+        . token ist text token :
+            t. offset index >= text token
+.
+  analysiere blockzeile nach absatzzeile :
+    REP bestimme token bis terminator oder zeilenende
+          (PROC (INT CONST, TEXT VAR,
+           INT VAR, INT VAR, INT VAR, INT VAR, INT VAR, INT VAR, INT VAR) analysator);
+        IF zeile ist zu ende 
+           THEN blocke zeile (limit);
+                LEAVE analysiere blockzeile nach absatzzeile
+           ELSE analysiere blank in blockzeile nach absatzzeile 
+        FI;
+    PER;
+ 
+    . analysiere blank in blockzeile nach absatzzeile : 
+        IF naechstes zeichen ist blank
+           THEN tabulator position gefunden;
+           ELSE dehnbares blank gefunden;
+        FI;
+ 
+.
+  analysiere absatzzeile nach absatzzeile :
+    blankmodus := doppel blank;
+    REP bestimme token bis terminator oder zeilenende
+          (PROC (INT CONST, TEXT VAR,
+           INT VAR, INT VAR, INT VAR, INT VAR, INT VAR, INT VAR, INT VAR) analysator);
+        IF zeile ist zu ende 
+           THEN LEAVE analysiere absatzzeile nach absatzzeile
+           ELSE tabulator position gefunden
+        FI;
+    PER;
+ 
+.
+  analysiere blockzeile nach blockzeile :
+    anfangs blankmodus := einfach blank;
+    REP bestimme token bis terminator oder zeilenende
+          (PROC (INT CONST, TEXT VAR,
+           INT VAR, INT VAR, INT VAR, INT VAR, INT VAR, INT VAR, INT VAR) analysator);
+        IF zeile ist zu ende 
+           THEN blocke zeile (limit);
+                LEAVE analysiere blockzeile nach blockzeile
+           ELSE dehnbares blank gefunden 
+        FI;
+    PER;
+ 
+.
+  analysiere absatzzeile nach blockzeile :
+    anfangs blankmodus := keine blankanalyse;
+    bestimme token bis terminator oder zeilenende
+      (PROC (INT CONST, TEXT VAR,
+       INT VAR, INT VAR, INT VAR, INT VAR, INT VAR, INT VAR, INT VAR) analysator);
+ 
+ 
+.
+  dehnbares blank gefunden :
+    anzahl zeichen INCR 1;
+    zeilenpos      INCR 1;
+    a xpos         INCR blankbreite;
+    a modifikationen fuer x move := a modifikationen;
+    IF NOT a block token
+       THEN anzahl blanks  INCR 1;
+            a block token := TRUE; 
+    FI;
+.
+  tabulator position gefunden :
+    alte zeilenpos := zeilenpos; 
+    zeilenpos := naechstes nicht blankes zeichen;
+    IF zeilenpos = 0 
+       THEN zeilenpos := zeilen laenge + 1;
+       ELSE IF erstes token der zeile > token index f
+               THEN token zeiger := zeilen pos;
+                    lege token an (zeile, token zeiger, zeilen pos - 1, text token);
+            FI;
+            anzahl zeichen INCR (zeilenpos - alte zeilenpos);
+            a xpos := left margin + anzahl zeichen * aktuelle einrueckbreite; 
+            a modifikationen fuer x move := a modifikationen;
+            IF zeile muss geblockt werden THEN initialisiere tab variablen FI;
+    FI;
+ 
+.
+  pruefe center und right modus : 
+    IF center modus THEN zentriere zeile (limit DIV 2) FI;
+    IF right  modus THEN schreibe zeile rechtsbuendig (limit) FI;
+.
+  pruefe ob tabulation vorliegt:
+    IF analyse speicher ist nicht leer CAND a xpos > tf. xpos + tf. breite
+       THEN a modifikationen fuer x move := a modifikationen; 
+            token zeiger := zeilen pos;
+            lege token an (zeile, token zeiger, zeilen pos - 1, text token);
+    FI;
+.
+  werte indexspeicher aus :
+    INT VAR index;
+    IF index zaehler > 0
+       THEN FOR index FROM index zaehler DOWNTO 1
+                REP a ypos DECR (index verschiebung ISUB index);
+                    IF (letzte index breite ISUB index) <> 0
+                       THEN a xpos := (xpos vor index ISUB index) +
+                                      min (a xpos - (xpos vor index ISUB index),
+                                                letzte index breite ISUB index);
+                    FI;
+                PER;
+            stelle neuen font ein (grosse fonts ISUB 1);
+    FI;
+.
+  zeile ist keine anweisungszeile :
+    fuehrende anweisungen  <> zeilen laenge
+.
+  berechne zeilenvorschub :
+    verschiebung := aktuelle zeilenhoehe +
+                        aktuelle zeilentiefe der letzten zeile + durchschuss;
+    aktuelle zeilentiefe der letzten zeile := aktuelle zeilentiefe;
+    a ypos INCR verschiebung;
+    verschiebe token ypos (verschiebung);
+ 
+.
+  pruefe ob markierung rechts :
+    IF markierung rechts
+       THEN mark token (mark index r). xpos := left margin + limit;
+            lege markierungs token an (mark index r);
+    FI;
+. 
+  behandle anweisungszeile :
+    IF linkes markierungs token > 0
+       THEN IF erstes token der zeile = token index f + 1
+               THEN loesche analysespeicher;
+               ELSE FOR token index FROM linkes markierungs token
+                                    UPTO erstes token der zeile - 1
+                    REP t. text   := "";
+                        t. xpos   := 0;
+                        t. breite := 0;
+                    PER;
+            FI;
+    FI;
+ 
+END PROC analysiere zeile;
+ 
+ 
+PROC blocke zeile (INT CONST rechter rand) :
+ 
+rest := rechter rand - zeilen breite;
+IF rest > 0 AND anzahl blanks > 0
+   THEN INT CONST schmaler schritt       := rest DIV anzahl blanks,
+                  breiter schritt        := schmaler schritt + 1,
+                  anzahl breite schritte := rest MOD anzahl blanks;
+        IF rechts
+           THEN blocke token xpos (breiter schritt, schmaler schritt,
+                                                     anzahl breite schritte);
+                rechts := FALSE; 
+           ELSE blocke token xpos (schmaler schritt, breiter schritt,
+                                     anzahl blanks - anzahl breite schritte);
+                rechts := TRUE;
+       FI;
+       a xpos INCR ( breiter schritt * anzahl breite schritte +
+              schmaler schritt * (anzahl blanks - anzahl breite schritte) );
+FI;
+ 
+END PROC blocke zeile;
+ 
+ 
+PROC zentriere zeile (INT CONST zentrier pos) :
+ 
+IF erstes tab token <= token index f
+   THEN verschiebung := zentrier pos - tab anfang -
+                                   (zeilen breite - tab anfang) DIV 2; 
+        verschiebe token xpos (verschiebung);
+        a xpos     INCR verschiebung; 
+        tab anfang INCR verschiebung; 
+FI;
+center modus := FALSE;
+ 
+END PROC zentriere zeile;
+ 
+ 
+PROC schreibe zeile rechtsbuendig (INT CONST rechte pos) :
+ 
+IF erstes tab token <= token index f
+   THEN verschiebung := rechte pos - zeilen breite;
+        verschiebe token xpos (verschiebung);
+        a xpos     INCR verschiebung;
+        tab anfang INCR verschiebung; 
+FI;
+right modus := FALSE;
+ 
+ 
+END PROC schreibe zeile rechtsbuendig;
+ 
+ 
+PROC bestimme token bis terminator oder zeilenende
+     (PROC (INT CONST, TEXT VAR,
+            INT VAR, INT VAR, INT VAR, INT VAR, INT VAR, INT VAR, INT VAR) analysator):
+ 
+token zeiger := zeilen pos;
+REP stranalyze (zeichenbreiten, a breite, max breite, 
+                zeile, zeilen pos, zeilen laenge,
+                ausgang);
+    zeilen pos INCR 1;
+    IF   ausgang = blank ausgang
+         THEN analysiere blank
+    ELIF ausgang = anweisungs ausgang
+         THEN anweisung gefunden
+    ELIF ausgang = d code ausgang
+         THEN analysiere d string
+    ELIF ausgang = erweiterungs ausgang
+         THEN erweiterung gefunden
+         ELSE terminator oder zeilenende gefunden
+    FI;
+PER;
+ 
+. analysiere blank :
+    IF blankmodus = einfach blank OR
+       (blankmodus = doppel blank AND naechstes zeichen ist blank)
+       THEN terminator oder zeilenende gefunden 
+       ELSE a breite INCR blankbreite;
+            zeilenpos INCR 1;
+    FI;
+ 
+. analysiere d string :
+    IF pos (zeile, d string, zeilen pos) = zeilen pos 
+       THEN terminator oder zeilenende gefunden 
+       ELSE IF   d pitch = maxint
+                 THEN erweiterung gefunden
+            ELIF d pitch < 0
+                 THEN a breite INCR (d pitch XOR - maxint - 1); 
+                      zeilen pos INCR 2; 
+                 ELSE a breite INCR d pitch; 
+                      zeilenpos INCR 1;
+            FI;
+    FI;
+ 
+. erweiterung gefunden :
+    a breite INCR extended char pitch (a font, zeile SUB zeilen pos, 
+                                               zeile SUB zeilen pos + 1); 
+    zeilen pos INCR 2;
+ 
+. anweisung gefunden :
+    gegebenfalls neues token gefunden;
+    analysiere anweisung (PROC (INT CONST, TEXT VAR,
+      INT VAR, INT VAR, INT VAR, INT VAR, INT VAR, INT VAR, INT VAR) analysator);
+    IF zeile ist zu ende
+       THEN LEAVE bestimme token bis terminator oder zeilenende FI;
+    token zeiger := zeilenpos;
+ 
+. terminator oder zeilenende gefunden :
+    IF ausgang = null ausgang THEN  zeilen laenge DECR 1 FI;
+    gegebenfalls neues token gefunden;
+    LEAVE bestimme token bis terminator oder zeilenende;
+ 
+    . gegebenfalls neues token gefunden :
+        IF token zeiger < zeilenpos
+           THEN lege token an (zeile, token zeiger, zeilen pos - 1, text token) FI;
+ 
+END PROC bestimme token bis terminator oder zeilen ende;
+ 
+ 
+PROC analysiere anweisung (PROC (INT CONST, TEXT VAR,
+       INT VAR, INT VAR, INT VAR, INT VAR, INT VAR, INT VAR, INT VAR) analysator) :
+ 
+   bestimme anweisung;
+   IF   anweisung ist kommando
+        THEN lege token an (anweisung, 1, maxint, kommando token);
+   ELIF anweisung ist kein kommentar
+        THEN werte anweisung aus; 
+   FI;
+ 
+    . anweisungsende   : zeilen pos - 2
+ 
+    . erstes zeichen   : par1
+ 
+. bestimme anweisung :
+    INT CONST anweisungsanfang := zeilenpos + 1;
+    zeilen pos := pos (zeile, anweisungszeichen, anweisungsanfang, zeilenlaenge);
+    IF zeilenpos = 0
+       THEN zeilenpos := anweisungsanfang - 1;
+            replace (zeile, zeilenpos, geschuetztes anweisungszeichen);
+            LEAVE analysiere anweisung;
+    FI;
+    IF fuehrende anweisungen = anweisungsanfang - 2 THEN fuehrende anweisungen := zeilen pos FI;
+    zeilen pos INCR 1; 
+    anweisung      := subtext (zeile, anweisungsanfang, anweisungsende);
+    erstes zeichen := anweisung SUB 1;
+ 
+. anweisung ist kommando : 
+    IF   erstes zeichen = quote
+         THEN scan (anweisung);
+              next symbol (anweisung, symbol type);
+              next symbol (par2, naechster symbol type);
+              IF symbol type <> text type OR naechster symbol type <> eof type
+                 THEN LEAVE analysiere anweisung FI;
+              TRUE
+    ELIF erstes zeichen = druckerkommando zeichen
+         THEN delete char (anweisung, 1);
+              TRUE
+         ELSE FALSE
+    FI
+    
+. anweisung ist kein kommentar :
+    erstes zeichen <> kommentar zeichen
+ 
+. 
+  werte anweisung aus :
+    analyze command (anweisungs liste, anweisung, number type,
+                     anweisungs index, anzahl params, par1, par2);
+    SELECT anweisungs index OF
+      CASE a type           : type anweisung
+      CASE a on             : on anweisung
+      CASE a off            : off anweisung
+      CASE a ub, a fb       : ub fb anweisung
+      CASE a ue, a fe       : ue fe anweisung
+      CASE a center         : center anweisung
+      CASE a right          : right anweisung
+      CASE a up, a down     : index anweisung
+      CASE a end up or down : end index anweisung
+      CASE a bsp            : bsp anweisung
+      CASE a fillchar       : fillchar anweisung
+      CASE a mark           : mark anweisung
+      CASE a markend        : markend anweisung
+      OTHERWISE : IF anweisungs index > 0
+                     THEN speichere anweisung
+                     ELSE rufe analysator
+                  FI;
+    END SELECT;
+ 
+    . type anweisung :
+        change all (par1, " ", "");
+        stelle neuen font ein (font (par1));
+        a modifikationen   := 0;
+        ueberpruefe groesste fontgroesse;
+        IF nicht innerhalb eines indexes
+           THEN berechne aktuelle zeilengroesse FI;
+ 
+        . nicht innerhalb eines indexes :
+            index zaehler = 0
+ 
+    . on anweisung :
+        par1 := par1 SUB 1;
+        IF pos (modifikations liste, par1) > 0
+           THEN set bit (a modifikationen, pos (modifikations liste, par1) - 1 );
+        FI;
+ 
+    . off anweisung :
+        par1 := par1 SUB 1;
+        IF pos (modifikations liste, par1) > 0
+           THEN reset bit (a modifikationen, pos (modifikations liste, par1) - 1 );
+        FI;
+ 
+    . ub fb anweisung :
+        IF anweisungs index = a ub
+           THEN par1 := "u"
+           ELSE par1 := "b"
+        FI;
+        on anweisung;
+ 
+    . ue fe anweisung :
+        IF anweisungs index = a ue
+           THEN par1 := "u"
+           ELSE par1 := "b"
+        FI;
+        off anweisung;
+ 
+    . center anweisung :
+        IF NOT zeile muss geblockt werden AND NOT tabellen modus
+               AND NOT right modus
+           THEN center modus := TRUE;
+                blankmodus   := keine blankanalyse;
+                initialisiere tab variablen; 
+        FI;
+ 
+    . right anweisung :
+        IF NOT zeile muss geblockt werden AND NOT tabellen modus
+           THEN IF center modus THEN zentriere zeile (limit DIV 2) FI;
+                right modus := TRUE;
+                blankmodus  := keine blankanalyse;
+                initialisiere tab variablen; 
+        FI;
+ 
+    . index anweisung :
+        INT CONST grosser font := a font,
+                  grosse fonthoehe := fonthoehe, grosse fonttiefe := fonttiefe;
+        INT VAR   kleiner font;
+        IF next smaller font exists (grosser font, kleiner font)
+           THEN stelle neuen font ein (kleiner font) FI;
+        IF font hoehe < grosse fonthoehe
+           THEN verschiebung := verschiebung fuer kleinen font
+           ELSE verschiebung := verschiebung fuer grossen font
+        FI;
+        a ypos INCR verschiebung;
+        merke index werte;
+ 
+        . verschiebung fuer kleinen font :
+            IF anweisungs index = a down
+               THEN    15 PROZENT (grosse fonthoehe + grosse fonttiefe)
+               ELSE - ( 4 PROZENT (grosse fonthoehe + grosse fonttiefe) )
+                    - (grosse fonthoehe + grosse fonttiefe - fonthoehe - fonttiefe)
+            FI
+ 
+        . verschiebung fuer grossen font :
+            IF anweisungs index = a down
+               THEN    25 PROZENT (fonthoehe + fonttiefe)
+               ELSE - (50 PROZENT (fonthoehe + fonttiefe) )
+            FI
+ 
+        . merke index werte :
+            index zaehler INCR 1;
+            IF hoechster index zaehler < index zaehler
+               THEN neues index level
+               ELSE altes index level
+            FI;
+            IF index zaehler = 1
+               THEN alter blankmodus := blankmodus; 
+                    blankmodus := keine blankanalyse;
+            FI;
+ 
+            . neues index level :
+                hoechster index zaehler := index zaehler;
+                letzte index breite  CAT 0;
+                xpos vor index       CAT a xpos;
+                zeilenpos nach index CAT -1;
+                index verschiebung   CAT verschiebung;
+                grosse fonts         CAT grosser font;
+ 
+            . altes index level :
+                IF (zeilenpos nach index ISUB index zaehler) = anweisungsanfang - 1
+                    AND sign (index verschiebung ISUB index zaehler) <> sign (verschiebung)
+                   THEN doppelindex gefunden;
+                   ELSE replace (xpos vor index, index zaehler, a xpos);
+                FI;
+                replace (index verschiebung, index zaehler, verschiebung);
+                replace (grosse fonts, index zaehler, grosser font);
+ 
+                . doppelindex gefunden :
+                    replace (letzte index breite, index zaehler,
+                             a xpos - (xpos vor index ISUB index zaehler));
+                    a xpos := xpos vor index ISUB index zaehler;
+ 
+    . end index anweisung :
+        IF index zaehler > 0
+           THEN schalte auf alte index werte zurueck;
+        FI;
+ 
+        . schalte auf alte index werte zurueck :
+            IF index zaehler = 1 THEN blankmodus := alter blankmodus FI;
+            a ypos DECR (index verschiebung ISUB index zaehler);
+            stelle neuen font ein (grosse fonts ISUB index zaehler);
+            IF (letzte index breite ISUB index zaehler) <> 0
+               THEN berechne doppelindex
+               ELSE replace (zeilenpos nach index, index zaehler, zeilenpos);
+            FI;
+            index zaehler DECR 1;
+ 
+            . berechne doppelindex :
+                a xpos := (xpos vor index ISUB index zaehler) +
+                           max (a xpos - (xpos vor index ISUB index zaehler),
+                                     letzte index breite ISUB index zaehler);
+                replace (zeilenpos nach index, index zaehler, -1);
+                replace (letzte index breite, index zaehler, 0);
+ 
+    . bsp anweisung :
+        INT VAR breite davor, breite dahinter;
+        IF anweisungs anfang - 2 >= 1 AND anweisungs ende + 2 <= zeilen laenge
+           THEN IF is kanji esc (zeile SUB anweisungs anfang - 3)
+                   THEN zeichen davor := subtext (zeile, anweisungs anfang - 3,
+                                                         anweisungs anfang - 2);
+                   ELSE zeichen davor := zeile SUB anweisungs anfang - 2;
+                FI;
+                IF is kanji esc (zeile SUB anweisungs ende + 2)
+                   THEN zeichen dahinter := subtext (zeile, anweisungs ende + 2,
+                                                            anweisungs ende + 3 );
+                   ELSE zeichen dahinter := zeile SUB anweisungs ende + 2;
+                FI;
+                IF pos (" #", zeichen davor) = 0 AND pos (" #", zeichen dahinter) = 0 
+                   THEN breite davor    := char pitch (a font, zeichen davor);
+                        breite dahinter := char pitch (a font, zeichen dahinter);
+                        IF breite davor < breite dahinter THEN vertausche zeichen FI;
+                        lege token fuer zeichen dahinter an;
+                        a xpos INCR (breite davor - breite dahinter) DIV 2; 
+                FI;
+        FI;
+ 
+        . zeichen davor    : par1
+        . zeichen dahinter : par2
+ 
+        . vertausche zeichen :
+            change (zeile, anweisungs anfang - 2 - LENGTH zeichen davor + 1, 
+                           anweisungs anfang - 2, zeichen dahinter);
+            change (zeile, anweisungs ende + 2,
+                           anweisungs ende + 2 + LENGTH zeichen dahinter - 1, zeichen davor);
+            change (tf. text, LENGTH tf. text - LENGTH zeichen davor + 1,
+                              LENGTH tf. text, zeichen dahinter);
+            tf. breite INCR (breite dahinter - breite davor);
+            a xpos     INCR (breite dahinter - breite davor);
+            int param        := breite davor;
+            breite davor     := breite dahinter;
+            breite dahinter  := int param;
+ 
+        . lege token fuer zeichen dahinter an :
+            token zeiger := zeilen pos;
+            a breite     := breite dahinter;
+            zeilen pos INCR LENGTH zeichen dahinter;
+            a xpos     DECR (breite davor + breite dahinter) DIV 2; 
+            lege token an (zeile, token zeiger, zeilen pos - 1, text token);
+            anzahl zeichen DECR 1;
+ 
+    . fillchar anweisung :
+        IF par1 = "" THEN par1 := " " FI;
+        fill char := par1;
+        speichere anweisung;
+ 
+    . mark anweisung :
+        IF par1 <> "" 
+           THEN mark index l := (alter mark index l MOD 2) + 1;
+                neue markierung (par1, mark index l);
+           ELSE mark index l := 0;
+        FI;
+        IF par2 <> "" 
+           THEN mark index r := (alter mark index r MOD 2) + 3;
+                neue markierung (par2, mark index r);
+           ELSE mark index r := 0;
+        FI;
+ 
+    . markend anweisung :
+        loesche markierung;
+ 
+    . speichere anweisung :
+        anweisungs zaehler INCR 1;
+        anweisungs indizes CAT anweisungs index;
+        IF par1 <> ""
+           THEN insert (params1, par1); 
+                params1 zeiger CAT highest entry (params1);
+           ELSE params1 zeiger CAT 0;
+        FI;
+        IF par2 <> ""
+           THEN insert (params2, par2); 
+                params2 zeiger CAT highest entry (params2);
+           ELSE params2 zeiger CAT 0;
+        FI;
+ 
+    . rufe analysator :
+        INT CONST alte xpos := a xpos, alte y pos := a ypos;
+        INT VAR analysatorbreite, analysatorhoehe, analysatortiefe,
+                analysator font           := a font,
+                analysator modifikationen := a modifikationen;
+        zeilen pos := anweisungsanfang - 1;
+disable stop;
+        analysator (text code, zeile, zeilen pos,
+                    analysator font, analysator modifikationen,
+                    analysatorbreite, analysatorhoehe, analysatortiefe, dummy);
+IF is error
+   THEN par1 := error message;
+        par1 CAT " a1-> ";
+        par1 CAT text (errorline);
+        clear error;
+        errorstop (par1);
+FI;
+enable stop;
+        hole token der analyse;
+        a xpos               := alte xpos + analysatorbreite;
+        a ypos               := alte ypos;
+        a modifikationen     := analysator modifikationen;
+        groesste analysatorhoehe := max (analysatorhoehe, groesste analysator hoehe);
+        groesste analysatortiefe := max (analysatortiefe, groesste analysator tiefe);
+        IF analysator font <> a font
+           THEN stelle neuen font ein (analysator font);
+                ueberpruefe groesste fontgroesse;
+                IF nicht innerhalb eines indexes
+                   THEN berechne aktuelle zeilengroesse FI;
+           ELSE aktuelle zeilenhoehe := max (groesste analysatorhoehe,
+                                                      aktuelle zeilenhoehe);
+                aktuelle zeilentiefe := max (groesste analysatortiefe,
+                                                      aktuelle zeilentiefe);
+        FI;
+           
+        . hole token der analyse :
+            INT VAR token nr := 0, token font, token xpos, token ypos, token typ;
+            BOOL VAR font changed := FALSE;
+            token text := "";
+            REP
+disable stop;
+                analysator (token code, token text, token nr,
+                            token font, a modifikationen, a breite,
+                            token xpos, token ypos, token typ);
+IF is error
+   THEN par1 := error message;
+        par1 CAT " a2-> ";
+        par1 CAT text (errorline);
+        clear error;
+        errorstop (par1);
+FI;
+enable stop;
+                IF token nr = 0
+                   THEN IF font changed THEN a font := -1 FI;
+                        LEAVE hole token der analyse
+                FI;
+                IF token font <> a font
+                   THEN a font       := token font;
+                        font offsets := y offsets (a font);
+                        offsets      := LENGTH font offsets > 2;
+                        font changed := TRUE;
+                FI;
+                a xpos := alte xpos + token xpos;
+                a ypos := alte ypos + token ypos;
+                lege token an (token text, 1, max int, token typ)
+            PER;
+ 
+            . token text : par1
+ 
+END PROC analysiere anweisung;
+ 
+ 
+PROC stelle neuen font ein (INT CONST font nr ) :
+ 
+  IF font nr <> a font THEN neuer font FI;
+ 
+  . neuer font :
+      a font := max (1, font nr);
+      get font (a font, einrueckbreite, fontdurchschuss, fonthoehe, fonttiefe,
+                zeichenbreiten);
+      blankbreite                                := zeichenbreiten (blank code 1);
+      zeichenbreiten (blank code 1)              := blank ausgang;
+      zeichenbreiten (anweisungs zeichen code 1) := anweisungs ausgang;
+      font offsets                               := y offsets (a font);
+      offsets                                    := LENGTH font offsets > int length;
+      berechne fontgroesse;
+      berechne letzte zeilengroesse;
+      IF d code 1 <> leer
+         THEN d pitch                            := zeichenbreiten (d code 1);
+              zeichenbreiten (d code 1)          := d code ausgang;
+     FI;
+ 
+END PROC stelle neuen font ein;
+ 
+ 
+INT OP PROZENT (INT CONST prozent, wert) :
+ 
+    (wert * prozent + 99) DIV 100
+ 
+END OP PROZENT; 
+ 
+ 
+PROC neue markierung (TEXT CONST text, INT CONST mark index) :
+ 
+      mark token (mark index). text           := text;
+      mark token (mark index). breite         := string breite (text);
+      mark token (mark index). font           := a font;
+      mark token (mark index). modifikationen := a modifikationen;
+ 
+END PROC neue markierung;
+ 
+ 
+INT PROC string breite (TEXT CONST string) :
+ 
+    INT VAR summe := 0, pos := 1;
+    REP stranalyze (zeichenbreiten, summe, max breite, string, pos, maxint, ausgang);
+        IF   ausgang = erweiterungs ausgang
+             THEN summe INCR extended char pitch (a font,
+                                       string SUB pos+1, string SUB pos+2);
+                  pos INCR 3;
+        ELIF ausgang = blank ausgang
+             THEN summe INCR blankbreite;
+                  pos INCR 2;
+        ELIF ausgang = anweisungs ausgang
+             THEN summe INCR char pitch (a font, anweisungszeichen);
+                  pos INCR 2;
+             ELSE LEAVE string breite WITH summe
+        FI;
+    PER;
+    0
+ 
+END PROC string breite;
+ 
+(*******************************************************************)
+ 
+PROC lege token an (TEXT CONST token text,
+                    INT  CONST token anfang, token ende, token typ) :
+ 
+  INT VAR anfang := token anfang;
+  aktuelle ypos := a ypos + (font offsets ISUB 1); 
+  neuer token index;
+  uebertrage token (tf, token text, token anfang, token ende, token typ);
+  IF   token typ >= text token
+       THEN IF offsets THEN lege offsets an (font offsets) FI;
+            stranalyze (zeichen zaehler, anzahl zeichen, max int,
+                        token text, anfang, token ende, ausgang);
+            a xpos INCR a breite;
+  FI;
+  a breite                     := 0;
+  a modifikationen fuer x move := 0;
+  a block token                := FALSE;
+ 
+END PROC lege token an;
+ 
+ 
+PROC uebertrage token (TOKEN VAR tf, TEXT CONST token text,
+                       INT CONST token anfang, token ende, token typ) :
+ 
+  tf. text                       := subtext (token text, token anfang, token ende);
+  tf. xpos                       := a xpos;
+  tf. breite                     := a breite;
+  tf. font                       := a font;
+  tf. modifikationen             := a modifikationen;
+  tf. modifikationen fuer x move := a modifikationen fuer x move;
+  tf. offset index               := token typ;
+  tf. block token                := a block token;
+ 
+END PROC uebertrage token;
+ 
+ 
+PROC lege markierungs token an (INT CONST mark index) :
+ 
+  aktuelle ypos := a ypos + (mark font offsets ISUB 1); 
+  neuer token index;
+  tf := mark token (mark index);
+  IF mark offsets THEN lege offsets an (mark font offsets) FI;
+ 
+  . mark font offsets   : y offsets (mark token (mark index). font)
+ 
+  . mark offsets        : LENGTH mark font offsets > int length
+ 
+END PROC lege markierungs token an;
+ 
+ 
+PROC lege offsets an (TEXT CONST offsets l) :
+ 
+  INT CONST anzahl offsets := LENGTH offsets l DIV int length;
+  INT VAR index;
+  offset token := tf;
+  offset token. block token := FALSE;
+  reset bit (offset token. modifikationen, underline bit);
+  reset bit (offset token. modifikationen fuer x move, underline bit);
+  FOR index FROM 2 UPTO anzahl offsets
+  REP aktuelle ypos := a ypos + (offsets l ISUB index); 
+      neuer token index;
+      tf               := offset token;
+      tf. offset index := index;
+  PER;
+ 
+END PROC lege offsets an;
+ 
+ 
+PROC neuer token index :
+ 
+IF   erster ypos index a = 0
+     THEN erste ypos
+ELIF ya. ypos = aktuelle ypos 
+     THEN neues token bei gleicher ypos
+     ELSE fuege neue ypos ein
+FI;
+ 
+  . erste ypos :
+      ypos  index f INCR 1;
+          erster     ypos index a := ypos index f;
+          letzter    ypos index a := ypos index f;
+      yf. vorheriger ypos index   := 0;
+      yf. naechster  ypos index   := 0;
+      erstes token bei neuer ypos;
+ 
+  . fuege neue ypos ein :
+      letztes token bei gleicher ypos;
+      IF ya. ypos > aktuelle ypos
+         THEN richtige ypos ist oberhalb
+         ELSE richtige ypos ist unterhalb
+      FI;
+ 
+      . richtige ypos ist oberhalb :
+          REP ypos index a := ya. vorheriger ypos index;
+              IF   ypos index a = 0
+                   THEN fuege ypos vor erstem ypos index ein;
+                        LEAVE richtige ypos ist oberhalb;
+              ELIF ya. ypos = aktuelle ypos
+                   THEN neues token bei neuer ypos;
+                        LEAVE richtige ypos ist oberhalb;
+              ELIF ya. ypos < aktuelle ypos
+                   THEN fuege ypos nach ypos index ein;
+                        LEAVE richtige ypos ist oberhalb;
+              FI;
+          PER;
+ 
+      . richtige ypos ist unterhalb :
+          REP ypos index a := ya. naechster ypos index;
+              IF   ypos index a = 0
+                   THEN fuege ypos nach letztem ypos index ein;
+                        LEAVE richtige ypos ist unterhalb;
+              ELIF ya. ypos = aktuelle ypos
+                   THEN neues token bei neuer ypos;
+                        LEAVE richtige ypos ist unterhalb;
+              ELIF ya. ypos > aktuelle ypos 
+                   THEN fuege ypos vor ypos index ein;
+                        LEAVE richtige ypos ist unterhalb;
+              FI;
+          PER;
+ 
+          . fuege ypos vor erstem ypos index ein :
+              ypos  index f INCR 1;
+              yf. vorheriger ypos index   := 0;
+              yf. naechster  ypos index   :=     erster    ypos index a;
+                  erster     ypos index a :=               ypos index f;
+                             ypos index a := yf. naechster ypos index;
+              ya. vorheriger ypos index   :=               ypos index f;
+              erstes token bei neuer ypos;
+ 
+          . fuege ypos nach ypos index ein :
+              ypos  index f INCR 1;
+              yf. vorheriger ypos index   :=               ypos index a;
+              yf. naechster  ypos index   := ya. naechster ypos index;
+              ya. naechster  ypos index   :=               ypos index f;
+                             ypos index a := yf. naechster ypos index;
+              ya. vorheriger ypos index   :=               ypos index f;
+              erstes token bei neuer ypos;
+ 
+          . fuege ypos vor ypos index ein :
+              ypos  index f INCR 1;
+              yf. naechster  ypos index   :=                ypos index a;
+              yf. vorheriger ypos index   := ya. vorheriger ypos index;
+              ya. vorheriger ypos index   :=                ypos index f;
+                             ypos index a := yf. vorheriger ypos index;
+              ya. naechster  ypos index   :=                ypos index f;
+              erstes token bei neuer ypos;
+ 
+          . fuege ypos nach letztem ypos index ein :
+              ypos  index f INCR 1;
+              yf. naechster  ypos index   := 0;
+              yf. vorheriger ypos index   :=     letzter    ypos index a;
+                  letzter    ypos index a :=                ypos index f;
+                             ypos index a := yf. vorheriger ypos index;
+              ya. naechster  ypos index   :=                ypos index f;
+              erstes token bei neuer ypos;
+ 
+END PROC neuer token index;
+ 
+ 
+PROC erstes token bei neuer ypos :
+     token index f INCR 1;
+                 ypos index a := ypos index f;
+     ya. erster token index   := token index f; 
+     ya. ypos                 := aktuelle ypos;
+END PROC erstes token bei neuer ypos;
+ 
+ 
+PROC neues token bei neuer ypos :
+     token index f INCR 1;
+     ya. ypos                 := aktuelle ypos;
+                  token index := ya. letzter token index;
+     t. naechster token index := token index f;
+END PROC neues token bei neuer ypos;
+ 
+ 
+PROC neues token bei gleicher ypos :
+     tf. naechster token index := token index f + 1;
+     token index f INCR 1;
+END PROC neues token bei gleicher ypos;
+ 
+ 
+PROC letztes token bei gleicher ypos : 
+     tf. naechster token index := 0;
+     ya. letzter   token index := token index f;
+END PROC letztes token bei gleicher ypos;
+ 
+ 
+PROC loesche letztes token :
+ 
+     IF token index f = ya. erster token index 
+        THEN loesche ypos
+        ELSE token index f DECR 1;
+     FI;
+ 
+     . loesche ypos :
+         kette vorgaenger um;
+         kette nachfolger um;
+         bestimme letzten ypos index;
+ 
+         . kette vorgaenger um :
+             ypos index := ya. vorheriger ypos index; 
+             IF ypos index = 0
+                THEN       erster ypos index a := ya. naechster ypos index;
+                ELSE y. naechster ypos index   := ya. naechster ypos index; 
+             FI;
+ 
+         . kette nachfolger um :
+             ypos index := ya. naechster ypos index;
+             IF ypos index = 0
+                THEN       letzter ypos index a := ya. vorheriger ypos index;
+                ELSE y. vorheriger ypos index   := ya. vorheriger ypos index; 
+             FI;
+ 
+         . bestimme letzten ypos index :
+             IF ypos index a = ypos index f THEN ypos index f DECR 1 FI;
+             token index f DECR 1;
+             ypos index a := letzter ypos index a; 
+             WHILE ypos index a <> 0
+                       CAND ya. letzter token index <> token index f
+             REP ypos index a := ya. vorheriger ypos index PER;
+ 
+END PROC loesche letztes token;
+ 
+ 
+PROC blocke token xpos (INT CONST dehnung 1, dehnung 2,
+                                  anzahl dehnungen fuer dehnung 1 ) :
+ 
+  INT VAR dehnung := 0, anzahl dehnungen := 0;
+  token index := erstes tab token;
+  WHILE token index <= token index f
+  REP erhoehe token xpos bei block token;
+      t. xpos INCR dehnung;
+      token index INCR 1; 
+  PER;
+ 
+  . erhoehe token xpos bei block token :
+      IF t. block token
+         THEN IF anzahl dehnungen < anzahl dehnungen fuer dehnung 1
+                 THEN anzahl dehnungen INCR 1;
+                      dehnung INCR dehnung 1;
+                 ELSE dehnung INCR dehnung 2;
+              FI;
+      FI;
+ 
+END PROC blocke token xpos;
+ 
+ 
+PROC verschiebe token xpos (INT CONST verschiebung l) :
+ 
+  token index := erstes tab token;
+  WHILE token index <= token index f
+  REP t. xpos INCR verschiebung l;
+      token index INCR 1; 
+  PER;
+ 
+END PROC verschiebe token xpos;
+ 
+ 
+PROC verschiebe token ypos (INT CONST verschiebung l) :
+ 
+  ypos index := erster ypos index a;
+  WHILE ypos index <> 0
+  REP y. ypos INCR verschiebung l; 
+      ypos index := y. naechster ypos index;
+  PER;
+ 
+END PROC verschiebe token ypos;
+ 
+ 
+PROC sortiere neue token ein :
+ 
+INT VAR index; 
+IF analysespeicher ist nicht leer
+   THEN IF druckspeicher ist nicht leer
+           THEN sortiere neue token in sortierte liste ein
+           ELSE sortierte liste ist leer
+        FI;
+FI;
+ 
+. sortierte liste ist leer :
+    IF erster ypos index a <> 0
+       THEN erster  ypos index d := erster  ypos index a;
+            letzter ypos index d := letzter ypos index a;
+                    ypos index d := letzter ypos index a;
+    FI;
+ 
+. sortiere neue token in sortierte liste ein :
+    gehe zum ersten neuen token;
+    bestimme erste einsortierposition;
+    WHILE es gibt noch neue token
+    REP IF   ypos index d = 0
+             THEN haenge neue token ans ende der sortierten liste 
+        ELIF ya. ypos > yd. ypos
+             THEN naechste ypos der sortierten liste
+        ELIF ya. ypos = yd. ypos
+             THEN neues token auf gleicher ypos
+             ELSE neue token vor ypos
+        FI; 
+    PER;
+ 
+    . gehe zum ersten neuen token :
+        ypos index a := erster ypos index a;
+ 
+    . bestimme erste einsortierposition :
+        WHILE ypos index d <> 0  CAND  ya. ypos < yd. ypos
+          REP ypos index d := yd. vorheriger ypos index PER;
+        IF ypos index d = 0 THEN erste neue token vor listen anfang FI;
+ 
+        . erste neue token vor listen anfang :
+                   ypos index d := erster ypos index d;
+            erster ypos index d := erster ypos index a;
+            REP ypos index a := ya. naechster ypos index;
+                IF   ypos index a = 0
+                     THEN verkette letztes ya mit yd;
+                          LEAVE sortiere neue token in sortierte liste ein
+                ELIF ya. ypos = yd. ypos
+                     THEN verkette ya mit yd;
+                          LEAVE erste neue token vor listen anfang
+                ELIF ya. ypos > yd. ypos
+                     THEN verkette vorheriges ya mit yd;
+                          ypos index d := yd. naechster ypos index;
+                          LEAVE erste neue token vor listen anfang
+                FI;
+            PER;
+ 
+    . es gibt noch neue token :
+        ypos index a <> 0
+ 
+    . haenge neue token ans ende der sortierten liste : 
+                       ypos index d := letzter ypos index d;
+        yd. naechster  ypos index   :=         ypos index a;
+        ya. vorheriger ypos index   :=         ypos index d;
+            letzter    ypos index d := letzter ypos index a;
+                       ypos index d := letzter ypos index a;
+                       ypos index a := 0;
+ 
+    . naechste ypos der sortierten liste :
+        ypos index d := yd. naechster ypos index;
+ 
+    . neues token auf gleicher ypos :
+                      token index   := yd. letzter   token index;
+        t . naechster token index   := ya. erster    token index;
+        yd. letzter   token index   := ya. letzter   token index;
+                      ypos  index a := ya. naechster ypos  index;
+                      ypos  index d := yd. naechster ypos  index;
+        IF ypos index d = 0 THEN ypos index d := letzter ypos index d FI;
+ 
+    . neue token vor ypos :
+        verkette ya mit vorherigem yd;
+        REP ypos index a := ya. naechster ypos index;
+            IF   ypos index a = 0
+                 THEN verkette letztes ya mit yd;
+                      LEAVE sortiere neue token in sortierte liste ein
+            ELIF ya. ypos = yd. ypos
+                 THEN verkette ya mit yd;
+                      LEAVE neue token vor ypos
+            ELIF ya. ypos > yd. ypos 
+                 THEN verkette vorheriges ya mit yd;
+                      ypos index d := yd. naechster ypos index;
+                      LEAVE neue token vor ypos
+            FI;
+        PER;
+ 
+ 
+. verkette ya mit vorherigem yd :
+                        index   := ypos index d;
+                   ypos index d := yd. vorheriger ypos index; 
+    yd. naechster  ypos index   :=                ypos index a;
+    ya. vorheriger ypos index   :=                ypos index d;
+                   ypos index d := index;
+ 
+. verkette letztes ya mit yd :
+                   ypos index a := letzter ypos index a;
+    yd. vorheriger ypos index   :=         ypos index a;
+    ya. naechster  ypos index   :=         ypos index d;
+                   ypos index a := 0;
+ 
+. verkette vorheriges ya mit yd :
+                        index   := ypos index a;
+                   ypos index a := ya. vorheriger ypos index; 
+    yd. vorheriger ypos index   :=         ypos index a;
+    ya. naechster  ypos index   :=         ypos index d;
+                   ypos index a := index;
+ 
+. verkette ya mit yd :
+    verkette vorheriges ya mit yd;
+    neues token auf gleicher ypos;
+ 
+END PROC sortiere neue token ein;
+ 
+(***************************************************************)
+ 
+PROC drucke tokenspeicher
+             (INT CONST max ypos,
+              PROC (INT CONST, TEXT CONST, INT CONST, INT CONST) execute) :
+ 
+IF druckspeicher ist nicht leer
+   THEN gehe zur ersten ypos; 
+        WHILE yd. ypos <= max ypos 
+        REP drucke token bei ypos;
+            gehe zur naechsten ypos; 
+        PER;
+        loesche gedruckte token;
+FI;
+ 
+. gehe zur ersten ypos :
+    ypos index d := erster ypos index d;
+ 
+. drucke token bei ypos :
+    IF yd. ypos >= - y start
+       THEN druck durchgang;
+            IF bold      pass THEN fett         durchgang FI;
+            IF underline pass THEN unterstreich durchgang FI;
+    FI;
+ 
+    . bold      pass : bit (pass, bold bit)
+ 
+    . underline pass : bit (pass, underline bit)
+ 
+. gehe zur naechsten ypos : 
+    IF ypos index d = letzter ypos index d
+       THEN loesche druckspeicher;
+            LEAVE drucke tokenspeicher;
+    FI;
+    ypos index d := yd. naechster ypos index;
+ 
+. loesche gedruckte token :
+        erster     ypos index d := ypos index d;
+    yd. vorheriger ypos index   := 0;
+ 
+. 
+  druck durchgang :
+    verschiebung := yd. ypos - d ypos;
+    y move (PROC (INT CONST, TEXT CONST, INT CONST, INT CONST) execute);
+    gehe zum ersten token dieser ypos; 
+    REP drucke token UNTIL kein token mehr vorhanden PER;
+ 
+    . drucke token :
+        IF NOT token passt in zeile
+           THEN IF token ist text token
+                   THEN berechne token teil
+                   ELSE LEAVE drucke token
+                FI;
+        FI;
+        font wechsel wenn noetig;
+        x move mit modifikations ueberpruefung; 
+        IF   token ist text token
+             THEN gib text token aus
+                    (PROC (INT CONST, TEXT CONST, INT CONST, INT CONST) execute);
+        ELIF token ist linien token
+             THEN gib linien token aus
+             ELSE gib kommando token aus
+        FI;
+ 
+    . gib linien token aus :
+        linien verschiebung := d token. breite;
+        ziehe horizontale linie (PROC (INT CONST, TEXT CONST, INT CONST, INT CONST) execute);
+ 
+    . gib kommando token aus :
+        execute (write cmd, d token. text, 1, LENGTH d token. text)
+ 
+        . berechne token teil :
+            INT CONST fuenf punkte := 5 * char pitch (d token. font, punkt);
+            INT VAR token pos, token breite, anzahl punkte, zeichen laenge, zeichen breite; 
+            IF   d token. xpos < - x start
+                   AND d token. xpos + d token. breite > - x start 
+                 THEN berechne token teil von links
+            ELIF d token. xpos < papierbreite
+                   AND d token. xpos + d token. breite > papierbreite
+                 THEN berechne token teil nach rechts
+                 ELSE LEAVE drucke token
+            FI;
+ 
+        . berechne token teil von links :
+            rest          := min (x size, d token. xpos + d token. breite + x start);
+            d token. xpos := - x start;
+            IF rest <= fuenf punkte 
+               THEN anzahl punkte   := rest DIV char pitch (d token. font, punkt);
+                    d token. text   := anzahl punkte * punkt;
+                    d token. breite := anzahl punkte * char pitch (d token. font, punkt);
+               ELSE token pos    := LENGTH d token. text + 1;
+                    token breite := fuenf punkte;
+                    berechne token teil breite von hinten;
+                    change (d token. text, 1, token pos - 1, 5 * punkt);
+                    d token. breite := token breite;
+            FI;
+ 
+            . berechne token teil breite von hinten :
+                WHILE naechstes zeichen passt noch davor
+                REP token breite INCR zeichen breite; 
+                    token pos    DECR zeichen laenge;
+                PER;
+ 
+            . naechstes zeichen passt noch davor :
+                IF within kanji (d token. text, token pos - 1) 
+                   THEN zeichen laenge := 2
+                   ELSE zeichen laenge := 1
+                FI;
+                zeichen breite := char pitch (d token. font,
+                    subtext (d token. text, token pos - zeichen laenge, token pos - 1));
+                token breite + zeichen breite < rest
+ 
+        . berechne token teil nach rechts :
+            rest := papier breite - d token. xpos;
+            IF rest <= fuenf punkte 
+               THEN anzahl punkte   := rest DIV char pitch (d token. font, punkt);
+                    d token. text   := anzahl punkte * punkt;
+                    d token. breite := anzahl punkte * char pitch (d token. font, punkt);
+               ELSE token pos    := 0;
+                    token breite := fuenf punkte;
+                    berechne token teil breite von vorne;
+                    change (d token. text, token pos + 1, LENGTH d token. text, 5 * punkt);
+                    d token. breite := token breite;
+            FI;
+ 
+            . berechne token teil breite von vorne :
+                WHILE naechstes zeichen passt noch dahinter
+                REP token breite INCR zeichen breite; 
+                    token pos    INCR zeichen laenge;
+                PER;
+ 
+            . naechstes zeichen passt noch dahinter :
+                IF is kanji esc (d token. text SUB token pos + 1) 
+                   THEN zeichen laenge := 2
+                   ELSE zeichen laenge := 1
+                FI;
+                zeichen breite := char pitch (d token. font,
+                    subtext (d token. text, token pos + 1, token pos + zeichen laenge));
+                token breite + zeichen breite < rest
+ 
+.
+  fett durchgang :
+    reset bit (pass, bold bit);
+    gib cr aus;
+    gehe zum ersten token dieser ypos;
+    REP gib token nochmal aus UNTIL kein token mehr vorhanden PER;
+    schalte modifikationen aus wenn noetig;
+ 
+    . gib token nochmal aus :
+        INT CONST min verschiebung := bold offset (d token. font); 
+        d token. xpos INCR min verschiebung;
+        IF bit (d token. modifikationen, bold bit) AND
+               token passt in zeile AND token ist text token 
+          THEN verschiebung := d token. xpos - d xpos;
+               font wechsel wenn noetig;
+               schalte italics ein wenn noetig;
+               x move wenn noetig;
+               gib text token aus (PROC (INT CONST, TEXT CONST, INT CONST, INT CONST) execute); 
+        FI;
+        d token. xpos DECR min verschiebung;
+ 
+        . schalte italics ein wenn noetig :
+            IF bit (d token. modifikationen, italics bit)
+               THEN neue modifikationen := modifikations werte (italics bit + 1);
+                    schalte modifikationen ein wenn noetig;
+               ELSE schalte modifikationen aus wenn noetig;
+            FI;
+ 
+. 
+  unterstreich durchgang :
+    INT VAR l xpos := 0;
+    reset bit (pass, underline bit);
+    gib cr aus;
+    schalte modifikationen aus wenn noetig;
+    gehe zum ersten token dieser ypos;
+    REP unterstreiche token UNTIL kein token mehr vorhanden PER;
+ 
+    . unterstreiche token :
+        IF token muss unterstrichen werden AND
+                token passt in zeile AND token ist text token 
+           THEN font wechsel wenn noetig;
+                berechne x move laenge; 
+                x move wenn noetig;
+                berechne unterstreich laenge;
+                ziehe horizontale linie (PROC (INT CONST, TEXT CONST, INT CONST, INT CONST) execute);
+         FI;
+         l xpos := d token. xpos + d token. breite;
+ 
+         . token muss unterstrichen werden :
+             bit (d token. modifikationen, underline bit) OR
+                bit (d token. modifikationen fuer x move, underline bit)
+ 
+         . berechne x move laenge :
+             IF bit (d token. modifikationen fuer x move, underline bit) 
+                THEN verschiebung := l  xpos - d xpos
+                ELSE verschiebung := d token. xpos - d xpos
+             FI;
+ 
+         . berechne unterstreich laenge :
+             IF bit (d token. modifikationen, underline bit) 
+                THEN linien verschiebung := d token. xpos + 
+                                                d token. breite - d xpos
+                ELSE linien verschiebung := d token. xpos - d xpos
+             FI;
+             d token. offset index := - underline line type;
+ 
+ 
+. gehe zum ersten token dieser ypos :
+    token index := yd. erster token index;
+    d token := t;
+ 
+. kein token mehr vorhanden :
+    token index := d token. naechster token  index;
+    IF token index = 0
+       THEN TRUE
+       ELSE d token := t;
+            FALSE
+    FI
+ 
+. token ist text token :
+    d token. offset index >= text token
+ 
+. token ist linien token :
+    d token. offset index <= linien token
+ 
+. token passt in zeile :
+    d token. xpos >= - x start AND
+         d token. xpos + d token. breite <= papier breite 
+ 
+. font wechsel wenn noetig :
+    IF d token. font <>  d font
+       THEN font wechsel (PROC (INT CONST, TEXT CONST, INT CONST, INT CONST) execute) FI;
+ 
+. schalte modifikationen ein wenn noetig :
+    IF d modifikationen <> neue modifikationen
+       THEN schalte modifikationen ein (PROC (INT CONST, TEXT CONST, INT CONST, INT CONST) execute) FI;
+ 
+. schalte modifikationen aus wenn noetig :
+    IF d modifikationen <> 0
+       THEN schalte modifikationen aus (PROC (INT CONST, TEXT CONST, INT CONST, INT CONST) execute) FI;
+ 
+. x move wenn noetig :
+    IF verschiebung <> 0
+       THEN x move (PROC (INT CONST, TEXT CONST, INT CONST, INT CONST) execute) FI; 
+ 
+. 
+  x move mit modifikations ueberpruefung :
+    verschiebung := d token. xpos - d xpos;
+    IF verschiebung <> 0
+       THEN neue modifikationen := d token. modifikationen fuer x move;
+            schalte modifikationen ein wenn noetig;
+            x move (PROC (INT CONST, TEXT CONST, INT CONST, INT CONST) execute);
+    FI;
+    neue modifikationen := d token. modifikationen;
+    schalte modifikationen ein wenn noetig;
+ 
+. gib cr aus :
+    IF d xpos <> 0
+       THEN execute (carriage return, "", d xpos, 0);
+            d xpos := 0;
+    FI;
+ 
+END PROC drucke tokenspeicher;
+ 
+ 
+PROC ziehe horizontale linie (PROC (INT CONST, TEXT CONST, INT CONST, INT CONST) execute) :
+ 
+    IF linien verschiebung > 0
+       THEN disable stop; 
+            d xpos INCR linien verschiebung;
+            execute (draw, "", linien verschiebung, 0);
+            IF is error
+               THEN ziehe horizontale linie nach cr;
+            FI;
+            enable stop;
+    FI;
+ 
+    . ziehe horizontale linie nach cr :
+        clear error;
+        d xpos DECR linien verschiebung;
+        verschiebung := d xpos;
+        gib cr aus;
+        x move (PROC (INT CONST, TEXT CONST, INT CONST, INT CONST) execute);
+        d xpos INCR linien verschiebung;
+        execute (draw, "", linien verschiebung, 0);
+        IF is error
+           THEN clear error; 
+                d xpos DECR linien verschiebung;
+        FI;
+ 
+    . gib cr aus :
+        IF d xpos <> 0
+           THEN execute (carriage return, "", d xpos, 0);
+                d xpos := 0;
+        FI;
+ 
+END PROC ziehe horizontale linie;
+ 
+ 
+PROC y move (PROC (INT CONST, TEXT CONST, INT CONST, INT CONST) execute) :
+ 
+    IF verschiebung <> 0
+       THEN gib cr aus;
+            disable stop; 
+            d ypos INCR verschiebung;
+            execute (move, "", 0, verschiebung);
+            IF is error
+               THEN clear error;
+                    d ypos DECR verschiebung;
+                    verschiebung := 0;
+            FI;
+            enable stop;
+    FI;
+ 
+    . gib cr aus :
+        IF d xpos <> 0
+           THEN execute (carriage return, "", d xpos, 0);
+                d xpos := 0;
+        FI;
+ 
+END PROC y move;
+ 
+ 
+PROC x move (PROC (INT CONST, TEXT CONST, INT CONST, INT CONST) execute) :
+ 
+    disable stop;
+    d xpos INCR verschiebung; 
+    execute (move, "", verschiebung, 0);
+    IF is error
+       THEN fuehre x move nach cr aus
+    FI;
+ 
+    . fuehre x move nach cr aus :
+        clear error;
+        schalte modifikationen aus wenn noetig;
+        gib cr bei x move aus;
+        IF d xpos <> 0
+           THEN execute (move, "", d xpos, 0);
+                IF is error
+                   THEN clear error;
+                        d xpos := 0;
+                FI
+        FI;
+        schalte modifikationen ein wenn noetig;
+ 
+        . gib cr bei x move aus :
+            execute (carriage return,  "", d xpos - verschiebung, 0);
+ 
+        . schalte modifikationen aus wenn noetig :
+            neue modifikationen := d modifikationen;
+            IF d modifikationen <> 0
+               THEN schalte modifikationen aus
+                    (PROC (INT CONST, TEXT CONST, INT CONST, INT CONST) execute);
+            FI;
+ 
+        . schalte modifikationen ein wenn noetig :
+            IF d modifikationen <> neue modifikationen
+               THEN schalte modifikationen ein
+                    (PROC (INT CONST, TEXT CONST, INT CONST, INT CONST) execute);
+            FI;
+ 
+END PROC x move;
+ 
+ 
+PROC schalte modifikationen ein 
+            (PROC (INT CONST, TEXT CONST, INT CONST, INT CONST) execute) :
+ 
+     disable stop;
+     INT VAR index;
+     IF d modifikationen <> 0
+        THEN schalte modifikationen aus
+               (PROC (INT CONST, TEXT CONST, INT CONST, INT CONST) execute);
+     FI;
+     d modifikationen := neue modifikationen;
+     FOR index FROM 1 UPTO anzahl modifikationen
+     REP IF bit (d modifikationen, modifikations bit)
+            THEN modifikation muss eingeschaltet werden
+         FI; 
+     PER;
+ 
+     . modifikations bit : index - 1
+ 
+     . modifikation muss eingeschaltet werden :
+         IF bit (modifikations modus, modifikations bit) 
+            THEN execute (on, "", modifikations werte (index), 0);
+                 IF is error
+                    THEN clear error;
+                         reset bit (modifikations modus, modifikations bit); 
+                         set bit   (pass,                modifikations bit);
+                 FI;
+            ELSE set bit (pass, modifikations bit); 
+         FI;
+ 
+END PROC schalte modifikationen ein;
+ 
+ 
+PROC schalte modifikationen aus 
+            (PROC (INT CONST, TEXT CONST, INT CONST, INT CONST) execute) :
+ 
+     disable stop;
+     INT VAR index;
+     FOR index FROM 1 UPTO anzahl modifikationen
+     REP IF bit (d modifikationen, modifikations bit)
+            THEN modifikation muss ausgeschaltet werden
+         FI; 
+     PER;
+     d modifikationen := 0;
+ 
+     . modifikations bit : index - 1
+ 
+     . modifikation muss ausgeschaltet werden :
+         IF bit (modifikations modus, modifikations bit) 
+            THEN execute (off, "", modifikations werte (index), 0);
+                 IF is error THEN clear error FI;
+         FI;
+ 
+END PROC schalte modifikationen aus;
+ 
+ 
+PROC font wechsel 
+            (PROC (INT CONST, TEXT CONST, INT CONST, INT CONST) execute) :
+ 
+     disable stop;
+     d font := d token. font;
+     get replacements (d font, replacements, replacement tabelle);
+     execute (type, "", d font, 0);
+     IF is error THEN font wechsel nach cr FI;
+     enable stop;
+ 
+     . font wechsel nach cr :
+         clear error;
+         verschiebung := d xpos;
+         gib cr aus;
+         execute (type, "", d font, 0);
+         IF NOT is error
+            THEN schalte modifikationen aus
+                    (PROC (INT CONST, TEXT CONST, INT CONST, INT CONST) execute);
+                 x move
+                    (PROC (INT CONST, TEXT CONST, INT CONST, INT CONST) execute);
+         FI;
+ 
+     . gib cr aus :
+         IF d xpos <> 0
+            THEN execute (carriage return, "", d xpos, 0);
+                 d xpos := 0;
+         FI;
+ 
+END PROC font wechsel;
+ 
+ 
+PROC gib text token aus 
+            (PROC (INT CONST, TEXT CONST, INT CONST, INT CONST) execute) :
+ 
+  INT CONST token laenge := LENGTH d token. text;
+  INT VAR token pos := 1, alte token pos, summe := 0;
+  IF token laenge > 0
+     THEN REP alte token pos := token pos;
+              stranalyze (replacement tabelle, summe, 0,
+                          d token. text, token pos, token laenge,
+                          ausgang);
+              IF ausgang = 0 
+                 THEN gib token rest aus;
+                 ELSE gib token teil aus;
+                      gib ersatzdarstellung aus;
+              FI;
+          PER;
+  FI;
+ 
+  . gib token rest aus :
+      IF token laenge >= alte token pos
+         THEN execute (write text, d token. text, alte token pos, token laenge) FI;
+      d xpos INCR d token. breite;
+      LEAVE gib text token aus;
+ 
+  . gib token teil aus :
+      IF token pos >= alte token pos
+         THEN execute (write text, d token. text, alte token pos, token pos) FI;
+ 
+  . gib ersatzdarstellung aus :
+      IF ausgang = maxint
+         THEN ersatzdarstellung := extended replacement (d token. font,
+                d token. text SUB token pos + 1, d token. text SUB token pos + 2);
+              execute (write text, ersatzdarstellung, 1, LENGTH ersatzdarstellung);
+              tokenpos INCR 3;
+         ELSE IF ausgang < 0
+                 THEN ausgang := ausgang XOR minint;
+                      token pos INCR 1;
+              FI;
+              execute (write text, replacements, ausgang + 1, ausgang + code (replacements SUB ausgang));
+              token pos INCR 2;
+      FI;
+ 
+      . ersatzdarstellung : par1
+ 
+END PROC gib text token aus;
+ 
+ 
+PROC schliesse seite ab (PROC (INT CONST, INT CONST) close,
+                         PROC (INT CONST, TEXT CONST, INT CONST, INT CONST) execute) :
+ 
+enable stop;
+gebe restliche token aus;
+gib cr aus;
+seiten ende kommando;
+ 
+. gebe restliche token aus :
+    IF erster ypos index d <> 0
+       THEN drucke tokenspeicher (maxint,
+                 PROC (INT CONST, TEXT CONST, INT CONST, INT CONST) execute);
+    FI;
+    rest := papier laenge - d ypos;
+    aktuelle zeilentiefe der letzten zeile := 0;
+ 
+. gib cr aus :
+    IF d xpos <> 0
+       THEN execute (carriage return, "", d xpos, 0);
+            d xpos := 0;
+    FI;
+ 
+. seiten ende kommando :
+    seite ist offen := FALSE;
+    a ypos          := top margin;
+    aktuelle spalte := 1;
+    close (page, rest);
+ 
+END PROC schliesse seite ab;
+ 
+ 
+PROC eroeffne seite (INT CONST x wanted l, y wanted l,
+                     PROC (INT CONST, INT VAR, INT VAR) open ) :
+ 
+IF vor erster seite THEN eroeffne druck FI;
+seiten anfang kommando;
+initialisiere neue seite;
+ 
+. eroeffne druck :
+    open (document, x size, y size);
+    vor erster seite := FALSE;
+    d font           := -1;
+    d modifikationen := 0;
+ 
+. seiten anfang kommando :
+    x start := x wanted l;
+    y start := y wanted l;
+    open (page, x start, y start);
+    gedruckte seiten INCR 1;
+    seite ist offen := TRUE;
+ 
+. initialisiere neue seite :
+    INT CONST dif left margin := x wanted l - x start - left margin + indentation,
+              dif top  margin := y wanted l - y start - top  margin; 
+    IF dif left margin <> 0
+       THEN erstes tab token := 1;
+            verschiebe token xpos (dif left margin);
+            a xpos      INCR dif left margin;
+            left margin INCR dif left margin;
+    FI;
+    IF dif top margin <> 0
+       THEN verschiebe token ypos (dif top margin);
+            a ypos      INCR dif top margin;
+            top margin  INCR dif top margin;
+    FI;
+    d xpos := 0;
+    d ypos := 0;
+    IF seitenlaenge <= papierlaenge
+       THEN seitenlaenge := top margin + pagelength; 
+       ELSE seitenlaenge DECR papierlaenge;
+    FI;
+    papierlaenge := y size - y start;
+    papierbreite := x size - x start;
+ 
+END PROC eroeffne seite;
+ 
+(****************************************************************)
+ 
+PROC elan fuss und kopf (INT CONST fuss oder kopf,
+                PROC (INT CONST, INT CONST) close,
+                PROC (INT CONST, INT VAR, INT VAR) open,
+                PROC (INT CONST, TEXT CONST, INT CONST, INT CONST) execute) :
+ 
+IF fuss oder kopf <= 0 THEN elan fuss FI;
+IF fuss oder kopf >= 0 THEN elan kopf FI;
+ 
+.
+  elan fuss :
+    y move zur fusszeile;
+    drucke elan fuss;
+    close page cmd;
+ 
+. y move zur fusszeile :
+    execute (carriage return,  "", d xpos, 0);
+    d xpos := 0;
+    verschiebung := rest auf seite - font hoehe;
+    y move (PROC (INT CONST, TEXT CONST, INT CONST, INT CONST) execute);
+ 
+. drucke elan fuss :
+    IF bottom label = ""
+       THEN seiten nr := ""
+       ELSE seiten nr := bottom label;
+            seiten nr CAT "/";
+    FI;
+    seiten nr CAT text (gedruckte seiten);
+    elan text := seiten nr;
+    elan text CAT "   ";
+    elan text cat blanks ((max zeichen fuss - LENGTH dateiname) DIV 2 - LENGTH elan text);
+    elan text CAT dateiname;
+    elan text cat blanks (max zeichen fuss - LENGTH seiten nr - LENGTH elan text - 3);
+    elan text CAT "   ";
+    elan text CAT seiten nr;
+    IF LENGTH elan text > max zeichen zeile
+       THEN elan text := subtext (elan text, 1, max zeichen zeile) FI;
+    gib elan text aus (PROC (INT CONST, TEXT CONST, INT CONST, INT CONST) execute); 
+ 
+    . seiten nr : par1
+ 
+. close page cmd :
+    execute (carriage return,  "", d xpos, 0);
+    d xpos := 0;
+    close (page, papierlaenge - d ypos);
+    seite ist offen := FALSE;
+ 
+.
+  elan kopf :
+    open page cmd ;
+    y move zur kopfzeile;
+    drucke elan kopf;
+ 
+. open page cmd :
+    x start         := x wanted;
+    y start         := y wanted;
+    open (page, x start, y start);
+    IF fuss oder kopf = 1 THEN execute (type, "", d font, 0) FI;
+    gedruckte seiten INCR 1;
+    seite ist offen := TRUE;
+    top  margin     := y wanted - y start;
+    left margin     := x wanted - x start;
+    rest auf seite  := pagelength;
+    papierlaenge    := y size - y start;
+    d ypos          := 0; 
+    d xpos          := 0;
+ 
+. y move zur kopf zeile :
+    verschiebung := top margin;
+    y move (PROC (INT CONST, TEXT CONST, INT CONST, INT CONST) execute);
+    IF verschiebung = 0 THEN rest auf seite INCR top margin FI;
+ 
+. drucke elan kopf :
+    elan text :=  headline pre;
+    elan text CAT date;
+    elan text CAT headline post;
+    elan text CAT datei name;
+    IF LENGTH elan text > max zeichen zeile
+       THEN elan text := subtext (elan text, 1, max zeichen zeile) FI;
+    gib elan text aus (PROC (INT CONST, TEXT CONST, INT CONST, INT CONST) execute); 
+    cr plus lf (2, PROC (INT CONST, TEXT CONST, INT CONST, INT CONST) execute); 
+ 
+ENDPROC elan fuss und kopf;
+ 
+ 
+PROC gib elan text aus (PROC (INT CONST, TEXT CONST, INT CONST, INT CONST) execute) :
+ 
+cr plus lf (1, PROC (INT CONST, TEXT CONST, INT CONST, INT CONST) execute);
+linker rand wenn noetig;
+d token. breite := LENGTH elan text * einrueckbreite;
+gib text token aus (PROC (INT CONST, TEXT CONST, INT CONST, INT CONST) execute);
+ 
+. linker rand wenn noetig :
+    IF left margin > 0
+       THEN disable stop;
+            d xpos := left margin;
+            execute (move, "", left margin, 0);
+            IF is error 
+               THEN clear error;
+                    d xpos := 0;
+            FI;
+            enable stop;
+    FI;
+ 
+END PROC gib elan text aus;
+ 
+ 
+PROC cr plus lf (INT CONST anzahl,
+                 PROC (INT CONST, TEXT CONST, INT CONST, INT CONST) execute) : 
+ 
+gib cr aus;
+gib lf aus;
+rest auf seite DECR verschiebung;
+ 
+. gib cr aus :
+    execute (carriage return, "", d xpos, 0);
+    d xpos := 0;
+ 
+. gib lf aus :
+    verschiebung := anzahl * font hoehe;
+    y move (PROC (INT CONST, TEXT CONST, INT CONST, INT CONST) execute);
+ 
+END PROC cr plus lf ; 
+ 
+ 
+END PACKET eumel printer;
+

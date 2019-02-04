@@ -1,0 +1,99 @@
+PACKET multi user printer :                      (* Autor : Rudolf Ruland  *)
+                                                 (* Stand : 24.03.86       *)
+ 
+INT VAR c;
+put ("gib Druckerkanal : "); get (c);
+
+  server channel (c);
+  station only (FALSE) ;
+  spool duty ("Ausgabe mit dem Drucker");
+  spool control task (myself);
+ 
+LET ack              = 0 ,
+ 
+    fetch code       = 11 ,
+    param fetch code = 21 ,
+    file type        = 1003 ;
+
+INT VAR reply, old heap size, sender station;
+TEXT VAR file name, userid, password, sendername;
+FILE VAR file ;
+
+DATASPACE VAR ds, file ds;
+ 
+BOUND STRUCT (TEXT file name, userid, password, sendername, INT station) VAR msg;
+BOUND TEXT VAR error msg ;
+ 
+spool manager (PROC printer);
+ 
+PROC printer :
+
+  disable stop ;
+  command dialogue (FALSE);
+  ds := nilspace; file ds := nilspace; 
+  continue (server channel) ;
+    check error ("Kanal belegt");
+ 
+  old heap size := heap size ;
+  REP
+    execute print ;
+ 
+    IF is error
+      THEN put error;
+           clear error;
+    FI ;
+ 
+    IF heap size > old heap size + 4
+      THEN collect heap garbage ;
+           old heap size := heap size
+    FI
+  PER 
+ 
+ENDPROC printer ;
+
+ 
+PROC execute print :
+
+  enable stop ;
+  forget (file ds) ; file ds := nilspace ;
+  call (father, fetch code, file ds, reply) ;
+  IF reply = ack CAND type (file ds) = file type
+     THEN get file params;
+          print file
+  FI ;
+ 
+. get file params :
+    forget (ds); ds := nilspace;
+    call (father, param fetch code, ds, reply);
+    IF reply <> ack
+       THEN error msg := ds; errorstop (error msg);
+       ELSE msg := ds;
+            file name      := msg. file name;
+            userid         := msg. userid;
+            password       := msg. password;
+            sendername     := msg. sender name;
+            sender station := msg. station;
+    FI;
+ 
+. print file :
+    file := sequential file (input, file ds);
+    print (file,
+           PROC (INT CONST, INT VAR, INT VAR) open,
+           PROC (INT CONST, INT CONST) close,
+           PROC (INT CONST, TEXT CONST, INT CONST, INT CONST) execute);
+ 
+ENDPROC execute print ;
+ 
+ 
+PROC check error (TEXT CONST message) :
+    IF is error
+       THEN clear error;
+            rename myself (message);
+            IF is error THEN clear error; end (myself) FI;
+            pause (18000);
+            end (myself);
+    FI;
+END PROC check error;
+ 
+ENDPACKET multi user printer ;
+

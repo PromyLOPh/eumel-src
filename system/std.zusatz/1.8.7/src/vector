@@ -1,0 +1,213 @@
+PACKET vector DEFINES VECTOR, :=, vector,         (* Autor : H.Indenbirken *)
+                      SUB, LENGTH, length, norm,  (* Stand : 21.10.83      *)
+                      nilvector, replace, =, <>,
+                      +, -, *, /,
+                      get, put :
+
+
+TYPE VECTOR = STRUCT (INT lng, TEXT elem);
+TYPE INITVECTOR = STRUCT (INT lng, REAL value);
+
+INT VAR i;
+TEXT VAR t :: "12345678";
+VECTOR VAR v :: nilvector;
+
+(****************************************************************************
+PROC dump (VECTOR CONST v) :
+  put line (text (v.lng) + " Elemente :");
+  FOR i FROM 1 UPTO v.lng
+  REP put line (text (i) + ": " + text (element i)) PER  .
+
+element i :
+  v.elem RSUB i  .
+
+END PROC dump;
+****************************************************************************)
+
+OP := (VECTOR VAR l, VECTOR CONST r) :
+  l.lng := r.lng;
+  l.elem := r.elem
+
+END OP :=;
+
+OP := (VECTOR VAR l, INITVECTOR CONST r) :
+  l.lng := r.lng;
+  replace (t, 1, r.value);
+  l.elem := r.lng * t
+
+END OP :=;
+
+INITVECTOR PROC nilvector :
+   vector (1, 0.0)
+
+END PROC nilvector;
+
+INITVECTOR PROC vector (INT CONST lng, REAL CONST value) :
+  IF lng <= 0
+  THEN errorstop ("PROC vector : lng <= 0") FI;
+  INITVECTOR : (lng, value)
+
+END PROC vector;
+
+INITVECTOR PROC vector (INT CONST lng) :
+  vector (lng, 0.0)
+
+END PROC vector;
+
+REAL OP SUB (VECTOR CONST v, INT CONST i) :
+  test ("REAL OP SUB : ", v, i);
+  v.elem RSUB i
+
+END OP SUB;
+
+INT OP LENGTH (VECTOR CONST v) :
+  v.lng
+
+END OP LENGTH;
+
+INT PROC length (VECTOR CONST v) :
+  v.lng
+
+END PROC length;
+
+REAL PROC norm (VECTOR CONST v) :
+  REAL VAR result :: 0.0;
+  FOR i FROM 1 UPTO v.lng
+  REP result INCR ((v.elem RSUB i)**2) PER;
+  sqrt (result)  .
+
+END PROC norm;
+
+PROC replace (VECTOR VAR v, INT CONST i, REAL CONST r) :
+  test ("PROC replace : ", v, i);
+  replace (v.elem, i, r)
+
+END PROC replace;
+
+BOOL OP = (VECTOR CONST l, r) :
+  l.elem = r.elem
+END OP =;
+
+BOOL OP <> (VECTOR CONST l, r) :
+  l.elem <> r.elem
+END OP <>;
+
+VECTOR OP + (VECTOR CONST v) :
+  v
+END OP +;
+
+VECTOR OP + (VECTOR CONST l, r) :
+  test ("VECTOR OP + : ", l, r);
+  v := l;
+  FOR i FROM 1 UPTO v.lng
+  REP replace (v.elem, i, (l.elem RSUB i) + (r.elem RSUB i)) PER;
+  v
+
+END OP +;
+
+VECTOR OP - (VECTOR CONST a) :
+  v := a;
+  FOR i FROM 1 UPTO v.lng
+  REP replace (v.elem, i, - (a.elem RSUB i)) PER;
+  v
+
+END OP -;
+
+VECTOR OP - (VECTOR CONST l, r) :
+  test ("VECTOR OP - : ", l, r);
+  v := l;
+  FOR i FROM 1 UPTO v.lng
+  REP replace (v.elem, i, (l.elem RSUB i) - (r.elem RSUB i)) PER;
+  v
+END OP -;
+
+REAL OP * (VECTOR CONST l, r) :
+  test ("REAL OP * : ", l, r);
+  REAL VAR x :: 0.0;
+  FOR i FROM 1 UPTO l.lng
+  REP x INCR ((l.elem RSUB i) * (r.elem RSUB i)) PER;
+  x
+
+END OP *;
+
+VECTOR OP * (VECTOR CONST v, REAL CONST r) :
+  r*v
+
+END OP *;
+
+VECTOR OP * (REAL CONST r, VECTOR CONST a) :
+  v := a;
+  FOR i FROM 1 UPTO v.lng
+  REP replace (v.elem, i, r*(a.elem RSUB i)) PER;
+  v
+
+END OP *;
+
+VECTOR OP / (VECTOR CONST a, REAL CONST r) :
+  v := a;
+  FOR i FROM 1 UPTO v.lng
+  REP replace (v.elem, i, (a.elem RSUB i)/r) PER;
+  v
+
+END OP /;
+
+TEXT VAR error :: "";
+PROC test (TEXT CONST proc, VECTOR CONST v, INT CONST i) :
+  IF i > v.lng
+  THEN error := proc;
+       error CAT "subscript overflow (LENGTH v=";
+       error CAT text (v.lng);
+       error CAT ", i=";
+       error CAT text (i);
+       error CAT ")";
+       errorstop (error)
+  ELIF i < 1
+  THEN error := proc;
+       error CAT "subscript underflow (i = ";
+       error CAT text (i);
+       error CAT ")";
+       errorstop (error)
+  FI  .
+
+END PROC test;
+
+PROC test (TEXT CONST proc, VECTOR CONST a, b) :
+  IF a.lng <> b.lng
+  THEN error := proc;
+       error CAT "LENGTH a (";
+       IF a.lng <= 0
+       THEN error CAT "undefined"
+       ELSE error CAT text (a.lng) FI;
+       error CAT ") <> LENGTH b (";
+       error CAT text (b.lng);
+       error CAT ")";
+       errorstop (error)
+  FI
+
+END PROC test;
+
+PROC get (VECTOR VAR v, INT CONST lng) :
+  v.lng := lng;
+  v.elem := lng * "12345678";
+  REAL VAR x;
+  FOR i FROM 1 UPTO lng
+  REP get (x);
+      replace (v.elem, i, x)
+  PER  .
+
+END PROC get;
+
+PROC put (VECTOR CONST v, INT CONST length, fracs) :
+  FOR i FROM 1 UPTO v.lng
+  REP put (text (v.elem RSUB i, length, fracs)) PER
+
+END PROC put;
+
+PROC put (VECTOR CONST v) :
+  FOR i FROM 1 UPTO v.lng
+  REP put (text (v.elem RSUB i)) PER
+
+END PROC put;
+
+END PACKET vector;
+

@@ -1,0 +1,182 @@
+PACKET ispidagrundfunktionenDEFINES selektionenindateieintragen,
+zugriffsregelnindateieintragen,druckausgabenlistezeigen,regellistezeigen,
+variablenlistezeigen,behandlungderausgesuchten,inlisteblaettern,
+maskenwertesichern,nummerderdruckausgabesetzen,nureinedruckausgabeangekreuzt,
+rueckschrittevorproc,rueckschrittenachproc,sichernundhilfsfilesloeschen,
+hilfsfilesloeschen,erfassungdruckausgabe,init,put,
+setzedruckausgabelistenauswahl,druckausgabelistenauswahl,
+setzelistederdruckausgabengezeigt,listederdruckausgabengezeigt,
+setzeaktuellemaske,aktuellemaske:LET filenamezug="Hilfsdatei.Zugriff",
+filenamesel="Hilfsdatei.Selektion",filenamedruck="Hilfsdatei.Druck",
+filenamedliste="Druckausgaben",filenamezliste="Zugriffe",filenamevliste=
+"Variablen";LET meldunglistenerstellung=7,meldungletzterwert=67,
+meldungkeineliste=68,meldungkeinblaettern=72,meldungkeinezugriffe=200,
+meldungkeinevariablen=201;LET maxselektionen=17,maxzugriffe=16,zeileninliste=
+18,ausgabelaenge=71,maxvariablen=100;LET zugriffsregeln=4,druckvariablen=7;
+LET serstervergleich=3,zobjkl=2,zregnr=3,zerstervergleich=7,lt=3,dnummer=2,
+vnummer=2;LET vergleichtrenner="</>",trenner=" = ",oblitrenner="$",blank=" ",
+kleinr="r",kleink="k",niltext="";LET andenanfang=1,andasende=2,vorwaerts=3,
+rueckwaerts=4;BOOL VAR listenauswahl,listegezeigt;BOOL VAR dvrrechts,
+dvrdruckvar,listeeinmalgezeigt:=FALSE ;INT VAR lvi,lvf,posi,zeilennr,
+dvrlaenge,zobjekt,zregel,zindex,zanzahl,startzeile,zeilenindatei,schritte;
+FILE VAR f,g;TAG VAR aktmaske;TEXT VAR zeile,dvrname,wert1,wert2,datname;
+PROC selektionenindateieintragen(INT CONST leseanfangindatei,ROW 100TEXT 
+CONST erfassungsfeld):f:=sequentialfile(modify,filenamesel);zeilennr:=
+leseanfangindatei;lvi:=serstervergleich;FOR lvfFROM leseanfangindateiUPTO 
+leseanfangindatei+maxselektionen-1REP IF zeilennr<=lines(f)THEN 
+vergleichswerteanhaengenFI PER ;.vergleichswerteanhaengen:toline(f,lvf);
+readrecord(f,zeile);posi:=pos(zeile,vergleichtrenner);IF posi>0THEN zeile:=
+subtext(zeile,1,posi-1)FI ;zeileCAT vergleichtrenner;zeileCAT erfassungsfeld[
+lvi];writerecord(f,zeile);lviINCR 2;zeilennrINCR 1;.END PROC 
+selektionenindateieintragen;PROC zugriffsregelnindateieintragen(INT CONST 
+leseanfangindatei,ROW 100TEXT CONST erfassungsfeld):f:=sequentialfile(modify,
+filenamezug);zeilennr:=leseanfangindatei;lvi:=zerstervergleich;FOR lvfFROM 
+leseanfangindateiUPTO leseanfangindatei+maxzugriffe-1REP IF zeilennr<=lines(f
+)THEN vergleichswerteanhaengenFI PER ;.vergleichswerteanhaengen:toline(f,lvf)
+;readrecord(f,zeile);posi:=pos(zeile,vergleichtrenner);IF posi>0THEN zeile:=
+subtext(zeile,1,posi-1);FI ;IF erfassungsfeld[lvi]<>niltextTHEN zeileCAT 
+vergleichtrenner;zeileCAT erfassungsfeld[lvi];FI ;writerecord(f,zeile);lvi
+INCR 3;zeilennrINCR 1;.END PROC zugriffsregelnindateieintragen;PROC 
+druckausgabenlistezeigen:forget(filenamedliste,quiet);datname:=filenamedliste
+;f:=sequentialfile(output,datname);first(dnrida);WHILE dbstatus=okREP 
+zeilezusammensetzen;putline(f,text(zeile,ausgabelaenge));succ(dnrida)PER ;
+startzeiledruckausgabenlistebestimmen(datname);IF startzeile=0THEN 
+meldeauffaellig(aktuellemaske,meldungkeineliste);return(1)ELSE 
+setzelistederdruckausgabengezeigt(TRUE );listeeinmalgezeigt:=TRUE ;
+listezeigen(datname)FI .zeilezusammensetzen:zeile:=wert(fnridanummer)+trenner
++wert(fnridaname);.END PROC druckausgabenlistezeigen;PROC 
+startzeiledruckausgabenlistebestimmen(TEXT VAR fname):INT VAR lv;f:=
+sequentialfile(modify,fname);FOR lvFROM 1UPTO lines(f)REP toline(f,lv);
+readrecord(f,zeile);IF int(subtext(zeile,1,pos(zeile,trenner)-1))>=int(
+standardmaskenfeld(dnummer))THEN startzeile:=lv;LEAVE 
+startzeiledruckausgabenlistebestimmenFI PER ;startzeile:=0END PROC 
+startzeiledruckausgabenlistebestimmen;PROC regellistezeigen:forget(
+filenamezliste,quiet);datname:=filenamezliste;f:=sequentialfile(output,
+datname);IF getanzahlregeln=0THEN meldeauffaellig(aktuellemaske,
+meldungkeinezugriffe);return(1)ELSE meldeauffaellig(aktuellemaske,
+meldunglistenerstellung);listeeinmalgezeigt:=FALSE ;
+listederregelnzusammenstellen;startzeileregellistebestimmen(datname);IF 
+startzeile=0THEN meldeauffaellig(aktuellemaske,meldungkeineliste);return(1)
+ELSE setzedruckausgabelistenauswahl(TRUE );listezeigen(datname)FI FI ;END 
+PROC regellistezeigen;PROC listederregelnzusammenstellen:FOR lvfFROM 1UPTO 
+getanzahlregelnREP getzugriffsregel(lvf,zobjekt,zregel,zindex,zanzahl);zeile
+:=kleink+text(zobjekt)+kleinr+text(zregel);putline(f,text(zeile,ausgabelaenge
+))PER END PROC listederregelnzusammenstellen;PROC 
+startzeileregellistebestimmen(TEXT VAR fname):INT VAR lv,lvi,anzahl;f:=
+sequentialfile(modify,fname);regelnsortieren;anzahl:=lines(f);FOR lvFROM 1
+UPTO anzahlREP toline(f,lv);readrecord(f,zeile);IF objektindatei=
+objektinmaskeTHEN lvi:=lv;WHILE regelindatei<regelinmaskeREP 
+pruefenobdateiendesonstnaechstenlesenUNTIL objektindatei>objektinmaskePER ;
+startzeile:=lvi;LEAVE startzeileregellistebestimmenFI ;IF objektindatei>
+objektinmaskeTHEN startzeile:=lv;LEAVE startzeileregellistebestimmenFI PER ;
+startzeile:=0.objektindatei:int(subtext(zeile,2,pos(zeile,kleinr)-1)).
+objektinmaske:int(standardmaskenfeld(zobjkl)).regelindatei:int(subtext(zeile,
+pos(zeile,kleinr)+1)).regelinmaske:int(standardmaskenfeld(zregnr)).
+pruefenobdateiendesonstnaechstenlesen:IF lvi=anzahlTHEN startzeile:=0;LEAVE 
+startzeileregellistebestimmenELSE lviINCR 1;toline(f,lvi);readrecord(f,zeile)
+;FI .END PROC startzeileregellistebestimmen;PROC variablenlistezeigen:forget(
+filenamevliste,quiet);datname:=filenamevliste;f:=sequentialfile(output,
+datname);FOR lvfFROM 1UPTO maxvariablenREP getsteuercode(lvf,dvrname,
+dvrlaenge,dvrrechts,dvrdruckvar);IF dvrname<>niltextTHEN 
+listedervariablenzusammenstellen;FI PER ;IF lines(f)=0THEN meldeauffaellig(
+aktuellemaske,meldungkeinevariablen);return(1)ELSE meldeauffaellig(
+aktuellemaske,meldunglistenerstellung);listeeinmalgezeigt:=FALSE ;
+startzeilevariablenlistebestimmen(datname);IF startzeile=0THEN 
+meldeauffaellig(aktuellemaske,meldungkeineliste);return(1)ELSE 
+setzedruckausgabelistenauswahl(TRUE );listezeigen(datname)FI FI END PROC 
+variablenlistezeigen;PROC listedervariablenzusammenstellen:zeile:=text(lvf);
+zeileCAT trenner;zeileCAT dvrname;putline(f,text(zeile,ausgabelaenge))END 
+PROC listedervariablenzusammenstellen;PROC startzeilevariablenlistebestimmen(
+TEXT VAR fname):INT VAR lv;f:=sequentialfile(modify,fname);FOR lvFROM 1UPTO 
+lines(f)REP toline(f,lv);readrecord(f,zeile);IF int(subtext(zeile,1,pos(zeile
+,trenner)-1))>=int(standardmaskenfeld(vnummer))THEN startzeile:=lv;LEAVE 
+startzeilevariablenlistebestimmenFI PER ;startzeile:=0END PROC 
+startzeilevariablenlistebestimmen;PROC listezeigen(TEXT CONST dateiname):LET 
+listenmaskenname="mu objektliste";initobli;initmaske(aktmaske,
+listenmaskenname);standardstartproc(listenmaskenname);f:=sequentialfile(
+modify,dateiname);zeilenindatei:=lines(f);seitezeigenEND PROC listezeigen;
+PROC inlisteblaettern(INT CONST wohin):SELECT wohinOF CASE andenanfang:
+andendateianfangCASE andasende:andasdateiendeCASE vorwaerts:
+vorwaertsblaetternindateiCASE rueckwaerts:rueckwaertsblaetternindateiEND 
+SELECT ;.andendateianfang:IF startzeile<>1THEN startzeile:=1;seitezeigenELSE 
+zurueck;FI .andasdateiende:IF startzeile<zeilenindatei-zeileninliste+1THEN 
+startzeile:=zeilenindatei-zeileninliste+1;seitezeigenELSE zurueck;FI .
+vorwaertsblaetternindatei:IF startzeile<zeilenindatei-zeileninliste+1THEN 
+startzeileINCR zeileninliste;seitezeigenELSE zurueck;FI .
+rueckwaertsblaetternindatei:IF startzeile>zeileninlisteTHEN startzeileDECR 
+zeileninliste;seitezeigenELSE andendateianfangFI .END PROC inlisteblaettern;
+PROC seitezeigen:FOR lvfFROM 1UPTO zeileninlisteREP IF startzeile+lvf-1<=
+zeilenindateiTHEN toline(f,startzeile+lvf-1);readrecord(f,zeile);posi:=pos(
+zeile,vergleichtrenner);IF posi>0THEN standardmaskenfeld(subtext(zeile,1,posi
+-1),lvf*2+1);standardmaskenfeld(subtext(zeile,posi+lt),lvf*2);ELSE 
+standardmaskenfeld(zeile,lvf*2+1);standardmaskenfeld(niltext,lvf*2);FI ;
+feldfrei(lvf*2)ELSE standardmaskenfeld(text(niltext,ausgabelaenge),lvf*2+1);
+standardmaskenfeld(niltext,lvf*2);feldschutz(lvf*2)FI PER ;END PROC 
+seitezeigen;PROC maskenwertesichern:FOR lvfFROM 1UPTO zeileninlisteREP IF 
+standardmaskenfeld(lvf*2+1)<>ausgabelaenge*blankTHEN zeile:=
+standardmaskenfeld(lvf*2+1);zeileCAT vergleichtrenner;zeileCAT 
+standardmaskenfeld(lvf*2);toline(f,startzeile+lvf-1);writerecord(f,zeile)FI 
+PER END PROC maskenwertesichern;PROC behandlungderausgesuchten(PROC (INT 
+CONST )wastun,ROW 100TEXT VAR feld,INT CONST womit):BOOL VAR ok:=FALSE ;init(
+feld);wertholen(womit,ok);IF okTHEN feldervorbelegen;wastun(womit);ELSE 
+meldeauffaellig(aktuellemaske,meldungletzterwert);zurueck;
+setzedruckausgabelistenauswahl(FALSE );forget(datname,quiet);
+listeeinmalgezeigt:=FALSE ;enter(2)#rueckschrittevorproc(2)dr01.08.88#FI .
+feldervorbelegen:SELECT womitOF CASE zugriffsregeln:feld[zobjkl]:=wert1;feld[
+zregnr]:=wert2;CASE druckvariablen:feld[vnummer]:=wert1END SELECT .END PROC 
+behandlungderausgesuchten;PROC wertholen(INT CONST wozu,BOOL VAR nochda):g:=
+sequentialfile(modify,datname);#dr01.08.88#nochda:=lines(g)>0;IF NOT nochda
+THEN LEAVE wertholenELSE toline(g,1);WHILE lines(g)>0REP readrecord(g,zeile);
+posi:=pos(zeile,vergleichtrenner);deleterecord(g);UNTIL posi>0CAND subtext(
+zeile,posi+lt)<>niltextPER ;IF lines(g)>0THEN werteermittelnELIF posi>0CAND 
+subtext(zeile,posi+lt)<>niltextTHEN werteermittelnELSE nochda:=FALSE FI FI .
+werteermitteln:SELECT wozuOF CASE zugriffsregeln:objektundregelermittelnCASE 
+druckvariablen:variablennummerermittelnEND SELECT .objektundregelermitteln:
+wert1:=subtext(zeile,pos(zeile,kleink)+1,pos(zeile,kleinr)-1);wert2:=subtext(
+zeile,pos(zeile,kleinr)+1,pos(zeile,blank)-1).variablennummerermitteln:wert1
+:=subtext(zeile,1,pos(zeile,trenner)-1);wert2:=niltext.END PROC wertholen;
+PROC rueckschrittevorproc(INT CONST wieviele):BOOL VAR b:=TRUE ;schritte:=
+wieviele;WHILE bREP IF listeeinmalgezeigtTHEN schritteINCR 1;b:=FALSE ELSE #
+dr01.08.88#b:=listederdruckausgabengezeigt;listeeinmalgezeigt:=TRUE FI PER ;
+listeeinmalgezeigt:=listederdruckausgabengezeigt;enter(schritte)END PROC 
+rueckschrittevorproc;PROC rueckschrittenachproc(INT CONST wieviele):return(
+wieviele);END PROC rueckschrittenachproc;PROC nummerderdruckausgabesetzen(
+TEXT VAR nr):FOR lvfFROM 1UPTO lines(f)REP toline(f,lvf);readrecord(f,zeile);
+posi:=pos(zeile,vergleichtrenner);IF posi>0CAND subtext(zeile,posi+lt)<>
+niltextTHEN nr:=subtext(zeile,1,pos(zeile," = ")-1);LEAVE 
+nummerderdruckausgabesetzenFI ;PER END PROC nummerderdruckausgabesetzen;BOOL 
+PROC nureinedruckausgabeangekreuzt:BOOL VAR angekreuzt:=FALSE ;f:=
+sequentialfile(modify,filenamedliste);FOR lvfFROM 1UPTO lines(f)REP toline(f,
+lvf);readrecord(f,zeile);posi:=pos(zeile,vergleichtrenner);IF posi>0CAND 
+subtext(zeile,posi+lt)<>niltextTHEN IF angekreuztTHEN LEAVE 
+nureinedruckausgabeangekreuztWITH FALSE ELSE angekreuzt:=TRUE FI FI PER ;
+angekreuztEND PROC nureinedruckausgabeangekreuzt;PROC 
+sichernundhilfsfilesloeschen:putform;hilfsfilesloeschenEND PROC 
+sichernundhilfsfilesloeschen;PROC hilfsfilesloeschen:forget(filenamezug,quiet
+);forget(filenamesel,quiet);forget(filenamedruck,quiet);forget(filenamedliste
+,quiet)END PROC hilfsfilesloeschen;PROC erfassungdruckausgabe(INT CONST n):
+LET trenner=" = ";LET laengezeile=71;TEXT VAR identizeile;identizeile:=wert(
+fnridanummer)+trenner+wert(fnridaname);identizeile:=text(identizeile,
+laengezeile);setzeidentiwert(identizeilemitschluesselanhang).
+identizeilemitschluesselanhang:identizeile+oblitrenner+wert(fnridanummer).
+END PROC erfassungdruckausgabe;PROC init(ROW 100TEXT VAR feld):INT VAR i;FOR 
+iFROM 1UPTO 100REP feld(i):=""PER END PROC init;PROC put(TAG CONST maske,ROW 
+100TEXT CONST feld,INT CONST letztesfeld):INT VAR lv;FOR lvFROM 2UPTO 
+letztesfeldREP IF fieldexists(maske,lv)THEN put(maske,feld[lv],lv)FI PER END 
+PROC put;PROC setzeaktuellemaske(TAG CONST welchemaske):aktmaske:=welchemaske
+END PROC setzeaktuellemaske;TAG PROC aktuellemaske:aktmaskeEND PROC 
+aktuellemaske;PROC setzedruckausgabelistenauswahl(BOOL CONST b):listenauswahl
+:=bEND PROC setzedruckausgabelistenauswahl;BOOL PROC 
+listederdruckausgabengezeigt:listegezeigtEND PROC 
+listederdruckausgabengezeigt;PROC setzelistederdruckausgabengezeigt(BOOL 
+CONST b):listegezeigt:=bEND PROC setzelistederdruckausgabengezeigt;BOOL PROC 
+druckausgabelistenauswahl:listenauswahlEND PROC druckausgabelistenauswahl;
+PROC regelnsortieren:INT VAR lv,anzahl;anzahl:=lines(f);blanksentfernen;sort(
+filenamezliste);moeglicherweisenachsortieren.blanksentfernen:FOR lvFROM 1
+UPTO anzahlREP toline(f,lv);readrecord(f,zeile);changeall(zeile," ","");
+writerecord(f,text(zeile,ausgabelaenge))PER .moeglicherweisenachsortieren:
+FOR lvFROM 1UPTO anzahlREP toline(f,1);readrecord(f,zeile);IF subtext(zeile,2
+,2)="1"THEN deleterecord(f);toline(f,anzahl);insertrecord(f);writerecord(f,
+text(zeile,ausgabelaenge))ELSE LEAVE regelnsortierenFI PER .END PROC 
+regelnsortieren;END PACKET ispidagrundfunktionen;
+

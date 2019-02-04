@@ -1,0 +1,86 @@
+PACKET einzelstdplraeumeDEFINES einzelstdplraeumeeingang,
+einzelstdplraeumestarten,einzelstdplraeumesonderwerte,
+einzelstdplraeumemultistop,einzelstdplraeumedruckdateibauen:LET maske=
+"ms einzelstdpl raeume eingang",fnr2raum=2,fnr3akthj=3,fnr4ausgabebs=4,
+fnr5ausgabedr=5,blank=" ",null=0,niltext="",
+fehlermeldnrkeinestundenplandatenvorhanden=366,fehlermeldnrungueltigerraum=
+359,fehlermeldnrauswahlunsinnig=56,fehlermeldnrbestandraeumeleer=365,
+meldnrbittewarten=69,swraum=511,swschuljahr=512,swhalbjahr=513,swraumlangtext
+=514,swtagesstunde=520,maxzeichenimvordruck=79;TASK VAR vordruckserver;TEXT 
+CONST dateimitvordruck1:="vordruck1 einzelstdpl raeume",dateimitvordruck2:=
+"vordruck2 einzelstdpl raeume",bestandnameraeume:="c02 raeume",strich:="-",
+kreuz:="+",abschlusslinie:=76*strich+blank,normaletrennlinie:=3*strich+kreuz+
+5*(11*strich+kreuz)+11*strich+": ";TEXT VAR hj,sj,raum:="",l:="",r:="",p:="";
+BOOL VAR anschreibenaufbszeigen:=TRUE ,einzelanschreiben:=TRUE ,
+aktuelleshjgewaehlt:=TRUE ;INT VAR eingabestatus,i,x,fehlermeldnr;INT CONST 
+aktuellerindex:=dnrschluessel,maxwochstdn:=66,erstestd:=1,letztestd:=12;PROC 
+einzelstdplraeumeeingang:standardvproc(maske)END PROC 
+einzelstdplraeumeeingang;PROC einzelstdplraeumestarten:IF maskenwerteokTHEN 
+IF stundenplanokTHEN startenausfuehrenELSE fehlermeldnr:=
+fehlermeldnrkeinestundenplandatenvorhanden;meldedenfehler;zurueckzumdialog;
+FI ;ELSE meldedenfehler;zurueckzumdialogFI ;.meldedenfehler:standardmeldung(
+fehlermeldnr,niltext).zurueckzumdialog:return(1).startenausfuehren:
+vordruckserver:=/"anschreiben server";forget(dateimitvordruck1,quiet);forget(
+dateimitvordruck2,quiet);fetch(dateimitvordruck1,vordruckserver);fetch(
+dateimitvordruck2,vordruckserver);inittupel(dnrschluessel);putwert(
+fnrschlsachgebiet,bestandnameraeume);putwert(fnrschlschluessel,raum);
+standardmeldung(meldnrbittewarten,niltext);zusammengesetztesanschreiben(
+aktuellerindex,anschreibenaufbszeigen,einzelanschreiben,BOOL PROC 
+einzelstdplraeumesonderwerte,BOOL PROC einzelstdplraeumemultistop,TEXT PROC 
+einzelstdplraeumedruckdateibauen);END PROC einzelstdplraeumestarten;BOOL 
+PROC stundenplanok:stundenplanhalbjahrsetzen(hj,sj);
+stundenplanbasisundstundenplanholen(eingabestatus);eingabestatus=0OR 
+eingabestatus=8END PROC stundenplanok;BOOL PROC maskenwerteok:BOOL VAR ok;
+standardpruefe(5,fnr4ausgabebs,fnr5ausgabedr,null,niltext,eingabestatus);IF 
+eingabestatus<>0THEN fehlermeldnr:=fehlermeldnrauswahlunsinnig;infeld(
+fnr4ausgabebs);ok:=FALSE ELSE anschreibenaufbszeigen:=standardmaskenfeld(
+fnr5ausgabedr)=niltext;einzelanschreiben:=standardmaskenfeld(fnr2raum)<>
+niltext;aktuelleshjgewaehlt:=standardmaskenfeld(fnr3akthj)<>niltext;sj:=
+schulkenndatum("Schuljahr");hj:=schulkenndatum("Schulhalbjahr");IF NOT (
+aktuelleshjgewaehlt)THEN geplanteshjundsjberechnen(hj,sj)FI ;IF 
+einzelanschreibenTHEN IF gueltigerraumTHEN ok:=TRUE ELSE fehlermeldnr:=
+fehlermeldnrungueltigerraum;ok:=FALSE FI ;ELSE IF schluesselbestandleerTHEN 
+fehlermeldnr:=fehlermeldnrbestandraeumeleer;infeld(fnr2raum);ok:=FALSE ELSE 
+raum:=wert(fnrschlschluessel);ok:=TRUE FI ;FI ;FI ;okEND PROC maskenwerteok;
+BOOL PROC gueltigerraum:raum:=standardmaskenfeld(fnr2raum);inittupel(
+dnrschluessel);putwert(fnrschlsachgebiet,bestandnameraeume);putwert(
+fnrschlschluessel,raum);search(dnrschluessel,TRUE );dbstatus=0END PROC 
+gueltigerraum;BOOL PROC schluesselbestandleer:inittupel(dnrschluessel);
+putwert(fnrschlsachgebiet,bestandnameraeume);search(dnrschluessel);raum:=wert
+(fnrschlschluessel);dbstatus<>0COR wert(fnrschlsachgebiet)<>bestandnameraeume
+END PROC schluesselbestandleer;BOOL PROC einzelstdplraeumesonderwerte:
+initialisieresonderwerte;adressat(raum);setzesonderwert(swschuljahr,subtext(
+sj,1,2)+"/"+subtext(sj,3,4));setzesonderwert(swhalbjahr,hj);setzesonderwert(
+swraum,wert(fnrschlschluessel));setzesonderwert(swraumlangtext,wert(
+fnrschllangtext));TRUE END PROC einzelstdplraeumesonderwerte;BOOL PROC 
+einzelstdplraeumemultistop:BOOL VAR b;IF einzelanschreibenTHEN b:=wert(
+fnrschlschluessel)=raumELSE b:=wert(fnrschlsachgebiet)=bestandnameraeumeFI ;b
+ENDPROC einzelstdplraeumemultistop;TEXT PROC einzelstdplraeumedruckdateibauen
+:LET stddruckdatei="liste.1",hilfsdatei="hilfsdatei";FILE VAR f;TEXT VAR 
+zeile:="",druckdatei:="Raumplan";forget(druckdatei,quiet);druckvorbereiten;
+setzeanzahlderzeichenprozeile(maxzeichenimvordruck);raum:=wert(
+fnrschlschluessel);datendeserstenvordrucksindruckdatei;FOR xFROM erstestd
+UPTO letztestdREP datendeszweitenvordrucksindruckdateiPER ;rename(
+stddruckdatei,druckdatei);f:=sequentialfile(modify,druckdatei);toline(f,1);
+input(f);druckdatei.datendeserstenvordrucksindruckdatei:briefalternative(
+dateimitvordruck1,hilfsdatei);zeilenweisehilfsdateiindruckdatei(hilfsdatei);
+forget(hilfsdatei,quiet);.datendeszweitenvordrucksindruckdatei:
+setzesonderwert(swtagesstunde,text(x,2));
+planeintraegeprowochenstdenlesenundsonderwertesetzen(x);briefalternative(
+dateimitvordruck2,hilfsdatei);zeilenweisehilfsdateiindruckdatei(hilfsdatei);
+IF x<>letztestdTHEN zeile:=normaletrennlinieELSE zeile:=abschlusslinieFI ;
+druckzeileschreiben(zeile);forget(hilfsdatei,quiet);END PROC 
+einzelstdplraeumedruckdateibauen;PROC zeilenweisehilfsdateiindruckdatei(TEXT 
+CONST hilfsdatei):TEXT VAR zeile:=niltext;FILE VAR f;f:=sequentialfile(input,
+hilfsdatei);FOR iFROM 1UPTO lines(f)REP getline(f,zeile);druckzeileschreiben(
+zeile)PER ;END PROC zeilenweisehilfsdateiindruckdatei;PROC 
+planeintraegeprowochenstdenlesenundsonderwertesetzen(INT CONST std):INT VAR 
+wochenstd:=std,sonderwert:=521;TEXT VAR ausgabe;WHILE wochenstd<=maxwochstdn
+REP planeintraglesen(wochenstd,"R",raum,l,r,p);IF r<>""THEN ausgabe:=subtext(
+l,1,2);ausgabeCAT blank;ausgabeCAT subtext(l,3,4);ausgabeCAT blank;ausgabe
+CAT subtext(l,5,8);setzesonderwert(sonderwert,ausgabe);setzesonderwert(
+sonderwert+6,p);ELSE setzesonderwert(sonderwert,blank);setzesonderwert(
+sonderwert+6,blank);FI ;ausgabe:=niltext;sonderwertINCR 1;wochenstdINCR 12;
+PER ;END PROC planeintraegeprowochenstdenlesenundsonderwertesetzen;END 
+PACKET einzelstdplraeume;
+

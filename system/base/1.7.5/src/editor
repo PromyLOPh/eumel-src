@@ -1,0 +1,2959 @@
+PACKET editor paket DEFINES                           (*  EDITOR   121   *)
+       (**********)                                   (*  19.07.85 -bk-  *)
+                                                      (*  10.09.85 -ws-  *)
+                                                      (*  25.04.86 -sh-  *)
+        edit, editget,                                (*  06.06.86 -wk-  *)
+        quit, quit last,                              (*  04.06.86 -jl-  *)
+        push, type,
+        word wrap, margin,
+        write permission,
+        set busy indicator,
+        two bytes,
+        is kanji esc, 
+        within kanji,
+        rubin mode,
+        is editget,
+        getchar,                      nichts neu,
+        getcharety,                   satznr neu,
+        is incharety,                 ueberschrift neu,
+        get window,                   zeile neu,
+        get editcursor,               abschnitt neu,
+        get editline,                 bildabschnitt neu,
+        put editline,                 bild neu,
+        aktueller editor,             alles neu,
+        groesster editor,             satznr zeigen,
+        open editor,                  ueberschrift zeigen,
+        editfile,                     bild zeigen:
+
+
+LET     hop            = ""1"",       right          = ""2"",
+        up char        = ""3"",       clear eop      = ""4"",
+        clear eol      = ""5"",       cursor pos     = ""6"",
+        piep           = ""7"",       left           = ""8"",
+        down char      = ""10"",      rubin          = ""11"",
+        rubout         = ""12"",      cr             = ""13"",
+        mark key       = ""16"",      abscr          = ""17"",
+        inscr          = ""18"",      dezimal        = ""19"",
+        backcr         = ""20"",      esc            = ""27"",
+        dach           = ""94"",      blank          = " ";
+ 
+
+LET     no output      = 0,           out zeichen    = 1,
+        out feldrest   = 2,           out feld       = 3,
+        clear feldrest = 4;
+ 
+LET     FELDSTATUS = STRUCT (INT  stelle, alte stelle, rand, limit,
+                                  anfang, marke, laenge, verschoben,
+                             BOOL einfuegen, fliesstext, write access,
+                             TEXT tabulator);
+FELDSTATUS VAR feldstatus;
+ 
+TEXT VAR begin mark := ""15"",
+         end mark   := ""14"";
+ 
+TEXT VAR separator := "", kommando := "", audit := "", zeichen := "",
+         satzrest := "", merksatz := "", alter editsatz := "";
+ 
+INT  VAR kommando zeiger := 1, umbruchstelle, umbruch verschoben,
+         zeile, spalte, output mode := no output, postblanks := 0,
+         min schreibpos, max schreibpos, cpos, absatz ausgleich;
+
+BOOL VAR lernmodus := FALSE, separator eingestellt := FALSE,
+         invertierte darstellung := FALSE, absatzmarke steht,
+         cursor diff := FALSE, editget modus := FALSE,
+         two byte mode := FALSE, std fliesstext := TRUE;.
+ 
+schirmbreite : x size - 1 . 
+schirmhoehe  : y size . 
+maxbreite    : schirmbreite - 2 .
+maxlaenge    : schirmhoehe - 1 . 
+marklength   : mark size .;
+
+initialisiere editor; 
+ 
+.initialisiere editor :
+  anfang := 1; zeile := 0; verschoben := 0; tabulator := "";
+  einfuegen := FALSE; fliesstext := TRUE; zeileneinfuegen := FALSE;
+  marke := 0; bildmarke := 0; feldmarke := 0.;
+
+(********************************  editget  ********************************)
+ 
+PROC editget (TEXT VAR editsatz, INT CONST editlimit, editlaenge,
+              TEXT CONST sep, res, TEXT VAR exit char) :
+  IF editlaenge < 1 THEN errorstop ("Fenster zu klein") FI; 
+  separator := ""13""; separator CAT sep;
+  separator eingestellt := TRUE;
+  TEXT VAR reservierte editget tasten := ""11""12"" ;
+  reservierte editget tasten CAT res ;
+  disable stop;
+  absatz ausgleich := 0; exit char := ""; get cursor;
+  FELDSTATUS CONST alter feldstatus := feldstatus;
+  feldstatus := FELDSTATUS : (1, 1, spalte - 1, editlimit,
+                              1, 0, editlaenge, 0,
+                              FALSE, FALSE, TRUE, "");
+  konstanten neu berechnen;
+  output mode := out feld;
+  feld editieren;
+  zeile verlassen;
+  feldstatus := alter feldstatus;
+  konstanten neu berechnen;
+  separator := "";
+  separator eingestellt := FALSE .
+ 
+feld editieren :
+  REP
+    feldeditor (editsatz, reservierte editget tasten);
+    IF   is error
+    THEN kommando zeiger := 1; kommando := ""; LEAVE feld editieren
+    FI ;
+    TEXT VAR t, zeichen; getchar (zeichen);
+    IF   zeichen ist separator
+    THEN exit char := zeichen; LEAVE feld editieren
+    ELIF zeichen = hop
+    THEN feldout (editsatz, stelle); getchar (zeichen)
+    ELIF zeichen = mark key
+    THEN output mode := out feld
+    ELIF zeichen = abscr
+    THEN exit char := cr; LEAVE feld editieren
+    ELIF zeichen = esc
+    THEN getchar (zeichen); auf exit pruefen;
+         IF   zeichen = rubout                                       (*sh*)
+         THEN IF   marke > 0
+              THEN merksatz := subtext (editsatz, marke, stelle - 1);
+                   change (editsatz, marke, stelle - 1, "");
+                   stelle := marke; marke := 0; konstanten neu berechnen
+              FI
+         ELIF zeichen = rubin
+         THEN t := subtext (editsatz, 1, stelle - 1);
+              t CAT merksatz;
+              satzrest := subtext (editsatz, stelle);
+              t CAT satzrest;
+              stelle INCR LENGTH merksatz;
+              merksatz := ""; editsatz := t
+         ELIF zeichen ist kein esc kommando                          (*wk*)
+                       AND
+              kommando auf taste (zeichen) <> ""
+         THEN editget kommando ausfuehren
+         FI ;
+         output mode := out feld
+    FI
+  PER .
+ 
+zeichen ist kein esc kommando :                                      (*wk*)
+  pos (hop + left + right, zeichen) = 0 .
+
+zeile verlassen :
+  IF   marke > 0 OR verschoben <> 0
+  THEN stelle DECR verschoben; verschoben := 0; feldout (editsatz, 0)
+  ELSE cursor (rand + 1 + min (LENGTH editsatz, editlaenge), zeile)
+  FI .
+ 
+zeichen ist separator : pos (separator, zeichen) > 0 .
+ 
+auf exit pruefen :
+  IF   pos (res, zeichen) > 0
+  THEN exit char := esc + zeichen; LEAVE feld editieren
+  FI .
+ 
+editget kommando ausfuehren :
+  editget zustaende sichern ;
+  do (kommando auf taste (zeichen)) ;
+  alte editget zustaende wieder herstellen ;
+  IF stelle < marke THEN stelle := marke FI;
+  konstanten neu berechnen .
+
+editget zustaende sichern :                                          (*wk*)
+  BOOL VAR alter editget modus := editget modus;
+  FELDSTATUS VAR feldstatus vor do kommando := feldstatus ;
+  INT VAR zeile vor do kommando := zeile ;
+  TEXT VAR separator vor do kommando := separator ;
+  BOOL VAR separator eingestellt vor do kommando := separator eingestellt ;
+  editget modus := TRUE ;
+  alter editsatz := editsatz .
+
+alte editget zustaende wieder herstellen :
+  editget modus := alter editget modus ;
+  editsatz := alter editsatz;
+  feldstatus := feldstatus vor do kommando ;
+  zeile := zeile vor do kommando ;
+  separator := separator vor do kommando ;
+  separator eingestellt := separator eingestellt vor do kommando .
+
+END PROC editget;
+ 
+PROC editget (TEXT VAR editsatz, INT CONST editlimit, TEXT VAR exit char) :
+  editget (editsatz, editlimit, x size - x cursor, "", "", exit char)
+END PROC editget;                                       (* 05.07.84 -bk- *)
+ 
+PROC editget (TEXT VAR editsatz, TEXT CONST sep, res, TEXT VAR exit char) :
+  editget (editsatz, max text length, x size - x cursor, sep, res, exit char)
+END PROC editget;                                       (* 05.07.84 -bk- *)
+ 
+PROC editget (TEXT VAR editsatz) :
+  TEXT VAR exit char;                                   (* 05.07.84 -bk- *)
+  editget (editsatz, max text length, x size - x cursor, "", "", exit char)
+END PROC editget;
+ 
+PROC editget (TEXT VAR editsatz, INT CONST editlimit, editlaenge) :
+  TEXT VAR exit char;
+  editget (editsatz, editlimit, editlaenge, "", "", exit char)
+ENDPROC editget;
+
+(*******************************  feldeditor  ******************************)
+
+TEXT VAR reservierte feldeditor tasten ;                             (*jl*)
+
+PROC feldeditor (TEXT VAR satz, TEXT CONST res) :
+  enable stop;
+  reservierte feldeditor tasten := ""1""2""8"" ;
+  reservierte feldeditor tasten CAT res;
+  absatzmarke steht := (satz SUB LENGTH satz) = blank;
+  alte stelle merken;
+  cursor diff bestimmen und ggf ausgleichen;
+  feld editieren;
+  absatzmarke updaten .
+ 
+alte stelle merken : alte stelle := stelle .
+ 
+cursor diff bestimmen und ggf ausgleichen :
+  IF   cursor diff
+  THEN stelle INCR 1; cursor diff := FALSE
+  FI ;
+  IF   stelle auf zweitem halbzeichen
+  THEN stelle DECR 1; cursor diff := TRUE
+  FI .
+
+feld editieren :
+  REP
+    feld optisch aufbereiten;
+    kommando annehmen und ausfuehren
+  PER .
+ 
+absatzmarke updaten :
+  IF   absatzmarke soll stehen
+  THEN IF NOT absatzmarke steht THEN absatzmarke schreiben (TRUE) FI
+  ELSE IF     absatzmarke steht THEN absatzmarke schreiben (FALSE) FI
+  FI .
+ 
+absatzmarke soll stehen : (satz SUB LENGTH satz) = blank .
+ 
+feld optisch aufbereiten :
+  stelle korrigieren;
+  verschieben wenn erforderlich;
+  randausgleich fuer doppelzeichen;
+  output mode behandeln;
+  ausgabe verhindern .
+ 
+randausgleich fuer doppelzeichen :
+  IF   stelle = max schreibpos CAND stelle auf erstem halbzeichen 
+  THEN verschiebe (1)
+  FI .
+
+stelle korrigieren :
+  IF stelle auf zweitem halbzeichen THEN stelle DECR 1 FI .
+
+stelle auf erstem halbzeichen  : within kanji (satz, stelle + 1) .
+
+stelle auf zweitem halbzeichen : within kanji (satz, stelle) .
+
+output mode behandeln :
+  SELECT output mode OF
+    CASE no output      : im markiermode markierung anpassen
+    CASE out zeichen    : zeichen ausgeben; LEAVE output mode behandeln
+    CASE out feldrest   : feldrest neu schreiben
+    CASE out feld       : feldout (satz, stelle)
+    CASE clear feldrest : feldrest loeschen
+  END SELECT;
+  schreibmarke positionieren (stelle) .
+ 
+ausgabe verhindern : output mode := no output .
+ 
+im markiermode markierung anpassen :
+  IF markiert THEN markierung anpassen FI .
+
+markierung anpassen :
+  IF   stelle > alte stelle
+  THEN markierung verlaengern
+  ELIF stelle < alte stelle
+  THEN markierung verkuerzen
+  FI .
+ 
+markierung verlaengern :
+  invers out (satz, alte stelle, stelle, "", end mark) .
+ 
+markierung verkuerzen :
+  invers out (satz, stelle, alte stelle, end mark, "") .
+ 
+zeichen ausgeben :
+  IF   NOT markiert
+  THEN out (zeichen)
+  ELIF mark refresh line mode
+  THEN feldout (satz, stelle); schreibmarke positionieren (stelle)
+  ELSE out (begin mark); markleft; out (zeichen); out (end mark); markleft
+  FI .
+ 
+markleft : 
+  marklength TIMESOUT left .
+ 
+feldrest neu schreiben :
+  IF   NOT markiert
+  THEN feldrest unmarkiert neu schreiben
+  ELSE feldrest markiert neu schreiben
+  FI ; 
+  WHILE postblanks > 0 CAND x cursor <= rand + laenge REP
+    out (blank); postblanks DECR 1
+  PER ; postblanks := 0 .
+ 
+feldrest unmarkiert neu schreiben :
+  schreibmarke positionieren (alte stelle);
+  out subtext mit randbehandlung (satz, alte stelle, stelle am ende) .
+ 
+feldrest markiert neu schreiben :
+  markierung verlaengern; out subtext mit randbehandlung
+                          (satz, stelle, stelle am ende - 2 * marklength) .
+ 
+kommando annehmen und ausfuehren :
+  kommando annehmen; kommando ausfuehren .
+ 
+kommando annehmen :
+  getchar (zeichen); kommando zurueckweisen falls noetig .
+
+kommando zurueckweisen falls noetig :
+  IF   NOT write access CAND zeichen ist druckbar
+  THEN benutzer warnen; kommando ignorieren
+  FI .
+
+benutzer warnen : out (piep) .
+
+kommando ignorieren :
+  zeichen := ""; LEAVE kommando annehmen und ausfuehren . 
+
+kommando ausfuehren :
+  neue satzlaenge bestimmen;
+  alte stelle merken;
+  IF   zeichen ist separator
+  THEN feldeditor verlassen
+  ELIF zeichen ist druckbar
+  THEN fortschreiben
+  ELSE funktionstasten behandeln
+  FI .
+ 
+neue satzlaenge bestimmen : INT VAR satzlaenge := LENGTH satz .
+
+feldeditor verlassen :
+  IF NOT absatzmarke steht THEN blanks abschneiden FI;               (*sh*)
+  push (zeichen); LEAVE feld editieren .
+
+blanks abschneiden :
+  INT VAR letzte non blank pos := satzlaenge;
+  WHILE letzte non blank pos > 0 CAND (satz SUB letzte non blank pos) = blank REP 
+    letzte non blank pos DECR 1
+  PER; satz := subtext (satz, 1, letzte non blank pos) .
+
+zeichen ist druckbar : zeichen >= blank .
+ 
+zeichen ist separator :
+  separator eingestellt CAND pos (separator, zeichen) > 0 .
+ 
+fortschreiben :
+  zeichen in satz eintragen;
+  IF is kanji esc (zeichen) THEN kanji zeichen schreiben FI;
+  bei erreichen von limit ueberlauf behandeln .
+ 
+zeichen in satz eintragen :
+  IF   hinter dem satz
+  THEN satz mit leerzeichen auffuellen und zeichen anfuegen
+  ELIF einfuegen
+  THEN zeichen vor aktueller position einfuegen
+  ELSE altes zeichen ersetzen
+  FI .
+ 
+hinter dem satz : stelle > satzlaenge .
+ 
+satz mit leerzeichen auffuellen und zeichen anfuegen :
+  satz AUFFUELLENMIT blank;
+  zeichen anfuegen;
+  output mode := out zeichen .
+ 
+zeichen anfuegen   : satz CAT zeichen; neue satzlaenge bestimmen .
+zeichen ignorieren : benutzer warnen; LEAVE kommando ausfuehren .
+ 
+zeichen vor aktueller position einfuegen :
+  insert char (satz, zeichen, stelle);
+  neue satzlaenge bestimmen;
+  output mode := out feldrest .
+ 
+altes zeichen ersetzen :
+  replace (satz, stelle, zeichen);
+  IF   stelle auf erstem halbzeichen
+  THEN output mode := out feldrest; replace (satz, stelle + 1, blank)
+  ELSE output mode := out zeichen 
+  FI .
+
+kanji zeichen schreiben :
+  alte stelle merken;
+  stelle INCR 1; getchar (zeichen);
+  IF   zeichen < ""64"" THEN zeichen := ""64"" FI;
+  IF   hinter dem satz
+  THEN zeichen anfuegen
+  ELIF einfuegen
+  THEN zeichen vor aktueller position einfuegen
+  ELSE replace (satz, stelle, zeichen)
+  FI ;
+  output mode := out feldrest .
+
+bei erreichen von limit ueberlauf behandeln :                        (*sh*)
+  IF   satzlaenge kritisch
+  THEN in naechste zeile falls moeglich
+  ELSE stelle INCR 1
+  FI .
+
+satzlaenge kritisch :
+  IF   stelle >= satzlaenge
+  THEN satzlaenge = limit
+  ELSE satzlaenge = limit + 1
+  FI .
+
+in naechste zeile falls moeglich :
+  IF   fliesstext AND umbruch moeglich OR NOT fliesstext AND stelle >= satzlaenge
+  THEN in naechste zeile
+  ELSE stelle INCR 1
+  FI .
+
+umbruch moeglich :
+  INT CONST st := stelle; stelle := limit;
+  INT CONST ltzt wortanf := letzter wortanfang (satz);
+  stelle := st; einrueckposition (satz) < ltzt wortanf .
+
+in naechste zeile :
+  IF   fliesstext 
+  THEN ueberlauf und oder umbruch 
+  ELSE ueberlauf ohne umbruch 
+  FI . 
+ 
+ueberlauf und oder umbruch : 
+  INT VAR umbruchpos := 1; 
+  umbruchposition bestimmen; 
+  loeschposition bestimmen; 
+  IF   stelle = satzlaenge 
+  THEN ueberlauf mit oder ohne umbruch
+  ELSE umbruch mit oder ohne ueberlauf
+  FI . 
+ 
+umbruchposition bestimmen : 
+  umbruchstelle := stelle; 
+  stelle := satzlaenge; 
+  umbruchpos := max (umbruchpos, letzter wortanfang (satz)); 
+  stelle := umbruchstelle . 
+ 
+loeschposition bestimmen : 
+  INT VAR loeschpos := umbruchpos;
+  WHILE davor noch blank REP loeschpos DECR 1 PER . 
+ 
+davor noch blank : 
+  loeschpos > ganz links CAND (satz SUB (loeschpos - 1)) = blank . 
+ 
+ganz links : max (1, marke) .
+ 
+ueberlauf mit oder ohne umbruch :
+  IF   zeichen = blank OR loeschpos = ganz links 
+  THEN stelle := 1; ueberlauf ohne umbruch 
+  ELSE ueberlauf mit umbruch
+  FI .
+
+ueberlauf ohne umbruch : push (cr) .
+
+ueberlauf mit umbruch :
+  ausgabe verhindern;
+  umbruchkommando aufbereiten; 
+  auf loeschposition positionieren . 
+ 
+umbruchkommando aufbereiten : 
+  zeichen := hop + rubout + inscr;
+  satzrest := subtext (satz, umbruchpos);
+  zeichen CAT satzrest;
+  IF   stelle ist im umgebrochenen teil
+  THEN insert char (zeichen, backcr, max (stelle - umbruchpos + 1, 0) + 4); 
+       zeichen CAT backcr
+  FI ;
+  push (zeichen) .
+ 
+stelle ist im umgebrochenen teil : stelle >= loeschpos . 
+ 
+auf loeschposition positionieren : stelle := loeschpos .
+ 
+umbruch mit oder ohne ueberlauf :
+  umbruchposition anpassen; 
+  IF   stelle ist im umgebrochenen teil 
+  THEN umbruch mit ueberlauf 
+  ELSE umbruch ohne ueberlauf 
+  FI . 
+ 
+umbruchposition anpassen : 
+  IF   zeichen = blank 
+  THEN umbruchpos := stelle + 1; 
+       umbruchposition bestimmen; 
+       neue loeschposition bestimmen 
+  FI . 
+ 
+neue loeschposition bestimmen : 
+  loeschpos := umbruchpos; 
+  WHILE davor noch blank AND stelle noch nicht erreicht REP loeschpos DECR 1 PER . 
+ 
+stelle noch nicht erreicht : loeschpos > stelle + 1 .
+
+umbruch mit ueberlauf : ueberlauf mit umbruch . 
+ 
+umbruch ohne ueberlauf : 
+  zeichen := inscr; 
+  satzrest := subtext (satz, umbruchpos); 
+  zeichen CAT satzrest;
+  zeichen CAT up char + backcr; 
+  umbruchstelle INCR 1; umbruch verschoben := verschoben;
+  satz := subtext (satz, 1, loeschpos - 1); 
+  schreibmarke positionieren (loeschpos); feldrest loeschen; 
+  output mode := out feldrest;
+  push (zeichen) . 
+ 
+funktionstasten behandeln :
+  SELECT pos (kommandos, zeichen) OF
+    CASE c hop     : hop kommandos behandeln
+    CASE c esc     : esc kommandos behandeln
+    CASE c right   : nach rechts oder ueberlauf
+    CASE c left    : wenn moeglich ein schritt nach links
+    CASE c tab     : zur naechsten tabulator position
+    CASE c dezimal : dezimalen schreiben
+    CASE c rubin   : einfuegen umschalten
+    CASE c rubout  : ein zeichen loeschen
+    CASE c abscr, c inscr, c down : feldeditor verlassen
+    CASE c up      : eine zeile nach oben                            (*sh*)
+    CASE c cr      : ggf absatz erzeugen 
+    CASE c mark    : markieren umschalten
+    CASE c backcr  : zurueck zur umbruchstelle
+    OTHERWISE      : sondertaste behandeln
+  END SELECT .
+ 
+kommandos :
+  LET c hop     =  1,                 c right   =  2,
+      c up      =  3,                 c left    =  4,
+      c tab     =  5,                 c down    =  6,
+      c rubin   =  7,                 c rubout  =  8,
+      c cr      =  9,                 c mark    = 10,
+      c abscr   = 11,                 c inscr   = 12,
+      c dezimal = 13,                 c esc     = 14, 
+      c backcr  = 15; 
+
+  ""1""2""3""8""9""10""11""12""13""16""17""18""19""27""20"" .
+ 
+dezimalen schreiben : IF write access THEN dezimaleditor (satz) FI .
+
+zurueck zur umbruchstelle: 
+  IF   umbruch stelle > 0 THEN stelle := umbruch stelle FI;
+  IF   verschoben <> umbruch verschoben 
+  THEN verschoben := umbruch verschoben; output mode := out feld 
+  FI . 
+ 
+hop kommandos behandeln :
+  TEXT VAR zweites zeichen; getchar (zweites zeichen);
+  zeichen CAT zweites zeichen;
+  SELECT pos (hop kommandos, zweites zeichen) OF
+    CASE h hop    : nach links oben
+    CASE h right  : nach rechts blaettern
+    CASE h left   : nach links blaettern
+    CASE h tab    : tab position definieren oder loeschen
+    CASE h rubin  : zeile splitten
+    CASE h rubout : loeschen oder rekombinieren
+    CASE h cr, h up, h down : feldeditor verlassen
+    OTHERWISE     : zeichen ignorieren
+  END SELECT .
+ 
+hop kommandos :
+  LET h hop    = 1,                   h right  = 2,
+      h up     = 3,                   h left   = 4,
+      h tab    = 5,                   h down   = 6,
+      h rubin  = 7,                   h rubout = 8,
+      h cr     = 9;
+ 
+  ""1""2""3""8""9""10""11""12""13"" .
+ 
+nach links oben :
+  stelle := max (marke, anfang) + verschoben; feldeditor verlassen .
+ 
+nach rechts blaettern :
+  INT CONST rechter rand := stelle am ende - markierausgleich;
+  IF   stelle ist am rechten rand
+  THEN stelle INCR laenge - 2 * markierausgleich + ausgleich fuer doppelzeichen
+  ELSE stelle := rechter rand
+  FI ;
+  IF satzlaenge <= limit THEN stelle := min (stelle, limit) FI;
+  alte einrueckposition mitziehen .
+ 
+stelle ist am rechten rand :
+  stelle auf erstem halbzeichen CAND stelle = rechter rand - 1
+                                COR  stelle = rechter rand .
+
+ausgleich fuer doppelzeichen : stelle - rechter rand .
+
+nach links blaettern :
+  INT CONST linker rand := stelle am anfang;
+  IF   stelle = linker rand
+  THEN stelle DECR laenge - 2 * markierausgleich
+  ELSE stelle := linker rand
+  FI ;
+  stelle := max (ganz links, stelle);
+  alte einrueckposition mitziehen .
+ 
+tab position definieren oder loeschen :
+  IF   stelle > LENGTH tabulator
+  THEN tabulator AUFFUELLENMIT right; tabulator CAT dach
+  ELSE replace (tabulator, stelle, neues tab zeichen)
+  FI ;
+  feldeditor verlassen .
+ 
+neues tab zeichen :
+  IF (tabulator SUB stelle) = right THEN dach ELSE right FI .
+ 
+zeile splitten :
+  IF write access THEN feldeditor verlassen ELSE zeichen ignorieren FI .
+ 
+loeschen oder rekombinieren :
+  IF   NOT write access
+  THEN zeichen ignorieren
+  ELIF hinter dem satz
+  THEN zeilen rekombinieren
+  ELIF auf erstem zeichen
+  THEN ganze zeile loeschen
+  ELSE zeilenrest loeschen
+  FI .
+ 
+zeilen rekombinieren : feldeditor verlassen .
+auf erstem zeichen   : stelle = 1 .
+ganze zeile loeschen : satz := ""; feldeditor verlassen .
+ 
+zeilenrest loeschen :
+  change (satz, stelle, satzlaenge, ""); 
+  output mode := clear feldrest .
+ 
+esc kommandos behandeln :
+  getchar (zweites zeichen); 
+  zeichen CAT zweites zeichen;
+  auf exit pruefen;
+  SELECT pos (esc kommandos, zweites zeichen) OF
+    CASE e hop   : lernmodus umschalten
+    CASE e right : zum naechsten wort
+    CASE e left  : zum vorigen wort
+    OTHERWISE    : belegte taste ausfuehren 
+  END SELECT .
+ 
+auf exit pruefen :
+  IF pos (res, zweites zeichen) > 0 THEN feldeditor verlassen FI .
+ 
+esc kommandos :
+  LET e hop      =  1,
+      e right    =  2,
+      e left     =  3;
+ 
+  ""1""2""8"" .
+ 
+lernmodus umschalten :
+  IF lernmodus THEN lernmodus ausschalten ELSE lernmodus einschalten FI;
+  feldeditor verlassen .
+ 
+lernmodus ausschalten :
+  lernmodus := FALSE;
+  belegbare taste erfragen;
+  audit := subtext (audit, 1, LENGTH audit - 2);
+  IF   taste = hop 
+  THEN (* lernsequenz nicht auf taste legen *)          (* 16.08.85 -ws- *)
+  ELSE lernsequenz auf taste legen (taste, audit)
+  FI ;
+  audit := "" .
+ 
+belegbare taste erfragen :
+  TEXT VAR taste; getchar (taste);
+  WHILE taste ist reserviert REP
+    benutzer warnen; getchar (taste)
+  PER .
+ 
+taste ist reserviert :                                  (* 16.08.85 -ws- *)
+  taste <> hop CAND pos (reservierte feldeditor tasten, taste) > 0 .
+ 
+lernmodus einschalten : audit := ""; lernmodus := TRUE .
+ 
+zum vorigen wort :
+  IF   stelle > 1
+  THEN stelle DECR 1; stelle := letzter wortanfang (satz);
+       alte einrueckposition mitziehen;
+       IF (satz SUB stelle) <> blank THEN LEAVE zum vorigen wort FI
+  FI ;
+  feldeditor verlassen .
+ 
+zum naechsten wort :
+  IF kein naechstes wort THEN feldeditor verlassen FI .
+ 
+kein naechstes wort :
+  BOOL VAR im alten wort := TRUE;
+  INT VAR i;
+  FOR i FROM stelle UPTO satzlaenge REP
+    IF   im alten wort
+    THEN im alten wort := (satz SUB i) <> blank
+    ELIF (satz SUB i) <> blank
+    THEN stelle := i; LEAVE kein naechstes wort WITH FALSE
+    FI
+  PER;
+  TRUE .
+ 
+belegte taste ausfuehren :
+  IF   ist kommando taste
+  THEN feldeditor verlassen
+  ELSE gelerntes ausfuehren
+  FI .
+ 
+ist kommando taste : taste enthaelt kommando (zweites zeichen) .
+ 
+gelerntes ausfuehren :
+  push (lernsequenz auf taste (zweites zeichen)) .                   (*sh*)
+ 
+nach rechts oder ueberlauf :
+  IF   fliesstext COR stelle < limit OR satzlaenge > limit 
+  THEN nach rechts
+  ELSE auf anfang der naechsten zeile
+  FI .
+ 
+nach rechts :
+  IF stelle auf erstem halbzeichen THEN stelle INCR 2 ELSE stelle INCR 1 FI;
+  alte einrueckposition mitziehen .
+
+auf anfang der naechsten zeile : push (abscr) .
+
+nach links : stelle DECR 1; alte einrueckposition mitziehen .
+
+alte einrueckposition mitziehen :
+  IF   satz ist leerzeile
+  THEN alte einrueckposition := stelle
+  ELSE alte einrueckposition := min (stelle, einrueckposition (satz))
+  FI .
+
+satz ist leerzeile :
+  satz = "" OR satz = blank . 
+
+wenn moeglich ein schritt nach links :
+  IF   stelle = ganz links
+  THEN zeichen ignorieren
+  ELSE nach links
+  FI .
+ 
+zur naechsten tabulator position :
+  bestimme naechste explizite tabulator position;
+  IF   tabulator gefunden
+  THEN explizit tabulieren
+  ELIF stelle <= satzlaenge
+  THEN implizit tabulieren
+  ELSE auf anfang der naechsten zeile
+  FI .
+ 
+bestimme naechste explizite tabulator position :
+  INT VAR tab position := pos (tabulator, dach, stelle + 1);
+  IF   tab position > limit AND satzlaenge <= limit
+  THEN tab position := 0
+  FI .
+ 
+tabulator gefunden : tab position <> 0 .
+ 
+explizit tabulieren : stelle := tab position; push (dezimal) .
+ 
+implizit tabulieren :
+  tab position := einrueckposition (satz);
+  IF   stelle <  tab position
+  THEN stelle := tab position
+  ELSE stelle := satzlaenge + 1
+  FI .
+ 
+einfuegen umschalten :
+  IF NOT write access THEN zeichen ignorieren FI;                    (*sh*)
+  einfuegen := NOT einfuegen;
+  IF einfuegen THEN einfuegen optisch anzeigen FI;
+  feldeditor verlassen .
+ 
+einfuegen optisch anzeigen :
+  IF   markiert
+  THEN out (begin mark); markleft; out (dach left); warten;
+       out (end mark); markleft
+  ELSE out (dach left); warten;
+       IF   stelle auf erstem halbzeichen
+       THEN out text (satz, stelle, stelle + 1)
+       ELSE out text (satz, stelle, stelle)
+       FI
+  FI .
+ 
+markiert  : marke > 0 .
+dach left : ""94""8"" .
+ 
+warten :
+  TEXT VAR t := incharety (2);
+  kommando CAT t; IF lernmodus THEN audit CAT t FI .
+ 
+ein zeichen loeschen :
+  IF   NOT write access THEN zeichen ignorieren FI;                  (*sh*)
+  IF   zeichen davor soll geloescht werden
+  THEN nach links oder ignorieren
+  FI ;
+  IF   NOT hinter dem satz THEN aktuelles zeichen loeschen FI .
+ 
+zeichen davor soll geloescht werden :
+  hinter dem satz COR markiert .
+ 
+nach links oder ignorieren :
+  IF   stelle > ganz links
+  THEN nach links                                                    (*sh*)
+  ELSE zeichen ignorieren
+  FI .
+ 
+aktuelles zeichen loeschen :
+  stelle korrigieren; alte stelle merken;
+  IF   stelle auf erstem halbzeichen
+  THEN delete char (satz, stelle);
+       postblanks INCR 1
+  FI ;
+  delete char (satz, stelle);
+  postblanks INCR 1;
+  neue satzlaenge bestimmen;
+  output mode := out feldrest .
+
+eine zeile nach oben :                                               (*sh*)
+  IF   NOT absatzmarke steht CAND NOT ist teil eines umbruchkommandos 
+  THEN blanks abschneiden
+  FI ;
+  push (zeichen); LEAVE feld editieren .
+
+ist teil eines umbruchkommandos : (kommando SUB kommandozeiger) = backcr .
+
+ggf absatz erzeugen :                                                (*sh*)
+  IF   write access
+  THEN IF   NOT absatzmarke steht THEN blanks abschneiden FI;
+       IF   stelle > LENGTH satz AND fliesstext AND NOT absatzmarke steht
+       THEN satz CAT blank
+       FI 
+  FI ; push (zeichen); LEAVE feld editieren .
+
+markieren umschalten :
+  IF   markiert
+  THEN marke := 0;      maxschreibpos INCR marklength; cpos DECR marklength
+  ELSE marke := stelle; maxschreibpos DECR marklength; cpos INCR marklength;
+       verschieben wenn erforderlich
+  FI ;
+  feldeditor verlassen .
+ 
+sondertaste behandeln : push (esc + zeichen) .
+END PROC feldeditor;
+ 
+PROC dezimaleditor (TEXT VAR satz) :
+  INT VAR dezimalanfang := stelle;
+  zeichen einlesen;
+  IF dezimalstartzeichen CAND ueberschreibbar THEN dezimalen schreiben FI;
+  push (zeichen) .
+ 
+zeichen einlesen    : TEXT VAR zeichen; getchar (zeichen) .
+dezimalzeichen      : pos (dezimalen, zeichen) > 0 AND nicht separator .
+dezimalstartzeichen : pos (startdezimalen, zeichen) > 0 AND nicht separator .
+dezimalen           : "0123456789" .
+startdezimalen      : "+-0123456789" .
+nicht separator     : pos (separator, zeichen) = 0 .
+ 
+ueberschreibbar :
+  dezimalanfang > LENGTH satz OR
+  pos (ueberschreibbare zeichen, satz SUB dezimalanfang) > 0 .
+ 
+ueberschreibbare zeichen : " ,.+-0123456789" . 
+ 
+dezimalen schreiben :
+  REP
+    dezimale in satz eintragen;
+    dezimalen zeigen;
+    zeichen einlesen;
+    dezimalanfang DECR 1
+  UNTIL dezimaleditor beendet PER;
+  stelle INCR 1 .
+ 
+dezimale in satz eintragen :
+  IF   dezimalanfang > LENGTH satz
+  THEN satz AUFFUELLENMIT blank; satz CAT zeichen
+  ELSE delete char (satz, dezimalanfang); insert char (satz, zeichen, stelle)
+  FI .
+ 
+dezimalen zeigen :
+  INT VAR min dezimalschreibpos := max (min schreibpos, dezimalanfang);
+  IF markiert THEN markiert zeigen ELSE unmarkiert zeigen FI;
+  schreibmarke positionieren (stelle) .
+ 
+markiert : marke > 0 .
+ 
+markiert zeigen :
+  invers out (satz, min dezimalschreibpos, stelle, "", end mark);
+  out (zeichen) .
+ 
+unmarkiert zeigen :
+  schreibmarke positionieren (min dezimalschreibpos);
+  out subtext (satz, min dezimalschreibpos, stelle) .
+ 
+dezimaleditor beendet :
+  NOT dezimalzeichen OR
+  dezimalanfang < max (min schreibpos, marke) OR
+  NOT ueberschreibbar .
+END PROC dezimaleditor;
+
+BOOL PROC is editget :
+  editget modus
+END PROC is editget ;
+
+PROC get editline (TEXT VAR editline, INT VAR editpos, editmarke) :
+  IF   editget modus
+  THEN editline := alter editsatz;
+       editpos := stelle
+  FI ;
+  editmarke := marke
+END PROC get editline;
+
+PROC put editline (TEXT CONST editline, INT CONST editpos, editmarke) :
+  IF   editget modus
+  THEN alter editsatz := editline;
+       stelle := max (editpos, 1);
+       marke := max (editmarke, 0)
+  FI 
+END PROC put editline;
+
+BOOL PROC within kanji (TEXT CONST satz, INT CONST stelle) :
+  count directly prefixing kanji esc bytes;
+  number of kanji esc bytes is odd .
+ 
+count directly prefixing kanji esc bytes :
+  INT VAR pos := stelle - 1, kanji esc bytes := 0; 
+  WHILE pos > 0 CAND is kanji esc (satz SUB pos) REP
+    kanji esc bytes INCR 1; pos DECR 1
+  PER .
+
+number of kanji esc bytes is odd :
+  (kanji esc bytes AND 1) <> 0 .
+END PROC within kanji;
+
+BOOL PROC is kanji esc (TEXT CONST char) :                           (*sh*)
+  two byte mode CAND
+  (char >= ""129"" AND char <= ""159"" OR char >= ""224"" AND char <= ""239"")
+END PROC is kanji esc;
+ 
+BOOL PROC two bytes : two byte mode END PROC two bytes; 
+
+PROC two bytes (BOOL CONST new mode) :
+  two byte mode := new mode
+END PROC two bytes;
+
+PROC outtext (TEXT CONST source, INT CONST from, to) :
+  out subtext mit randbehandlung (source, from, to);
+  INT VAR trailing;
+  IF   from <= LENGTH source
+  THEN trailing := to - LENGTH source
+  ELSE trailing := to - from + 1
+  FI ; trailing TIMESOUT blank
+END PROC outtext;
+
+PROC out subtext mit randbehandlung (TEXT CONST satz, INT CONST von, bis) :
+  IF   von > bis
+  THEN
+  ELIF bis >= LENGTH satz COR NOT within kanji (satz, bis + 1)
+  THEN out subtext mit anfangsbehandlung (satz, von, bis)
+  ELSE out subtext mit anfangsbehandlung (satz, von, bis - 1); out (blank)
+  FI
+END PROC out subtext mit randbehandlung;
+
+PROC out subtext mit anfangsbehandlung (TEXT CONST satz, INT CONST von, bis) :
+  IF   von > bis
+  THEN
+  ELIF von = 1 COR NOT within kanji (satz, von)
+  THEN out subtext (satz, von, bis)
+  ELSE out (blank); out subtext (satz, von + 1, bis)
+  FI
+END PROC out subtext mit anfangsbehandlung;
+
+PROC get cursor   :  get cursor (spalte, zeile)     END PROC get cursor;
+
+INT PROC x cursor :  get cursor; spalte             END PROC x cursor;
+ 
+BOOL PROC write permission :   write access   END PROC write permission; 
+ 
+PROC push (TEXT CONST ausfuehrkommando) :
+  IF   ausfuehrkommando = ""                                         (*sh*)
+  THEN
+  ELIF kommando = ""
+  THEN kommando := ausfuehrkommando
+  ELIF (kommando SUB kommando zeiger - 1) = ausfuehrkommando
+  THEN kommando zeiger DECR 1
+  ELIF replace moeglich 
+  THEN kommando zeiger DECR laenge des ausfuehrkommandos; 
+       replace (kommando, kommando zeiger, ausfuehrkommando) 
+  ELSE insert char (kommando, ausfuehrkommando, kommando zeiger)
+  FI . 
+ 
+replace moeglich : 
+  INT CONST laenge des ausfuehrkommandos := LENGTH ausfuehrkommando; 
+  kommando zeiger > laenge des ausfuehrkommandos . 
+END PROC push;
+ 
+PROC type (TEXT CONST ausfuehrkommando) :
+  kommando CAT ausfuehrkommando
+END PROC type;
+ 
+INT PROC stelle am anfang : anfang + verschoben END PROC stelle am anfang;
+ 
+INT PROC stelle am ende   : stelle am anfang+laenge-1 END PROC stelle am ende;
+ 
+INT PROC markierausgleich : SIGN marke * marklength END PROC markierausgleich;
+ 
+PROC verschieben wenn erforderlich :
+  IF   stelle > max schreibpos
+  THEN verschiebe (stelle - max schreibpos)
+  ELIF stelle < min schreibpos
+  THEN verschiebe (stelle - min schreibpos)
+  FI
+END PROC verschieben wenn erforderlich;
+ 
+PROC verschiebe (INT CONST i) :
+  verschoben     INCR i;
+  min schreibpos INCR i;
+  max schreibpos INCR i;
+  cpos           DECR i;
+  output mode := out feld; 
+  schreibmarke positionieren (stelle)                   (* 11.05.85 -ws- *)
+END PROC verschiebe;
+ 
+PROC konstanten neu berechnen :
+  min schreibpos := anfang + verschoben;
+  IF   min schreibpos < 0                               (* 17.05.85 -ws- *)
+  THEN min schreibpos DECR verschoben; verschoben := 0 
+  FI ; 
+  max schreibpos := min schreibpos + laenge - 1 - markierausgleich;
+  cpos := rand + laenge - max schreibpos
+END PROC konstanten neu berechnen;
+ 
+PROC schreibmarke positionieren (INT CONST sstelle) :
+  cursor (cpos + sstelle, zeile)
+END PROC schreibmarke positionieren;
+ 
+PROC simple feldout (TEXT CONST satz, INT CONST dummy) :
+  (* PRECONDITION : NOT markiert AND verschoben = 0 *)
+  (*                AND feldrest schon geloescht    *)
+  schreibmarke an feldanfang positionieren;
+  out subtext mit randbehandlung (satz, anfang, anfang + laenge - 1);
+  IF (satz SUB LENGTH satz) = blank THEN absatzmarke schreiben (TRUE) FI .
+ 
+schreibmarke an feldanfang positionieren : cursor (rand + 1, zeile) .
+END PROC simple feldout;
+ 
+PROC feldout (TEXT CONST satz, INT CONST sstelle) :
+  schreibmarke an feldanfang positionieren;
+  feld ausgeben;
+  feldrest loeschen;
+  IF (satz SUB LENGTH satz) = blank THEN absatzmarke schreiben (TRUE) FI . 
+
+schreibmarke an feldanfang positionieren : cursor (rand + 1, zeile) .
+ 
+feld ausgeben :
+  INT VAR von := anfang + verschoben, bis := von + laenge - 1;
+  IF   nicht markiert
+  THEN unmarkiert ausgeben
+  ELIF markiertes nicht sichtbar
+  THEN unmarkiert ausgeben
+  ELSE markiert ausgeben
+  FI .
+ 
+nicht markiert : marke <= 0 .
+
+markiertes nicht sichtbar :
+  bis DECR marklength * (1 + SIGN sstelle); marke > bis + 1 .
+ 
+unmarkiert ausgeben :
+  out subtext mit randbehandlung (satz, von, bis) . 
+ 
+markiert ausgeben :
+  INT VAR smarke := max (von, marke);
+  out text (satz, von, smarke - 1); out (begin mark);
+  verschiedene feldout modes behandeln .
+ 
+verschiedene feldout modes behandeln :
+  IF   sstelle = 0
+  THEN out subtext mit randbehandlung (satz, smarke, bis); out (end mark)
+  ELSE out text (satz, smarke, zeilenrand); out (end mark);          (*sh*)
+       out subtext mit randbehandlung (satz, sstelle, bis)
+  FI .
+ 
+zeilenrand : min (bis, sstelle - 1) . 
+END PROC feldout;
+ 
+PROC absatzmarke schreiben (BOOL CONST schreiben) :
+  IF   fliesstext AND nicht markiert
+  THEN cursor (rand + 1 + laenge, zeile);
+       out (absatzmarke) ;
+       absatzmarke steht := TRUE
+  FI .
+ 
+nicht markiert : marke <= 0 .
+ 
+absatzmarke :
+  IF   NOT schreiben
+  THEN "  "
+  ELIF marklength > 0
+  THEN ""15""14""
+  ELSE ""15" "14" "
+  FI .
+END PROC absatzmarke schreiben;
+ 
+PROC invers out (TEXT CONST satz, INT CONST von, bis, TEXT CONST pre, post) :
+  IF   mark refresh line mode
+  THEN feldout (satz, stelle)
+  ELSE schreibmarke positionieren (von);
+       out (begin mark); markleft; out (pre);
+       out text (satz, von, bis - 1); out (post)
+  FI .
+
+markleft : 
+  marklength TIMESOUT left .
+ 
+END PROC invers out;
+ 
+PROC feldrest loeschen :
+  IF   rand + laenge < maxbreite COR invertierte darstellung
+  THEN INT VAR x; get cursor (x, zeile);
+       (rand + laenge - x + 1 + absatz ausgleich) TIMESOUT blank;    (*sh*)
+       cursor (x, zeile)
+  ELSE out (clear eol); absatzmarke steht := FALSE
+  FI 
+END PROC feldrest loeschen;
+ 
+OP AUFFUELLENMIT (TEXT VAR satz, TEXT CONST fuellzeichen) :
+  INT VAR i;
+  FOR i FROM stelle - LENGTH satz DOWNTO 2 REP
+    satz CAT fuellzeichen
+  PER 
+END OP AUFFUELLENMIT;
+ 
+INT PROC einrueckposition (TEXT CONST satz) :                        (*sh*)
+  IF   fliesstext AND satz = blank
+  THEN anfang
+  ELSE max (pos (satz, ""33"", ""254"", 1), 1)
+  FI
+END PROC einrueckposition;
+ 
+INT PROC letzter wortanfang (TEXT CONST satz) :                      (*sh*)
+  INT CONST ganz links := max (1, marke);
+  BOOL VAR noch nicht im neuen wort := TRUE;
+  INT  VAR i;
+  FOR i FROM stelle DOWNTO ganz links REP
+      IF   noch nicht im neuen wort
+      THEN noch nicht im neuen wort := char = blank
+      ELIF is kanji esc (char)
+      THEN LEAVE letzter wortanfang WITH i 
+      ELIF nicht mehr im neuen wort
+      THEN LEAVE letzter wortanfang WITH i + 1
+      FI
+  PER ;
+  ganz links .
+
+char : satz SUB i .
+
+nicht mehr im neuen wort : char = blank COR within kanji (satz, i) .
+END PROC letzter wortanfang;
+
+PROC getchar (TEXT VAR zeichen) :
+  IF   kommando = ""
+  THEN inchar (zeichen); IF lernmodus THEN audit CAT zeichen FI
+  ELSE zeichen := kommando SUB kommando zeiger;
+       kommando zeiger INCR 1;
+       IF   kommando zeiger > LENGTH kommando
+       THEN kommando zeiger := 1; kommando := ""
+       FI ;
+       IF   LENGTH kommando - kommando zeiger < 3
+       THEN kommando CAT inchety
+       FI
+  FI .
+END PROC getchar;
+
+TEXT PROC inchety : 
+  IF   lernmodus
+  THEN TEXT VAR t := incharety; audit CAT t; t
+  ELSE incharety
+  FI
+END PROC inchety;
+ 
+BOOL PROC is incharety (TEXT CONST muster) :
+  IF   kommando = ""
+  THEN TEXT CONST t := inchety;
+       IF t = muster THEN TRUE ELSE kommando := t; FALSE FI
+  ELIF (kommando SUB kommando zeiger) = muster
+  THEN kommando zeiger INCR 1;
+       IF   kommando zeiger > LENGTH kommando
+       THEN kommando zeiger := 1; kommando := ""
+       FI ;
+       TRUE
+  ELSE FALSE
+  FI
+END PROC is incharety;
+ 
+TEXT PROC getcharety :
+  IF   kommando = ""
+  THEN inchety
+  ELSE TEXT CONST t := kommando SUB kommando zeiger;
+       kommando zeiger INCR 1;
+       IF   kommando zeiger > LENGTH kommando
+       THEN kommando zeiger := 1; kommando := ""
+       FI ; t
+  FI
+END PROC getcharety;
+ 
+PROC get editcursor (INT VAR x, y) :                                 (*sh*)
+  IF actual editor > 0 THEN aktualisiere bildparameter FI;
+  x := rand - (anfang + verschoben - 1 - markierausgleich) + stelle;
+  y := zeile .
+
+  aktualisiere bildparameter :
+    INT VAR old x, old y; get cursor (old x, old y);
+    dateizustand holen; bildausgabe steuern; satznr zeigen;
+    fenster zeigen; zeile := bildrand + zeilennr; cursor (old x, old y) .
+END PROC get editcursor;
+
+(************************* Zugriff auf Feldstatus *************************).
+
+stelle       : feldstatus.stelle .
+alte stelle  : feldstatus.alte stelle .
+rand         : feldstatus.rand .
+limit        : feldstatus.limit .
+anfang       : feldstatus.anfang .
+marke        : feldstatus.marke .
+laenge       : feldstatus.laenge .
+verschoben   : feldstatus.verschoben .
+einfuegen    : feldstatus.einfuegen .
+fliesstext   : feldstatus.fliesstext .
+write access : feldstatus.write access .
+tabulator    : feldstatus.tabulator .
+
+(***************************************************************************)
+
+LET undefinierter bereich =  0,     nix            =  1,
+    bildzeile             =  2,     akt satznr     =  2,
+    abschnitt             =  3,     ueberschrift   =  3,
+    bild                  =  4,     fehlermeldung  =  4;
+ 
+LET BILDSTATUS = STRUCT (INT feldlaenge, kurze feldlaenge,
+                             bildrand, bildlaenge, kurze bildlaenge,
+                             ueberschriftbereich, bildbereich,
+                             erster neusatz, letzter neusatz,
+                             old zeilennr, old lineno, old mark lineno,
+                        BOOL zeileneinfuegen, old line update,
+                        TEXT satznr pre, ueberschrift pre,
+                             ueberschrift text, ueberschrift post, old satz,
+                        FRANGE old range,
+                        FILE file),
+    EDITSTATUS = STRUCT (FELDSTATUS feldstatus, BILDSTATUS bildstatus),
+    max editor = 10,
+    EDITSTACK  = ROW max editor EDITSTATUS;
+ 
+BILDSTATUS VAR bildstatus ;
+EDITSTACK VAR editstack;
+ 
+ROW max editor INT VAR einrueckstack;
+
+BOOL VAR markiert;
+TEXT VAR filename, tab, bildsatz, bildzeichen, fehlertext,
+         akt bildsatz ;
+INT  VAR zeilennr, satznr, bildanfang, bildmarke, feldmarke,
+         actual editor := 0, max used editor := 0,
+         letzer editor auf dieser datei,
+         alte einrueckposition := 1;
+
+INT PROC aktueller editor :  actual editor  END PROC aktueller editor;
+ 
+INT PROC groesster editor : max used editor END PROC groesster editor;
+
+(******************************  bildeditor  *******************************)
+
+PROC bildeditor (TEXT CONST res, PROC (TEXT CONST) kommando interpreter) :
+  evtl fehler behandeln;
+  enable stop;
+  TEXT VAR reservierte tasten := ""11""12""27"bf" ;
+  reservierte tasten CAT res ;
+  INT CONST my highest editor := max used editor;
+  laenge := feldlaenge;
+  konstanten neu berechnen;
+  REP
+    markierung justieren;
+    altes feld nachbereiten;
+    feldlaenge einstellen;
+    ueberschrift zeigen;
+    fenster zeigen ;
+    zeile bereitstellen;
+    zeile editieren;
+    kommando ausfuehren
+  PER .
+ 
+evtl fehler behandeln :
+  IF   is error
+  THEN fehlertext := errormessage;
+       IF fehlertext <> "" THEN neu (fehlermeldung, nix) FI;
+       clear error
+  ELSE fehlertext := ""
+  FI .
+ 
+markierung justieren :
+  IF   bildmarke > 0
+  THEN IF   satznr <= bildmarke
+       THEN bildmarke := satznr;
+            stelle := max (stelle, feldmarke);
+            marke := feldmarke
+       ELSE marke := 1
+       FI
+  FI . 
+ 
+zeile bereitstellen : IF hinter letztem satz THEN insert record (file) FI .
+hinter letztem satz : lineno (file) > lines (file) .
+ 
+altes feld nachbereiten : 
+  IF   old line update AND lineno (file) <> old lineno 
+  THEN IF   verschoben <> 0 
+       THEN verschoben := 0; konstanten neu berechnen;
+       FI ;
+       INT CONST alte zeilennr := old lineno - bildanfang + 1;
+       IF   alte zeilennr > 0 AND alte zeilennr <= aktuelle bildlaenge 
+       THEN INT CONST m := marke;
+            IF   lineno (file) < old lineno
+            THEN marke := 0
+            ELIF old lineno = bildmarke
+            THEN marke := min (feldmarke, LENGTH old satz + 1)
+            ELSE marke := min (marke,     LENGTH old satz + 1)
+            FI ;
+            zeile := bildrand + alte zeilennr;
+            feldout (old satz, 0); marke := m 
+       FI
+  FI ;
+  old line update := FALSE; old satz := "" .
+
+feldlaenge einstellen : 
+  INT CONST alte laenge := laenge;
+  IF   zeilennr > kurze bildlaenge
+  THEN laenge := kurze feldlaenge
+  ELSE laenge := feldlaenge
+  FI ; 
+  IF   laenge <> alte laenge
+  THEN konstanten neu berechnen
+  FI .
+ 
+zeile editieren :
+  zeile := bildrand + zeilennr;
+  exec (PROC (TEXT VAR, TEXT CONST) feldeditor, file, reservierte tasten);
+  old lineno := satznr;
+  IF   markiert oder verschoben
+  THEN old line update := TRUE; read record (file, old satz)
+  FI .
+ 
+markiert oder verschoben : markiert COR verschoben <> 0 .
+ 
+kommando ausfuehren : 
+  getchar (bildzeichen);
+  SELECT pos (kommandos, bildzeichen) OF
+    CASE x hop   : hop kommando verarbeiten
+    CASE x esc   : esc kommando verarbeiten
+    CASE x up    : zum vorigen satz
+    CASE x down  : zum folgenden satz
+    CASE x rubin : zeicheneinfuegen umschalten
+    CASE x mark  : markierung umschalten
+    CASE x cr    : eingerueckt mit cr                  (*  08.06.85 -ws- *) 
+    CASE x inscr : eingerueckt zum folgenden satz
+    CASE x abscr : zum anfang des folgenden satzes
+  END SELECT .
+ 
+kommandos :
+  LET x hop   = 1,                    x up    = 2,
+      x down  = 3,                    x rubin = 4,
+      x cr    = 5,                    x mark  = 6,
+      x abscr = 7,                    x inscr = 8,
+      x esc   = 9;
+ 
+  ""1""3""10""11""13""16""17""18""27"" .
+ 
+zeicheneinfuegen umschalten :
+  rubin segment in ueberschrift eintragen;
+  neu (ueberschrift, nix) .
+ 
+rubin segment in ueberschrift eintragen :
+  replace (ueberschrift text, 9, rubin segment) .
+ 
+rubin segment :
+  IF einfuegen THEN "RUBIN" ELSE "....." FI .
+
+hop kommando verarbeiten :
+  getchar (bildzeichen);
+  read record (file, bildsatz);
+  SELECT pos (hop kommandos, bildzeichen) OF
+    CASE y hop    : nach oben
+    CASE y cr     : neue seite
+    CASE y up     : zurueckblaettern
+    CASE y down   : weiterblaettern
+    CASE y tab    : put tabs (file, tabulator); neu (ueberschrift, nix)
+    CASE y rubout : zeile loeschen
+    CASE y rubin  : zeileneinfuegen umschalten
+  END SELECT .
+ 
+hop kommandos :
+  LET y hop    = 1,                   y up     = 2,
+      y tab    = 3,                   y down   = 4,
+      y rubin  = 5,                   y rubout = 6,
+      y cr     = 7;
+ 
+  ""1""3""9""10""11""12""13"" .
+ 
+zeileneinfuegen umschalten :
+  zeileneinfuegen := NOT zeileneinfuegen;
+  IF   zeileneinfuegen
+  THEN zeile aufspalten; logisches eof setzen
+  ELSE leere zeile am ende loeschen; logisches eof loeschen
+  FI ; restbild zeigen .
+ 
+zeile aufspalten :
+  IF   stelle <= LENGTH bildsatz OR stelle = 1
+  THEN loesche ggf trennende blanks und spalte zeile
+  FI .
+ 
+loesche ggf trennende blanks und spalte zeile:          (* 26.06.84 -bk- *) 
+  INT VAR first non blank pos := stelle; 
+  WHILE first non blank pos <= length (bildsatz) CAND 
+        (bildsatz SUB first non blank pos) = blank REP 
+    first non blank pos INCR 1 
+  PER ; 
+  split line and indentation;                                        (*sh*)
+  first non blank pos := stelle - 1;
+  WHILE first non blank pos >= 1 CAND
+        (bildsatz SUB first non blank pos) = blank REP 
+    first non blank pos DECR 1 
+  PER;
+  bildsatz := subtext (bildsatz, 1, first non blank pos); 
+  write record (file, bildsatz) .
+ 
+split line and indentation : 
+  split line (file, first non blank pos, TRUE) .
+
+logisches eof setzen :
+  down (file); col (file, 1);
+  set range (file, 1, 1, old range); up (file) .
+ 
+leere zeile am ende loeschen :
+  to line (file, lines (file));
+  IF len (file) = 0 THEN delete record (file) FI;
+  to line (file, satznr) .
+ 
+logisches eof loeschen :
+  col (file, stelle); set range (file, old range) .
+ 
+restbild zeigen :
+  erster neusatz := satznr;
+  letzter neusatz := bildanfang + bildlaenge - 1;
+  rest segment in ueberschrift eintragen;
+  neu (ueberschrift, abschnitt) .
+ 
+rest segment in ueberschrift eintragen :
+  replace (ueberschrift text, feldlaenge - 25, rest segment) .
+ 
+rest segment :
+  IF zeileneinfuegen THEN "REST" ELSE "...." FI .
+
+esc kommando verarbeiten :
+  getchar (bildzeichen);
+  eventuell zeichen zurueckweisen;                      (* 04.05.85 -ws- *)
+  IF   taste ist reserviert
+  THEN belegte taste ausfuehren
+  ELSE fest vordefinierte esc funktion
+  FI ; ende nach quit .
+ 
+eventuell zeichen zurueckweisen :                       (* 04.05.85 -ws- *)
+  IF   NOT write access CAND NOT erlaubte taste
+  THEN benutzer warnen; LEAVE kommando ausfuehren 
+  FI .
+
+erlaubte taste     : pos (zulaessige zeichen, bildzeichen) > 0 . 
+zulaessige zeichen : res + ""1""2""8""27"bfq" . 
+benutzer warnen    : out (piep) . 
+
+ende nach quit :
+  IF max used editor < my highest editor THEN LEAVE bildeditor FI .
+ 
+taste ist reserviert : pos (res, bildzeichen) > 0 .
+ 
+fest vordefinierte esc funktion :
+  read record (file, bildsatz); 
+  SELECT pos (esc kommandos, bildzeichen) OF
+    CASE z hop    : lernmodus umschalten
+    CASE z esc    : kommandodialog versuchen
+    CASE z left   : zum vorigen wort
+    CASE z right  : zum naechsten wort
+    CASE z b      : bild an aktuelle zeile angleichen
+    CASE z f      : belegte taste ausfuehren
+    CASE z rubout : markiertes vorsichtig loeschen
+    CASE z rubin  : vorsichtig geloeschtes einfuegen
+    OTHERWISE     : belegte taste ausfuehren
+  END SELECT .
+ 
+esc kommandos :
+  LET z hop     =  1,                 z right   =  2,
+      z left    =  3,                 z rubin   =  4,
+      z rubout  =  5,                 z esc     =  6,
+      z b       =  7,                 z f       =  8;
+
+  ""1""2""8""11""12""27"bf" .
+ 
+zum vorigen wort :
+  IF   vorgaenger erlaubt
+  THEN vorgaenger; read record (file, bildsatz);
+       stelle := LENGTH bildsatz + 1; push (esc + left)
+  FI .
+ 
+vorgaenger erlaubt :
+  satznr > max (1, bildmarke) .
+
+zum naechsten wort :
+  IF nicht auf letztem satz THEN weitersuchen wenn nicht gefunden FI .
+ 
+nicht auf letztem satz : line no (file) < lines (file) .
+ 
+weitersuchen wenn nicht gefunden :
+  nachfolgenden satz holen;
+  IF   (nachfolgender satz SUB anfang) = blank
+  THEN push (abscr + esc + right)
+  ELSE push (abscr)
+  FI .
+ 
+nachfolgenden satz holen :
+  down (file); read record (file, nachfolgender satz); up (file) .
+ 
+bild an aktuelle zeile angleichen :
+  anfang INCR verschoben; verschoben := 0;
+  margin segment in ueberschrift eintragen;
+  neu (ueberschrift, bild) .
+ 
+margin segment in ueberschrift eintragen :
+  replace (ueberschrift text, 2, margin segment) .
+ 
+margin segment :
+  IF   anfang <= 1
+  THEN "......"
+  ELSE TEXT VAR margin text := "M" + text (anfang);
+       (6 - LENGTH margin text) * "." + margin text
+  FI .
+
+belegte taste ausfuehren :
+  kommando analysieren (bildzeichen, PROC(TEXT CONST) kommando interpreter) .
+ 
+kommandodialog versuchen:
+  IF   fenster ist zu schmal fuer dialog
+  THEN kommandodialog ablehnen
+  ELSE kommandodialog fuehren
+  FI .
+ 
+fenster ist zu schmal fuer dialog : laenge < 20 .
+ 
+kommandodialog ablehnen :
+  fehlertext := "zu schmal fuer ESC ESC"; neu (fehlermeldung, nix) .
+ 
+kommandodialog fuehren:
+  INT VAR x0, x1, x2, x3, y;
+  get cursor (x0, y);
+  cursor (rand + 1, bildrand + zeilennr);
+  get cursor (x1, y);
+  out (begin mark); out (monitor meldung);
+  get cursor (x2, y);
+  (laenge - LENGTH monitor meldung - marklength) TIMESOUT blank;
+  get cursor (x3, y);
+  out (end mark); out (blank);
+  kommandozeile editieren;
+  ueberschrift zeigen;
+  absatz ausgleich := 2;                                             (*sh*)
+  IF kommandotext = "" THEN LEAVE kommandodialog fuehren FI;
+  kommando auf taste legen ("f", kommandotext);
+  kommando analysieren ("f", PROC(TEXT CONST) kommando interpreter);
+  IF   fehlertext <> ""
+  THEN push (esc + esc + esc + "k")
+  ELIF markiert 
+  THEN zeile neu 
+  FI .
+ 
+kommandozeile editieren :
+  TEXT VAR kommandotext := "";
+  cursor (x1, y); out (begin mark);
+  disable stop;
+  darstellung invertieren; 
+  editget schleife;
+  darstellung invertieren; 
+  enable stop;
+  cursor (x3, y); out (end mark);
+  exec (PROC (TEXT CONST, INT CONST) feldout, file, stelle);
+  cursor (x0, y) .
+ 
+darstellung invertieren :
+  TEXT VAR dummy := begin mark; begin mark := end mark; end mark := dummy;
+  invertierte darstellung := NOT invertierte darstellung .
+ 
+editget schleife :
+  TEXT VAR exit char;
+  REP
+    cursor (x2, y);
+    editget (kommandotext, max textlength, rand + laenge - x cursor,
+             "", "k?!", exit char);
+    neu (ueberschrift, nix);
+    IF   exit char = ""27"k"
+    THEN kommando text := kommando auf taste ("f")
+    ELIF exit char = ""27"?"
+    THEN TEXT VAR taste; getchar (taste);
+         kommando text := kommando auf taste (taste)
+    ELIF exit char = ""27"!"
+    THEN getchar (taste);
+         IF   ist reservierte taste
+         THEN set busy indicator;                                    (*sh*)
+              out ("FEHLER: """ + taste + """ ist reserviert"7"")
+         ELSE kommando auf taste legen (taste, kommandotext);
+              kommandotext := ""; LEAVE editget schleife
+         FI 
+    ELSE LEAVE editget schleife
+    FI
+  PER .
+ 
+ist reservierte taste : pos (res, taste) > 0 .
+monitor meldung       : "gib kommando : " .
+ 
+neue seite : bildanfang := satznr; zeilennr := 1; neu (akt satznr, bild) .
+ 
+weiterblaettern :
+  INT CONST akt bildlaenge := aktuelle bildlaenge;
+  IF   nicht auf letztem satz
+  THEN erster neusatz := satznr;
+       IF   zeilennr >= akt bildlaenge
+       THEN bildanfang INCR akt bildlaenge; neu (akt satznr, bild)
+       FI ;
+       satznr := min (lines (file), bildanfang + akt bildlaenge - 1);
+       letzter neusatz := satznr;
+       toline (file, satznr);
+       stelle DECR verschoben;
+       neu (akt satznr, nix);
+       zeilennr := satznr - bildanfang + 1;
+       IF markiert THEN neu (nix, abschnitt) FI;
+       einrueckposition bestimmen
+  FI .
+ 
+zurueckblaettern :
+  IF   vorgaenger erlaubt
+  THEN IF   zeilennr <= 1
+       THEN bildanfang := max (1, bildanfang - aktuelle bildlaenge);
+            neu (akt satznr, bild)
+       FI ;
+       nach oben; einrueckposition bestimmen
+  FI .
+ 
+zeile loeschen :
+  IF   stelle = 1
+  THEN delete record (file);
+       erster neusatz := satznr;
+       letzter neusatz := bildanfang + bildlaenge - 1;
+       neu (nix, abschnitt)
+  ELSE zeilen rekombinieren
+  FI .
+ 
+zeilen rekombinieren :
+  IF   nicht auf letztem satz
+  THEN aktuellen satz mit blanks auffuellen;
+       delete record (file);
+       nachfolgenden satz lesen;
+       bildsatz CAT nachfolgender satz ohne fuehrende blanks;
+       write record (file, bildsatz);
+       erster neusatz := satznr;
+       letzter neusatz := bildanfang + bildlaenge - 1;
+       neu (nix, abschnitt)
+  FI .
+ 
+aktuellen satz mit blanks auffuellen :
+  bildsatz AUFFUELLENMIT blank .
+ 
+nachfolgenden satz lesen :
+  TEXT VAR nachfolgender satz;
+  read record (file, nachfolgender satz) .
+ 
+nachfolgender satz ohne fuehrende blanks :
+  satzrest := subtext (nachfolgender satz,
+     einrueckposition (nachfolgender satz)); satzrest .
+ 
+zeile aufsplitten :
+  nachfolgender satz := "";
+  INT VAR i;
+  FOR i FROM 2 UPTO min (stelle, einrueckposition (bildsatz)) REP
+    nachfolgender satz CAT blank
+  PER;
+  satzrest := subtext (bildsatz, naechste non blank position);
+  nachfolgender satz CAT satzrest;
+  bildsatz := subtext (bildsatz, 1, stelle - 1);
+  write record (file, bildsatz);
+  down (file); insert record (file);
+  write record (file, nachfolgender satz); up (file) .
+ 
+naechste non blank position :
+  INT VAR non blank pos := stelle;
+  WHILE (bildsatz SUB non blank pos) = blank REP
+    non blank pos INCR 1
+  PER; non blank pos .
+ 
+zum vorigen satz :
+  IF vorgaenger erlaubt THEN vorgaenger; einrueckposition bestimmen FI .
+ 
+zum folgenden satz :                                    (* 12.09.85 -ws- *)
+  IF nachfolger erlaubt THEN nachfolger; einrueckposition bestimmen 
+                        ELSE col (file, len (file) + 1); neu (nix, nix)
+  FI .
+
+einrueckposition bestimmen :                            (* 27.08.85 -ws- *)
+  read record (file, akt bildsatz);
+  INT  VAR neue einrueckposition := einrueckposition (akt bildsatz);
+  IF   akt bildsatz ist leerzeile
+  THEN alte einrueckposition := max (stelle, neue einrueckposition)
+  ELSE alte einrueckposition := min (stelle, neue einrueckposition)
+  FI .
+
+akt bildsatz ist leerzeile :
+  akt bildsatz = "" OR akt bildsatz = blank . 
+
+zum anfang des folgenden satzes :
+  IF nachfolger erlaubt THEN nachfolger; stelle := anfang FI .
+ 
+nachfolger erlaubt :
+  write access COR nicht auf letztem satz .
+ 
+eingerueckt mit cr : 
+  IF NOT nachfolger erlaubt THEN LEAVE eingerueckt mit cr FI;        (*sh*)
+  read record (file, bildsatz); 
+  INT VAR epos := einrueckposition (bildsatz);
+  nachfolger; col (file, 1); 
+  IF   eof (file) 
+  THEN IF   LENGTH bildsatz <= epos 
+       THEN stelle := alte einrueckposition 
+       ELSE stelle := epos 
+       FI 
+  ELSE read record (file, bildsatz); 
+       stelle := einrueckposition (bildsatz); 
+       IF   bildsatz ist leerzeile                     (* 29.08.85 -ws- *)
+       THEN stelle := alte einrueckposition;
+            aktuellen satz mit blanks auffuellen
+       FI
+  FI ; 
+  alte einrueckposition := stelle . 
+ 
+bildsatz ist leerzeile :
+  bildsatz = "" OR bildsatz = blank . 
+
+eingerueckt zum folgenden satz :                                     (*sh*)
+  IF NOT nachfolger erlaubt OR NOT write access
+    THEN LEAVE eingerueckt zum folgenden satz
+  FI; 
+  alte einrueckposition merken; 
+  naechsten satz holen; 
+  neue einrueckposition bestimmen; 
+  alte einrueckposition := stelle . 
+ 
+alte einrueckposition merken : 
+  read record (file, bildsatz);
+  epos := einrueckposition (bildsatz);
+  auf aufzaehlung pruefen;
+  IF epos > LENGTH bildsatz THEN epos := anfang FI.
+ 
+auf aufzaehlung pruefen :
+  BOOL CONST aufzaehlung gefunden :=
+       ist aufzaehlung CAND vorher absatzzeile CAND wort folgt;
+  IF   aufzaehlung gefunden THEN epos := anfang des naechsten wortes FI .
+
+ist aufzaehlung :
+  INT CONST wortende := pos (bildsatz, blank, epos, epos + 20) - 1;
+  SELECT pos ("-*).:" , bildsatz SUB wortende) OF
+    CASE 1,2 : wortende =  epos 
+    CASE 3,4 : wortende <= epos + 7
+    CASE 5   : TRUE
+    OTHERWISE: FALSE
+  ENDSELECT .
+ 
+vorher absatzzeile :
+  IF   satznr = 1
+  THEN TRUE
+  ELSE up (file);
+       INT  CONST vorige satzlaenge := len (file);
+       BOOL CONST vorher war absatzzeile :=
+       subtext (file, vorige satzlaenge, vorige satzlaenge) = blank;
+       down (file); vorher war absatzzeile
+  FI .
+ 
+wort folgt : 
+  INT CONST anfang des naechsten wortes :=
+  pos (bildsatz, ""33"", ""254"", wortende + 1); 
+  anfang des naechsten wortes > wortende .
+ 
+naechsten satz holen : 
+  nachfolger; col (file, 1);
+  IF   eof (file) 
+  THEN bildsatz := ""
+  ELSE IF   neue zeile einfuegen erforderlich 
+       THEN insert record (file); bildsatz := ""; 
+            letzter neusatz := bildanfang + bildlaenge - 1 
+       ELSE read record (file, bildsatz);
+            letzter neusatz := satznr;
+            ggf trennungen zurueckwandeln und umbruch indikator einfuegen 
+       FI ;
+       erster neusatz := satznr;
+       neu (nix, abschnitt)
+  FI . 
+ 
+neue zeile einfuegen erforderlich :
+  BOOL CONST war absatz := war absatzzeile;
+  war absatz COR neuer satz ist zu lang .
+ 
+war absatzzeile : 
+  INT VAR wl := pos (kommando, up backcr, kommando zeiger); 
+  wl = 0 COR (kommando SUB (wl - 1)) = blank . 
+ 
+neuer satz ist zu lang : laenge des neuen satzes >= limit .
+
+laenge des neuen satzes : 
+  IF   len (file) > 0 
+  THEN len (file) + wl 
+  ELSE wl + epos 
+  FI . 
+ 
+up backcr : ""3""20"" .
+ 
+ggf trennungen zurueckwandeln und umbruch indikator einfuegen :
+  LET trenn k      = ""220"",
+      trenn strich = ""221"";
+  TEXT VAR umbruch indikator;
+  IF   letztes zeichen ist trenn strich
+  THEN entferne trenn strich;
+       IF   letztes zeichen = trenn k
+       THEN wandle trenn k um
+       FI ;
+       umbruch indikator := up backcr 
+  ELIF letztes umgebrochenes zeichen ist kanji 
+  THEN umbruch indikator := up backcr
+  ELSE umbruch indikator := blank + up backcr
+  FI ;
+  change (kommando, wl, wl+1, umbruch indikator) . 
+ 
+letztes umgebrochenes zeichen ist kanji : within kanji (kommando, wl-1) .
+ 
+letztes zeichen ist trenn strich :
+  TEXT CONST last char := letztes zeichen;
+  last char = trenn strich COR
+  last char = "-" CAND wl > 2 CAND (kommando SUB (wl-2)) <> blank .
+ 
+letztes zeichen       : kommando SUB (wl-1) .
+entferne trenn strich : delete char (kommando, wl-1); wl DECR 1 .
+wandle trenn k um     : replace (kommando, wl-1, "c") .
+loesche indikator     : delete char (kommando, wl) . 
+ 
+neue einrueckposition bestimmen : 
+  IF   aufzaehlung gefunden CAND bildsatz ist leerzeile 
+  THEN stelle := epos
+  ELIF NOT bildsatz ist leerzeile  
+  THEN stelle := einrueckposition (bildsatz)
+  ELIF war absatz COR auf letztem satz
+  THEN stelle := epos
+  ELSE down (file); read record (file, nachfolgender satz);
+       up   (file); stelle := einrueckposition (nachfolgender satz)
+  FI ; 
+  IF   ist einfuegender aber nicht induzierter umbruch 
+  THEN loesche indikator;
+       umbruchstelle := stelle + wl - kommando zeiger - anzahl der stz;
+       umbruchverschoben := 0
+  FI . 
+ 
+auf letztem satz : NOT nicht auf letztem satz .
+
+ist einfuegender aber nicht induzierter umbruch :
+  wl := pos (kommando, backcr, kommando zeiger); 
+  wl > 0 CAND (kommando SUB (wl - 1)) <> up char . 
+ 
+anzahl der stz : 
+  TEXT CONST umgebrochener anfang := subtext (kommando, kommando zeiger, wl-1); 
+  INT VAR anz := 0, anf := pos (umgebrochener anfang, ""1"", ""31"", 1);
+  WHILE anf > 0 REP 
+    anz INCR 1; anf := pos (umgebrochener anfang, ""1"", ""31"", anf + 1) 
+  PER; anz .
+ 
+markiertes vorsichtig loeschen :
+  IF   write access CAND markiert
+  THEN clear removed (file);
+       IF   nur im satz markiert
+       THEN behandle einen satz
+       ELSE behandle mehrere saetze
+       FI
+  FI .
+ 
+nur im satz markiert : line no (file) = bildmarke .
+ 
+behandle einen satz :
+  insert record (file);
+  satzrest := subtext (bildsatz, marke, stelle - 1);
+  write record (file, satzrest);
+  remove (file, 1);
+  change (bildsatz, marke, stelle - 1, "");
+  stelle := marke;
+  marke := 0; bildmarke := 0; feldmarke := 0;
+  markiert := FALSE; mark (file, 0, 0);
+  konstanten neu berechnen;
+  IF   bildsatz = ""
+  THEN delete record (file);
+       erster neusatz := satznr;
+       letzter neusatz := bildanfang + bildlaenge - 1;
+       neu (nix, abschnitt)
+  ELSE write record (file, bildsatz);
+       neu (nix, bildzeile)
+  FI .
+ 
+behandle mehrere saetze :
+  erster neusatz := bildmarke;
+  letzter neusatz := bildanfang + bildlaenge - 1;
+  zeile an aktueller stelle auftrennen;
+  ersten markierten satz an markieranfang aufspalten;
+  markierten bereich entfernen;
+  bild anpassen .
+ 
+zeile an aktueller stelle auftrennen :
+  INT VAR markierte saetze := line no (file) - bildmarke + 1;
+  IF   nicht am ende der zeile
+  THEN IF   nicht am anfang der zeile
+       THEN zeile aufsplitten
+       ELSE up (file); markierte saetze DECR 1
+       FI
+  FI .
+ 
+nicht am anfang der zeile : stelle > 1 .
+nicht am ende der zeile   : stelle <= LENGTH bildsatz .
+ 
+ersten markierten satz an markieranfang aufspalten :
+  to line (file, line no (file) - (markierte saetze - 1));
+  read record (file, bildsatz);
+  stelle := feldmarke;
+  IF   nicht am anfang der zeile
+  THEN IF   nicht am ende der zeile 
+       THEN zeile aufsplitten
+       ELSE markierte saetze DECR 1
+       FI ;
+       to line (file, line no (file) + markierte saetze)
+  ELSE to line (file, line no (file) + markierte saetze - 1)
+  FI ;
+  read record (file, bildsatz) .
+ 
+markierten bereich entfernen :
+  zeilen nr := line no (file) - markierte saetze - bildanfang + 2;
+  remove (file, markierte saetze);
+  marke := 0; bildmarke := 0; feldmarke := 0;
+  markiert := FALSE; mark (file, 0, 0); 
+  konstanten neu berechnen;
+  stelle := 1 .
+ 
+bild anpassen :
+  satz nr := line no (file);
+  IF   zeilen nr <= 1
+  THEN bildanfang := line no (file); zeilen nr := 1;
+       neu (akt satznr, bild)
+  ELSE neu (akt satznr, abschnitt)
+  FI . 
+ 
+vorsichtig geloeschtes einfuegen :
+  IF   NOT write access OR removed lines (file) = 0
+  THEN LEAVE vorsichtig geloeschtes einfuegen
+  FI ;
+  IF   nur ein satz
+  THEN in aktuellen satz einfuegen
+  ELSE aktuellen satz aufbrechen und einfuegen
+  FI .
+ 
+nur ein satz : removed lines (file) = 1 .
+ 
+in aktuellen satz einfuegen :
+  reinsert (file);
+  read record (file, nachfolgender satz);
+  delete record (file);
+  TEXT VAR t := bildsatz;
+  bildsatz := subtext (t, 1, stelle - 1);
+  aktuellen satz mit blanks auffuellen;                              (*sh*)
+  bildsatz CAT nachfolgender satz;
+  satzrest := subtext (t, stelle);
+  bildsatz CAT satzrest;
+  write record (file, bildsatz);
+  stelle INCR LENGTH nachfolgender satz;
+  neu (nix, bildzeile) .
+ 
+aktuellen satz aufbrechen und einfuegen :
+  INT CONST alter bildanfang := bildanfang;
+  old lineno := satznr;
+  IF   stelle = 1
+  THEN reinsert (file);
+       read record (file, bildsatz)
+  ELIF stelle > LENGTH bildsatz
+  THEN down (file);
+       reinsert (file);
+       read record (file, bildsatz)
+  ELSE INT VAR von := stelle;
+       WHILE (bildsatz SUB von) = blank REP von INCR 1 PER;
+       satzrest := subtext (bildsatz, von, LENGTH bildsatz);
+       INT VAR bis := stelle - 1;
+       WHILE (bildsatz SUB bis) = blank REP bis DECR 1 PER;
+       bildsatz := subtext (bildsatz, 1, bis);
+       write record (file, bildsatz);
+       down (file);
+       reinsert (file);
+       read record (file, bildsatz);
+       nachfolgender satz := einrueckposition (bildsatz) * blank;
+       nachfolgender satz CAT satzrest;
+       down (file); insert record (file);
+       write record (file, nachfolgender satz); up (file)
+  FI ;
+  stelle := max (1, LENGTH bildsatz);                   (* 22.06.84 -bk- *)
+  satz nr := line no (file);
+  zeilennr INCR satznr - old lineno;
+  zeilennr := min (zeilennr, aktuelle bildlaenge);
+  bildanfang := satznr - zeilennr + 1;
+  IF   bildanfang veraendert 
+  THEN abschnitt neu (bildanfang, 9999) 
+  ELSE abschnitt neu (old lineno, 9999) 
+  FI ;
+  neu (akt satznr, nix).
+ 
+bildanfang veraendert : bildanfang <> alter bildanfang . 
+ 
+lernmodus umschalten :
+  learn segment in ueberschrift eintragen; neu (ueberschrift, nix) .
+ 
+learn segment in ueberschrift eintragen :
+  replace (ueberschrift text, feldlaenge - 19, learn segment) .
+ 
+learn segment :
+  IF lernmodus THEN "LEARN" ELSE "....." FI .
+ 
+markierung umschalten :
+  IF markiert THEN markierung ausschalten ELSE markierung einschalten FI .
+ 
+markierung einschalten :
+  bildmarke := satznr; feldmarke := marke; markiert := TRUE;
+  mark (file, bildmarke, feldmarke);
+  neu (nix, bildzeile) .
+ 
+markierung ausschalten :
+  erster neusatz := max (bildmarke, bildanfang);
+  letzter neusatz := satznr;
+  bildmarke := 0; feldmarke := 0; markiert := FALSE;
+  mark (file, 0, 0);
+  IF   erster neusatz = letzter neusatz
+  THEN neu (nix, bildzeile)
+  ELSE neu (nix, abschnitt)
+  FI .
+END PROC bildeditor;
+ 
+PROC neu (INT CONST ue bereich, b bereich) :
+  ueberschriftbereich := max (ueberschriftbereich, ue bereich);
+  bildbereich := max (bildbereich, b bereich)
+END PROC neu;
+ 
+ 
+PROC nach oben :
+  letzter neusatz := satznr;
+  satznr := max (bildanfang, bildmarke);
+  toline (file, satznr);
+  stelle DECR verschoben;
+  zeilennr := satznr - bildanfang + 1;
+  erster neusatz := satznr;
+  IF   markiert
+  THEN neu (akt satznr, abschnitt)
+  ELSE neu (akt satznr, nix)
+  FI
+END PROC nach oben;
+ 
+INT PROC aktuelle bildlaenge :
+  IF stelle - stelle am anfang < kurze feldlaenge
+    AND feldlaenge > 0
+  THEN bildlaenge                                                    (*wk*)
+  ELSE kurze bildlaenge
+  FI
+END PROC aktuelle bildlaenge;
+ 
+PROC vorgaenger :
+  up (file); satznr DECR 1;
+  marke := 0; stelle DECR verschoben;
+  IF   zeilennr = 1
+  THEN bildanfang DECR 1; neu (ueberschrift, bild)
+  ELSE zeilennr DECR 1; neu (akt satznr, nix);                       (*sh*)
+       IF markiert THEN neu (nix, bildzeile) FI
+  FI 
+END PROC vorgaenger;
+ 
+PROC nachfolger :
+  down (file); satznr INCR 1;
+  stelle DECR verschoben;
+  IF   zeilennr = aktuelle bildlaenge
+  THEN bildanfang INCR 1;
+       IF   rollup erlaubt
+       THEN rollup
+       ELSE neu (ueberschrift, bild)
+       FI
+  ELSE neu (akt satznr, nix); zeilennr INCR 1                        (*sh*)
+  FI ;
+  IF   markiert THEN neu (nix, bildzeile) FI .
+ 
+rollup erlaubt :
+  kurze bildlaenge = maxlaenge AND kurze feldlaenge = maxbreite .
+ 
+rollup :
+  out (down char);
+  IF   bildzeichen = inscr
+  THEN neu (ueberschrift, nix)
+  ELIF is cr or down CAND (write access COR nicht auf letztem satz)  (*sh*)
+  THEN neu (nix, bildzeile)
+  ELSE neu (ueberschrift, bildzeile)
+  FI .
+ 
+is cr or down :
+  IF kommando = "" THEN kommando := inchety FI;
+  kommando char = down char COR kommando char = cr .
+ 
+kommando char : kommando SUB kommando zeiger .
+
+nicht auf letztem satz : line no (file) < lines (file) . 
+END PROC nachfolger;
+ 
+BOOL PROC next incharety is (TEXT CONST muster) :
+  INT CONST klen := LENGTH kommando - kommando zeiger + 1,
+            mlen := LENGTH muster;
+  INT VAR i; FOR i FROM 1 UPTO mlen - klen REP kommando CAT inchety PER;
+  subtext (kommando, kommando zeiger, kommando zeiger + mlen - 1) = muster
+END PROC next incharety is;
+ 
+PROC quit last:                                         (* 22.06.84 -bk- *) 
+  IF   actual editor > 0 AND actual editor < max used editor 
+  THEN verlasse alle groesseren editoren 
+  FI . 
+ 
+verlasse alle groesseren editoren : 
+  open editor (actual editor + 1); quit .
+END PROC quit last; 
+ 
+PROC quit : 
+  IF actual editor > 0 THEN verlasse aktuellen editor FI .
+ 
+verlasse aktuellen editor :
+  disable stop;
+  INT CONST aktueller editor := actual editor;
+  in innersten editor gehen; 
+  REP 
+    IF zeileneinfuegen THEN hop rubin simulieren FI;
+    ggf bildschirmdarstellung korrigieren;
+    innersten editor schliessen 
+  UNTIL aktueller editor > max used editor PER; 
+  actual editor := max used editor . 
+ 
+in innersten editor gehen : open editor (max used editor) . 
+ 
+hop rubin simulieren : 
+  zeileneinfuegen := FALSE; 
+  leere zeilen am dateiende loeschen;                                (*sh*)
+  ggf bildschirmdarstellung korrigieren;
+  logisches eof loeschen . 
+ 
+innersten editor schliessen : 
+  max used editor DECR 1; 
+  IF   max used editor > 0 
+  THEN open editor (max used editor);
+       bildeinschraenkung aufheben 
+  FI . 
+ 
+logisches eof loeschen :
+  col (file, stelle); set range (file, old range) .
+ 
+leere zeilen am dateiende loeschen :                    (* 15.08.85 -ws- *)
+  satz nr := line no (file) ; 
+  to line (file, lines (file)) ;
+  WHILE lines (file) > 1 AND bildsatz ist leerzeile REP 
+    delete record (file); 
+    to line (file, lines (file)) 
+  PER;
+  toline (file, satznr) .
+
+bildsatz ist leerzeile :
+  TEXT VAR bildsatz;
+  read record (file, bildsatz);
+  ist leerzeile .
+
+ist leerzeile :
+  bildsatz = "" OR bildsatz = blank . 
+
+ggf bildschirmdarstellung korrigieren :
+  satz nr DECR 1;                             (* für Bildschirmkorrektur *)
+  IF   satznr > lines (file)
+  THEN zeilen nr DECR satz nr - lines (file);
+       satz nr := lines (file); 
+       dateizustand retten
+  FI . 
+
+bildeinschraenkung aufheben :
+  laenge := feldlaenge;
+  kurze feldlaenge := feldlaenge;
+  kurze bildlaenge := bildlaenge;
+  neu (nix, bild) .
+END PROC quit;
+ 
+PROC nichts neu       : neu (nix,          nix)  END PROC nichts neu;
+ 
+PROC satznr neu       : neu (akt satznr,   nix)  END PROC satznr neu;
+ 
+PROC ueberschrift neu : neu (ueberschrift, nix)  END PROC ueberschrift neu;
+ 
+PROC zeile neu :
+  INT CONST zeile := line no (file);
+  abschnitt neu (zeile, zeile)
+END PROC zeile neu;
+ 
+PROC abschnitt neu (INT CONST von satznr, bis satznr) :
+  IF   von satznr <= bis satznr
+  THEN erster neusatz  := min (erster neusatz, von satznr);
+       letzter neusatz := max (letzter neusatz, bis satznr);
+       neu (nix, abschnitt)
+  ELSE abschnitt neu (bis satznr, von satznr) 
+  FI
+END PROC abschnitt neu;
+ 
+PROC bildabschnitt neu (INT CONST von zeile, bis zeile) :            (*sh*)
+  IF   von zeile <= bis zeile 
+  THEN erster neusatz  := max (1, von zeile + bildanfang - 1); 
+       letzter neusatz := min (bildlaenge, bis zeile + bildanfang - 1); 
+       IF   von zeile < 1
+       THEN neu (ueberschrift, abschnitt)
+       ELSE neu (nix         , abschnitt) 
+       FI
+  ELSE bildabschnitt neu (bis zeile, von zeile) 
+  FI 
+END PROC bildabschnitt neu; 
+ 
+PROC bild neu : neu (nix, bild) END PROC bild neu;                   (*sh*)
+ 
+PROC bild neu (FILE VAR f) :
+  INT CONST editor no := abs (editinfo (f)) DIV 256;
+  IF   editor no > 0 AND editor no <= max used editor
+  THEN IF   editor no = actual editor
+       THEN bild neu
+       ELSE editstack (editor no).bildstatus.bildbereich := bild
+       FI
+  FI
+END PROC bild neu; 
+ 
+PROC alles neu :
+  neu (ueberschrift, bild);
+  INT VAR i;
+  FOR i FROM 1 UPTO max used editor REP
+    editstack (i).bildstatus.bildbereich := bild;
+    editstack (i).bildstatus.ueberschriftbereich := ueberschrift
+  PER
+END PROC alles neu;
+ 
+PROC satznr zeigen :
+  out (satznr pre); out (text (text (lineno (file)), 4))
+END PROC satznr zeigen;
+ 
+PROC ueberschrift zeigen :
+  SELECT ueberschriftbereich OF
+    CASE akt satznr    : satznr zeigen;
+                         ueberschriftbereich := nix
+    CASE ueberschrift  : ueberschrift schreiben;
+                         ueberschriftbereich := nix
+    CASE fehlermeldung : fehlermeldung schreiben;
+                         ueberschriftbereich := ueberschrift
+  END SELECT
+END PROC ueberschrift zeigen;
+ 
+PROC fenster zeigen :
+  SELECT bildbereich OF
+    CASE bildzeile :
+         zeile := bildrand + zeilennr;
+         IF   line no (file) > lines (file)
+         THEN feldout ("", stelle)
+         ELSE exec (PROC (TEXT CONST, INT CONST) feldout, file, stelle)
+         FI
+    CASE abschnitt :
+         bild ausgeben
+    CASE bild :
+         erster neusatz := 1;
+         letzter neusatz := 9999;
+         bild ausgeben
+    OTHERWISE :
+         LEAVE fenster zeigen
+  END SELECT;
+  erster neusatz := 9999;
+  letzter neusatz := 0;
+  bildbereich := nix 
+END PROC fenster zeigen ;
+ 
+PROC bild ausgeben :
+  BOOL CONST schreiben ist ganz einfach := NOT markiert AND verschoben = 0;
+  INT  CONST save marke := marke,
+             save verschoben := verschoben,
+             save laenge := laenge,
+             act lineno := lineno (file),
+             von := max (1, erster neusatz - bildanfang + 1);
+  INT   VAR  bis := min (letzter neusatz - bildanfang + 1, bildlaenge);
+  IF kurze feldlaenge <= 0 THEN bis := min (bis, kurze bildlaenge) FI;
+  IF von > bis THEN LEAVE bild ausgeben FI;
+  verschoben := 0;
+  IF   markiert
+  THEN IF   mark lineno (file) < bildanfang + von - 1
+       THEN marke := anfang
+       ELSE marke := 0
+       FI
+  FI ;
+  abschnitt loeschen und neuschreiben;
+  to line (file, act lineno);
+  laenge := save laenge;
+  verschoben := save verschoben;
+  marke := save marke .
+ 
+markiert : mark lineno (file) > 0 .
+ 
+abschnitt loeschen und neuschreiben :
+  abschnitt loeschen;
+  INT VAR line number := bildanfang + von - 1;
+  to line (file, line number);
+  abschnitt schreiben .
+ 
+abschnitt loeschen :
+  cursor (rand + 1, bildrand + von);
+  IF   bildrest darf komplett geloescht werden
+  THEN out (clear eop)
+  ELSE zeilenweise loeschen
+  FI .
+ 
+bildrest darf komplett geloescht werden :
+  bis = maxlaenge AND kurze bildlaenge = maxlaenge
+                  AND kurze feldlaenge = maxbreite .
+ 
+zeilenweise loeschen :
+  INT VAR i;
+  FOR i FROM von UPTO bis REP
+    check for interrupt;
+    feldlaenge einstellen;
+    feldrest loeschen;
+    IF i < bis THEN out (down char) FI
+  PER .
+ 
+feldlaenge einstellen :
+  IF   ganze zeile sichtbar
+  THEN laenge := feldlaenge
+  ELSE laenge := kurze feldlaenge
+  FI .
+ 
+ganze zeile sichtbar : i <= kurze bildlaenge .
+ 
+abschnitt schreiben :
+  INT CONST last line := lines (file);
+  FOR i FROM von UPTO bis
+  WHILE line number <= last line REP
+    check for interrupt;
+    feldlaenge einstellen;
+    zeile schreiben;
+    down (file);
+    line number INCR 1
+  PER .
+ 
+check for interrupt :
+  kommando CAT inchety;
+  IF   kommando <> "" 
+  THEN IF   zeilen nr = 1 CAND up command CAND vorgaenger erlaubt
+       THEN LEAVE abschnitt loeschen und neuschreiben
+       ELIF zeilen nr = bildlaenge CAND down command CAND nicht letzter satz
+       THEN LEAVE abschnitt loeschen und neuschreiben
+       FI
+  FI .
+ 
+vorgaenger erlaubt :
+  satznr > max (1, bildmarke) .
+
+up command : next incharety is (""3"") COR next incharety is (""1""3"") .
+ 
+down command :
+  next incharety is (""10"") CAND bildlaenge < maxlaenge
+  COR next incharety is (""1""10"") .
+ 
+nicht letzter satz : act lineno < lines (file) .
+ 
+zeile schreiben :
+  zeile := bildrand + i;
+  IF   schreiben ist ganz einfach
+  THEN exec (PROC (TEXT CONST, INT CONST) simple feldout, file, 0)
+  ELSE zeile kompliziert schreiben
+  FI ;
+  IF   line number = old lineno THEN old line update := FALSE FI .
+ 
+zeile kompliziert schreiben :
+  IF   line number = mark lineno (file) THEN marke := mark col (file) FI;
+  IF   line number = act lineno
+  THEN verschoben := save verschoben; 
+       exec (PROC (TEXT CONST, INT CONST) feldout, file, stelle);
+       verschoben := 0; marke := 0
+  ELSE exec (PROC (TEXT CONST, INT CONST) feldout, file, 0);
+       IF line number = mark lineno (file) THEN marke := anfang FI
+  FI .
+END PROC bild ausgeben;
+ 
+PROC bild zeigen :                                                   (* wk *)
+
+  dateizustand holen ;
+  ueberschrift zeigen ;
+  bildausgabe steuern ;
+  bild neu ;
+  fenster zeigen ;
+  oldline no := satznr ;
+  old line update := FALSE ;
+  old satz := "" ;
+  old zeilennr := satznr - bildanfang + 1 ;
+  dateizustand retten .
+
+ENDPROC bild zeigen ;
+
+PROC ueberschrift initialisieren :                                   (*sh*)
+  satznr pre  :=
+       cursor pos + code (bildrand - 1) + code (rand + feldlaenge - 6);
+  ueberschrift pre :=
+       cursor pos + code (bildrand - 1) + code (rand) + mark anf; 
+  ueberschrift text := ""; INT VAR i;
+  FOR i FROM 16 UPTO feldlaenge REP ueberschrift text CAT "." PER;
+  ueberschrift post :=  blank + mark end + "Zeile     " + mark anf; 
+  ueberschrift post CAT blank + mark end + "  ";
+  filename := headline (file);
+  filename := subtext (filename, 1, feldlaenge - 24);
+  insert char (filename, blank, 1); filename CAT blank;
+  replace (ueberschrift text, filenamepos, filename);
+  rubin segment in ueberschrift eintragen;
+  margin segment in ueberschrift eintragen;
+  rest segment in ueberschrift eintragen;
+  learn segment in ueberschrift eintragen .
+ 
+filenamepos    : (LENGTH ueberschrift text - LENGTH filename + 3) DIV 2 .
+mark anf       : begin mark + mark ausgleich. 
+mark end       :  end  mark + mark ausgleich.
+mark ausgleich : (1 - sign (max (mark size, 0))) * blank .
+
+rubin segment in ueberschrift eintragen :
+  replace (ueberschrift text, 9, rubin segment) .
+ 
+rubin segment :
+  IF einfuegen THEN "RUBIN" ELSE "....." FI .
+
+margin segment in ueberschrift eintragen :
+  replace (ueberschrift text, 2, margin segment) .
+ 
+margin segment :
+  IF   anfang <= 1
+  THEN "......"
+  ELSE TEXT VAR margin text := "M" + text (anfang);
+       (6 - LENGTH margin text) * "." + margin text
+  FI .
+
+rest segment in ueberschrift eintragen :
+  replace (ueberschrift text, feldlaenge - 25, rest segment) .
+ 
+rest segment :
+  IF zeileneinfuegen THEN "REST" ELSE "...." FI .
+
+learn segment in ueberschrift eintragen :
+  replace (ueberschrift text, feldlaenge - 19, learn segment) .
+ 
+learn segment :
+  IF lernmodus THEN "LEARN" ELSE "....." FI .
+ 
+END PROC ueberschrift initialisieren;
+ 
+PROC ueberschrift schreiben :
+  replace (ueberschrift post, satznr pos, text (text (lineno (file)), 4));
+  out (ueberschrift pre); out (ueberschrift text); out (ueberschrift post);
+  get tabs (file, tab);
+  IF   pos (tab, dach) > 0
+  THEN out (ueberschrift pre);
+       out subtext (tab, anfang + 1, anfang + feldlaenge - 1);
+       cursor (rand + 1 + feldlaenge, bildrand); out (end mark)
+  FI .
+
+  satznr pos : IF mark size > 0 THEN 9 ELSE 10 FI .                  (*sh*)
+END PROC ueberschrift schreiben;
+ 
+PROC fehlermeldung schreiben :
+  ueberschrift schreiben;
+  out (ueberschrift pre);
+  out ("FEHLER: ");
+  out subtext (fehlertext, 1, feldlaenge - 21);
+  out (blank);
+  out (piep);
+  cursor (rand + 1 + feldlaenge, bildrand); out (end mark)
+END PROC fehlermeldung schreiben;
+ 
+PROC set busy indicator : 
+  cursor (rand + 2, bildrand) 
+END PROC set busy indicator; 
+ 
+PROC kommando analysieren (TEXT CONST taste,
+                           PROC (TEXT CONST) kommando interpreter) :
+  disable stop;
+  bildausgabe normieren;
+  zustand in datei sichern;
+  editfile modus setzen;
+  kommando interpreter (taste);
+  editfile modus zuruecksetzen;
+  IF actual editor <= 0 THEN LEAVE kommando analysieren FI;
+  absatz ausgleich := 2;                                             (*sh*)
+  konstanten neu berechnen;
+  neues bild bei undefinierter benutzeraktion;
+  evtl fehler behandeln;
+  zustand aus datei holen; 
+  bildausgabe steuern . 
+ 
+editfile modus setzen :
+  BOOL VAR alter editget modus := editget modus ;
+  editget modus := FALSE .
+
+editfile modus zuruecksetzen :
+  editget modus := alter editget modus .
+
+evtl fehler behandeln :
+  IF   is error
+  THEN fehlertext := errormessage;
+       IF fehlertext <> "" THEN neu (fehlermeldung, nix) FI;
+       clear error
+  ELSE fehlertext := ""
+  FI .
+ 
+zustand in datei sichern :
+  old zeilennr := zeilennr;
+  old mark lineno := bildmarke;
+  dateizustand retten .
+ 
+zustand aus datei holen :
+  dateizustand holen;
+  IF   letzer editor auf dieser datei <> actual editor
+  THEN zurueck auf alte position; neu (ueberschrift, bild) 
+  FI .
+ 
+zurueck auf alte position :
+  to line (file, old lineno);
+  col (file, alte stelle);
+  IF   fliesstext
+  THEN editinfo (file,   old zeilennr)
+  ELSE editinfo (file, - old zeilennr)
+  FI ; dateizustand holen .
+ 
+bildausgabe normieren :
+  bildbereich := undefinierter bereich;
+  erster neusatz := 9999;
+  letzter neusatz := 0 .
+ 
+neues bild bei undefinierter benutzeraktion :
+  IF bildbereich = undefinierter bereich THEN alles neu FI .
+END PROC kommando analysieren;
+ 
+PROC bildausgabe steuern :
+  IF   markiert
+  THEN IF   old mark lineno = 0
+       THEN abschnitt neu (bildmarke, satznr);
+            konstanten neu berechnen
+       ELIF stelle veraendert                                        (*sh*)
+       THEN zeile neu 
+       FI
+  ELIF old mark lineno > 0
+  THEN abschnitt neu (old mark lineno, (max (satznr, old lineno)));
+       konstanten neu berechnen
+  FI ;
+  IF   satznr <> old lineno
+  THEN neu (akt satznr, nix);
+       neuen bildaufbau bestimmen
+  ELSE zeilennr := old zeilennr 
+  FI ;
+  zeilennr := min (min (zeilennr, satznr), aktuelle bildlaenge);
+  bildanfang := satznr - zeilennr + 1 .
+
+stelle veraendert : stelle <> alte stelle . 
+
+neuen bildaufbau bestimmen :
+  zeilennr := old zeilennr + satznr - old lineno;
+  IF   1 <= zeilennr AND zeilennr <= aktuelle bildlaenge
+  THEN im fenster springen
+  ELSE bild neu aufbauen
+  FI .
+ 
+im fenster springen : 
+  IF markiert THEN abschnitt neu (old lineno, satznr) FI .
+ 
+bild neu aufbauen :
+  neu (nix, bild); zeilennr := max (1, aktuelle bildlaenge DIV 2) .
+END PROC bildausgabe steuern;
+
+PROC word wrap (BOOL CONST b) :
+  IF   actual editor = 0
+  THEN std fliesstext := b
+  ELSE fliesstext in datei setzen
+  FI .
+ 
+fliesstext in datei setzen :
+  fliesstext := b;
+  IF fliesstext veraendert THEN editinfo (file, - editinfo (file)) FI;
+  neu (ueberschrift, bild) .
+ 
+fliesstext veraendert :
+  fliesstext AND editinfo (file) < 0 OR
+  NOT fliesstext AND editinfo (file) > 0 .
+END PROC word wrap;
+ 
+BOOL PROC word wrap :                                                (*sh*)
+  IF   actual editor = 0
+  THEN std fliesstext 
+  ELSE fliesstext 
+  FI 
+END PROC word wrap;
+
+INT PROC margin :   anfang   END PROC margin;
+ 
+PROC margin (INT CONST i) :                                          (*sh*)
+  IF   anfang <> i CAND i > 0 AND i < 16001 
+  THEN anfang := i; neu (ueberschrift, bild);
+       margin segment in ueberschrift eintragen
+  ELSE IF i >= 16001 OR i < 0
+         THEN errorstop ("ungueltige Anfangsposition (1 - 16000)")
+       FI
+  FI .
+
+margin segment in ueberschrift eintragen :
+  replace (ueberschrift text, 2, margin segment) .
+ 
+margin segment :
+  IF   anfang <= 1
+  THEN "......"
+  ELSE TEXT VAR margin text := "M" + text (anfang);
+       (6 - LENGTH margin text) * "." + margin text
+  FI .
+
+END PROC margin;
+ 
+BOOL PROC rubin mode :   rubin mode (actual editor)   END PROC rubin mode;
+
+BOOL PROC rubin mode (INT CONST editor nr) :                         (*sh*)
+  IF   editor nr < 1 OR editor nr > max used editor
+  THEN errorstop ("Editor nicht eroeffnet")
+  FI ;
+  IF   editor nr = actual editor
+  THEN einfuegen
+  ELSE editstack (editor nr).feldstatus.einfuegen 
+  FI
+END PROC rubin mode;
+
+PROC edit (INT CONST i, TEXT CONST res,
+           PROC (TEXT CONST) kommando interpreter) :
+  edit (i, i, i, res, PROC (TEXT CONST) kommando interpreter)
+END PROC edit;
+ 
+PROC edit (INT CONST von, bis, start, TEXT CONST res,
+           PROC (TEXT CONST) kommando interpreter) :
+  disable stop;
+  IF   von < bis
+  THEN edit (von+1, bis, start, res, PROC (TEXT CONST) kommando interpreter);
+       IF max used editor < von THEN LEAVE edit FI;
+       open editor (von)
+  ELSE open editor (start)
+  FI ;
+  absatz ausgleich := 2;
+  bildeditor (res, PROC (TEXT CONST) kommando interpreter);
+  cursor (1, schirmhoehe);
+  IF   is error
+  THEN kommando zeiger := 1; kommando := ""; quit
+  FI ;
+  IF   lernmodus CAND actual editor = 0 THEN warnung ausgeben FI .   (*sh*)
+
+  warnung ausgeben : 
+    out (clear eop); out ("WARNUNG: Lernmodus nicht ausgeschaltet"13""10"") .
+END PROC edit;
+ 
+PROC dateizustand holen :
+  modify (file);
+  get tabs (file, tabulator);
+  zeilennr und fliesstext und letzter editor aus editinfo decodieren;
+  limit := max line length (file);
+  stelle := col (file);
+  markiert := mark (file);
+  IF   markiert
+  THEN markierung holen
+  ELSE keine markierung
+  FI ;
+  satz nr := lineno (file);
+  IF   zeilennr > aktuelle bildlaenge                                (*sh*)
+  THEN zeilennr := min (satznr, aktuelle bildlaenge); bild neu
+  ELIF zeilennr > satznr
+  THEN zeilennr := min (satznr, aktuelle bildlaenge)
+  FI ; zeilennr := max (zeilennr, 1);
+  bildanfang := satz nr - zeilennr + 1 .
+ 
+zeilennr und fliesstext und letzter editor aus editinfo decodieren :
+  zeilennr := edit info (file);
+  IF   zeilennr = 0
+  THEN zeilennr := 1;
+       fliesstext := std fliesstext
+  ELIF zeilennr > 0
+  THEN fliesstext := TRUE
+  ELSE zeilennr := - zeilennr;
+       fliesstext := FALSE
+  FI ;
+  letzer editor auf dieser datei := zeilennr DIV 256;
+  zeilennr := zeilennr MOD 256 .
+ 
+markierung holen :
+  bildmarke := mark lineno (file);
+  feldmarke := mark col (file);
+  IF   line no (file) <= bildmarke
+  THEN to line (file, bildmarke);
+       marke := feldmarke;
+       stelle := max (stelle, feldmarke)
+  ELSE marke := 1
+  FI .
+ 
+keine markierung :
+  bildmarke := 0;
+  feldmarke := 0;
+  marke     := 0 .
+END PROC dateizustand holen;
+ 
+PROC dateizustand retten :
+  put tabs (file, tabulator);
+  IF   fliesstext
+  THEN editinfo (file,    zeilennr + actual editor * 256)
+  ELSE editinfo (file, - (zeilennr + actual editor * 256))
+  FI ;
+  max line length (file, limit);
+  col (file, stelle);
+  IF   markiert
+  THEN mark (file, bildmarke, feldmarke)
+  ELSE mark (file, 0, 0)
+  FI 
+END PROC dateizustand retten;
+ 
+PROC open editor (FILE CONST new file, BOOL CONST access) :
+  disable stop; quit last;
+  neue bildparameter bestimmen;
+  open editor (actual editor + 1, new file, access, x, y, x len, y len). 
+ 
+neue bildparameter bestimmen :
+  INT VAR x, y, x len, y len;
+  IF   actual editor > 0
+  THEN teilbild des aktuellen editors
+  ELSE volles bild
+  FI .
+ 
+teilbild des aktuellen editors :
+  get editcursor (x, y); bildgroesse bestimmen;
+  IF   fenster zu schmal                                             (*sh*)
+  THEN enable stop; errorstop ("Fenster zu klein")
+  ELIF fenster zu kurz
+  THEN verkuerztes altes bild nehmen
+  FI .
+
+bildgroesse bestimmen :
+  x len := rand + feldlaenge - x + 3;
+  y len := bildrand + bildlaenge - y + 1 .
+ 
+fenster zu schmal : x > schirmbreite - 17 .
+fenster zu kurz   : y > schirmhoehe  -  1 .
+
+verkuerztes altes bild nehmen :
+  x := rand + 1; y := bildrand + 1;
+  IF fenster zu kurz THEN enable stop; errorstop ("Fenster zu klein") FI;
+  x len := feldlaenge + 2;
+  y len := bildlaenge;
+  kurze feldlaenge := 0;
+  kurze bildlaenge := 1 . 
+
+volles bild :
+  x := 1; y := 1; x len := schirmbreite; y len := schirmhoehe .
+END PROC open editor;
+ 
+PROC open editor (INT CONST editor nr,
+                  FILE CONST new file, BOOL CONST access,
+                  INT CONST x start, y, x len start, y len) :
+  INT VAR x := x start,
+  x len := x len start;
+  IF   editor nr > max editor
+  THEN errorstop ("zu viele Editor-Fenster")
+  ELIF editor nr > max used editor + 1 OR editor nr < 1
+  THEN errorstop ("Editor nicht eroeffnet")
+  ELIF fenster ungueltig
+  THEN errorstop ("Fenster ungueltig")
+  ELSE neuen editor stacken
+  FI .
+ 
+fenster ungueltig :
+  x < 1  COR  x > schirmbreite  COR  y < 1  COR  y > schirmhoehe  COR
+  x len - 2 <= 15  COR  y len - 1 < 1  COR
+  x + x len - 1 > schirmbreite  COR  y + y len - 1 > schirmhoehe .
+ 
+neuen editor stacken :
+  disable stop;
+  IF   actual editor > 0 AND ist einschraenkung des alten bildes
+  THEN dateizustand holen;
+       aktuelles editorbild einschraenken;
+       arbeitspunkt in das restbild positionieren;
+       abgrenzung beruecksichtigen
+  FI ;
+  aktuellen zustand retten;
+  neuen zustand setzen;
+  neues editorbild zeigen;
+  actual editor := editor nr;
+  IF   actual editor > max used editor
+  THEN max used editor := actual editor
+  FI .
+ 
+ist einschraenkung des alten bildes :
+  x > rand      CAND  x + x len = rand + feldlaenge + 3  CAND
+  y > bildrand  CAND  y + y len = bildrand + bildlaenge + 1 .
+ 
+aktuelles editorbild einschraenken :
+  kurze feldlaenge := x - rand - 3;
+  kurze bildlaenge := y - bildrand - 1 .
+
+arbeitspunkt in das restbild positionieren :
+  IF   stelle > 3
+  THEN stelle DECR 3; alte stelle := stelle
+  ELSE WHILE zeilennr > 1 AND zeilennr > kurze bildlaenge REP
+         vorgaenger
+       PER; old lineno := satznr 
+  FI .
+ 
+abgrenzung beruecksichtigen :
+  IF   x - rand > 1
+  THEN balken malen;
+       x INCR 2;
+       x len DECR 2
+  FI .
+ 
+balken malen :
+  INT VAR i;
+  FOR i FROM 0 UPTO y len-1 REP
+    cursor (x, y+i); out (kloetzchen)                                (*sh*)
+  PER .
+ 
+kloetzchen : IF mark size > 0 THEN ""15""14"" ELSE ""15" "14" " FI .
+
+aktuellen zustand retten :
+  IF   actual editor > 0
+  THEN dateizustand retten;
+       editstack (actual editor).feldstatus := feldstatus;
+       editstack (actual editor).bildstatus := bildstatus;
+       einrueckstack (actual editor) := alte einrueckposition
+  FI .
+ 
+neuen zustand setzen :
+  FRANGE VAR frange;
+  feldstatus := FELDSTATUS :
+    (1, 1, x-1, 0, 1, 0, x len-2, 0, FALSE, TRUE, access, "");
+  bildstatus := BILDSTATUS :
+    (x len-2, x len-2, y, y len-1, y len-1, ueberschrift, bild, 
+     0, 0, 1, 0, 0, FALSE, FALSE, "", "", "", "", "", frange, new file);
+  alte einrueckposition := 1;
+  dateizustand holen;
+  ueberschrift initialisieren .
+ 
+neues editorbild zeigen :
+  ueberschrift zeigen; fenster zeigen
+END PROC open editor;
+ 
+PROC open editor (INT CONST i) :
+  IF   i < 1 OR i > max used editor
+  THEN errorstop ("Editor nicht eroeffnet")
+  ELIF actual editor <> i
+  THEN switch editor
+  FI .
+ 
+switch editor :
+  aktuellen zustand retten;
+  actual editor := i;
+  neuen zustand setzen;
+  IF   kein platz mehr fuer restfenster
+  THEN eingeschachtelte editoren vergessen;
+       bildeinschraenkung aufheben
+  ELSE neu (nix, nix)
+  FI .
+
+aktuellen zustand retten :
+  IF   actual editor > 0
+  THEN editstack (actual editor).feldstatus := feldstatus;
+       editstack (actual editor).bildstatus := bildstatus;
+       einrueckstack (actual editor) := alte einrueckposition;
+       dateizustand retten
+  FI .
+ 
+neuen zustand setzen :
+  feldstatus := editstack (i).feldstatus;
+  bildstatus := editstack (i).bildstatus;
+  alte einrueckposition := einrueckstack (i);
+  dateizustand holen .
+
+kein platz mehr fuer restfenster :
+  kurze feldlaenge < 1 AND kurze bildlaenge < 1 .
+ 
+eingeschachtelte editoren vergessen :
+  IF actual editor < max used editor
+    THEN open editor (actual editor + 1) ;
+         quit
+  FI ;
+  open editor (i) .
+
+bildeinschraenkung aufheben :
+  laenge := feldlaenge;
+  kurze feldlaenge := feldlaenge;
+  kurze bildlaenge := bildlaenge;
+  neu (ueberschrift, bild) .
+END PROC open editor;
+ 
+FILE PROC editfile :
+  IF   actual editor = 0 OR editget modus
+  THEN errorstop ("Editor nicht eroeffnet")
+  FI ; file
+END PROC editfile;
+
+PROC get window (INT VAR x, y, x size, y size) :
+  x := rand + 1;
+  y := bildrand;
+  x size := feldlaenge + 2;
+  y size := bildlaenge + 1
+ENDPROC get window;
+
+(************************* Zugriff auf Bildstatus *************************).
+
+feldlaenge          : bildstatus.feldlaenge .
+kurze feldlaenge    : bildstatus.kurze feldlaenge .
+bildrand            : bildstatus.bildrand .
+bildlaenge          : bildstatus.bildlaenge .
+kurze bildlaenge    : bildstatus.kurze bildlaenge .
+ueberschriftbereich : bildstatus.ueberschriftbereich .
+bildbereich         : bildstatus.bildbereich .
+erster neusatz      : bildstatus.erster neusatz .
+letzter neusatz     : bildstatus.letzter neusatz .
+old zeilennr        : bildstatus.old zeilennr .
+old lineno          : bildstatus.old lineno .
+old mark lineno     : bildstatus.old mark lineno .
+zeileneinfuegen     : bildstatus.zeileneinfuegen .
+old line update     : bildstatus.old line update .
+satznr pre          : bildstatus.satznr pre .
+ueberschrift pre    : bildstatus.ueberschrift pre .
+ueberschrift text   : bildstatus.ueberschrift text .
+ueberschrift post   : bildstatus.ueberschrift post .
+old satz            : bildstatus.old satz .
+old range           : bildstatus.old range .
+file                : bildstatus.file .
+
+END PACKET editor paket;
+

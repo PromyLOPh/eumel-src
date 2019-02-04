@@ -1,0 +1,664 @@
+PACKET kurswahlschnittstelle240791DEFINES kurswahlinitialisieren,
+kurswahlbasisholen,erweitertekurswahlbasisholen,istkurswahlbasisvorhanden,
+kurswahldatenvorhanden,kurswahl0holen,kurswahl1holen,kurswahl2holen,
+kurswahl0sichern,kurswahl1sichern,kurswahl2sichern,kurswahlsperresetzen,
+kurswahlsperrebeenden,kurseintragen,kursloeschen,planblockeintragen,
+planblockteilen,planblockloeschen,planbloeckezumkurseintragen,
+planbloeckeinitialisieren,kurszumplanblockeintragen,schuelerwahleintragen,
+schuelerwahlaendern,ersterschueler,letzterschueler,wahldatenzumindex,
+wahldatenzumschueler,weiterewahldatenzumschueler,kursdaten,allekurse,
+alleplanblockbezeichner,planblockdaten,anzahlschuelermitwahl,schuelermitwahl,
+anzahlfreierschuelerimplanblock,schuelerinplanblock,schuelerundklausur:LET 
+namezwischendatei="Hj-Daten",meldungneuebasis=377;LET maxkuwa1zeilen=66,
+laengekurseintrag=15,laengeblockwstd=4,laengeblock=3,laengekurs=6,laengefach=
+2,laengekennung=4,laengeart=2,laengewstd=2,laengeklausur=1,server=
+"kurswahl server",kennungtplbl1="a",kennungtplbl2="b",leereplanbloecke=
+"      ",leererblock="   ",leerekennung="    ",leereart="  ",stat1="ls",stat2
+="n11",stat3="nso",kzschueler="�S�",kzneue="�N�",kzohneneue="O",kznurneue="N"
+,kzname="N",kzkurse="K",kzart="A",kzstd="S",kzplanbl="P",kzfake="FK",dbsj=
+"Schuljahr",dbhj="Schulhalbjahr",trenner="�",trenner2="$",kurswahl0=
+"Kurswahl-0 ",kurswahl1="Kurswahl-1 ",kurswahl2="Kurswahl-2 ",praefixsperre=
+"Sperre ";FILE VAR kuwa0,kuwa1,kuwa2,kuwa3,kuwahilf;TEXT VAR schuljahr:=
+"0000",halbjahr:="0",aktschuljahr:="0000",akthalbjahr:="0",jgst:="",hjdtid,
+fa1,ke1,fa2,ke2,ws,kl,ar,eintrag,status,datei,sj,hj;INT VAR bearbschueler,
+erster:=1,letzter:=0,namenpos,aktjg;BOOL VAR hjzukuenftig,hjaktgepl,
+kuwa2eintrag:=TRUE ,plblvorhanden:=FALSE ,faartschoneingetragen:=FALSE ,
+fakeschoneingetragen:=FALSE ,eintragloeschen:=FALSE ;TEXT VAR hjd1,hjd2,hjd3,
+hjd4,hjd5,hjd6,hjd7;TASK VAR takuser;PROC kurswahlinitialisieren(TEXT CONST 
+aktjgst,gewjgst,gewhj,schueler,TEXT VAR bersj):INT VAR j;aktjg:=int(aktjgst);
+IF schueler=kzohneneueTHEN bearbschueler:=1ELIF schueler=kznurneueTHEN 
+bearbschueler:=2ELSE bearbschueler:=3FI ;sj:=schulkenndatum(dbsj);hj:=
+schulkenndatum(dbhj);IF gewjgst=aktjgstTHEN schuljahr:=sjELSE j:=int(gewjgst)
+-int(aktjgst);schuljahr:=konvsjteil(text(sj,2),j)+konvsjteil(subtext(sj,3),j)
+FI ;bersj:=schuljahr;halbjahr:=gewhj;jgst:=gewjgst;IF hj="1"CAND int(gewjgst)
+>int(aktjgst)THEN hjzukuenftig:=TRUE ELIF hj="2"CAND int(gewjgst+gewhj)>(int(
+aktjgst)+1)*10+1THEN hjzukuenftig:=TRUE ELSE hjzukuenftig:=FALSE FI ;
+hjaktgepl:=NOT hjzukuenftigEND PROC kurswahlinitialisieren;BOOL PROC 
+istkurswahlbasisvorhanden:dbstatus(1);IF halbjahrnichtgesetztTHEN FALSE ELIF 
+NOT existstask(server)THEN FALSE ELSE takuser:=task(server);datei:=
+datenraumname(kurswahl1);dbstatus(0);exists(datei,takuser)FI END PROC 
+istkurswahlbasisvorhanden;PROC kurswahlbasisholen(INT VAR fehlerstatus):INT 
+VAR j;IF halbjahrnichtgesetztTHEN fehlerstatus:=1ELIF NOT existstask(server)
+THEN fehlerstatus:=2ELSE takuser:=task(server);commanddialogue(FALSE );
+fehlerstatus:=0;datei:=datenraumname(kurswahl0);IF exists(datei,takuser)THEN 
+holkuwa0dateiundkoppleanELSE erstellekuwa0dateiFI ;datei:=datenraumname(
+kurswahl1);IF exists(datei,takuser)THEN plblvorhanden:=TRUE ;
+holkuwa1dateiundkoppleanELSE plblvorhanden:=FALSE ;erstellekuwa1dateiFI ;
+datei:=datenraumname(kurswahl2);IF exists(datei,takuser)THEN 
+holkuwa2dateiundkoppleanELSE erstellekuwa2dateiFI ;commanddialogue(TRUE )FI .
+holkuwa0dateiundkopplean:fetch(datei,takuser);kuwa0:=sequentialfile(modify,
+old(datei)).erstellekuwa0datei:IF hjzukuenftigTHEN kuwa0:=sequentialfile(
+modify,datei);insertrecord(kuwa0)ELSE datei:=datenraumname(kurswahl0);forget(
+datei,quiet);kursdatenholen;IF lines(kuwa0)=0THEN insertrecord(kuwa0)FI FI ;
+save(datei,takuser).holkuwa1dateiundkopplean:fetch(datei,takuser);kuwa1:=
+sequentialfile(modify,old(datei)).erstellekuwa1datei:kuwa1:=sequentialfile(
+modify,datei);FOR jFROM 1UPTO maxkuwa1zeilenREP insertrecord(kuwa1)PER ;save(
+datei,takuser).holkuwa2dateiundkopplean:fetch(datei,takuser);kuwa2:=
+sequentialfile(modify,old(datei));ermittleersterletzter.erstellekuwa2datei:
+kuwa2eintrag:=TRUE ;kurswahleinerjgstaufbereiten(jgst,halbjahr,schuljahr,
+kuwa2);save(datei,takuser).END PROC kurswahlbasisholen;PROC 
+ermittleersterletzter:IF bearbschueler<>2THEN erster:=1ELSE erster:=
+zeilennrzumschuelerbestand(FALSE )FI ;IF bearbschueler<>1THEN letzter:=lines(
+kuwa2)ELSE letzter:=zeilennrzumschuelerbestand(TRUE )FI END PROC 
+ermittleersterletzter;PROC erweitertekurswahlbasisholen(TEXT CONST gewjgst,
+gewhj,INT VAR fehlerstatus):TEXT VAR erwschuljahr;INT VAR j;IF 
+halbjahrnichtgesetztTHEN fehlerstatus:=1ELIF NOT existstask(server)THEN 
+fehlerstatus:=2ELSE takuser:=task(server);commanddialogue(FALSE );IF int(
+gewjgst)=aktjgTHEN erwschuljahr:=sjELSE j:=int(gewjgst)-aktjg;erwschuljahr:=
+konvsjteil(text(sj,2),j)+konvsjteil(subtext(sj,3),j);FI ;fehlerstatus:=0;
+datei:=kurswahl2+gewjgst+" "+gewhj+"."+erwschuljahr;IF exists(datei,takuser)
+THEN holkuwa3dateiundkoppleanELSE erstellekuwa3dateiFI ;commanddialogue(TRUE 
+)FI .holkuwa3dateiundkopplean:fetch(datei,takuser);kuwa3:=sequentialfile(
+modify,old(datei)).erstellekuwa3datei:plblvorhanden:=FALSE ;kuwa2eintrag:=
+FALSE ;kurswahleinerjgstaufbereiten(gewjgst,gewhj,erwschuljahr,kuwa3).END 
+PROC erweitertekurswahlbasisholen;PROC kurswahl0holen(INT VAR fehlerstatus):
+IF halbjahrnichtgesetztTHEN fehlerstatus:=1ELIF NOT existstask(server)THEN 
+fehlerstatus:=2ELSE takuser:=task(server);datei:=datenraumname(kurswahl0);IF 
+exists(datei,takuser)THEN commanddialogue(FALSE );fetch(datei,takuser);
+commanddialogue(TRUE );kuwa0:=sequentialfile(modify,old(datei));fehlerstatus
+:=0ELSE fehlerstatus:=3FI ;FI .END PROC kurswahl0holen;PROC kurswahl1holen(
+INT VAR fehlerstatus):IF halbjahrnichtgesetztTHEN fehlerstatus:=1ELIF NOT 
+existstask(server)THEN fehlerstatus:=2ELSE takuser:=task(server);datei:=
+datenraumname(kurswahl1);IF exists(datei,takuser)THEN commanddialogue(FALSE )
+;fetch(datei,takuser);commanddialogue(TRUE );kuwa1:=sequentialfile(modify,old
+(datei));fehlerstatus:=0ELSE fehlerstatus:=3FI ;FI .END PROC kurswahl1holen;
+PROC kurswahl2holen(INT VAR fehlerstatus):IF halbjahrnichtgesetztTHEN 
+fehlerstatus:=1ELIF NOT existstask(server)THEN fehlerstatus:=2ELSE takuser:=
+task(server);datei:=datenraumname(kurswahl2);IF exists(datei,takuser)THEN 
+commanddialogue(FALSE );fetch(datei,takuser);commanddialogue(TRUE );kuwa2:=
+sequentialfile(modify,old(datei));ermittleersterletzter;fehlerstatus:=0ELSE 
+fehlerstatus:=3FI ;FI END PROC kurswahl2holen;PROC kurswahl0sichern(INT VAR 
+fehlerstatus):kurswahl02sichern(kurswahl0,fehlerstatus)END PROC 
+kurswahl0sichern;PROC kurswahl1sichern(INT VAR fehlerstatus):
+kurswahldatenraumsichern(kurswahl1,fehlerstatus)END PROC kurswahl1sichern;
+PROC kurswahl2sichern(INT VAR fehlerstatus):kurswahl02sichern(kurswahl2,
+fehlerstatus)END PROC kurswahl2sichern;PROC kurswahl02sichern(TEXT CONST 
+welchen,INT VAR fehlerstatus):INT VAR aktfeld:=infeld;datei:=datenraumname(
+welchen);IF halbjahrnichtgesetztTHEN fehlerstatus:=1ELIF NOT existstask(
+server)THEN fehlerstatus:=2ELIF NOT exists(datei)THEN fehlerstatus:=4ELSE 
+takuser:=task(server);IF exists(datei,takuser)THEN commanddialogue(FALSE );
+save(datei,takuser);commanddialogue(TRUE );fehlerstatus:=0ELSE 
+standardmeldung(meldungneuebasis,"");forget(datei,quiet);IF welchen=kurswahl2
+THEN bereitek2datenraumaufELSE bereitek0datenraumaufFI ;commanddialogue(
+FALSE );save(datei,takuser);commanddialogue(TRUE );fehlerstatus:=0;infeld(1);
+standardfelderausgeben;infeld(aktfeld)FI FI .bereitek0datenraumauf:IF 
+hjzukuenftigTHEN kuwa0:=sequentialfile(modify,datei);insertrecord(kuwa0)ELSE 
+kursdatenholen;IF lines(kuwa0)=0THEN insertrecord(kuwa0)FI FI .
+bereitek2datenraumauf:kuwa2eintrag:=TRUE ;kurswahleinerjgstaufbereiten(jgst,
+halbjahr,schuljahr,kuwa2).END PROC kurswahl02sichern;PROC 
+kurswahldatenraumsichern(TEXT CONST welchen,INT VAR fehlerstatus):datei:=
+datenraumname(welchen);IF halbjahrnichtgesetztTHEN fehlerstatus:=1ELIF NOT 
+existstask(server)THEN fehlerstatus:=2ELIF NOT exists(datei)THEN fehlerstatus
+:=4ELSE takuser:=task(server);commanddialogue(FALSE );save(datei,takuser);
+commanddialogue(TRUE );fehlerstatus:=0FI END PROC kurswahldatenraumsichern;
+BOOL PROC kurswahldatenvorhanden:INT VAR i;dbstatus(1);IF 
+halbjahrnichtgesetztTHEN FALSE ELSE datei:=datenraumname(kurswahl2);IF exists
+(datei)THEN ueberpruefwahldatenvorhandenELSE FALSE FI FI .
+ueberpruefwahldatenvorhanden:dbstatus(0);toline(kuwa2,erster);col(kuwa2,1);
+FOR iFROM ersterUPTO letzterREP readrecord(kuwa2,eintrag);IF (eintragSUB 1)<>
+trennerTHEN LEAVE ueberpruefwahldatenvorhandenWITH TRUE FI ;down(kuwa2);PER ;
+FALSE .END PROC kurswahldatenvorhanden;PROC kurswahlsperresetzen(TEXT CONST 
+was,BOOL VAR ok):IF halbjahrnichtgesetztTHEN ok:=FALSE ELIF NOT existstask(
+server)THEN ok:=FALSE ELSE takuser:=task(server);datei:=
+gesperrterdatenraumname(was);IF exists(datei,takuser)THEN ok:=FALSE ELSE 
+commanddialogue(FALSE );forget(datei,quiet);copy(datenraumname(was),datei);
+save(datei,takuser);forget(datei,quiet);commanddialogue(TRUE );ok:=TRUE FI ;
+FI END PROC kurswahlsperresetzen;PROC kurswahlsperrebeenden(TEXT CONST was):
+IF NOT halbjahrnichtgesetztAND existstask(server)THEN takuser:=task(server);
+datei:=gesperrterdatenraumname(was);commanddialogue(FALSE );erase(datei,
+takuser);commanddialogue(TRUE );FI END PROC kurswahlsperrebeenden;PROC 
+kurseintragen(TEXT CONST fach,kennung,wstd,art):dbstatus(1);IF 
+halbjahrnichtgesetztTHEN LEAVE kurseintragenELIF fach=""COR kennung=""COR 
+wstd=""COR art=""THEN LEAVE kurseintragenFI ;fa1:=text(fach,laengefach);ke1:=
+text(kennung,laengekennung);ws:=text(wstd,laengewstd);ar:=text(art,laengeart)
+;IF kurseingetragen(fa1+ke1)THEN LEAVE kurseintragenFI ;toline(kuwa0,lines(
+kuwa0));insertrecord(kuwa0);writerecord(kuwa0,fa1+ke1+ws+ar);IF hjaktgepl
+THEN tragindbeinELSE dbstatus(0)FI .tragindbein:inittupel(
+dnrlehrveranstaltungen);putwert(fnrlvsj,schuljahr);putwert(fnrlvhj,halbjahr);
+putwert(fnrlvjgst,jgst);putwert(fnrlvfachkennung,fa1+compress(ke1));
+putintwert(fnrlvwochenstd,int(wstd));putwert(fnrlvart,compress(art));insert(
+dnrlehrveranstaltungen).END PROC kurseintragen;PROC kursloeschen(TEXT CONST 
+fach,kennung):IF halbjahrnichtgesetztTHEN dbstatus(1);LEAVE kursloeschenFI ;
+fa1:=text(fach,laengefach);ke1:=text(kennung,laengekennung);IF 
+kurseingetragen(fa1+ke1)THEN IF hjaktgeplTHEN aenderindbFI ;deleterecord(
+kuwa0);aenderkursinkuwa1(fa1+ke1,"")ELSE dbstatus(1)FI .aenderindb:inittupel(
+dnrlehrveranstaltungen);putwert(fnrlvsj,schuljahr);putwert(fnrlvhj,halbjahr);
+putwert(fnrlvjgst,jgst);putwert(fnrlvfachkennung,fa1+compress(ke1));search(
+dnrlehrveranstaltungen,TRUE );IF dbstatus=0THEN delete(dnrlehrveranstaltungen
+)ELSE dbstatus(1);LEAVE kursloeschenFI .END PROC kursloeschen;PROC 
+planblockeintragen(TEXT CONST anwblockbez,stunden):TEXT VAR blockbez:=
+formbezeichner(anwblockbez),blocknr:=text(blockbez,2),teilkennung:=blockbez
+SUB 3;INT VAR j:=int(blocknr)*3-2;dbstatus(1);IF halbjahrnichtgesetztTHEN 
+LEAVE planblockeintragenELIF j>0CAND j<=maxkuwa1zeilenTHEN IF teilkennung=
+kennungtplbl1THEN jINCR 1ELIF teilkennung=kennungtplbl2THEN jINCR 2ELIF 
+teilkennung<>""CAND teilkennung<>" "THEN LEAVE planblockeintragenFI ;toline(
+kuwa1,j);readrecord(kuwa1,eintrag);IF eintrag=""THEN writerecord(kuwa1,text(
+blockbez,3)+text(stunden,1))ELSE writerecord(kuwa1,text(eintrag,3)+text(
+stunden,1)+subtext(eintrag,5))FI ;dbstatus(0)FI END PROC planblockeintragen;
+PROC planblockteilen(TEXT CONST blocknr,wstd1,wstd2):INT VAR j:=int(blocknr)*
+3-2;dbstatus(1);IF halbjahrnichtgesetztCOR (compress(blocknrSUB 3))<>""THEN 
+LEAVE planblockteilenFI ;IF j>0CAND j<=maxkuwa1zeilenTHEN toline(kuwa1,j+1);
+readrecord(kuwa1,eintrag);IF eintrag=""THEN up(kuwa1);readrecord(kuwa1,
+eintrag);IF eintrag<>""THEN teileplanblockFI FI ;FI .teileplanblock:dbstatus(
+0);writerecord(kuwa1,text(eintrag,4));down(kuwa1);writerecord(kuwa1,text(
+eintrag,2)+kennungtplbl1+wstd1+subtext(eintrag,5));down(kuwa1);writerecord(
+kuwa1,text(eintrag,2)+kennungtplbl2+wstd2+subtext(eintrag,5)).END PROC 
+planblockteilen;PROC planblockloeschen(TEXT CONST anwblockbez):TEXT VAR 
+blockbez:=formbezeichner(anwblockbez),blocknr:=text(blockbez,2),teilkennung:=
+blockbezSUB 3;INT VAR j:=int(blocknr)*3-2;BOOL VAR pruefteilbloecke:=FALSE ;
+dbstatus(1);IF halbjahrnichtgesetztTHEN LEAVE planblockloeschenFI ;IF 
+teilkennung=kennungtplbl1THEN jINCR 1ELIF teilkennung=kennungtplbl2THEN j
+INCR 2ELSE pruefteilbloecke:=TRUE FI ;IF j>0CAND j<=maxkuwa1zeilenTHEN toline
+(kuwa1,j);IF pruefteilbloeckeTHEN down(kuwa1,2);readrecord(kuwa1,eintrag);IF 
+eintrag<>""THEN LEAVE planblockloeschenELSE up(kuwa1);readrecord(kuwa1,
+eintrag);IF eintrag<>""THEN LEAVE planblockloeschenELSE up(kuwa1)FI ;FI ;FI ;
+writerecord(kuwa1,"");dbstatus(0)FI .END PROC planblockloeschen;PROC 
+planbloeckeinitialisieren:TEXT VAR datei:=datenraumname(kurswahl1);INT VAR j;
+IF halbjahrnichtgesetztCOR NOT existstask(server)THEN dbstatus(1)ELSE takuser
+:=task(server);erstellekuwa1dateiFI .erstellekuwa1datei:forget(datei,quiet);
+kuwa1:=sequentialfile(modify,datei);FOR jFROM 1UPTO maxkuwa1zeilenREP 
+insertrecord(kuwa1)PER ;dbstatus(0);commanddialogue(FALSE );save(datei,
+takuser);commanddialogue(TRUE ).END PROC planbloeckeinitialisieren;PROC 
+planbloeckezumkurseintragen(TEXT CONST anwkurs,anwblockbez1,anwblockbez2):
+TEXT VAR kurs:=text(anwkurs,laengekurs),blockbez1:=formbezeichner(
+anwblockbez1),blockbez2:=formbezeichner(anwblockbez2);dbstatus(1);IF 
+halbjahrnichtgesetztTHEN LEAVE planbloeckezumkurseintragenFI ;IF blockbez1<>
+""COR blockbez2<>""THEN IF NOT kurseingetragen(kurs)THEN LEAVE 
+planbloeckezumkurseintragenFI FI ;IF compress(blockbez1)<>""THEN IF NOT 
+blockeingetragen(blockbez1)THEN LEAVE planbloeckezumkurseintragenFI ;FI ;IF 
+compress(blockbez2)<>""THEN IF NOT blockeingetragen(blockbez2)THEN LEAVE 
+planbloeckezumkurseintragenFI ;FI ;loescheplanbloeckezukurs(kurs);IF 
+blockeingetragen(blockbez1)THEN tragkurseinFI ;IF blockeingetragen(blockbez2)
+THEN tragkurseinFI ;dbstatus(0).tragkursein:readrecord(kuwa1,eintrag);eintrag
+CAT kurs;writerecord(kuwa1,eintrag).END PROC planbloeckezumkurseintragen;
+PROC loescheplanbloeckezukurs(TEXT CONST kurs):TEXT VAR bloecke:=planbloecke(
+kurs);IF bloecke<>leereplanbloeckeTHEN aenderkursinkuwa1(kurs,"")FI .END 
+PROC loescheplanbloeckezukurs;INT PROC planblockzeilennr(TEXT CONST 
+anwblockbez):TEXT VAR blockbez:=formbezeichner(anwblockbez);IF 
+blockeingetragen(blockbez)THEN lineno(kuwa1)ELSE 0FI END PROC 
+planblockzeilennr;PROC schuelerwahleintragen(TEXT CONST famname,rufname,
+gebdatum,wahl):TEXT VAR schueler:=trenner+famname+trenner+rufname+trenner+
+gebdatum,wahldaten:=wahl;dbstatus(1);IF halbjahrnichtgesetztCOR length(
+wahldaten)MOD laengekurseintrag<>0THEN LEAVE schuelerwahleintragenFI ;IF 
+schuelereingetragen(schueler,kuwa2)THEN readrecord(kuwa2,eintrag);hjd1:=
+wahldaten;hjdateneintragen(famname,rufname,gebdatum,1);IF dbstatus=0THEN 
+schreibeintragFI ;FI .schreibeintrag:writerecord(kuwa2,wahldaten+subtext(
+eintrag,pos(eintrag,trenner))).END PROC schuelerwahleintragen;PROC 
+schuelerwahleintragen(TEXT CONST famname,rufname,gebdatum,fach,kennung,art,
+klausur):TEXT VAR schueler:=trenner+famname+trenner+rufname+trenner+gebdatum,
+kurse;INT VAR aktpos;dbstatus(1);IF halbjahrnichtgesetztTHEN LEAVE 
+schuelerwahleintragenFI ;fa1:=text(fach,laengefach);ke1:=text(kennung,
+laengekennung);ar:=text(art,laengeart);kl:=text(klausur,laengeklausur);IF 
+schuelereingetragen(schueler,kuwa2)THEN readrecord(kuwa2,eintrag);hjd1:=fa1;
+hjd2:=ke1;hjd3:=ar;hjd4:=kl;hjdateneintragen(famname,rufname,gebdatum,2);IF 
+dbstatus=0THEN schreibeintragFI FI .schreibeintrag:pruefanzkurse;IF ke1=
+leerekennungTHEN tragfachwahleinELSE tragkurswahleinFI .pruefanzkurse:aktpos
+:=pos(eintrag,trenner);kurse:=text(eintrag,aktpos-1);IF length(kurse)=195
+THEN LEAVE schuelerwahleintragenFI .tragfachwahlein:IF nichteingetragen(
+eintrag,ar+fa1,2,aktpos)THEN IF ke1<>leerekennungTHEN writerecord(kuwa2,kl+ar
++fa1+ke1+planbloecke(fa1+ke1)+eintrag)ELSE writerecord(kuwa2,kl+ar+fa1+ke1+
+leereplanbloecke+eintrag)FI ;FI .tragkurswahlein:IF nichteingetragen(eintrag,
+fa1+ke1,4,aktpos)THEN writerecord(kuwa2,kl+ar+fa1+ke1+planbloecke(fa1+ke1)+
+eintrag)FI .END PROC schuelerwahleintragen;PROC schuelerwahlaendern(TEXT 
+CONST famname,rufname,gebdatum,fachalt,kennungalt,artalt,fachneu,kennungneu,
+artneu,klausur):TEXT VAR schueler:=trenner+famname+trenner+rufname+trenner+
+gebdatum,neuereintrag,aralt,compke,compart;INT VAR aktpos,kurspos;dbstatus(1)
+;IF halbjahrnichtgesetztTHEN LEAVE schuelerwahlaendernFI ;
+faartschoneingetragen:=FALSE ;fakeschoneingetragen:=FALSE ;fa1:=text(fachalt,
+laengefach);ke1:=text(kennungalt,laengekennung);aralt:=text(artalt,laengeart)
+;fa2:=text(fachneu,laengefach);ke2:=text(kennungneu,laengekennung);ar:=text(
+artneu,laengeart);kl:=text(klausur,laengeklausur);IF schuelereingetragen(
+schueler,kuwa2)THEN pruefundtragein;hjd1:=fa1;hjd2:=ke1;hjd3:=fa2;hjd4:=ke2;
+hjd5:=ar;hjd6:=kl;hjd7:=aralt;hjdateneintragen(famname,rufname,gebdatum,3);
+IF dbstatus=0THEN aendereintragFI FI .pruefundtragein:readrecord(kuwa2,
+eintrag);IF fachalt=""THEN LEAVE schuelerwahlaendernFI ;IF kennungalt<>""
+THEN IF nichteingetragen(eintrag,fa1+ke1,4,aktpos)THEN LEAVE 
+schuelerwahlaendernFI ELIF artalt=""THEN LEAVE schuelerwahlaendernELIF 
+nichteingetragen(eintrag,aralt+fa1,2,aktpos)THEN LEAVE schuelerwahlaendernFI 
+;IF fachneu=""THEN eintragloeschen:=TRUE ;eintrag:=text(eintrag,aktpos-1)+
+subtext(eintrag,aktpos+laengekurseintrag)ELSE eintragloeschen:=FALSE ;compke
+:=compress(kennungneu);compart:=compress(artneu);IF compke=""CAND compart=""
+THEN LEAVE schuelerwahlaendernELIF compke<>""THEN IF NOT nichteingetragen(
+eintrag,fa2+ke2,4,kurspos)THEN fakeschoneingetragen:=TRUE FI ELIF compart<>""
+THEN IF NOT nichteingetragen(eintrag,ar+fa2,2,kurspos)THEN 
+faartschoneingetragen:=TRUE FI FI ;loeschundtrageinFI .aendereintrag:
+writerecord(kuwa2,eintrag).loeschundtragein:neuereintrag:=kl;neuereintragCAT 
+ar;neuereintragCAT fa2;neuereintragCAT ke2;IF (fa1+ke1)<>(fa2+ke2)THEN 
+neuereintragCAT planbloecke(fa2+ke2)ELSE neuereintragCAT subtext(eintrag,
+aktpos+9,aktpos+14)FI ;IF faartschoneingetragenCOR fakeschoneingetragenTHEN 
+ueberschreibneuenkursmitneuenwertenELSE substituieraltenkursmitneuemkursFI .
+substituieraltenkursmitneuemkurs:eintrag:=text(eintrag,aktpos-1)+neuereintrag
++subtext(eintrag,aktpos+laengekurseintrag).
+ueberschreibneuenkursmitneuenwerten:eintrag:=text(eintrag,kurspos-1)+
+neuereintrag+subtext(eintrag,kurspos+laengekurseintrag);IF aktpos<>kurspos
+THEN eintrag:=text(eintrag,aktpos-1)+subtext(eintrag,aktpos+laengekurseintrag
+)FI .END PROC schuelerwahlaendern;PROC hjdateneintragen(TEXT CONST famname,
+rufname,gebdatum,INT CONST aktion):INT VAR iii,iiii;TEXT VAR wahlteil,
+tutoreintrag;TEXT VAR t1,t2,t3,t4;SELECT aktionOF CASE 1:
+hjdatenersetzenoderanlegenCASE 2:hjdatenergaenzenoderanlegenCASE 3:
+hjdatensubstituierenEND SELECT .hjdatenersetzenoderanlegen:suchhjdaten(
+famname,rufname,gebdatum);IF dbstatus<>0THEN IF schuelerindbTHEN 
+erstellhjdatensatz;IF schuljahr=aktsjCAND halbjahr=akthjCAND dbstatus=0THEN 
+schreibtidinsudatenFI FI ELSE aenderehjdatensatzFI .aenderehjdatensatz:
+tragwahldatenein;putwert(fnrhjdfach,t1);putwert(fnrhjdkursart,t3);putwert(
+fnrhjdlerngrpkenn,t2);putwert(fnrhjdklausurteiln,t4);update(
+dnrhalbjahresdaten).erstellhjdatensatz:inittupel(dnrhalbjahresdaten);putwert(
+fnrhjdfamnames,famname);putwert(fnrhjdrufnames,rufname);putwert(fnrhjdgebdats
+,gebdatum);putwert(fnrhjdjgst,jgst);putwert(fnrhjdsj,schuljahr);putwert(
+fnrhjdhj,halbjahr);tragwahldatenein;IF schuljahr=aktsjCAND halbjahr=akthj
+THEN putwert(fnrhjdkennung,tutoreintrag)FI ;putwert(fnrhjdfach,t1);putwert(
+fnrhjdkursart,t3);putwert(fnrhjdlerngrpkenn,t2);putwert(fnrhjdklausurteiln,t4
+);insert(dnrhalbjahresdaten);IF dbstatus<>0THEN LEAVE hjdateneintragenELSE 
+hjdtid:=gettidFI .schuelerindb:parsenooffields(7);inittupel(dnrschueler);
+putwert(fnrsufamnames,famname);putwert(fnrsurufnames,rufname);putwert(
+fnrsugebdatums,gebdatum);search(dnrschueler,TRUE );IF schuljahr=aktsjCAND 
+halbjahr=akthjCAND dbstatus=0THEN tutoreintrag:=wert(fnrsusgrpzugtut)FI ;
+reinitparsing;dbstatus=0.tragwahldatenein:t1:="";t2:="";t3:="";t4:="";FOR iii
+FROM 1UPTO length(hjd1)DIV 15REP wahlteil:=subtext(hjd1,(iii-1)*15+1,iii*15);
+t1CAT subtext(wahlteil,4,5);t2CAT subtext(wahlteil,6,9);t3CAT subtext(
+wahlteil,2,3);t4CAT (wahlteilSUB 1)PER .schreibtidinsudaten:inittupel(
+dnrschueler);putwert(fnrsufamnames,famname);putwert(fnrsurufnames,rufname);
+putwert(fnrsugebdatums,gebdatum);search(dnrschueler,TRUE );IF dbstatus=0THEN 
+putwert(fnrsutidakthjd,hjdtid);selupdate(dnrschueler)FI .
+hjdatenergaenzenoderanlegen:suchhjdaten(famname,rufname,gebdatum);IF dbstatus
+<>0THEN IF schuelerindbTHEN generierhjdatensatz;IF schuljahr=aktsjCAND 
+halbjahr=akthjCAND dbstatus=0THEN schreibtidinsudatenFI FI ELSE 
+ergaenzehjdatensatzFI .ergaenzehjdatensatz:t1:=wert(fnrhjdfach);IF length(t1)
+=26THEN dbstatus(1);LEAVE hjdateneintragenELSE t3:=wert(fnrhjdkursart);t2:=
+wert(fnrhjdlerngrpkenn);t4:=wert(fnrhjdklausurteiln)FI ;t1CAT hjd1;t2CAT hjd2
+;t3CAT hjd3;t4CAT hjd4;putwert(fnrhjdfach,t1);putwert(fnrhjdkursart,t3);
+putwert(fnrhjdlerngrpkenn,t2);putwert(fnrhjdklausurteiln,t4);update(
+dnrhalbjahresdaten);IF dbstatus<>0THEN LEAVE hjdateneintragenFI .
+generierhjdatensatz:inittupel(dnrhalbjahresdaten);putwert(fnrhjdfamnames,
+famname);putwert(fnrhjdrufnames,rufname);putwert(fnrhjdgebdats,gebdatum);
+putwert(fnrhjdjgst,jgst);IF schuljahr=aktsjCAND halbjahr=akthjTHEN putwert(
+fnrhjdkennung,tutoreintrag)FI ;putwert(fnrhjdsj,schuljahr);putwert(fnrhjdhj,
+halbjahr);putwert(fnrhjdfach,hjd1);putwert(fnrhjdkursart,hjd3);putwert(
+fnrhjdlerngrpkenn,hjd2);putwert(fnrhjdklausurteiln,hjd4);insert(
+dnrhalbjahresdaten);IF dbstatus<>0THEN LEAVE hjdateneintragenFI ;hjdtid:=
+gettid.hjdatensubstituieren:suchhjdaten(famname,rufname,gebdatum);IF dbstatus
+<>0THEN dbstatus(1);LEAVE hjdateneintragenELSE substituierehjdatensatzFI .
+substituierehjdatensatz:t2:=wert(fnrhjdkursart);t3:=wert(fnrhjdlerngrpkenn);
+t4:=wert(fnrhjdklausurteiln);setzeuebergebenewerte;schreibgeaendertensatz.
+schreibgeaendertensatz:putwert(fnrhjdfach,t1);putwert(fnrhjdkursart,t2);
+putwert(fnrhjdlerngrpkenn,t3);putwert(fnrhjdklausurteiln,t4);update(
+dnrhalbjahresdaten).setzeuebergebenewerte:t1:=wert(fnrhjdfach);
+suchrichtigefachposition;IF eintragloeschenTHEN alteneintragloeschenELIF 
+faartschoneingetragenCOR fakeschoneingetragenTHEN eintragaktualisieren;IF iii
+<>iiiiTHEN alteneintragloeschenFI ELSE alteneintragueberschreibenFI .
+eintragaktualisieren:suchschonvorhandeneneintrag;IF faartschoneingetragen
+THEN t3:=text(t3,iiii*2-2)+hjd4+subtext(t3,iiii*2+3)ELSE t2:=text(t2,iiii-1)+
+hjd5+subtext(t2,iiii+2)FI ;t4:=text(t4,(iiii+1)DIV 2-1)+hjd6+subtext(t4,(iiii
++1)DIV 2+1).alteneintragloeschen:t1:=text(t1,iii-1)+subtext(t1,iii+2);t2:=
+text(t2,iii-1)+subtext(t2,iii+2);t3:=text(t3,iii*2-2)+subtext(t3,iii*2+3);t4
+:=text(t4,(iii+1)DIV 2-1)+subtext(t4,(iii+1)DIV 2+1).
+alteneintragueberschreiben:IF hjd1<>hjd3THEN t1:=text(t1,iii-1)+hjd3+subtext(
+t1,iii+2)FI ;IF hjd2<>hjd4THEN t3:=text(t3,iii*2-2)+hjd4+subtext(t3,iii*2+3)
+FI ;IF hjd5<>hjd7THEN t2:=text(t2,iii-1)+hjd5+subtext(t2,iii+2)FI ;t4:=text(
+t4,(iii+1)DIV 2-1)+hjd6+subtext(t4,(iii+1)DIV 2+1).suchrichtigefachposition:
+iii:=1;WHILE iii<>0REP iii:=pos(t1,hjd1,iii);IF iii=0THEN dbstatus(1);LEAVE 
+hjdateneintragenELSE pruefzugehoerigewerteFI ;iiiINCR 1PER ;dbstatus(1);
+LEAVE hjdateneintragen.pruefzugehoerigewerte:IF (iiiMOD 2)=1THEN IF compress(
+hjd2)<>""THEN pruefkennungELIF compress(hjd7)<>""THEN pruefartFI FI .
+pruefkennung:IF subtext(t3,iii*2-1,iii*2+2)=hjd2THEN LEAVE 
+suchrichtigefachpositionFI .pruefart:IF subtext(t2,iii,iii+1)=hjd7THEN LEAVE 
+suchrichtigefachpositionFI .suchschonvorhandeneneintrag:iiii:=1;WHILE iiii<>0
+REP iiii:=pos(t1,hjd3,iiii);IF iiii=0THEN dbstatus(1);LEAVE hjdateneintragen
+ELSE pruefweiterewerteFI ;iiiiINCR 1PER ;dbstatus(1);LEAVE hjdateneintragen.
+pruefweiterewerte:IF (iiiiMOD 2)=1THEN IF faartschoneingetragenTHEN IF 
+subtext(t2,iiii,iiii+1)=hjd5THEN LEAVE suchschonvorhandeneneintragFI ELIF 
+fakeschoneingetragenTHEN IF subtext(t3,iiii*2-1,iiii*2+2)=hjd4THEN LEAVE 
+suchschonvorhandeneneintragFI FI FI .END PROC hjdateneintragen;TEXT PROC 
+aktsj:IF aktschuljahr="0000"THEN aktschuljahr:=schulkenndatum("Schuljahr");
+FI ;aktschuljahrEND PROC aktsj;TEXT PROC akthj:IF akthalbjahr="0"THEN 
+akthalbjahr:=schulkenndatum("Schulhalbjahr");FI ;akthalbjahrEND PROC akthj;
+PROC suchhjdaten(TEXT CONST famname,rufname,gebdatum):inittupel(
+dnrhalbjahresdaten);putwert(fnrhjdfamnames,famname);putwert(fnrhjdrufnames,
+rufname);putwert(fnrhjdgebdats,gebdatum);putwert(fnrhjdsj,schuljahr);putwert(
+fnrhjdhj,halbjahr);search(dnrhalbjahresdaten,TRUE )END PROC suchhjdaten;INT 
+PROC ersterschueler:ersterEND PROC ersterschueler;INT PROC letzterschueler:
+letzterEND PROC letzterschueler;TEXT PROC wahldatenzumindex(INT CONST 
+zeilennr,TEXT CONST kennung):INT VAR trennerpos;dbstatus(1);IF 
+halbjahrnichtgesetztTHEN LEAVE wahldatenzumindexWITH ""ELIF zeilennr<erster
+COR zeilennr>letzterTHEN LEAVE wahldatenzumindexWITH ""FI ;toline(kuwa2,
+zeilennr);col(kuwa2,1);readrecord(kuwa2,eintrag);IF kennung=kznameCOR kennung
+=kzkurseCOR kennung=kzartTHEN dbstatus(0);trennerpos:=pos(eintrag,trenner);
+IF kennung=kznameTHEN subtext(eintrag,trennerpos+1,length(eintrag)-3)ELIF 
+kennung=kzkurseTHEN text(eintrag,trennerpos-1)ELSE eintragFI ELSE ""FI END 
+PROC wahldatenzumindex;TEXT PROC wahldatenzumschueler(TEXT CONST famname,
+rufname,gebdatum,kennung):TEXT VAR schueler:=trenner+famname+trenner+rufname+
+trenner+gebdatum;dbstatus(1);IF halbjahrnichtgesetztTHEN LEAVE 
+wahldatenzumschuelerWITH ""FI ;IF schuelereingetragen(schueler,kuwa2)THEN 
+readrecord(kuwa2,eintrag);IF kennung="F"COR kennung="A"COR kennung="FA"COR 
+kennung="FAk"COR kennung="FK"COR kennung="FKk"COR kennung="FKAk"COR kennung=
+"FP"THEN dbstatus(0);alledaten(eintrag,kennung)ELSE ""FI ELSE ""FI END PROC 
+wahldatenzumschueler;TEXT PROC weiterewahldatenzumschueler(TEXT CONST famname
+,rufname,gebdatum,kennung):TEXT VAR schueler:=trenner+famname+trenner+rufname
++trenner+gebdatum;dbstatus(1);IF halbjahrnichtgesetztTHEN LEAVE 
+weiterewahldatenzumschuelerWITH ""FI ;IF schuelereingetragen(schueler,kuwa3)
+THEN readrecord(kuwa3,eintrag);IF kennung="F"COR kennung="A"COR kennung="FA"
+COR kennung="FAk"COR kennung="FK"COR kennung="FKk"COR kennung="FKAk"THEN 
+dbstatus(0);alledaten(eintrag,kennung)ELSE ""FI ELSE ""FI END PROC 
+weiterewahldatenzumschueler;TEXT PROC kursdaten(TEXT CONST anwkurs,kennung):
+TEXT VAR ausgabe:="",kurs:=text(anwkurs,laengekurs);dbstatus(1);IF 
+halbjahrnichtgesetztTHEN LEAVE kursdatenWITH ""FI ;IF kurseingetragen(kurs)
+THEN readrecord(kuwa0,eintrag);IF kennung=kzartTHEN ausgabe:=subtext(eintrag,
+9);dbstatus(0)ELIF kennung=kzstdTHEN ausgabe:=subtext(eintrag,7,8);dbstatus(0
+)ELIF kennung=kzplanblTHEN ausgabe:=planbloecke(kurs);dbstatus(0)FI FI ;
+ausgabeEND PROC kursdaten;TEXT PROC allekurse:TEXT VAR ausgabe:="";IF 
+halbjahrnichtgesetztTHEN dbstatus(1);LEAVE allekurseWITH ""ELSE dbstatus(0)
+FI ;col(kuwa0,1);toline(kuwa0,1);WHILE NOT eof(kuwa0)REP readrecord(kuwa0,
+eintrag);IF eintrag<>""THEN ausgabeCAT eintragFI ;down(kuwa0)PER ;ausgabeEND 
+PROC allekurse;TEXT PROC alleplanblockbezeichner:TEXT VAR ausgabe:="";IF 
+halbjahrnichtgesetztTHEN dbstatus(1);LEAVE alleplanblockbezeichnerWITH ""
+ELSE dbstatus(0)FI ;col(kuwa1,1);toline(kuwa1,1);WHILE NOT eof(kuwa1)REP 
+readrecord(kuwa1,eintrag);IF eintrag<>""THEN ausgabeCAT text(eintrag,
+laengeblock)FI ;down(kuwa1)PER ;ausgabeEND PROC alleplanblockbezeichner;TEXT 
+PROC planblockdaten(TEXT CONST anwblockbez,kennung):TEXT VAR blockbez:=
+formbezeichner(anwblockbez);IF halbjahrnichtgesetztCOR NOT blockeingetragen(
+blockbez)THEN dbstatus(1);LEAVE planblockdatenWITH ""FI ;readrecord(kuwa1,
+eintrag);IF kennung=kzstdTHEN dbstatus(0);eintragSUB 4ELIF kennung=kzkurse
+THEN dbstatus(0);subtext(eintrag,5)ELSE ""FI END PROC planblockdaten;PROC 
+kurszumplanblockeintragen(TEXT CONST anwkurs,anwblockbez):TEXT VAR blockbez:=
+formbezeichner(anwblockbez);TEXT CONST kurs:=text(anwkurs,laengekurs);IF 
+halbjahrnichtgesetztCOR NOT blockeingetragen(blockbez)THEN dbstatus(1);LEAVE 
+kurszumplanblockeintragenFI ;readrecord(kuwa1,eintrag);IF length(eintrag)>
+laengeblockwstdTHEN IF wertnichteingetragen(subtext(eintrag,laengeblockwstd+1
+),kurs,1)THEN eintragCAT text(kurs,laengekurs);writerecord(kuwa1,eintrag)FI 
+ELSE eintragCAT text(kurs,laengekurs);writerecord(kuwa1,eintrag)FI ;dbstatus(
+0)END PROC kurszumplanblockeintragen;INT PROC anzahlschuelermitwahl(TEXT 
+CONST fach,kennung,art,klausur):IF halbjahrnichtgesetztTHEN dbstatus(1);
+LEAVE anzahlschuelermitwahlWITH 0FI ;fa1:=text(fach,laengefach);ke1:=text(
+kennung,laengekennung);ar:=text(art,laengeart);dbstatus(0);IF fach=""THEN 
+dbstatus(1);-1ELIF kennung=""CAND art=""CAND klausur=""THEN anzahlschueler(
+fa1,"",4)ELIF kennung=""CAND art=""THEN anzahlschueler(fa1,klausur,4)ELIF 
+kennung<>""CAND art=""CAND klausur=""THEN anzahlschueler(fa1+ke1,"",4)ELIF 
+kennung<>""CAND art=""THEN anzahlschueler(fa1+ke1,klausur,4)ELIF kennung=""
+CAND art<>""CAND klausur=""THEN anzahlschueler(ar+fa1,"",2)ELIF kennung=""
+CAND art<>""THEN anzahlschueler(klausur+ar+fa1,"",1)ELIF klausur=""THEN 
+anzahlschueler(ar+fa1+ke1,"",2)ELSE anzahlschueler(klausur+ar+fa1+ke1,"",1)
+FI END PROC anzahlschuelermitwahl;INT PROC anzahlschuelermitwahl(TEXT CONST 
+fach,kennung,art,klausur,fach2,kennung2,art2,klausur2):TEXT VAR p1,p3,p4,p6,
+ar1,ar2;INT VAR p2,p5;fa1:=text(fach,laengefach);fa2:=text(fach2,laengefach);
+ke1:=text(kennung,laengekennung);ke2:=text(kennung2,laengekennung);ar1:=text(
+art,laengeart);ar2:=text(art2,laengeart);IF halbjahrnichtgesetztCOR (fa1=fa2
+CAND kennung=kennung2CAND art=art2)THEN dbstatus(1);LEAVE 
+anzahlschuelermitwahlWITH 0FI ;pruefwahl.pruefwahl:dbstatus(0);IF fach=""
+THEN dbstatus(1);LEAVE anzahlschuelermitwahlWITH -1ELIF kennung=""CAND art=""
+CAND klausur=""THEN p1:=fa1;p2:=4;p3:=""ELIF kennung=""CAND art=""THEN p1:=
+fa1;p2:=4;p3:=klausurELIF kennung<>""CAND art=""CAND klausur=""THEN p1:=fa1+
+ke1;p2:=4;p3:=""ELIF kennung<>""CAND art=""THEN p1:=fa1+ke1;p2:=4;p3:=klausur
+ELIF kennung=""CAND art<>""CAND klausur=""THEN p1:=ar1+fa1;p2:=2;p3:="";ELIF 
+kennung=""CAND art<>""THEN p1:=klausur+ar1+fa1;p2:=1;p3:=""ELIF klausur=""
+THEN p1:=ar1+fa1+ke1;p2:=2;p3:=""ELSE p1:=klausur+ar1+fa1+ke1;p2:=1;p3:=""FI 
+;IF fach2=""THEN LEAVE anzahlschuelermitwahlWITH anzahlschueler(p1,p3,p2)
+ELIF kennung2=""CAND art2=""CAND klausur2=""THEN p4:=fa2;p5:=4;p6:=""ELIF 
+kennung2=""CAND art2=""THEN p4:=fa2;p5:=4;p6:=klausur2ELIF kennung2<>""CAND 
+art2=""CAND klausur2=""THEN p4:=fa2+ke2;p5:=4;p6:=""ELIF kennung2<>""CAND 
+art2=""THEN p4:=fa2+ke2;p5:=4;p6:=klausur2ELIF kennung2=""CAND art2<>""CAND 
+klausur2=""THEN p4:=ar2+fa2;p5:=2;p6:="";ELIF kennung2=""CAND art2<>""THEN p4
+:=klausur2+ar2+fa2;p5:=1;p6:=""ELIF klausur2=""THEN p4:=ar2+fa2+ke2;p5:=2;p6
+:=""ELSE p4:=klausur2+ar2+fa2+ke2;p5:=1;p6:=""FI ;anzahlschueler(p1,p3,p4,p6,
+p2,p5)END PROC anzahlschuelermitwahl;TEXT PROC schuelermitwahl(TEXT CONST 
+fach,kennung,art,klausur):IF halbjahrnichtgesetztTHEN dbstatus(1);LEAVE 
+schuelermitwahlWITH ""FI ;fa1:=text(fach,laengefach);ke1:=text(kennung,
+laengekennung);ar:=text(art,laengeart);pruefwahl.pruefwahl:dbstatus(0);IF 
+fach=""THEN dbstatus(1);""ELIF kennung=""CAND art=""CAND klausur=""THEN 
+schueler(fa1,"",4)ELIF kennung=""CAND art=""THEN schueler(fa1,klausur,4)ELIF 
+kennung<>""CAND art=""CAND klausur=""THEN schueler(fa1+ke1,"",4)ELIF kennung
+<>""CAND art=""THEN schueler(fa1+ke1,klausur,4)ELIF kennung=""CAND art<>""
+CAND klausur=""THEN schueler(ar+fa1,"",2)ELIF kennung=""CAND art<>""THEN 
+schueler(klausur+ar+fa1,"",1)ELIF klausur=""THEN schueler(ar+fa1+ke1,"",2)
+ELSE schueler(klausur+ar+fa1+ke1,"",1)FI END PROC schuelermitwahl;INT PROC 
+anzahlfreierschuelerimplanblock(TEXT CONST blocknr,teilkennung,fach,kennung,
+art,klausur):TEXT VAR block:=text(blocknr,2)+text(teilkennung,1);INT VAR j:=
+int(blocknr)*3-2,anzspezschueler:=letzterschueler-ersterschueler+1,
+anzbelschueler:=0;IF halbjahrnichtgesetztCOR j<1COR j>maxkuwa1zeilenTHEN 
+dbstatus(1);LEAVE anzahlfreierschuelerimplanblockWITH -1FI ;IF fach=""THEN 
+anzspezschueler:=letzterschueler-ersterschueler+1ELSE anzspezschueler:=
+anzahlschuelermitwahl(fach,kennung,art,klausur)FI ;fa1:=text(fach,laengefach)
+;ke1:=text(kennung,laengekennung);ar:=text(art,laengeart);pruefwahl.pruefwahl
+:dbstatus(0);IF fach=""THEN anzbelschueler:=anzahlschueler("","",block,1)
+ELIF kennung=""CAND art=""CAND klausur=""THEN anzbelschueler:=anzahlschueler(
+fa1,"",block,4)ELIF kennung=""CAND art=""THEN anzbelschueler:=anzahlschueler(
+fa1,klausur,block,4)ELIF kennung<>""CAND art=""CAND klausur=""THEN 
+anzbelschueler:=anzahlschueler(fa1+ke1,"",block,4)ELIF kennung<>""CAND art=""
+THEN anzbelschueler:=anzahlschueler(fa1+ke1,klausur,block,4)ELIF kennung=""
+CAND art<>""CAND klausur=""THEN anzbelschueler:=anzahlschueler(ar+fa1,"",
+block,2)ELIF kennung=""CAND art<>""THEN anzbelschueler:=anzahlschueler(
+klausur+ar+fa1,"",block,1)ELIF klausur=""THEN anzbelschueler:=anzahlschueler(
+ar+fa1+ke1,"",block,2)ELSE anzbelschueler:=anzahlschueler(klausur+ar+fa1+ke1,
+"",block,1)FI ;anzspezschueler-anzbelschuelerEND PROC 
+anzahlfreierschuelerimplanblock;BOOL PROC schuelerinplanblock(TEXT CONST 
+famname,rufname,gebdatum,blockbez):TEXT VAR schueler:=trenner+famname+trenner
++rufname+trenner+gebdatum,block:=text(blockbez,laengeblock),schuelerkurse:=""
+,aktkurs,plblkurse:=planblockdaten(block,kzkurse);INT VAR kurspos;IF 
+planblockeingetragenCAND schuelereingetragen(schueler,kuwa2)CAND NOT 
+halbjahrnichtgesetztTHEN dbstatus(0);schuelerkurse:=wahldatenzumschueler(
+famname,rufname,gebdatum,kzfake);IF plblkurse=""THEN FALSE ELSE 
+betrachtealleschuelerkurseFI ELSE dbstatus(1);TRUE FI .planblockeingetragen:
+dbstatus=0.betrachtealleschuelerkurse:kurspos:=1;WHILE kurspos<length(
+schuelerkurse)REP aktkurs:=subtext(schuelerkurse,kurspos,kurspos+laengekurs-1
+);IF kursnichteingetragen(plblkurse,aktkurs)THEN kursposINCR laengekursELSE 
+LEAVE schuelerinplanblockWITH TRUE FI PER ;FALSE .END PROC 
+schuelerinplanblock;BOOL PROC kursnichteingetragen(TEXT CONST quelle,
+teilmuster):INT VAR suchab:=1,aktpos;WHILE pos(quelle,teilmuster,suchab)<>0
+REP aktpos:=pos(quelle,teilmuster,suchab);IF aktposMOD laengekurs=1THEN 
+LEAVE kursnichteingetragenWITH FALSE ELSE suchab:=aktpos+1FI PER ;TRUE END 
+PROC kursnichteingetragen;TEXT PROC schuelerundklausur(TEXT CONST fach,
+kennung,art):IF halbjahrnichtgesetztTHEN dbstatus(1);LEAVE schuelerundklausur
+WITH ""FI ;fa1:=text(fach,laengefach);ke1:=text(kennung,laengekennung);ar:=
+text(art,laengeart);pruefwahl.pruefwahl:dbstatus(0);IF fach=""THEN dbstatus(1
+);""ELIF kennung=""CAND art=""THEN klausurschueler(fa1,4)ELIF kennung<>""
+CAND art=""THEN klausurschueler(fa1+ke1,4)ELIF kennung=""CAND art<>""THEN 
+klausurschueler(ar+fa1,2)ELSE klausurschueler(ar+fa1+ke1,2)FI END PROC 
+schuelerundklausur;TEXT PROC klausurschueler(TEXT CONST suchtext,INT CONST 
+findpos):INT VAR aktpos;TEXT VAR namen:="";col(kuwa2,1);toline(kuwa2,erster);
+WHILE lineno(kuwa2)<=letzterREP downety(kuwa2,suchtext);aktpos:=col(kuwa2);
+IF lineno(kuwa2)>letzterTHEN LEAVE klausurschuelerWITH namenELIF aktposMOD 
+laengekurseintrag=findposTHEN readrecord(kuwa2,eintrag);namenpos:=pos(eintrag
+,trenner);IF aktpos<namenposTHEN namenCAT trenner2+(eintragSUB (aktpos-
+findpos+1));namenCAT subtext(eintrag,namenpos,length(eintrag)-3)FI FI ;col(
+kuwa2,1);down(kuwa2)PER ;namen.END PROC klausurschueler;TEXT PROC schueler(
+TEXT CONST suchtext,klausur,INT CONST findpos):INT VAR aktpos;TEXT VAR namen
+:="";col(kuwa2,1);toline(kuwa2,erster);WHILE lineno(kuwa2)<=letzterREP 
+downety(kuwa2,suchtext);aktpos:=col(kuwa2);IF lineno(kuwa2)>letzterTHEN 
+LEAVE schuelerWITH namenELIF aktposMOD laengekurseintrag=findposTHEN 
+readrecord(kuwa2,eintrag);namenpos:=pos(eintrag,trenner);IF aktpos<namenpos
+THEN IF klausur=""THEN namenCAT trenner2;namenCAT subtext(eintrag,namenpos,
+length(eintrag)-3)ELSE ueberpruefklausurFI FI FI ;col(kuwa2,1);down(kuwa2)
+PER ;namen.ueberpruefklausur:IF (eintragSUB (aktpos-findpos+1))=klausurTHEN 
+namenCAT trenner2;namenCAT subtext(eintrag,pos(eintrag,trenner),length(
+eintrag)-3)FI .END PROC schueler;INT PROC anzahlschueler(TEXT CONST suchtext,
+klausur,INT CONST findpos):INT VAR anz:=0,aktpos;col(kuwa2,1);toline(kuwa2,
+erster);WHILE lineno(kuwa2)<=letzterREP downety(kuwa2,suchtext);aktpos:=col(
+kuwa2);IF lineno(kuwa2)>letzterTHEN LEAVE anzahlschuelerWITH anzELIF aktpos
+MOD laengekurseintrag=findposTHEN readrecord(kuwa2,eintrag);namenpos:=pos(
+eintrag,trenner);IF aktpos<namenposTHEN IF klausur=""THEN anzINCR 1ELSE 
+ueberpruefklausurFI FI FI ;down(kuwa2);col(kuwa2,1)PER ;anz.ueberpruefklausur
+:IF (eintragSUB (aktpos-findpos+1))=klausurTHEN anzINCR 1FI .END PROC 
+anzahlschueler;INT PROC anzahlschueler(TEXT CONST suchtext,klausur,anwblock,
+INT CONST findpos):INT VAR i,anz:=0,aktpos;TEXT VAR blocknr:=text(anwblock,2)
+,block:=text(blocknr,laengeblock);IF (anwblockSUB 3)="a"THEN blockCAT 
+anwblockELIF (anwblockSUB 3)="b"THEN blockCAT anwblockELSE block:=blocknrFI ;
+IF suchtext=""THEN zaehlalleschuelerELSE zaehlspezschuelerFI .
+zaehlspezschueler:col(kuwa2,1);toline(kuwa2,erster);WHILE lineno(kuwa2)<=
+letzterREP downety(kuwa2,suchtext);aktpos:=col(kuwa2);IF lineno(kuwa2)>
+letzterTHEN LEAVE anzahlschuelerWITH anzELIF aktposMOD laengekurseintrag=
+findposTHEN readrecord(kuwa2,eintrag);namenpos:=pos(eintrag,trenner);IF 
+aktpos<namenposTHEN eintrag:=text(eintrag,namenpos-1);IF klausur=""THEN 
+pruefblockELSE ueberpruefklausurFI FI FI ;down(kuwa2);col(kuwa2,1)PER ;anz.
+ueberpruefklausur:IF (eintragSUB (aktpos-findpos+1))=klausurTHEN pruefblock
+FI .pruefblock:IF NOT (nichteingetragen(eintrag,block,10))COR NOT (
+nichteingetragen(eintrag,block,13))THEN anzINCR 1FI .zaehlalleschueler:col(
+kuwa2,1);FOR iFROM ersterUPTO letzterREP toline(kuwa2,i);readrecord(kuwa2,
+eintrag);eintrag:=text(eintrag,pos(eintrag,trenner)-1);pruefblockPER ;anz.
+END PROC anzahlschueler;INT PROC anzahlschueler(TEXT CONST suchtext,klausur,
+suchtext2,klausur2,INT CONST findpos,findpos2):INT VAR anz:=0,aktpos,kurspos;
+col(kuwa2,1);toline(kuwa2,erster);WHILE lineno(kuwa2)<=letzterREP downety(
+kuwa2,suchtext);aktpos:=col(kuwa2);IF lineno(kuwa2)>letzterTHEN LEAVE 
+anzahlschuelerWITH anzELIF aktposMOD laengekurseintrag=findposTHEN readrecord
+(kuwa2,eintrag);namenpos:=pos(eintrag,trenner);IF aktpos<namenposTHEN IF 
+klausur=""THEN ueberpruefkurs2ELSE ueberpruefklausurFI FI FI ;down(kuwa2);col
+(kuwa2,1)PER ;anz.ueberpruefklausur:IF (eintragSUB (aktpos-findpos+1))=
+klausurTHEN ueberpruefkurs2FI .ueberpruefkurs2:IF NOT nichteingetragen(
+eintrag,suchtext2,findpos2,kurspos)THEN IF klausur2=""THEN anzINCR 1ELIF (
+eintragSUB kurspos)=klausurTHEN anzINCR 1FI ;FI .END PROC anzahlschueler;
+TEXT PROC alledaten(TEXT CONST eintrag,kennung):INT VAR aktpos:=pos(eintrag,
+trenner);TEXT VAR kurse:=text(eintrag,aktpos-1),kurs,ausgabe:="";ausgabe:="";
+IF length(kurse)MOD laengekurseintrag<>0THEN dbstatus(1)ELSE aktpos:=1;WHILE 
+aktpos<length(kurse)REP kurs:=subtext(kurse,aktpos,aktpos+laengekurseintrag-1
+);IF kennung="F"THEN ausgabeCAT subtext(kurs,4,5)ELIF kennung="A"THEN ausgabe
+CAT subtext(kurs,2,3)ELIF kennung="FA"THEN ausgabeCAT subtext(kurs,4,5);
+ausgabeCAT subtext(kurs,2,3)ELIF kennung="FAk"THEN ausgabeCAT subtext(kurs,4,
+5);ausgabeCAT subtext(kurs,2,3);ausgabeCAT (kursSUB 1)ELIF kennung="FK"THEN 
+ausgabeCAT subtext(kurs,4,9)ELIF kennung="FKk"THEN ausgabeCAT subtext(kurs,4,
+9);ausgabeCAT (kursSUB 1)ELIF kennung="FKAk"THEN ausgabeCAT subtext(kurs,4,9)
+;ausgabeCAT subtext(kurs,2,3);ausgabeCAT (kursSUB 1)ELIF kennung="FP"THEN 
+ausgabeCAT subtext(kurs,4,5);ausgabeCAT planbloecke(subtext(kurs,4,9))FI ;
+aktposINCR laengekurseintragPER ;FI ;ausgabeEND PROC alledaten;INT PROC 
+zeilennrzumschuelerbestand(BOOL CONST letzterls):col(kuwa2,1);toline(kuwa2,1)
+;downety(kuwa2,kzneue);IF letzterlsTHEN IF eof(kuwa2)THEN lines(kuwa2)ELSE 
+lineno(kuwa2)-1FI ELSE IF eof(kuwa2)THEN lines(kuwa2)+1ELSE lineno(kuwa2)FI 
+FI END PROC zeilennrzumschuelerbestand;BOOL PROC nichteingetragen(TEXT CONST 
+urquelle,muster,INT CONST ripos,INT VAR findpos):INT VAR suchab:=1,aktpos,
+trennerpos:=pos(urquelle,trenner);TEXT VAR quelle;IF trennerpos>0THEN quelle
+:=text(urquelle,trennerpos-1)ELSE quelle:=urquelleFI ;WHILE pos(quelle,muster
+,suchab)<>0REP aktpos:=pos(quelle,muster,suchab);IF aktposMOD 
+laengekurseintrag=riposTHEN findpos:=aktpos-ripos+1;LEAVE nichteingetragen
+WITH FALSE ELSE suchab:=aktpos+1FI PER ;findpos:=0;TRUE END PROC 
+nichteingetragen;BOOL PROC nichteingetragen(TEXT CONST urquelle,muster,INT 
+CONST ripos):INT VAR trennerpos:=pos(urquelle,trenner);TEXT VAR quelle,
+teilmuster;IF trennerpos>0THEN quelle:=text(urquelle,trennerpos-1)ELSE quelle
+:=urquelleFI ;IF length(muster)<4THEN wertnichteingetragen(quelle,muster,
+ripos)ELSE teilmuster:=text(muster,3);IF wertnichteingetragen(quelle,
+teilmuster,ripos)THEN teilmuster:=subtext(muster,4);wertnichteingetragen(
+quelle,teilmuster,ripos)ELSE FALSE FI FI END PROC nichteingetragen;BOOL PROC 
+wertnichteingetragen(TEXT CONST quelle,teilmuster,INT CONST ripos):INT VAR 
+suchab:=1,aktpos;WHILE pos(quelle,teilmuster,suchab)<>0REP aktpos:=pos(quelle
+,teilmuster,suchab);IF aktposMOD laengekurseintrag=riposTHEN LEAVE 
+wertnichteingetragenWITH FALSE ELSE suchab:=aktpos+1FI PER ;TRUE END PROC 
+wertnichteingetragen;TEXT PROC planbloecke(TEXT CONST kurs):TEXT VAR blockbez
+:="",zeile;INT VAR aktsp;col(kuwa1,1);toline(kuwa1,1);WHILE NOT eof(kuwa1)
+REP downety(kuwa1,kurs);IF NOT eof(kuwa1)THEN aktsp:=col(kuwa1);IF aktspMOD 
+laengekurs=5THEN readrecord(kuwa1,zeile);blockbezCAT text(zeile,laengeblock)
+FI ;col(kuwa1,aktsp+1)FI ;PER ;text(blockbez,6)END PROC planbloecke;PROC 
+aenderkursinkuwa1(TEXT CONST kurs,kursneu):INT VAR aktsp;col(kuwa1,1);toline(
+kuwa1,1);WHILE NOT eof(kuwa1)REP downety(kuwa1,kurs);IF NOT eof(kuwa1)THEN 
+aktsp:=col(kuwa1);IF aktspMOD laengekurs=5THEN readrecord(kuwa1,eintrag);
+writerecord(kuwa1,text(eintrag,aktsp-1)+kursneu+subtext(eintrag,aktsp+6))FI ;
+col(kuwa1,aktsp+1)FI ;PER END PROC aenderkursinkuwa1;BOOL PROC 
+schuelereingetragen(TEXT CONST schueler,FILE VAR file):col(file,1);toline(
+file,1);downety(file,schueler);IF NOT eof(file)THEN col(file,1);TRUE ELSE 
+FALSE FI END PROC schuelereingetragen;PROC planbloeckezukurseintragen(TEXT 
+CONST kurs,planbloecke):INT VAR aktpos;col(kuwa2,1);toline(kuwa2,1);WHILE 
+NOT eof(kuwa2)REP downety(kuwa2,kurs);IF NOT eof(kuwa2)THEN aktpos:=col(kuwa2
+);IF aktposMOD laengekurseintrag=4THEN korrigiereintragFI ;col(kuwa2,aktpos+
+11)FI PER .korrigiereintrag:readrecord(kuwa2,eintrag);writerecord(kuwa2,text(
+eintrag,aktpos+5)+planbloecke+subtext(eintrag,aktpos+12)).END PROC 
+planbloeckezukurseintragen;BOOL PROC kurseingetragen(TEXT CONST anwkurs):
+TEXT VAR kurs:=text(anwkurs,laengekurs);indateieingetragen(kuwa0,kurs)END 
+PROC kurseingetragen;BOOL PROC blockeingetragen(TEXT CONST planblock):
+indateieingetragen(kuwa1,planblock)END PROC blockeingetragen;BOOL PROC 
+indateieingetragen(FILE VAR dat,TEXT CONST suchtext):IF compress(suchtext)=""
+THEN LEAVE indateieingetragenWITH FALSE FI ;toline(dat,1);col(dat,1);downety(
+dat,suchtext);WHILE NOT eof(dat)REP IF col(dat)=1THEN LEAVE 
+indateieingetragenWITH TRUE ELSE col(dat,col(dat)+1)FI ;downety(dat,suchtext)
+PER ;FALSE END PROC indateieingetragen;TEXT PROC konvsjteil(TEXT CONST jahr,
+INT CONST jgstdiff):INT VAR kjahr:=int(jahr)+jgstdiff;IF kjahr>99THEN subtext
+(text(kjahr),2)ELSE text(kjahr)FI END PROC konvsjteil;PROC kursdatenholen:
+kuwa0:=sequentialfile(output,datei);inittupel(dnrlehrveranstaltungen);putwert
+(fnrlvsj,schuljahr);putwert(fnrlvhj,halbjahr);putwert(fnrlvjgst,jgst);
+statleseschleife(dnrlehrveranstaltungen,schuljahr,halbjahr,fnrlvsj,fnrlvhj,
+PROC kursdatenaktodergepl);modify(kuwa0).END PROC kursdatenholen;PROC 
+kursdatenaktodergepl(BOOL VAR b):IF wert(fnrlvsj)<>schuljahrCOR wert(fnrlvhj)
+<>halbjahrCOR wert(fnrlvjgst)<>jgstCOR dbstatus<>0THEN b:=TRUE ELSE putline(
+kuwa0,text(wert(fnrlvfachkennung),laengekurs)+text(wert(fnrlvwochenstd),
+laengewstd)+text(wert(fnrlvart),laengeart))FI .END PROC kursdatenaktodergepl;
+PROC kurswahleinerjgstaufbereiten(TEXT CONST jgst,halbjahr,schuljahr,FILE 
+VAR kuwadatei):datei:=kurswahl2+jgst+" "+halbjahr+"."+schuljahr;forget(datei,
+quiet);IF kuwa2eintragTHEN kuwa2:=sequentialfile(output,datei)ELSE kuwa3:=
+sequentialfile(output,datei)FI ;eintrag:=trenner;holhalbjahresdaten;
+holalleschueler;forget(namezwischendatei,quiet);IF kuwa2eintragTHEN modify(
+kuwa2)ELSE modify(kuwa3)FI .holhalbjahresdaten:inittupel(dnrhalbjahresdaten);
+changeindex;putwert(fnrhjdsj,schuljahr);putwert(fnrhjdhj,halbjahr);putwert(
+fnrhjdjgst,jgst);forget(namezwischendatei,quiet);kuwahilf:=sequentialfile(
+output,namezwischendatei);statleseschleife(ixhjdsjhjjgstkenn,schuljahr,
+halbjahr,fnrhjdsj,fnrhjdhj,PROC zwischenspeichern);.holalleschueler:modify(
+kuwahilf);IF bearbschueler<>2THEN erster:=1FI ;inittupel(dnrschueler);
+parsenooffields(5);changeindex;status:=stat1;statleseschleife(ixsustatjgst,
+status,text(aktjg),fnrsustatuss,fnrsusgrpjgst,PROC schuelerholen);IF aktjg=10
+THEN status:=stat2ELSE status:=stat3FI ;IF kuwa2eintragTHEN IF bearbschueler=
+1THEN letzter:=lines(kuwa2)ELIF bearbschueler=2THEN erster:=lines(kuwa2)+1FI 
+FI ;IF aktjg<>13THEN inittupel(dnrschueler);putintwert(fnrsujgsteintr,aktjg+1
+);statleseschleife(ixsustatjgst,status,"",fnrsustatuss,fnrsusgrpjgst,PROC 
+neueschuelerholen);FI ;IF kuwa2eintragTHEN IF bearbschueler<>1THEN letzter:=
+lines(kuwa2)FI ;IF erster=letzterTHEN letzterDECR 1FI FI ;reinitparsing.END 
+PROC kurswahleinerjgstaufbereiten;PROC zwischenspeichern(BOOL VAR b):IF wert(
+fnrhjdsj)<>schuljahrCOR wert(fnrhjdhj)<>halbjahrCOR wert(fnrhjdjgst)<>jgst
+COR dbstatus<>0THEN b:=TRUE ELSE tragwerteeinFI .tragwerteein:bereitedatenauf
+(wert(fnrhjdfach),wert(fnrhjdkursart),wert(fnrhjdlerngrpkenn),wert(
+fnrhjdklausurteiln));putline(kuwahilf,eintrag).END PROC zwischenspeichern;
+PROC bereitedatenauf(TEXT CONST faecher,arten,kennungen,klausuren):INT VAR i,
+j,l;TEXT VAR t,fach;l:=length(faecher)DIV laengefach;eintrag:="";FOR iFROM 1
+UPTO lREP holklausur;holart;holfach;holkennungPER ;eintragCAT trenner;eintrag
+CAT wert(fnrhjdfamnames);eintragCAT trenner;eintragCAT wert(fnrhjdrufnames);
+eintragCAT trenner;eintragCAT wert(fnrhjdgebdats).holklausur:t:=subtext(
+klausuren,i,i);IF t<>""THEN eintragCAT tELSE eintragCAT " "FI .holart:j:=i*
+laengeart-1;t:=subtext(arten,j,j+1);IF t<>""THEN eintragCAT tELSE eintragCAT 
+leereartFI .holfach:t:=subtext(faecher,j,j+1);IF t<>""THEN eintragCAT t;fach
+:=tELSE eintragCAT "  "FI .holkennung:j:=i*laengekennung-3;t:=subtext(
+kennungen,j,j+3);IF t<>""THEN eintragCAT t;IF plblvorhandenTHEN 
+holplanbloeckeELSE eintragCAT leereplanbloeckeFI ELSE eintragCAT leerekennung
++leereplanbloeckeFI .holplanbloecke:eintragCAT planbloecke(fach+t).END PROC 
+bereitedatenauf;PROC schuelerholen(BOOL VAR b):IF wert(fnrsustatuss)<>status
+COR intwert(fnrsusgrpjgst)<>aktjgCOR dbstatus<>0THEN dbstatus(1);b:=TRUE 
+ELSE schuelerdatenerstellen(kzschueler)FI .END PROC schuelerholen;PROC 
+neueschuelerholen(BOOL VAR b):IF wert(fnrsustatuss)<>statusCOR dbstatus<>0
+THEN dbstatus(1);b:=TRUE ELIF intwert(fnrsujgsteintr)=aktjg+1THEN 
+schuelerdatenerstellen(kzneue)FI .END PROC neueschuelerholen;PROC 
+schuelerdatenerstellen(TEXT CONST schuelerkennung):TEXT VAR famname,rufname,
+gebdatum,eintragkuwahilf;famname:=wert(fnrsufamnames);rufname:=wert(
+fnrsurufnames);gebdatum:=wert(fnrsugebdatums);eintragkuwahilf:=trenner+
+famname+trenner+rufname+trenner+gebdatum;IF keinehjdatenTHEN 
+schreibleereintragELSE suchinkuwahilfFI .keinehjdaten:eintrag=trenner.
+suchinkuwahilf:col(kuwahilf,1);toline(kuwahilf,1);downety(kuwahilf,
+eintragkuwahilf);IF eof(kuwahilf)THEN schreibleereintragELSE col(kuwahilf,1);
+readrecord(kuwahilf,eintragkuwahilf);eintragkuwahilfCAT schuelerkennung;IF 
+kuwa2eintragTHEN putline(kuwa2,eintragkuwahilf)ELSE putline(kuwa3,
+eintragkuwahilf)FI ;FI .schreibleereintrag:eintragkuwahilfCAT schuelerkennung
+;IF kuwa2eintragTHEN putline(kuwa2,eintragkuwahilf)ELSE putline(kuwa3,
+eintragkuwahilf)FI .END PROC schuelerdatenerstellen;BOOL PROC 
+halbjahrnichtgesetzt:schuljahr="0000"END PROC halbjahrnichtgesetzt;TEXT PROC 
+gesperrterdatenraumname(TEXT CONST namepraefix):praefixsperre+datenraumname(
+namepraefix)END PROC gesperrterdatenraumname;TEXT PROC datenraumname(TEXT 
+CONST namepraefix):TEXT VAR name:=namepraefix;nameCAT jgst;nameCAT " ";name
+CAT halbjahr;nameCAT ".";nameCAT schuljahr;nameEND PROC datenraumname;TEXT 
+PROC formbezeichner(TEXT CONST bezeichner):TEXT VAR bez:="",erg:="";INT VAR 
+ibez:=int(bezeichner);IF bezeichner=""THEN LEAVE formbezeichnerWITH 
+bezeichnerFI ;IF NOT (lastconversionok)THEN erg:=bezeichnerSUB 3;IF NOT (erg=
+kennungtplbl1COR erg=kennungtplbl2)THEN LEAVE formbezeichnerWITH ""FI ELSE 
+erg:=" "FI ;IF ibez<10THEN bezCAT "0";bezCAT text(ibez)ELSE bezCAT text(ibez)
+FI ;bezCAT erg;bezEND PROC formbezeichner;END PACKET 
+kurswahlschnittstelle240791;
+

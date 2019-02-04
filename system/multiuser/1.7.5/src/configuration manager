@@ -1,0 +1,553 @@
+(* ------------------- VERSION 11     02.06.86 ------------------- *)
+PACKET configuration manager DEFINES
+ 
+       configurate ,
+       exec configuration ,
+       setup ,
+       define collector ,
+       configuration manager :
+
+ 
+LET baudrates      = ""1"50"2"75"3"110"4"134.5"5"150"6"300"7"600
+"8"1200"9"1800"10"2400"11"3600"12"4800"13"7200
+"14"9600"15"19200"16"38400"17"",
+    parities       = ""0"no"1"odd"2"even"3"" ,
+    bits per char  = ""0"1"1"2"2"3"3"4"4"5"5"6"6"7"7"8"8"" ,
+    stopbits       = ""0"1"1"1.5"2"2"3"" ,
+    flow modes     = ""0"ohne Protokoll"1"XON/XOFF"2"RTS/CTS
+"3""4""5"XON/XOFF - ausgabeseitig"6"RTS/CTS - ausgabeseitig"7""8"
+"9"XON/XOFF - eingabeseitig"10"RTS/CTS - eingabeseitig"11"" ,
+
+    ok             = "j" ,
+    esc            = ""27"" ,
+    cr             = ""13"" ,
+    right          = ""2"" ,
+
+    psi            = "psi" ,
+    transparent    = "transparent" ,
+
+    std rate          = 14 ,
+    std bits          = 22 ,
+    std flow          = 0 ,
+    std inbuffer size = 16 ,
+
+    device table      = 32000 ,
+
+    max edit terminal      = 15 ,
+    configuration channel  = 32 ,
+
+    fetch code             = 11 ,
+    save  code             = 12 ,
+    erase code             = 14 ,
+    system start interrupt = 100 ,
+
+    CONF = STRUCT (TEXT dev type,
+                   INT baud, bits par stop, flow control, inbuffer size) ;
+ 
+ 
+BOUND STRUCT (TEXT name, write pass, read pass) VAR msg ;
+
+BOUND ROW max edit terminal CONF VAR conf ;
+
+INT VAR channel no ;
+
+TEXT VAR prelude , last feature , answer , collector := "" ;
+
+
+ 
+BOOL PROC shard permits (INT CONST code, key) :
+
+  INT VAR reply ; 
+  IF key > -128
+    THEN control (code, channel no, key, reply)
+    ELSE control (code, channel no, -maxint-1, reply)
+  FI ;
+  reply = 0 . 
+
+ENDPROC shard permits ;
+
+PROC ask user (TEXT CONST feature, question) :
+
+  last feature := feature ;
+  put question ;
+  skip pretyped chars ;
+  get valid answer .
+
+put question :
+  clear line ;
+  out (prelude) ;
+  out (feature) ;
+  out (question) ;
+  out (" (j/n) ") .
+
+clear line :
+  out (cr) ;
+  79 TIMESOUT " " ;
+  out (cr) .
+
+skip pretyped chars :
+  REP UNTIL incharety = "" PER .
+
+get valid answer :
+  REP
+    inchar (answer)
+  UNTIL pos ("jJyYnN"27"", answer) > 0 PER ;
+  IF answer > ""31""
+    THEN out (answer)
+  FI ;
+  out (cr) ;
+  normalize answer .
+
+normalize answer :
+  IF pos ("jJyY", answer) > 0
+    THEN answer := ok
+  FI .
+
+ENDPROC ask user ;
+
+BOOL PROC yes (TEXT CONST question) :
+
+  ask user ("", question) ;
+  answer = ok
+
+ENDPROC yes ;
+
+PROC chose key (INT VAR old key, INT CONST max key, TEXT CONST key string,
+                key entity, BOOL PROC (INT CONST) shard permits):
+
+  IF shard permits at least one standard key
+    THEN try all keys
+  FI .
+
+shard permits at least one standard key :
+  INT VAR key ;
+  FOR key FROM 0 UPTO max key REP
+    IF shard permits (key)
+      THEN LEAVE shard permits at least one standard key WITH TRUE
+    FI
+  PER ;
+  FALSE .
+
+try all keys :
+  key := old key ;
+  REP
+    examine this key ;
+    next key
+  PER .
+
+examine this key :
+  IF shard permits (key) CAND key value <> ""
+    THEN ask user (key value, key entity) ;
+         IF answer = ok
+           THEN chose this key
+         ELIF answer = esc
+           THEN key := -129
+         FI
+  FI .
+
+key value : 
+  IF key >= 0
+    THEN subtext (key string, key pos + 1, next key pos - 1)
+    ELSE text (key)
+  FI .
+
+key pos       : pos (key string, code (key)) .
+next key pos  : pos (key string, code (key+1)) .
+
+chose this key :
+  remember calibration ;
+  old key := key ;
+  LEAVE chose key .
+
+next key :
+  IF key < max key
+    THEN key INCR 1
+    ELSE key := 0
+  FI .
+
+remember calibration :
+  prelude CAT last feature ;
+  prelude CAT ", " .
+
+ENDPROC chose key ;
+
+BOOL PROC rate ok (INT CONST key) :
+
+  shard permits (8, key)
+
+ENDPROC rate ok ;
+
+BOOL PROC bits ok (INT CONST key) :
+
+  IF key < 0
+    THEN shard permits (9, key)
+    ELSE some standard combination ok
+  FI .
+
+some standard combination ok :
+  INT VAR combined := key ;
+  REP
+    IF shard permits (9, combined)
+      THEN LEAVE bits ok WITH TRUE
+    FI ;
+    combined INCR 8
+  UNTIL combined > 127 PER ;
+  FALSE
+
+ENDPROC bits ok ;
+
+BOOL PROC parity ok (INT CONST key) :
+
+  INT VAR combined := 8 * key + data bits ;
+  key >= 0 AND (shard permits (9, combined)      OR
+                shard permits (9, combined + 32) OR
+                shard permits (9, combined + 64)    )
+
+ENDPROC parity ok ;
+
+BOOL PROC stopbits ok (INT CONST key) :
+
+  key >= 0 AND shard permits (9, 32 * key + 8 * parity + data bits)
+
+ENDPROC stopbits ok ;
+
+BOOL PROC flow mode ok (INT CONST key) :
+
+  shard permits (6, key)
+
+ENDPROC flow mode ok ;
+
+
+
+INT VAR data bits ,
+        parity ,
+        stop ;
+
+INT VAR old session := 0 ;
+
+
+TEXT VAR table name, dummy ;
+
+
+PROC configurate :
+
+  new configuration ;
+  access configuration table ;
+  show all device types ;
+  channel no := 1 ;
+  REP
+    IF channel hardware exists
+      THEN try this channel ;
+           setup this channel
+    FI ;
+    channel no INCR 1
+  UNTIL channel no > 15 PER ;
+  prelude := "" ;
+  IF yes ("Koennen unbenutzte Geraetetypen geloescht werden")
+    THEN forget unused device tables
+  FI .
+
+access configuration table :
+  IF exists ("configuration")
+    THEN conf := old ("configuration")
+    ELSE conf := new ("configuration") ;
+         initialize configuration
+  FI .
+
+initialize configuration :
+  FOR channel no FROM 1 UPTO max edit terminal REP
+    conf (channel no) :=
+    CONF:(transparent, std rate, std bits, std flow, std inbuffer size)
+  PER ;
+  conf (1).dev type := psi .
+
+show all device types :
+  show prelude ;
+  begin list ;
+  get list entry (table name, dummy) ;
+  WHILE table name <> "" REP
+    IF dataspace is device table
+      THEN show table name
+    FI ;
+    get list entry (table name, dummy)
+  PER ;
+  line (2) .
+
+show prelude :
+  line (30) ;
+  outtext (psi, 1, 20) ;
+  outtext (transparent, 1, 20) .
+
+dataspace is device table :
+  type (old (table name)) = device table .
+
+show table name :
+  outtext (table name, 1, 20) .
+ 
+try this channel :
+  prelude := "Kanal " ;
+  ask user ("", text (channel no)) ;
+  IF answer = ok
+    THEN prelude CAT text (channel no) + ": " ;
+         get configuration from user (conf (channel no)) ;
+         line
+  FI .
+
+channel hardware exists :
+  INT VAR
+  operators channel := channel ;
+  INT VAR channel type ;
+  disable stop ;
+  continue (channel no) ;
+  IF is error
+    THEN IF error message = "kein Kanal"
+           THEN channel type := 0
+           ELSE channel type := inout mask
+         FI
+    ELSE get channel type from shard
+  FI ;
+  clear error ;
+  disable stop ;
+  continue operators channel ; 
+  (channel type AND inout mask) <> 0 .
+
+get channel type from shard :
+  control (1, 0, 0, channel type) .
+
+inout mask : 3 .
+
+forget unused device tables :
+  begin list ;
+  get list entry (table name, dummy) ;
+  WHILE table name <> "" REP
+    IF type (old (table name)) = device table
+      THEN forget if unused
+    FI ;
+    get list entry (table name, dummy)
+  PER .
+
+forget if unused :
+  FOR channel no FROM 1 UPTO max edit terminal REP
+    IF conf (channel no).dev type = table name
+      THEN LEAVE forget if unused
+    FI
+  PER ;
+  forget (table name, quiet) .
+
+setup this channel :
+  operators channel := channel ;
+  disable stop ;
+  continue (configuration channel) ;
+  set up channel (channel no, conf (channel no)) ;
+  continue operators channel . 
+
+continue operators channel :
+  continue (operators channel) ;
+  IF is error
+    THEN clear error ;
+         break (quiet) ;
+         LEAVE configurate
+  FI ;
+  enable stop .
+
+ENDPROC configurate ;
+
+PROC get configuration from user (CONF VAR conf) :
+
+  get device type ;
+  get baud rate ;
+  get bits and parity and stopbits ;
+  get protocol ;
+  get buffer size .
+
+
+get device type :
+  begin list ;
+  table name := conf.dev type ;
+  IF NOT is valid device type
+    THEN next device type
+  FI ;
+  REP
+    IF NOT (table name = transparent AND channel no = 1)
+      THEN ask user ("", table name) ;
+           IF answer = ok COR was esc followed by type table name
+             THEN IF is valid device type 
+                    THEN remember device type ;
+                         LEAVE get device type
+                    ELSE out (""7" unbekannter Typ"); pause (20) 
+                  FI
+           FI
+    FI ;
+    next device type
+  PER .
+
+was esc followed by type table name :
+  IF answer = esc
+    THEN 9 TIMESOUT right ;
+         put ("Typ:") ;
+         editget (table name) ;
+         TRUE
+    ELSE FALSE
+  FI .
+
+is valid device type :
+  table name = psi OR table name = transparent OR
+  (exists (table name) CAND type (old (table name)) = device table) .
+
+remember device type :
+  prelude CAT table name ;
+  conf.dev type := table name ;
+  prelude CAT ", " .
+
+next device type :
+  IF table name = psi
+    THEN table name := transparent
+    ELSE IF table name = transparent
+           THEN begin list
+         FI ;
+         search next device type space
+  FI .
+
+search next device type space :
+  REP
+    get list entry (table name, dummy)
+  UNTIL table name = "" COR type (old (table name)) = device table PER;
+  IF table name = ""
+    THEN table name := psi
+  FI .
+
+get baud rate :
+  chose key (conf.baud, 16, baudrates, " Baud", PROC rate ok) .
+
+get bits and parity and stopbits :
+  data bits := conf.bits par stop MOD 8 ;
+  parity := (conf.bits par stop DIV 8) MOD 4 ;
+  stop := (conf.bits par stop DIV 32) MOD 4 ;
+  chose key (data bits, 7, bits per char, " Bits", PROC bits ok) ;
+  IF data bits >= 0
+    THEN chose key (parity, 2, parities, " parity", PROC parity ok) ;
+         chose key (stop, 2, stopbits, " Stopbits", PROC stopbits ok);
+         conf.bits par stop := data bits + 8 * parity + 32 * stop
+    ELSE conf.bits par stop := data bits
+  FI .
+
+get protocol :
+  chose key (conf.flow control, 10, flow modes,
+             "", PROC flow mode ok) .
+
+get buffer size :
+  IF dev type is transparent
+    THEN chose buffer size
+    ELSE conf.inbuffer size := std inbuffer size
+  FI .
+
+dev type is transparent :
+  conf.dev type = "transparent" .
+
+chose buffer size :
+  REP
+    IF conf.inbuffer size = 16 CAND yes ("normaler Puffer")
+      THEN LEAVE chose buffer size
+    FI ;
+    conf.inbuffer size := 512 ;
+    IF yes ("grosser Puffer")
+      THEN LEAVE chose buffer size
+    FI ;
+    conf.inbuffer size := 16
+  PER .
+
+ENDPROC get configuration from user ;
+
+PROC exec configuration :
+
+  setup
+
+ENDPROC exec configuration ;
+
+PROC setup :
+
+  conf := old ("configuration") ;
+  continue (configuration channel) ;
+  FOR channel no FROM 1 UPTO max edit terminal REP
+    set up channel (channel no, conf (channel no))
+  PER ;
+  set up collector task ;
+  break but do not forget error message if any .
+
+set up collector task :
+  IF collector <> "" CAND collector <> "-" CAND exists task (collector)
+    THEN define collector (task (collector))
+  FI .
+
+break but do not forget error message if any :
+  IF is error
+    THEN dummy := error message ;
+         clear error ;
+         break (quiet) ;
+         errorstop (dummy)
+    ELSE break (quiet)
+  FI .
+
+ENDPROC set up ;
+
+PROC set up channel (INT CONST channel no, CONF CONST conf) :
+
+  link (channel no, conf.dev type) ;
+  baudrate (channel no, conf.baud) ;
+  bits (channel no, conf.bits par stop) ;
+  flow (channel no, conf.flow control) ;
+  input buffer size (channel no, conf.inbuffer size) .
+
+ENDPROC setup channel ;
+
+PROC configuration manager (DATASPACE VAR ds, INT CONST order, phase,
+                            TASK CONST order task) :
+
+  enable stop ;
+  IF order <> system start interrupt
+    THEN font manager
+  FI ;
+  IF session <> old session
+    THEN disable stop ;
+         set up ;
+         clear error ;
+         old session := session ;
+         set autonom
+  FI .
+
+  font manager :
+    IF (order <> save code AND order <> erase code ) OR order task < supervisor
+       THEN delete password if there is one;
+            free manager (ds, order, phase, order task)
+       ELSE errorstop ("kein Zugriffsrecht auf Task """ + name (myself) + """")
+    FI .
+ 
+  delete password if there is one :
+    IF order >= fetch code AND order <= erase code AND phase = 1
+       THEN msg := ds;
+            msg. write pass := "";
+            msg. read  pass := "";
+    FI .
+ 
+ENDPROC configuration manager ;
+
+PROC configuration manager :
+
+  configurate ;
+  break ;
+  global manager
+  (PROC (DATASPACE VAR,INT CONST,INT CONST,TASK CONST) configuration manager)
+
+ENDPROC configuration manager ;
+
+PROC define collector (TEXT CONST task table name) :
+
+  collector := task table name ;
+  IF exists task (collector)
+    THEN define collector (task (collector))
+  FI
+
+ENDPROC define collector ;
+
+ENDPACKET configuration manager ;
+

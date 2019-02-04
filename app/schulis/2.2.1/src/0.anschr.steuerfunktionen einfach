@@ -1,0 +1,96 @@
+PACKET anschrsteuerfunktionenfuereinfacheanschreibenDEFINES anschreibenstart,
+naechstesanschreiben:LET anschreibentext="Text des Anschreibens";LET manager=
+"anschreiben server";LET niltext="",nildatum="01.01.00";LET nproc=1,
+eingangsbildschirm=2;LET vorwaertstaste="a";LET tupelstackgroesse=10;LET 
+ROWTEXT =ROW 10TEXT ;LET druckmeldnr=125,existiertnichtnr=126,leermeldnr=127,
+endemeldnr=128,weitereangabenr=129,nichterstellbarmeldnr=130;TEXT VAR 
+druckmeld:="";LET meldkz="#";INT VAR dateinummer,aktuellerindex,anzgeftupel;
+TEXT VAR anschreibenvordruck;BOOL VAR einzelbearbeitung;PROC anschreibenstart
+(INT CONST aktuellerinx,TEXT CONST vordruck,BOOL CONST anschreibenzeigen,
+peinzelbearbeitung,BOOL PROC sonderwerteundueberpruefungauferstellbarkeit,
+BOOL PROC pruefespeziell):ROWTEXT VAR schluesselsve1,schluesselsve2;INT VAR i
+;vorbereitungen;IF einzelbearbeitungTHEN einzelanschreibenELSE 
+anschreibenfuerbestandFI .anschreibenfuerbestand:IF leererbestandTHEN 
+meldeleerenbestand;zurueckzumeingangsbildschirmELSE 
+bearbeiteallediesesbestandesFI .bearbeiteallediesesbestandes:IF 
+anschreibenzeigenTHEN erstenbearbeitenELSE anschreibenleseschleife(BOOL PROC 
+sonderwerteundueberpruefungauferstellbarkeit,BOOL PROC pruefespeziell);
+meldeendederbrieferstellung;zurueckzumeingangsbildschirmFI .erstenbearbeiten:
+BOOL VAR erstellbar:=TRUE ;BOOL VAR bestandleer:=FALSE ;erstellbar:=
+sonderwerteundueberpruefungauferstellbarkeit;IF erstellbarTHEN 
+bearbeitenzumzeigenELSE REP IF anzgeftupel=0THEN anzgeftupel:=
+tupelstackgroesse;multisucc(aktuellerindex,anzgeftupel)FI ;IF anzgeftupel<>0
+THEN multisucc;anzgeftupelDECR 1;bestandleer:=NOT pruefespeziellELSE 
+bestandleer:=TRUE FI UNTIL bestandleerCOR 
+sonderwerteundueberpruefungauferstellbarkeitPER ;IF NOT bestandleerTHEN 
+bearbeitenzumzeigenELSE zurueckzumeingangsbildschirm;
+meldeendederbrieferstellungFI FI .bearbeitenzumzeigen:IF einzelbearbeitung
+CAND NOT sonderwerteundueberpruefungauferstellbarkeitTHEN 
+meldenichterstellbar;zurueckzumeingangsbildschirmELSE 
+schreibesteuerzeichenzeile(anschreibentext);briefalternative(
+anschreibenvordruck,anschreibentext);editierebriefFI .einzelanschreiben:
+direktlesen;IF gefundenTHEN IF eindeutigTHEN datenlesen;IF anschreibenzeigen
+THEN bearbeitenzumzeigenELSE einzelbriefschreiben;
+zurueckzumeingangsbildschirmFI ELSE meldeanforderunggenauererangaben;
+zurueckzumeingangsbildschirmFI ELSE meldenichtgefunden;
+zurueckzumeingangsbildschirmFI .vorbereitungen:dateinummer:=dateinr(primdatid
+(aktuellerinx));aktuellerindex:=aktuellerinx;einzelbearbeitung:=
+peinzelbearbeitung;meldungstext(druckmeldnr,druckmeld);
+setzesonderwerteschulkenndaten;setzewerte;holeanschreibenvordruck.setzewerte:
+anschreibenvordruck:=vordruck.holeanschreibenvordruck:loeschealtenvordruck;
+fetch(anschreibenvordruck,/manager).loeschealtenvordruck:forget(vordruck,
+quiet).direktlesen:gesetztenschluesselsichern(schluesselsve1);anzgeftupel:=2;
+multisearchforward(aktuellerindex,anzgeftupel).gefunden:IF anzgeftupel=0THEN 
+FALSE ELSE multisucc;pruefespeziellCAND schluesselgleichFI .schluesselgleich:
+NOT schluesselungleich(schluesselsve1,schluesselsve1).eindeutig:anzgeftupel=1
+COR naechsterungleich.naechsterungleich:gesetztenschluesselsichern(
+schluesselsve2);multisucc;IF NOT pruefespeziellTHEN TRUE ELSE 
+schluesselungleich(schluesselsve1,schluesselsve2)FI .datenlesen:stackentry(1)
+.einzelbriefschreiben:IF NOT sonderwerteundueberpruefungauferstellbarkeit
+THEN meldenichterstellbarELSE briefschreibenFI .meldenichtgefunden:
+standardmeldung(existiertnichtnr,niltext).meldeanforderunggenauererangaben:
+standardmeldung(weitereangabenr,niltext).meldenichterstellbar:standardmeldung
+(nichterstellbarmeldnr,sonderwert(indexadressat)+meldkz).
+meldeendederbrieferstellung:standardmeldung(endemeldnr,niltext).
+zurueckzumeingangsbildschirm:return(nproc).leererbestand:anzgeftupel:=
+tupelstackgroesse;multisearchforward(aktuellerindex,anzgeftupel);IF 
+anzgeftupel<>0THEN multisucc;anzgeftupelDECR 1;NOT pruefespeziellELSE TRUE 
+FI .meldeleerenbestand:standardmeldung(leermeldnr,niltext).END PROC 
+anschreibenstart;BOOL PROC schluesselungleich(ROWTEXT CONST sve1,sve2):INT 
+VAR i;FOR iFROM 1UPTO anzkey(dateinummer)REP IF sve1[i]=""COR (feldtyp(
+dateinummer+i)=datumfeldCAND sve1[i]=nildatum)THEN LEAVE schluesselungleich
+WITH FALSE FI ;IF sve2[i]<>wert(dateinummer+i)THEN LEAVE schluesselungleich
+WITH TRUE FI PER ;FALSE ENDPROC schluesselungleich;PROC 
+gesetztenschluesselsichern(ROW 10TEXT VAR schluesselsve):INT VAR i;FOR iFROM 
+1UPTO anzkey(dateinummer)REP schluesselsve[i]:=wert(dateinummer+i)PER 
+ENDPROC gesetztenschluesselsichern;PROC briefschreiben:
+schreibesteuerzeichenzeile(anschreibentext);briefalternative(
+anschreibenvordruck,anschreibentext);print(anschreibentext);standardmeldung(
+druckmeldnr,sonderwert(indexadressat)+meldkz);forget(anschreibentext,quiet)
+END PROC briefschreiben;PROC anschreibenleseschleife(BOOL PROC 
+sonderwerteundueberpruefungauferstellbarkeit,BOOL PROC pruefespeziell):BOOL 
+VAR schluss:=FALSE ;vorlesen;leseschleife.leseschleife:WHILE NOT schlussREP 
+IF sonderwerteundueberpruefungauferstellbarkeitTHEN briefschreibenELSE 
+standardmeldung(nichterstellbarmeldnr,sonderwert(indexadressat)+meldkz)FI ;
+lesenPER .lesen:IF anzgeftupel=0THEN anzgeftupel:=tupelstackgroesse;multisucc
+(aktuellerindex,anzgeftupel)FI ;satzlesen.vorlesen:anzgeftupel:=
+tupelstackgroesse;multisearchforward(aktuellerindex,anzgeftupel);satzlesen.
+satzlesen:IF anzgeftupel<>0THEN multisucc;anzgeftupelDECR 1;schluss:=NOT 
+pruefespeziellELSE schluss:=TRUE FI .END PROC anschreibenleseschleife;PROC 
+editierebrief:editiere(anschreibentext,vorwaertstaste,FALSE )END PROC 
+editierebrief;PROC naechstesanschreiben(BOOL PROC 
+sonderwerteundueberpruefungauferstellbarkeit,BOOL PROC pruefespeziell,BOOL 
+CONST drucken):BOOL VAR bestandleer:=FALSE ;IF druckenTHEN print(
+anschreibentext);standardmeldung(druckmeld#nr,#,sonderwert(indexadressat)+
+meldkz)FI ;forget(anschreibentext,quiet);IF einzelbearbeitungTHEN enter(
+eingangsbildschirm)ELSE REP IF anzgeftupel=0THEN anzgeftupel:=
+tupelstackgroesse;multisucc(aktuellerindex,anzgeftupel)FI ;IF anzgeftupel<>0
+THEN multisucc;anzgeftupelDECR 1;bestandleer:=NOT pruefespeziellELSE 
+bestandleer:=TRUE FI UNTIL bestandleerCOR 
+sonderwerteundueberpruefungauferstellbarkeitPER ;IF NOT bestandleerTHEN 
+schreibesteuerzeichenzeile(anschreibentext);briefalternative(
+anschreibenvordruck,anschreibentext);return(nproc)ELSE standardmeldung(
+endemeldnr,niltext);#enter(eingangsbildschirm)#return(eingangsbildschirm)FI 
+FI END PROC naechstesanschreiben;END PACKET 
+anschrsteuerfunktionenfuereinfacheanschreiben;
+

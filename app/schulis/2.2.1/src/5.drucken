@@ -1,0 +1,153 @@
+PACKET druckenDEFINES statdrucken:LET statistikdatei="STATISTIK.",
+statistikserver="statistik server",erstedruckdatei="liste.1",druckdatei=
+"liste.",maxstatistiken=200,statistikvorzeilen=3,niltext="",space=" ",quote=
+"""",edittasten="vr",statistiktext="Statistik Nr. ",stichtagtext="Stichtag: "
+,definitiontext="Definition der Statistik Nr. ",groessetext=
+"Größe:    Zeilen,    Spalten",tabellentext=
+"Feld  Z / Sp  Art  Länge  Definition",tabellenlinie=
+"----+--------+----+------+----------",tabelleleer=
+"                           ",prozenttext=" %",meldungzusatz="+",mgibtesnicht
+=477,fstatnr=2,fmini=3,fstd=4,fscreen=5,fprinter=6,tsenkrecht=":",twaagerecht
+="-",tkreuz="+",tschraeg="/",pruefeimintervall=3,pruefenureinkreuz=5,
+minspaltenbreite=4,maxspalten=50,KONST =STRUCT (BOOL def,TEXT maske,INT 
+mvorbereiten,mdrucken,mnichtdrucken);KONST VAR druck;BOOL VAR 
+ausgabebildschirm,ausgabeminimal;TEXT VAR druckstatistik;ROW maxspaltenINT 
+VAR breiten;INT VAR zeilen,spalten,felder;FILE VAR stat;PROC statdrucken(
+BOOL CONST defdrucken,INT CONST was):INT VAR status:=0;IF defdruckenTHEN 
+druck:=KONST :(TRUE ,"mst statistik drucken",484,498,499);ELSE druck:=KONST :
+(FALSE ,"mst statistik ausgeben",481,482,483);FI ;SELECT wasOF CASE 1:
+druckenexecCASE 2:druckenlistezeigenCASE 3:druckenlisteexecCASE 4:ausdrucken;
+enter(1)CASE 5:ausdrucken;leave(2)CASE 6:nichtdrucken;enter(1);CASE 7:
+nichtdrucken;leave(2);END SELECT .druckenexec:standardpruefe(
+pruefeimintervall,fstatnr,1,maxstatistiken,niltext,status);IF NOT 
+alleeingabenkorrektTHEN leave(1);ELIF NOT exists(gewaehltestatistik,task(
+statistikserver))THEN standardmeldung(mgibtesnicht,standardmaskenfeld(2)+
+meldungzusatz);infeld(fstatnr);leave(1);ELSE drucken(text(int(
+standardmaskenfeld(fstatnr))));IF NOT ausgabebildschirmTHEN leave(1);FI ;FI .
+gewaehltestatistik:statistikdatei+text(int(standardmaskenfeld(fstatnr))).
+druckenlistezeigen:status:=0;IF alleeingabenkorrektTHEN statlistezeigen(int(
+standardmaskenfeld(fstatnr)));ELSE leave(1);FI .druckenlisteexec:IF 
+ausgabebildschirmTHEN statlistebearbeiten(druck.maske);IF statlisteeintrag>
+niltextTHEN drucken(statlisteeintrag);ELSE leave(2);FI ;ELSE 
+statlistebearbeiten(druck.maske);WHILE statlisteeintrag>niltextREP drucken(
+statlisteeintrag);statlistebearbeiten(druck.maske);PER ;leave(2);FI .
+alleeingabenkorrekt:IF status=0THEN standardpruefe(pruefenureinkreuz,fmini,
+fstd,0,niltext,status);FI ;IF druck.defTHEN ausgabebildschirm:=
+standardmaskenfeld(fmini)<>niltext;ELSE IF status=0THEN standardpruefe(
+pruefenureinkreuz,fscreen,fprinter,0,niltext,status);FI ;ausgabeminimal:=
+standardmaskenfeld(fmini)<>niltext;ausgabebildschirm:=standardmaskenfeld(
+fscreen)<>niltext;FI ;IF status>0THEN infeld(status)FI ;status=0.ausdrucken:
+standardmeldung(druck.mdrucken,druckstatistik+meldungzusatz);
+druckdateibehandeln(PROC (TEXT CONST )print);druckdateibehandeln(PROC (TEXT 
+CONST )forget).nichtdrucken:infeld(fstatnr);standardmaskenfeld(niltext,
+fstatnr);standardmeldung(druck.mnichtdrucken,druckstatistik+meldungzusatz);
+druckdateibehandeln(PROC (TEXT CONST )forget).END PROC statdrucken;PROC 
+drucken(TEXT CONST statistiknummer):statistiknummerIN fstatnr;infeld(fstatnr)
+;standardmaskenfeld(niltext,fstatnr);erstellediedruckdatei;IF 
+ausgabebildschirmTHEN druckstatistik:=statistiknummer;standardmeldung(niltext
+,meldungzusatz);zeigedatei(erstedruckdatei,edittasten);ELSE standardmeldung(
+druck.mdrucken,statistiknummer+meldungzusatz);druckdateibehandeln(PROC (TEXT 
+CONST )print);druckdateibehandeln(PROC (TEXT CONST )forget);FI .
+erstellediedruckdatei:standardmeldung(druck.mvorbereiten,statistiknummer+
+meldungzusatz+meldungzusatz);druckdateibehandeln(PROC (TEXT CONST )forget);
+statistikladen(statistiknummer);druckvorbereiten;IF druck.defTHEN 
+druckestatdef(statistiknummer);ELSE druckestatistik(statistiknummer);FI ;
+drucknachbereitenohneausdrucken;forget(statistikdatei+statistiknummer,quiet).
+END PROC drucken;PROC druckestatistik(TEXT CONST statistiknummer):TEXT VAR 
+kopf1,kopf2,linie,dateizeile;BOOL VAR inhalt;INT VAR gedrucktespalten:=0,
+spaltendieseseite:=0,aktspalte,aktzeile,aktbreite,zeilenbisseitenende,
+gedrucktefelder:=0;seitenkopffestlegen;evtlspaltenbreitenverkuerzen;REP 
+ermittlespaltendieseseite;druckeallezeilenbiszudieserspalte;gedrucktespalten
+INCR spaltendieseseite;UNTIL gedrucktespalten=spaltenPER .seitenkopffestlegen
+:toline(stat,1);readrecord(stat,kopf1);kopf1:=statistiktext+statistiknummer+
+space+kopf1;toline(stat,statistikvorzeilen);readrecord(stat,kopf2);kopf2:=
+compress(kopf2);IF kopf2>niltextTHEN kopf2:=stichtagtext+kopf2FI ;inhalt:=
+kopf2>niltext;setzemitseitennummern(FALSE );initdruckkopf(kopf1,kopf2).
+evtlspaltenbreitenverkuerzen:IF ausgabeminimalTHEN FOR aktspalteFROM 1UPTO 
+spaltenREP breiten[aktspalte]:=minspaltenbreite;PER FI .
+ermittlespaltendieseseite:initspalten;setzespaltentrenner(tsenkrecht);
+setzespaltenbreite(2);aktbreite:=3;spaltendieseseite:=0;REP spaltendieseseite
+INCR 1;aktbreiteINCR breiten[letztespalte];aktbreiteINCR 1;setzespaltenbreite
+(breiten[letztespalte]);UNTIL letztespalte>=spaltenCOR aktbreite+breiten[
+letztespalte+1]>=druckbreitePER .letztespalte:gedrucktespalten+
+spaltendieseseite.druckeallezeilenbiszudieserspalte:aktzeile:=0;erzeugelinie;
+WHILE aktzeile<zeilenREP druckeeineseitebiszudieserspaltePER .erzeugelinie:
+linie:=twaagerecht+twaagerecht+tkreuz;FOR aktspalteFROM gedrucktespalten+1
+UPTO letztespalteREP linieCAT (breiten[aktspalte]*twaagerecht);linieCAT 
+tkreuz;PER .druckeeineseitebiszudieserspalte:zeilenbisseitenende:=drucklaenge
+(anzahlkopfzeilen);druckkopfschreiben;spaltenkopfschreiben;WHILE 
+zeilenbisseitenende>=benoetigtezeilenREP aktzeileINCR 1;einezeileschreiben;
+IF aktzeileMOD 2=0THEN gibstandaus(statistiknummer,gedrucktefelder,felder);
+FI ;UNTIL aktzeile>=zeilenPER ;seitenwechsel.anzahlkopfzeilen:IF inhaltTHEN 2
+ELSE 1FI .benoetigtezeilen:IF ausgabeminimalTHEN 1ELSE 2FI .
+spaltenkopfschreiben:spaltenweise(niltext);FOR aktspalteFROM gedrucktespalten
++1UPTO letztespalteREP spaltenweise(text(aktspalte,3));PER ;
+druckzeileschreiben(zeile+tsenkrecht);zeilenbisseitenendeDECR 1.
+einezeileschreiben:IF NOT ausgabeminimalTHEN druckzeileschreiben(linie);
+zeilenbisseitenendeDECR 1;FI ;spaltenweise(text(aktzeile,2));FOR aktspalte
+FROM gedrucktespalten+1UPTO letztespalteREP tragefeldinhalteinPER ;
+gedrucktefelderINCR spaltendieseseite;druckzeileschreiben(zeile+tsenkrecht);
+zeilenbisseitenendeDECR 1.tragefeldinhaltein:toline(stat,((aktzeile-1)*
+spalten)+aktspalte+3);readrecord(stat,dateizeile);IF (dateizeileSUB 5)="t"
+THEN dateizeile:=subtext(dateizeile,7,length(dateizeile)-1);changeall(
+dateizeile,quote+quote,quote);spaltenweise(dateizeile);ELIF inhaltTHEN 
+spaltenweise(subtext(dateizeile,1,4));ELSE spaltenweise(niltext);FI .END 
+PROC druckestatistik;PROC druckestatdef(TEXT CONST statistiknummer):TEXT VAR 
+kopfname,kopfgroesse,kopflinie,dateizeile;INT VAR zeilenbisseitenende,aktfeld
+:=0,deffeldbreite,benoetigtezeilen,zeilenende;seitenkopffestlegen;
+tabellefestlegen;liesnaechstesfeld;REP druckeeineseiteUNTIL aktfeld>felder
+PER .seitenkopffestlegen:toline(stat,1);readrecord(stat,kopfname);kopfgroesse
+:=groessetext;replace(kopfgroesse,8,text(zeilen,2));replace(kopfgroesse,19,
+text(spalten,2));setzemitseitennummern(FALSE );initdruckkopf(definitiontext+
+statistiknummer,kopfname).tabellefestlegen:kopflinie:=tabellenlinie;WHILE 
+length(kopflinie)<druckbreiteREP kopflinieCAT twaagerecht;PER ;initspalten;
+setzespaltentrenner(tsenkrecht);setzespaltenbreite(4);setzespaltenbreite(8);
+setzespaltenbreite(4);setzespaltenbreite(6);deffeldbreite:=druckbreite-length
+(tabelleleer).druckeeineseite:zeilenbisseitenende:=drucklaenge(
+anzahlkopfzeilen);druckkopfschreiben;tabellenkopfschreiben;WHILE 
+zeilenbisseitenende>=benoetigtezeilenREP schreibedasfeld;IF aktfeldMOD 15=0
+THEN gibstandaus(statistiknummer,aktfeld,felder);FI ;liesnaechstesfeld;UNTIL 
+aktfeld>felderPER ;seitenwechsel.anzahlkopfzeilen:IF kopfname=niltextTHEN 1
+ELSE 2FI .tabellenkopfschreiben:IF aktfeld<=1THEN druckzeileschreiben(
+kopfgroesse);druckzeileschreiben(niltext);zeilenbisseitenendeDECR 2;FI ;
+druckzeileschreiben(tabellentext);druckzeileschreiben(kopflinie);
+zeilenbisseitenendeDECR 2.liesnaechstesfeld:aktfeldINCR 1;IF aktfeld<=felder
+THEN toline(stat,aktfeld+3);readrecord(stat,dateizeile);spaltenweise(text(
+aktfeld,4));spaltenweise(zeileundspalte);spaltenweise(space+space+(dateizeile
+SUB 5));spaltenweise(text(breiten[aktspalte],5));benoetigtezeilen:=1;IF 
+length(dateizeile)-5>deffeldbreiteTHEN zaehlebenoetigtezeilenFI ;FI .
+zeileundspalte:text(aktzeile,3)+tschraeg+text(aktspalte,3).aktzeile:(aktfeld-
+1)DIV spalten+1.aktspalte:(aktfeld-1)MOD spalten+1.zaehlebenoetigtezeilen:
+zeilenende:=5+deffeldbreite;gehezurueckzumwortende(dateizeile,zeilenende);
+WHILE zeilenende<length(dateizeile)REP benoetigtezeilenINCR 1;
+gehezurueckzumwortende(dateizeile,zeilenende);zeilenendeINCR deffeldbreite+1;
+PER .schreibedasfeld:zeilenende:=5+deffeldbreite;gehezurueckzumwortende(
+dateizeile,zeilenende);druckzeileschreiben(zeile+tsenkrecht+space+subtext(
+dateizeile,6,zeilenende));zeilenbisseitenendeDECR 1;WHILE zeilenende<length(
+dateizeile)REP dateizeile:=subtext(dateizeile,zeilenende+2);zeilenende:=
+deffeldbreite;gehezurueckzumwortende(dateizeile,zeilenende);
+druckzeileschreiben(tabelleleer+subtext(dateizeile,1,zeilenende));
+zeilenbisseitenendeDECR 1;PER .END PROC druckestatdef;PROC 
+gehezurueckzumwortende(TEXT CONST dateizeile,INT VAR zeilenende):INT VAR 
+naechsteszeichen;IF zeilenende<length(dateizeile)CAND NOT amwortendeTHEN REP 
+findewortende;UNTIL NOT hieristeinsamesquotePER ;zeilenende:=max(15,
+zeilenende);FI .findewortende:REP zeilenendeDECR 1;UNTIL amwortendeOR 
+zeilenende<1PER .amwortende:(dateizeileSUB zeilenende)<>spaceAND (dateizeile
+SUB (zeilenende+1))=space.hieristeinsamesquote:naechsteszeichen:=pos(
+dateizeile,"!","�",zeilenende+1);naechsteszeichen>0CAND (dateizeileSUB 
+naechsteszeichen)=quote.END PROC gehezurueckzumwortende;PROC gibstandaus(
+TEXT CONST nummer,INT CONST wert,hundert):disablestop;INT VAR proz:=(wert*100
+)DIV hundert;IF iserrorTHEN clearerror;proz:=int((real(wert)*100.0)/real(
+hundert));FI ;standardmeldung(druck.mvorbereiten,nummer+meldungzusatz+text(
+proz)+prozenttext+meldungzusatz);END PROC gibstandaus;PROC statistikladen(
+TEXT CONST statnummer):TEXT VAR dummy;INT VAR spaltenzaehler;forget(
+statistikdatei+statnummer,quiet);fetch(statistikdatei+statnummer,task(
+statistikserver));stat:=sequentialfile(input,statistikdatei+statnummer);
+getline(stat,dummy);get(stat,zeilen);get(stat,spalten);FOR spaltenzaehler
+FROM 1UPTO spaltenREP get(stat,breiten[spaltenzaehler]);PER ;modify(stat);
+felder:=zeilen*spalten;END PROC statistikladen;PROC druckdateibehandeln(PROC 
+(TEXT CONST )machwas):INT VAR i;TEXT VAR name;commanddialogue(FALSE );get(all
+,name,i);WHILE i>0REP IF subtext(name,1,length(druckdatei))=druckdateiTHEN 
+machwas(name);FI ;get(all,name,i);PER ;commanddialogue(TRUE ).END PROC 
+druckdateibehandeln;END PACKET drucken;
+

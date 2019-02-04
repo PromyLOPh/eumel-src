@@ -1,0 +1,56 @@
+PACKET editorfunktionenDEFINES editiere,editierewieeingestellt,zeigedatei,
+zeigedateiwieeingestellt,indateivorblaettern,killundenter,andateianfang,
+andateiende,aufeditstack,aufeditstackundloeschen,voneditstack,
+druckendereditorhilfsdatei,editorunterlegung,loeschendereditorhilfsdatei:LET 
+standardtasten="�bcqhst!19h?o",maxzeilenlaenge=78,maxzeilennr=23,
+erweiterungstasten="gpd";FILE VAR f;TEXT VAR editorhilfsdatei,editortasten;
+LET temp="temporäre Druckdatei";INT VAR basiszeile;ROW maxzeilennrTEXT VAR 
+untergrundzeile;PROC zeigedateiwieeingestellt:zeigedatei(editorhilfsdatei,
+editortasten)END PROC zeigedateiwieeingestellt;PROC zeigedatei(TEXT CONST 
+name,tasten):store(FALSE );f:=sequentialfile(modify,name);editorhilfsdatei:=
+name;editortasten:=tasten;openeditor(f,FALSE );edit(groesstereditor,
+standardtasten+tasten,PROC leaveeditor);INT VAR xkoord,ykoord;INT CONST 
+aktlineno:=lineno(f);geteditcursor(xkoord,ykoord);basiszeile:=aktlineno-
+ykoord;store(TRUE )END PROC zeigedatei;PROC indateivorblaettern(BOOL CONST 
+vorwaerts):IF vorwaertsTHEN toline(f,min(lines(f),lineno(f)+maxzeilennr))
+ELSE toline(f,max(1,lineno(f)-maxzeilennr))FI ;return(1)END PROC 
+indateivorblaettern;PROC editiere(TEXT CONST name):inituntergrundzeilen;
+editieren(name,standardtasten)END PROC editiere;PROC editiere(TEXT CONST name
+,TEXT CONST tasten):inituntergrundzeilen;editieren(name,standardtasten+tasten
+)END PROC editiere;PROC editiere(TEXT CONST name,BOOL CONST standard):
+inituntergrundzeilen;IF standardTHEN editiere(name)ELSE editiere(name,
+erweiterungstasten)FI END PROC editiere;PROC editiere(TEXT CONST name,TEXT 
+CONST tasten,BOOL CONST standard):inituntergrundzeilen;IF standardTHEN 
+editiere(name,tasten)ELSE editiere(name,erweiterungstasten+tasten)FI END 
+PROC editiere;PROC editierewieeingestellt:editieren(editorhilfsdatei,
+editortasten)END PROC editierewieeingestellt;PROC editieren(TEXT CONST name,
+TEXT CONST tasten):store(FALSE );f:=sequentialfile(modify,name);
+editorhilfsdatei:=name;editortasten:=tasten;edit(f,tasten,PROC leaveeditor);
+INT VAR xkoord,ykoord;INT CONST aktlineno:=lineno(f);geteditcursor(xkoord,
+ykoord);basiszeile:=aktlineno-ykoord;store(TRUE )END PROC editieren;PROC 
+leaveeditor(TEXT CONST t):IF pos("19"+erweiterungstasten,t)>0THEN 
+stdkommandointerpreter(t)ELSE seteingabe(t);quitFI END PROC leaveeditor;PROC 
+killundenter(INT CONST steps):forget(editorhilfsdatei,quiet);enter(steps)END 
+PROC killundenter;PROC andateianfang:toline(f,1);return(1)END PROC 
+andateianfang;PROC andateiende:toline(f,lines(f));return(1)END PROC 
+andateiende;PROC aufeditstackundloeschen:type("�p"+"�q");edit(f);return(1)
+END PROC aufeditstackundloeschen;PROC aufeditstack:type("�d"+"�q");edit(f);
+return(1)END PROC aufeditstack;PROC voneditstack:type("�g"+"�q");edit(f);
+return(1)END PROC voneditstack;PROC loeschendereditorhilfsdatei:forget(
+editorhilfsdatei,quiet);enter(2)END PROC loeschendereditorhilfsdatei;PROC 
+druckendereditorhilfsdatei:FILE VAR datei;forget(temp,quiet);copy(
+editorhilfsdatei,temp);datei:=sequentialfile(modify,temp);tofirstrecord(datei
+);INT VAR i;FOR iFROM 1UPTO 5REP insertrecord(datei)PER ;tofirstrecord(datei)
+;TEXT VAR satz:="Stand:   "+date+"    "+timeofday;writerecord(datei,satz);
+satz:="Dateiname:    "+editorhilfsdatei;toline(datei,2);writerecord(datei,
+satz);print(temp);forget(temp,quiet);return(1)END PROC 
+druckendereditorhilfsdatei;PROC inituntergrundzeilen:INT VAR zeilennr;FOR 
+zeilennrFROM 1UPTO maxzeilennrREP untergrundzeile(zeilennr):=""PER END PROC 
+inituntergrundzeilen;TEXT PROC editorunterlegung(INT CONST i):IF i=1THEN 
+blankzeileELSE IF schondaTHEN diesezeileELSE neuezeileFI FI .blankzeile:
+maxzeilenlaenge*" ".schonda:TEXT VAR diesezeile:=untergrundzeile(i-1);
+diesezeile<>"".neuezeile:TEXT VAR nzeile:="";toline(f,basiszeile+i);
+readrecord(f,nzeile);IF nzeile=""THEN nzeile:=blankzeileFI ;untergrundzeile(i
+-1):=nzeile;toline(f,basiszeile);nzeile.END PROC editorunterlegung;END 
+PACKET editorfunktionen;
+

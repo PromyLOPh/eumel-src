@@ -1,0 +1,1366 @@
+#start(2.5,1.5)# 
+#pageblock# 
+#block# 
+#page (63)# 
+#headeven# 
+ 
+%#center#EUMEL-Systemhandbuch 
+ 
+ 
+#end# 
+#headodd# 
+ 
+#center#5. Supervisor, Tasks und Systemsteuerung#right#% 
+ 
+ 
+#end# 
+ 
+#ib(9)#5. #ib#Supervisor#ie#, #ib#Tasks#ie# und 
+   #ib#Systemsteuerung#ie##ie(9)# 
+ 
+ 
+ 
+#ib(9)#5.1. #ib#Tasks#ie##ie(9)# 
+ 
+ 
+ 
+#ib(9)#Der Datentyp #ib#TASK#ie##ie(9)# 
+ 
+ 
+Benannte Tasks werden innerhalb eines Rechners vollständig und eindeutig über ihren
+Namen identifiziert. Eine weitere Möglichkeit der Identifikation besteht in der Verwen­
+dung von Datenobjekten vom Typ TASK. Beispiel: 
+ 
+        TASK VAR plotter := task ("PLOTTER 1") 
+ 
+Die Taskvariable 'plotter' bezeichnet jetzt die Task im System, die augenblicklich den
+Namen "PLOTTER 1" hat. Nun sind #ib#Taskvariablen#ie# auch unter Berücksichtigung der Zeit
+und nicht nur im aktuellen Systemzustand eindeutig. Der Programmierer braucht sich
+also keine Sorgen darüber zu machen, daß seine Taskvariable irgendwann einmal eine
+"falsche" Task (nach Löschen von "PLOTTER 1" neu eingerichtete gleichen oder ande­
+ren Namens) identifiziert. Wenn die Task "PLOTTER 1" gelöscht worden ist, bezeichnet
+'plotter' keine gültige Task mehr. 
+ 
+#ib#Unbenannte Tasks#ie# haben alle den Pseudonamen "-". Sie können nur über Taskvari­
+ablen angesprochen werden. 
+ 
+Der #ib#Task-Katalog#ie# wird vom Supervisor geführt; andere Tasks können sich Kopien
+dieses Katalogs besorgen. Einige Prozeduren arbeiten auf dieser taskeigenen Kopie,
+ohne diese automatisch auf den neuesten Stand zu bringen (Effizienzgründe). Das
+muß bei Bedarf explizit geschehen. 
+ 
+ 
+#ib#TASK#ie# 
+     TYPE TASK 
+     Zweck: Interner Taskbezeichner 
+ 
+:= 
+     OP := (TASK VAR dest, TASK CONST source) 
+     Zweck: Zuweisung von internen Taskbezeichnern 
+ 
+= 
+     BOOL OP = (TASK CONST left, right) 
+     Zweck: Gleichheitsabfrage 
+ 
+< 
+     BOOL OP < (TASK CONST left, right) 
+     Zweck: Überprüft, ob die Task 'left' ein Sohn, Enkel, Urenkel, ... der Task 'right'
+            ist. 
+ 
+/ 
+     TASK OP / (TEXT CONST task name) 
+     Zweck: Liefert die Task des angegebenen Namens, falls sie existiert. Der eigene
+            Katalog wird automatisch aktualisiert (identisch mit der
+            PROC task (TEXT CONST task name). 
+     Fehlerfall: 
+          * ... gibt es nicht 
+ 
+     TASK OP / (INT CONST station number, TEXT CONST name) 
+     Zweck: Liefert die Task des angegebenen Namen von der Station mit der ange­
+            gebenen Nummer. 
+ 
+#ib#access#ie# 
+     PROC access (TASK CONST task) 
+     Zweck: Aktualisiert den eigenen Taskkatalog, falls 'task' nicht darin enthalten ist. 
+ 
+#ib#access catalogue#ie# 
+     PROC access catalogue 
+     Zweck: Aktualisiert den eigenen Taskkatalog, indem die neueste Fassung vom
+            Supervisor geholt wird. Die Prozeduren 'father', 'son', 'brother' arbeiten
+            dann auf dieser neuen Fassung. 
+ 
+#ib#archive#ie# 
+     TASK PROC archive 
+     Zweck: Liefert den internen Taskbezeichner der aktuellen Task mit Namen
+            "ARCHIVE". Diese Prozedur dient zum schnellen und bequemen An­
+            sprechen der Archivtask. 
+ 
+#ib#brother#ie# 
+     TASK PROC brother (TASK CONST task) 
+     Zweck: Liefert den nächsten Bruder von 'task'. Falls kein Bruder existiert, wird
+            'niltask' geliefert. Aktualisiert den eigenen Katalog nicht automatisch! 
+ 
+#ib#canal#ie# 
+     TASK PROC canal (INT CONST channel number) 
+     Zweck: Diese Prozedur zeigt an, welche Command-Analyser-Task an einem
+            bestimmten Kanal hängt. 
+ 
+#ib#exists#ie# 
+     BOOL PROC exists (TASK CONST task) 
+     Zweck: Falls 'task' auf der eigenen Station liegt, informiert diese Prozedur, ob
+            die angegebene 'task' noch existiert. Der eigene Taskkatalog wird dabei
+            aktualisiert. 
+            Wenn abgefragt werden soll, ob 'task' auf einer anderen Station liegt,
+            muß die Prozedur 'name (task) <> "" ' verwendet werden. 
+            Achtung: Diese Prozedur taugt nicht dazu, zu erfragen, ob eine Task
+                     mit bestimmtem Namen im System exisiert. 
+ 
+                            exists (task ("hugo")) 
+ 
+                     Falls die Task "hugo" nicht existiert, führt schon der Aufruf
+                     'task ("hugo")' zum 'errorstop (""hugo" gibt es nicht")'. 
+ 
+#ib#exists task#ie# 
+     BOOL PROC exists task (TEXT CONST name) 
+     Zweck: Wenn auf der eigenen Station eine Task mit dem Namen 'name' exi­
+            stiert, liefert diese Prozedur 'TRUE'. 
+ 
+#ib#father#ie# 
+     TASK PROC father 
+     Zweck: Liefert die eigene Vatertask. 
+ 
+     TASK PROC father (TASK CONST task) 
+     Zweck: Liefert den Vater von 'task'. Existiert kein Vater (z.B. bei UR), wird niltask
+            geliefert. Aktualisiert den eigenen Katalog nicht automatisch! 
+ 
+#ib#index#ie# 
+     INT PROC index (TASK CONST task) 
+     Zweck: Liefert einen INT-Wert von 1 bis 125, der 'task' unter allen gleichzeitig (!)
+            existierenden Tasks eindeutig identifiziert. 
+ 
+#ib#is niltask#ie# 
+     BOOL PROC is niltask (TASK CONST task) 
+     Zweck: task = niltask 
+ 
+#ib#myself#ie# 
+     TASK PROC myself 
+     Zweck: Liefert eigenen Task-Bezeichner. 
+ 
+#ib#name#ie# 
+     TEXT PROC name (TASK CONST task) 
+     Zweck: Liefert den Namen von 'task'. Die Task muß noch im System existieren,
+            sonst ist der Name nicht mehr bekannt. Falls die 'task' noch nicht im
+            eigenen Katalog enthalten ist, wird er aktualisiert. 
+ 
+#ib#niltask#ie# 
+     TASK CONST niltask 
+     Zweck: Bezeichner für "keine Task". So liefern die Prozeduren 'son', 'brother'
+            und 'father' als Resultat 'niltask', wenn keine Sohn-, Bruder- oder Vater­
+            task existiert. 
+ 
+#ib#printer#ie# 
+     TASK PROC printer 
+     Zweck: Liefert den internen Taskbezeichner der aktuellen Task mit Namen
+            #ib#PRINTER#ie#. Diese Prozedur dient zum schnellen und bequemen Anspre­
+            chen des Druckspoolers. 
+ 
+#ib#public#ie# 
+     TASK PROC public 
+     Zweck: Liefert den internen Taskbezeichner der Task #ib#PUBLIC#ie#. 
+ 
+#ib#reserve#ie# 
+     PROC reserve (TASK CONST task) 
+     Zweck: Reservieren einer Task für den ausschließlichen Dialog mit der Task, in
+            der das Kommando gegeben wurde. 
+     PROC reserve (TEXT CONST message, TASK CONST task) 
+     Zweck: Wie 'reserve (TASK CONST task)' mit Übergabe einer 'message'. 
+ 
+#ib#son#ie# 
+     TASK PROC son (TASK CONST task) 
+     Zweck: Liefert den ersten Sohn von 'task'. Falls keiner im Katalog vermerkt ist,
+            wird 'niltask' geliefert. Aktualisiert den eigenen Katalog nicht automa­
+            tisch! 
+ 
+#ib#supervisor#ie# 
+     TASK PROC supervisor 
+     Zweck: Liefert den internen Taskbezeichner des Supervisors. 
+ 
+#ib#task#ie# 
+     TASK PROC task (TEXT CONST task name) 
+     Zweck: Liefert die Task des angegebenen Namens, falls sie existiert. Der eigene
+            Katalog wird automatisch aktualisiert. 
+     Fehlerfall: 
+          * ... gibt es nicht 
+ 
+     TASK PROC task (INT CONST channel number) 
+     Zweck: Liefert den Namen der Task, die an dem angegebenen Kanal hängt. 
+ 
+ 
+ 
+#ib##ib(9)#Inter-Task-Kommunikation#ie##ie(9)# 
+ 
+ 
+Die #ib#Task-Kommunikation#ie# im EUMEL System ist strikt botschaftsorientiert. Eine #ib#Bot­
+schaft#ie# bzw. "#ib#Sendung#ie#" besteht immer aus einem #ib#Sendungscode#ie# (INT) und einem
+Datenraum (DATASPACE). Damit kann eine Botschaft bis zu 1 Mbyte umfassen! 
+ 
+Kommunikation zwischen zwei Tasks ist nur dann möglich, wenn #ib#Sender#ie# und #ib#Empfän­
+ger#ie# dazu bereit sind. Eine Sendung kann also nur dann korrekt transferiert werden,
+wenn der Empfänger existiert und empfangsbereit ist. Diese Art der Kommunikation
+wurde gewählt, um 
+ 
+    -  eine möglichst einfache und effiziente Implementation zu ermöglichen und 
+    -  mit den vorhandenen Primitiva möglichst flexibel bei der Implementation
+       "höherer" Kommunikationsmethoden (z.B. Warteschlangen) zu sein. 
+ 
+ 
+#ib#call#ie# 
+     PROC call (TASK CONST destination, INT CONST send code, 
+                DATASPACE VAR message ds, INT VAR reply code) 
+     Zweck: Die eigene Task wartet, bis die Zieltask 'destination' empfangsbereit ist.
+            Dann wird die Sendung ('send code' und 'message ds') transferiert.
+            Anschließend wartet die Sendertask auf eine Antwort von 'destination'.
+            Für Sendungen anderer Tasks ist sie dabei nicht (!) empfangsbereit, nur
+            die Zieltask kann eine Antwortsendung schicken. Nachdem eine solche
+            Antwort eingetroffen ist, wird sie in 'message ds' und 'reply code' gelie­
+            fert und die eigene Task fortgesetzt. Wenn die angesprochene Zieltask
+            nicht existiert, wird -1 als 'reply code' geliefert. 'message ds' ist in
+            diesem Fall unverändert. 
+            'call' hat Ähnlichkeiten mit einem Prozeduraufruf, nur ist es hier der
+            Aufruf einer anderen Task. Störungen können hierbei nicht auftreten, da
+            der Zustand der Zieltask keine Rolle spielt (es wird auf Empfangsbereit­
+            schaft gewartet) und beim Warten auf Antwort auch keine "Querschlä­
+            gersendungen" von anderen Tasks dazwischenfunken können. 
+ 
+#ib#pingpong#ie# 
+     PROC pingpong (TASK CONST destination, INT CONST send code, 
+                    DATASPACE VAR message ds, INT VAR reply code) 
+     Zweck: Diese Prozedur wirkt wie die entsprechende 'call'-Prozedur, wartet aber
+            nicht (!), bis die Zieltask empfangsbereit ist. Wenn die Zieltask existiert,
+            aber nicht empfangsbereit ist, wird -2 als 'reply code' geliefert. Der
+            'message ds' ist dann nicht verändert. 
+ 
+#ib#send#ie# 
+     PROC send (TASK VAR destination, INT CONST send code, 
+                DATASPACE VAR message ds, INT VAR receipt) 
+     Zweck: Wenn die Zieltask existiert und empfangsbereit ist, wird die Sendung
+            ('send code' und 'message ds') transferiert und die Zieltask aktiviert. Als
+            'receipt' wird 0 (=ack) gemeldet. Diese positive Quittung kommt nicht
+            von der Zieltask, sondern bestätigt nur, daß die Sendung ordnungsge­
+            mäß übertragen wurde. Der Datenraum gehört dann nicht mehr der
+            Sender-, sondern der Zieltask, d.h. die Variable 'message ds' bezeichnet
+            keinen gültigen Datenraum mehr. 
+            Im Gegensatz zu 'call' und 'pingpong' läuft die Sendertask ohne Halt
+            weiter und wartet nicht auf eine Antwort von der Zieltask. 
+            Falls die Zieltask nicht existiert, wird -1, falls sie nicht empfangsbereit ist,
+            -2 als 'receipt' geliefert. Bei diesen negativen Quittungen bleibt der
+            Datenraum Eigentum der Absendertask, d.h. die Variable 'message ds'
+            bezeichnet immer noch einen gültigen Datenraum. 
+ 
+     PROC send (TASK VAR destination, INT CONST send code, 
+                DATASPACE VAR message ds) 
+     Zweck: s.o. Negative Quittungen (-1 oder -2) werden jedoch ignoriert. Der Da­
+            tenraum wird entweder transferiert oder gelöscht ('forget'), steht also in
+            keinem Fall mehr zur Verfügung. Die Prozedur sollte nur verwendet
+            werden, wenn der Sender sicher ist, daß die Sendung transferiert wer­
+            den kann, bzw. daß sie im Fehlerfall nicht transferiert zu werden braucht. 
+ 
+#ib#wait#ie# 
+     PROC wait (DATASPACE VAR message ds, INT VAR message code, 
+                TASK VAR source task) 
+     Zweck: Die eigene Task geht in den #ub##ib#offenen Wartezustand#ie##ue# über. Sie ist jetzt
+            gegenüber allen anderen Tasks empfangsbereit. Sie wird erst fortge­
+            setzt, wenn eine Sendung eintrifft. Diese wird in 'message ds' und 'mes­
+            sage code', die Absendertask in 'source task' geliefert. 
+ 
+Der #ub##ib#Sendungscode#ue##ie# muß zwischen den Beteiligten abgesprochen sein und ist also frei
+wählbar. Allerdings sind negative Werte nicht erlaubt, sondern für bestimmte "Pseudo­
+antworten" vom Betriebssystem reserviert: 
+ 
+      -1      "Zieltask existiert nicht" 
+ 
+      -2      "Zieltask ist nicht empfangsbereit" 
+ 
+      -4      "Eingabe vom Kanal" Diese Meldung kann nur (!) beim offenen War­
+              ten ('wait') auftreten, und auch dann nur, wenn die Task gleichzeitig
+              an einen Kanal angekoppelt ist. Auf diese Weise wird mitgeteilt, daß
+              mindestens ein Zeichen vorliegt. Dieses kann im folgenden mit 'in­
+              char', 'incharety', 'blockin' oder darauf aufbauenden Prozeduren
+              gelesen werden. 
+ 
+Weitere Codes werden in Systemroutinen standardmäßig verwandt und sollten auch
+von Anwenderroutinen genauso interpretiert werden: 
+ 
+       0      "#ib#ack#ie#"        positive Quittung 
+ 
+       1      "#ib#nak#ie#"        negative Quittung 
+ 
+       2      "#ib#error nak#ie#"  negative Quittung mit Fehlermeldung. 
+                           Der gelieferte Datenraum sollte die Struktur eines
+                           BOUND TEXTs haben und die Fehlermeldung in
+                           diesem TEXT beinhalten. 
+ 
+ 
+Beispiel:      #ub#Kommunikation mit einem Manager#ue# 
+ 
+ 
+     Auftraggeber                  Manager 
+ 
+ 
+     call (....)                   REP 
+                                     wait (ds, order, order task) ; 
+                                     execute order ; 
+                                     send (order task, reply, ds) 
+                                   PER 
+ 
+Da der Auftraggeber 'call' verwendet, wartet er automatisch so lange, bis der Manager
+für ihn empfangsbereit wird. Dann schickt er die Sendung und geht gleichzeitig (!) in
+den geschlossenen "auf Antwort warten" - Zustand über. Der Manager kann daher
+unbesorgt mit dem "unsicheren" 'send' antworten, da die Empfangsbereitschaft des
+Auftraggebers nur durch Katastrophen wie Löschung der Task oder "halt from terminal"
+gestört werden kann. (In diesen Fällen kann die Antwort ruhig ins Leere gehen.) 
+ 
+Hier sieht man auch den Unterschied zwischen 
+ 
+       call (...)      und       send (....); wait (....) . 
+ 
+Bei der zweiten Alternative können drei Störfälle eintreten: 
+ 
+ 
+     a) Der Manager ist nicht empfangsbereit. 'send' versagt, 'wait' wartet ewig. 
+ 
+     b) Da über die zeitlichen Rahmenbedingungen nichts ausgesagt werden kann,
+        ist es möglich, daß der Manager die Antwort schickt, bevor die 'wait'-Opera­
+        tion beim Auftraggeber ausgeführt werden konnte. In unserem Beispiel
+        würde das den Verlust der Rückmeldung und ewiges Warten seitens des
+        Auftraggebers auslösen. 
+ 
+     c) Beim 'wait' kann eine Störsendung einer anderen Task eintreffen. 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+#ib(9)#5.2. #ib#Supervisor#ie##ie(9)# 
+ 
+ 
+ 
+#ib(9)##ib#Verbindung zum Supervisor#ie##ie(9)# 
+ 
+ 
+#ib#begin#ie# 
+     PROC begin (PROC start, TASK VAR new task) 
+     Zweck: Es wird eine #ib#unbenannte Task#ie# (Pseudoname "-") als neuer Sohn der
+            aufrufenden eingerichtet und mit der Prozedur 'start' gestartet. Namens­
+            kollision ist nicht möglich, die erzeugte Task kann aber auch nicht na­
+            mensmäßig angesprochen werden. 'new task' identifiziert den neuen
+            Sohn, falls kein Fehler auftrat. 
+     Fehlerfälle : 
+          * zu viele Tasks 
+ 
+     PROC begin (TEXT CONST son name, PROC start, TASK VAR new task) 
+     Zweck: Es wird eine Task mit Namen 'son name' als Sohn der aufgerufenen
+            eingerichtet und mit der Prozedur 'start' gestartet. 'new task' identifi­
+            ziert den neuen Sohn, falls kein Fehler auftrat. 
+     Fehlerfälle : 
+          * zu viele Tasks 
+          * Name unzulaessig        (* "" oder LENGTH > 100 *) 
+          * ... existiert bereits 
+ 
+#ib#begin password#ie# 
+     PROC begin password (TEXT CONST password) 
+     Zweck: Bei normalen 'global manager'-Tasks kann man mit dieser Operation
+            das weitere Kreieren von Sohntasks unter Paßwortkontrolle stellen.
+            Wenn dieses Kommando in der Manager-Task gegeben worden ist, wird
+            bei folgenden SV-begin-Kommandos interaktiv das Paßwort verlangt.
+            Dabei gelten die üblichen Paßwort-Konventionen: 
+ 
+                 a) "" (Niltext) bedeutet #on("i")#kein Paßwort#off("i")#. Damit kann man durch
+                    'begin password ("")' das Paßwort wieder ausschalten. 
+                 b) "-" bedeutet #on("i")#jedes eingegebene Paßwort ist ungültig#off("i")#. Damit
+                    kann man durch 'begin password ("-")' das Einrichten von
+                    Sohntasks von außen (durch SV-Kommando) abschalten. 
+ 
+#ib#break#ie# 
+     PROC break 
+     Zweck: Die Task koppelt sich von einem evtl. angekoppelten Terminal ab. Bei
+            der Abkopplung wird auf dem Terminal die "Tapete" ("Terminal n...
+            EUMEL Version ..../M...") ausgegeben. 
+ 
+     PROC break (QUIET CONST quiet) 
+     Zweck: Die Task koppelt sich von einem evtl. angekoppelten Terminal ab. Dabei
+            wird aber keine "Tapete" ausgegeben. 
+ 
+#ib#channel#ie# 
+     INT PROC channel 
+     Zweck: Liefert die #ib#Kanalnummer#ie# der eigenen Task. Falls kein Kanal (Terminal)
+            zugeordnet ist, wird 0 geliefert. 
+ 
+     INT PROC channel (TASK CONST task) 
+     Zweck: Liefert die Kanalnummer der angegebenen Task. Ist kein Kanal zuge­
+            ordnet, wird 0 geliefert. 
+ 
+#ib#clock#ie# 
+     REAL PROC clock (INT CONST index) 
+     Zweck: Liefert die über Index spezifizierte #ib#Systemuhr#ie#. Die Zeiteinheit ist 1 sec,
+            die Meßgenauigkeit 0.1 sec. 
+                     clock (0)   :   CPU-Zeit der eigenen Task 
+                     clock (1)   :   Realzeit des Systems 
+ 
+     REAL PROC clock (TASK CONST task) 
+     Zweck: Liefert die CPU-Zeit der angegebenen Task. 
+ 
+     Hinweis: Die CPU-Zeit beginnt mit der Taskkreation zu laufen. Sie gibt also
+              jeweils die gesamte bisher verbrauchte CPU-Zeit an. Die Zeitdauer
+              bestimmter Operationen kann als Differenz zweier 'clock'-Aufrufe
+              gemessen werden. Beim Ende einer Task wird ihr CPU-Zeitverbrauch
+              dem Vater zugeschlagen, um Abrechnungen zu ermöglichen. 
+ 
+#ib#continue#ie# 
+     PROC continue (INT CONST channel nr) 
+     Zweck: Die Task versucht, sich an den vorgegebenen Kanal anzukoppeln. Falls
+            sie vorher schon an ein Terminal gekoppelt war, wird implizit 'break'
+            durchgeführt, falls die Aktion erfolgreich durchgeführt werden konnte.
+            Ein erfolgreiches 'continue' beinhaltet implizit 'reset autonom'. 
+            Anmerkung: Normale Tasks können auf die Kanäle 1-24 zugreifen,
+                       Systemtasks dürfen sich auch an die privilegierten Kanäle
+                       25-32 ankoppeln. 
+     Fehlerfälle: 
+          * ungueltiger Kanal 
+          * Kanal belegt 
+ 
+#ib#end#ie# 
+     PROC end 
+     Zweck: Löscht die eigene Task und alle Söhne. Wenn die Task an ein Terminal
+            angekoppelt ist, wird vorher angefragt, ob wirklich gelöscht werden soll.
+            Anschließend wird die Standard-"Tapete" auf dem Bildschirm ausge­
+            geben. 
+ 
+     PROC end (TASK CONST task) 
+     Zweck: Löscht die angegebene 'task'. 'task' muß allerdings die eigene oder eine
+            Sohn- bzw. Enkel-Task der eigenen sein (siehe auch: 'Privilegierte Ope­
+            rationen'). Im Unterschied zur oben aufgeführten parameterlosen Proze­
+            dur 'end' wird nicht angefragt und auch keine "Tapete" ausgegeben.
+            Wenn also die eigene Task ohne Reaktion auf dem Terminal beendet
+            werden soll, kann dies mit 'end (myself)' geschehen. 
+     Fehlerfall: 
+          * 'end' unzulaessig 
+ 
+#ib#family password#ie# 
+     PROC family password (TEXT CONST password) 
+     Zweck: Diese  Prozedur setzt oder ändert das Paßwort derjenigen Familien­
+            mitglieder, die kein Paßwort oder das gleiche Paßwort wie die aufrufen­
+            de Task haben. 
+            Zu einer Familie gehören die Task, in der man sich befindet, und die ihr
+            untergeordneten Tasks. 
+            Natürlich gelten auch hier die allgemeinen Paßwortbedingungen (siehe
+            dazu: 'task password'). 
+            Beispiel: Das Kommando 'family password ("EUMEL")' wird in SYSUR
+                      gegeben. Dadurch wird das SYSUR­Paßwort und die Paß­
+                      worte der entsprechenden Tasks unter SYSUR auf "EUMEL"
+                      gesetzt. 
+ 
+ 
+#ib#next active#ie# 
+     PROC next active (TASK VAR task) 
+     Zweck: 'task' wird auf die nächste aktive Task gesetzt. Aktiv sind alle Tasks, die
+            sich im Zustand 'busy' befinden oder auf Ein/Ausgabe warten (i/o) und
+            an einen Kanal angekoppelt sind. Beispiel: 
+ 
+ 
+                      TASK VAR actual task := myself; 
+                      REP 
+                        ... ; 
+                        next active (actual task) 
+                      UNTIL actual task = myself PER. 
+ 
+ 
+            Hier werden alle aktiven Tasks durchgemustert (z.B. für Scheduling-
+            Anwendungen). Dieses Verfahren ist sehr viel weniger aufwendig als
+            eine Durchmusterung des ganzen Taskbaumes, liefert aber nur die
+            gerade aktiven Tasks. 
+ 
+#ib#rename myself#ie# 
+     PROC rename myself (TEXT CONST new task name) 
+     Zweck: Die eigene Task erhält als neuen Tasknamen 'new task name'. Damit
+            kann auch aus einer benannten eine unbenannte Task mit dem Pseu­
+            donamen "-" werden. Umbenennung in die andere Richtung ist eben­
+            falls möglich. 
+            Achtung: Durch das Umbenennen der Task werden alle Taskvariablen,
+                     die sich auf diese Task beziehen, ungültig (als wäre die Task
+                     gelöscht und dann neu eingerichtet). 
+     Fehlerfälle: 
+          * ... existiert bereits 
+          * Name unzulaessig 
+ 
+#ib#reset autonom#ie# 
+     PROC reset autonom 
+     Zweck: Die eigene Task deklariert sich beim Supervisor als nicht autonom
+            (Normalzustand). Das bedeutet, 'continue'-Aufforderungen über ein
+            'Supervisor-Kommando' vom Terminal werden vom System ohne Be­
+            nachrichtigung der Task durchgeführt. 
+ 
+#ib#set autonom#ie# 
+     PROC set autonom 
+     Zweck: Die eigene Task deklariert sich beim Supervisor als #ib#autonom#ie# (üblich für
+            Manager-Tasks). Wenn jetzt ein 'continue'-Supervisor-Kommando auf
+            diese Task von einem Terminal aus gegeben wird, wird der Task über
+            'send' eine Nachricht zugestellt. 
+            Achtung: Im autonomen Zustand ist der Programmierer selbst für die
+                     Reaktion der Task verantwortlich. Man kann sie von außen auf
+                     keine Weise gewaltsam an ein Terminal koppeln (ermög­
+                     licht Paßalgorithmen / Datenschutz). 
+                     Um die Programmierung etwas zu entschärfen, wird eine
+                     Task automatisch aus dem autonomen in den Normalzustand
+                     überführt, wenn sie selbst ein 'continue' gibt. 
+ 
+#ib#status#ie# 
+     INT PROC status (TASK CONST task) 
+     Zweck: Liefert den Status der angegebenen Task: 
+ 
+            0    -busy-        Task ist aktiv. 
+            1    i/o           Task wartet auf Beendigung des Outputs oder
+                               auf Eingabe. 
+            2    wait          Task wartet auf Sendung von einer anderen Task. 
+            4    busy-blocked  Task ist rechenwillig, ist aber blockiert. 
+            5    i/o -blocked  Task wartet auf I/O, ist aber blockiert. 
+            6    wait-blocked  Task wartet auf Sendung, ist aber blockiert. 
+                               Achtung: Die Task wird beim Eintreffen einer
+                                        Sendung automatisch entblockiert. 
+ 
+#ib#storage#ie# 
+     PROC storage (INT VAR size, used) 
+     Zweck: Informiert über den physisch verfügbaren ('size') und belegten ('used')
+            Speicher des Gesamtsystems. Die Einheit ist KByte. 
+            Achtung: 'size' gibt den Speicher an, der benutzt werden kann, ohne in
+                     eine Engpaßsituation zu kommen. Tatsächlich wird auf dem
+                     Hintergrundmedium noch eine gewisse Reserve freigehalten.
+                     Wenn diese angebrochen wird, befindet sich das System im
+                     #ib#Speicherengpaß#ie#. Dieser Zustand kann mit 'used > size'
+                     abgefragt werden. 
+ 
+     INT PROC storage (TASK CONST task) 
+     Zweck: Liefert die Größe des Speicherbereichs in KByte, den die angegebene
+            Task augenblicklich belegt. 
+            Dabei werden durch Sharing mögliche Optimierungen nicht berücksich­
+            tigt. D.h. eine Task kann physisch erheblich weniger Speicher als logisch
+            belegen. Entsprechend kann die Speichersumme aller Tasks den phy­
+            sisch belegten Speicherbereich des Gesamtsystems beträchtlich über­
+            schreiten. 
+ 
+#ib#task password#ie# 
+     PROC task password (TEXT CONST password) 
+     Zweck: Das angegebene Paßwort wird beim Supervisor hinterlegt. Bei folgen­
+            den SV-Kommandos 'continue...' auf diese Task wird interaktiv das
+            Paßwort abgefragt. Dabei gelten die üblichen Paßwort-Konventionen: 
+ 
+                 a) "" (Niltext) bedeutet #on("i")#kein Paßwort#off("i")#. Damit kann man durch
+                    'task password ("")' das Paßwort wieder ausschalten. 
+ 
+                 b) "-" bedeutet #on("i")#jedes eingegebene Paßwort ist ungültig#off("i")#. Damit
+                    kann man durch 'task password ("-")' das Ankoppeln an ein
+                    Terminal von außen (durch SV-Kommando) unterbinden. 
+ 
+ 
+ 
+ 
+#ib##ib(9)#Privilegierte Operationen#ie(9)##ie# 
+ 
+ 
+Die im folgenden aufgeführten privilegierten Operationen können #ub#nur#ue# von #ib#System­
+tasks#ie# - das sind direkte oder indirekte Söhne des Supervisors - ausgeführt werden. Um
+Mißbrauch unmöglich zu machen, sollte der Supervisor nach der Einrichtung der
+gewünschten Systemtasks bzgl. der Einrichtung neuer Söhne gesperrt und alle Sy­
+stemtasks durch Paßworte geschützt werden. 
+ 
+ 
+#ib#block#ie# 
+     PROC block (TASK CONST task) 
+     Zweck: Die angegebene #ib#Task wird blockiert#ie#, d.h. so lange von der Verarbeitung
+            suspendiert, bis die Blockade durch 'unblock' wieder aufgehoben wird.
+            Diese Operation wird vom Scheduler benutzt. Falls das Packet 'schedu­
+            ler' insertiert ist, sollten andere Tasks die Prozedur 'block' nicht anwen­
+            den, um dem Scheduling nicht entgegenzuwirken. 
+ 
+#ib#collect garbage blocks#ie# 
+     PROC collect garbage blocks 
+     Zweck: Es wird eine außerplanmäßige Gesamtmüllabfuhr durchgeführt. Plan­
+            mäßig (d.h. ohne Aufruf dieser Prozedur) wird sie alle 15 Minuten und in
+            Engpaßsituationen durchgeführt. Nach Aufruf dieser Prozedur wird der
+            automatische Fixpunkt/ Müllabfuhr-Rhythmus ca. 1 Stunde lang ge­
+            sperrt. Somit kann man z.B. in der Task "scheduler" einen eigenen
+            Fixpunkt/Müllabfuhr-Rhythmus implementieren. 
+            Achtung: Diese Operation erfordert starkes Paging und dauert dement­
+                     sprechend lange. 
+ 
+#ib#end#ie# 
+     PROC end (TASK CONST task) 
+     Zweck: Die angegebene Task und alle Söhne, Enkel etc. werden gelöscht.
+            Systemtasks (direkte und indirekte Nachkommen des SUPERVISORs)
+            können beliebige andere Tasks (nicht nur eigene Söhne) löschen. 
+ 
+#ib#fixpoint#ie# 
+     PROC fixpoint 
+     Zweck: Für das Gesamtsystem wird ein außerplanmäßiger #ib#Fixpunkt#ie# geschrie­
+            ben. Planmäßige Fixpunkte (d.h. ohne Aufruf dieser Prozedur) werden
+            alle 15 Minuten geschrieben. Nach Aufruf dieser Prozedur wird der
+            automatische Fixpunkt/Müllabfuhr-Rhythmus ca. 1 Stunde lang ge­
+            sperrt. Somit kann man z.B. in der Task "scheduler" einen eigenen
+            Fixpunkt/Müllabfuhr-Rhythmus implementieren. 
+            Achtung: Diese Operation verursacht starkes Paging (Rückschreiben
+                     aller veränderten Seiten auf das Hintergrundmedium) und
+                     dauert dementsprechend lange. 
+ 
+#ib#prio#ie# 
+     INT PROC prio (TASK CONST task) 
+     Zweck: Liefert die augenblickliche #ib#Priorität#ie# der angegebenen Task. 
+ 
+     PROC prio (TASK CONST task, INT CONST new prio) 
+     Zweck: Setzt die Priorität der Task. 
+ 
+     Hinweis: 0 ist die höchste, 15 die niedrigste Priorität. Die Prioritäten 0 bis 2
+              werden von EUMEL 0 (fine scheduling) verwaltet. Die restlichen Priori­
+              täten können für 'rough scheduling' (siehe auch im Kapitel Scheduler)
+              eingesetzt werden. 
+              Durch 'continue ("name")' wird die Priorität wieder auf 0 gesetzet. 
+ 
+#ib#set date#ie# 
+     PROC set date 
+     Zweck: #ib#Datum#ie# und #ib#Uhrzeit#ie# können im Dialog gesetzt werden (Form wie beim
+            Start des Systems). Dabei wird gegebenenfalls die Hardware­Uhr gele­
+            sen. 
+            Sollte der SHard ein falsches Datum liefern, so muß das Datum mit 
+                set clock (date("tt.mm.jj") + time ("hh:mm:ss")) 
+            gesetzt werden. 
+ 
+#ib#save system#ie# 
+     PROC save system 
+     Zweck: Der gesamte Systemhintergrund wird auf Archivdisketten gesichert. Zu
+            diesem Zweck wird das System wie bei 'shutup' heruntergefahren. 
+ 
+#ib#shutup#ie# 
+     PROC shutup 
+     Zweck: #ib#Kontrolliertes Herunterfahren des Systems#ie#. Beim nächsten Systemstart
+            wird automatisch Datum und Uhrzeit erfragt, wenn der Kommandodial­
+            og eingeschaltet ('command dialogue (TRUE)') und keine Hardwareuhr
+            vorhanden ist. Falls diese Prozedur nicht vor dem Abschalten aufgerufen
+            wurde, findet beim Neustart ein Aufsetzen auf dem letzten Fixpunkt statt
+            (RERUN). 
+ 
+#ib#unblock#ie# 
+     PROC unblock (TASK CONST task) 
+     Zweck: Eine vorherige Blockierung der Task wird aufgehoben. Ist die Task nicht
+            blockiert, bewirkt 'unblock' nichts. Diese Operation wird vom Scheduler
+            benutzt. Andere Tasks sollten sie normalerweise nicht anwenden, um
+            dem Scheduling nicht entgegenzuwirken. 
+ 
+ 
+ 
+ 
+ 
+#ib(9)#5.3. #ib#ID ­ Konstanten#ie##ie(9)# 
+ 
+ 
+Die Informationsprozedur 
+ 
+     INT PROC id (INT CONST no) 
+ 
+liefert folgende Informationen über die Soft­ und Hardware des Rechners: 
+ 
+   Von EUMEL 0 werden geliefert: 
+     id (0) --> EUMEL­Version 
+     id (1) --> Prozessortyp  (1: Z80, 
+                               2: Z8001, 
+                               3: 8086 und kompatible, 
+                               4: 68000 
+                               5: 80286) 
+     id (2) --> Urlader­Version 
+     id (3) --> reserviert 
+ 
+   Vom SHard werden geliefert: 
+     id (4) --> Lizenznummer des SHards 
+     id (5) --> Installationsnummer des EUMEL­Anwenders 
+     id (6) --> SHard­spezifisch 
+     id (7) --> SHard­spezifisch 
+ 
+ 
+ 
+ 
+ 
+#ib(9)#5.4. #ib#Systemverwaltung#ie##ie(9)# 
+ 
+ 
+#on("i")#Achtung#off("i")#: Dieser Teil des Systemhandbuchs ist nur für solche Multi-User-Installationen
+         von Bedeutung, die erweiterte Systemverwaltungsfunktionen generieren
+         bzw. modifizieren wollen. 
+ 
+         #on("i")#Das EUMEL-System ist in der ausgelieferten minimalen Standardform (ohne
+         die Features) ohne weiteres benutzbar#off("i")#. 
+ 
+ 
+ 
+ 
+ 
+#ib(9)#Der Systemmanager #ib#SYSUR#ie##ie(9)# 
+ 
+ 
+Der Systemmanager verhält sich im wesentlichen wie ein normaler Manager, allerdings
+mit folgender Erweiterung: 
+ 
+    -  Die Operationen 'list' und 'fetch' können von allen Tasks des Systems und
+       nicht nur von Söhnen durchgeführt werden. Damit kann man Systemverwal­
+       tungsdateien (z.B. "#ib#logbuch#ie#") von allen Tasks aus lesen. 'erase' und 'save' sind
+       jedoch nur von Söhnen bzw. Enkeln - d.h. von privilegierten Systemtasks - aus
+       zulässig. 
+ 
+Das Paket stellt folgende Operationen zusätzlich zur Verfügung: 
+ 
+#ib#generate shutup manager#ie# 
+     PROC generate shutup manager 
+     Zweck: Es wird eine Sohntask mit Namen "shutup" kreiert. Diese Task ist nicht­
+             (!) paßwortgeschützt, läßt aber keine normalen Kommandos zu, son­
+            dern fragt nur 
+ 
+                     shutup (j/n) ? 
+ 
+            So kann jeder das System kontrolliert abschalten und die privilegierten
+            Operationen des OPERATORs wie 'end' sind dennoch geschützt. 
+ 
+#ib#put log#ie# 
+     PROC put log (TEXT CONST log record) 
+     Zweck: Der angegebene 'log record' wird mit vorangestelltem Tasknamen des
+            Absenders, Datums- und Uhrzeitangabe in die Logbuchdatei "logbuch"
+            in der Task "SYSUR" geschrieben. Der neue Satz wird an die Datei ange­
+            fügt. ("logbuch" wird z.B. vom EUMELmeter verwandt.) 
+ 
+     Hinweis: Bei Verwendung des Logbuchs darf die zwar große, aber doch end­
+              liche Dateikapazität nicht vergessen werden. Nachdem das Logbuch
+              mit 4073 Sätzen voll ist, werden weitere 'put log' Operationen igno­
+              riert. Die Datei "logbuch" sollte deshalb - wenn sie beispielsweise vom
+              EUMELmeter verwandt wird - von Zeit zu Zeit gelöscht werden ('erase'
+              bzw. 'forget')! 
+ 
+ 
+ 
+ 
+#ib(9)##ib#Scheduler#ie##ie(9)# 
+ 
+ 
+Der Scheduler dient zur Verwaltung der rechenwilligen #ib#Hintergrundtask#ie#s. Will man den
+Scheduler (eventuell abgeändert) insertieren, muß man die Task "scheduler" als Sohn
+von SYSUR einrichten. Dann holt man die Datei "scheduler" vom Archiv und insertiert
+sie. "scheduler" beinhaltet "#ib#eumelmeter#ie#". Es wird beim Start erfragt, ob die Meßrouti­
+nen aktiviert werden sollen oder nicht. 
+ 
+ 
+ 
+ 
+#ib##ib(9)#Funktionsweise des Schedulers#ie(9)##ie# 
+ 
+ 
+Der Scheduler sammelt in bestimmten Zeitintervallen alle aktiven (rechnenden) Tasks
+ab, die an kein Terminal angekoppelt sind und auch keine Manager sind. Diese Tasks
+werden blockiert und in die Warteschlange der #ib#Standardklasse#ie# eingefügt. 
+ 
+Die Klassen des Schedulers werden durch die #ib#Taskpriorität#ie#en 5 bis 9 definiert. Die
+Standardklasse entspricht der Priorität 7. Die Klassenzugehörigkeit einer Task kann von
+einer Systemtask aus (z.B. von "OPERATOR") mit der Prozedur '#ib#prio#ie#' verändert werden. 
+ 
+Der Scheduler geht nach folgender Strategie vor: 
+ 
+     Anhand der Vordergrund/Hintergrundlast des Systems wird entschieden, ob
+     überhaupt Hintergrundtasks aktiv sein dürfen, welche Klassen aktiv sein dürfen
+     und wieviel #ib#Hintergrundtask#ie#s gleichzeitig rechnen dürfen. 
+ 
+     Die wartenden #ib#Hintergrundtask#ie#s werden im #ib#Round-Robin-Verfahren#ie# aktiviert.
+     Dabei kommt die Klasse n+1 erst dann zum Zug, wenn die Warteschlange der
+     Klasse n leer ist oder weniger Tasks enthält, als gleichzeitig aktiviert werden
+     sollen. 
+ 
+Die implementierte Standardstrategie hat als oberste Maxime, den Vordergrund auf
+keinen Fall zu stören. Dementsprechend wird der Hintergrund nur aktiviert, wenn eine
+der folgenden Bedingungen erfüllt ist: 
+ 
+    -  Die Vordergrundlast des Systems liegt unter 3% . 
+ 
+    -  Es ist keine normale #ib#Vordergrundtask#ie# (Nachfahre von "UR") an einen Kanal
+       angekoppelt. Man beachte, daß Systemtasks hierbei nicht berücksichtigt
+       werden. Ein aktiver Drucker blockiert die Hintergrundtasks also nicht. 
+ 
+ 
+ 
+ 
+EUMELmeter (Systemstatistik) 
+ 
+ 
+Die #ib#Meßsoftware#ie# zum #ib#Protokollieren der Systembelastung#ie# befindet sich auf dem Archiv
+'std.zusatz'. 
+ 
+Falls das System keinen #ib#Scheduler#ie# benutzt, muß eine Meßtask als Sohn von "SYSUR"
+eingerichtet werden. In diese Task muß dann die Datei "#ib#eumelmeter#ie#" vom Archiv geholt
+und übersetzt werden. 
+ 
+Falls das System einen Scheduler beinhalten soll, muß bei der Generierung des Sche­
+dulers lediglich auf die Frage "mit eumelmeter (j/n) ?" mit "j" geantwortet werden. 
+ 
+ 
+ 
+#ib##ib(9)#EUMELmeter#ie(9)##ie# 
+ 
+ 
+Das EUMELmeter protokolliert die #ib#Systemlast#ie# in ca. 10 minütigen Abständen in der
+Datei "#ib#logbuch#ie#" in "SYSUR". Für jedes Meßintervall wird eine Zeile angefügt. Die Zeilen
+sind folgendermaßen aufgebaut: 
+ 
+tt.mm.jj hh:mm   hg  uf ub  pw pb  cpuf cpub cpus last nutz 
+ 
+ 
+tt.mm.jj hh:mm    Datum und Uhrzeit des Eintrags 
+ 
+hg                Größe des aktuell belegten Hintergrundspeichers 
+                  (in KB) 
+ 
+uf                Anzahl der aktiven Vordergrundtasks 
+ 
+ub                Anzahl der aktiven Hintergrundtasks 
+ 
+pw                #ib#Paginglast#ie# bei wartender CPU (#ib#Paging/Wait#ie#) 
+ 
+pb                Paginglast bei aktiver CPU (#ib#Paging/Busy#ie#) 
+ 
+cpuf              #ib#CPU-Auslastung#ie# durch Vordergrundtasks 
+ 
+cpub              CPU-Auslastung durch Hintergrundtasks 
+ 
+cpus              #ib#CPU-Systemlast#ie# 
+ 
+last              #ib#Gesamtlast des Systems#ie#: 
+                  pw + pb + cpuf + cpub+ cpus 
+                  (Achtung: kann 100% übersteigen, da Platte und CPU über­
+                  lappt arbeiten können.) 
+ 
+nutz              #ib#Nutzgüte#ie# im Meßintervall:  100% - pw - cpus 
+                  Die Nutzgüte gibt an, welcher Anteil der Systemarbeit für echte
+                  Nutzarbeit verfügbar war. Sie ist die Summe aus der echten
+                  Nutzlast 'cpuf+cpub' und der Leerzeit, die ja theoretisch auch
+                  für Nutzarbeit hätte verwandt werden können. Sie läßt sich, wie
+                  oben angegeben, auch berechnen, indem man den idealerweise
+                  überflüssigen Overhead 'cpus' und 'pw' von 100% abzieht. 
+#page# 
+ 
+#count per page# 
+#headeven# 
+%#center#EUMEL-Systemhandbuch 
+ 
+ 
+#end# 
+#headodd# 
+#center#6. Der EUMEL-Drucker#right#% 
+ 
+ 
+#end# 
+ 
+#ib(9)#6. Der #ib#EUMEL-Drucker#ie##ie(9)# 
+ 
+ 
+ 
+#ib(9)#6.1. Allgemeine Einführung#ie(9)# 
+ 
+ 
+Die Ansteuerung eines #ib#Druckers#ie# durch das EUMEL-System geschieht durch zwei
+aufeinanderbauende Komponenten. Die eine Komponete ist der hardwareunabhängi­
+ge #ib#EUMEL-Drucker#ie#, der die #ib#Textverarbeitungsanweisungen#ie# umsetzt und die Druck­
+seite entsprechend aufbereitet, so daß sie im Blocksatz, in Tabellenform oder in Spal­
+ten gedruckt werden kann. Die andere Komponente ist der hardwareabhängige #ib#Druk­
+kertreiber#ie#, der durch ein einfaches Interface zum EUMEL-Drucker, wie z.B. Textausge­
+ben, Positionieren oder Schrifttypen und Modifikationen an- und ausschalten, den
+eigentlichen Druck vornimmt. 
+Die hardwareunabhängige Komponente, der EUMEL-Drucker, befindet sich bei den
+ausgelieferten Systemen im priviligierten Ast des Taskbaums, so daß beim Anschluß
+eines Druckers nur noch der hardwareabhängige Druckertreiber insertiert werden muß.
+Auf dem PRINTER-Archiv befinden sich schon einige Druckeranpassungen für diverse
+Druckertypen. 
+ 
+-  Implementierung des Druckertreiber-Interface 
+       Das Paket mit dem Druckertreiber muß in einer Task "PRINTER" insertiert und
+       ein Spool eingerichtet werden. 
+ 
+-  Erstellen einer Fonttabelle für den anzuschießenden Drucker 
+       Eine vorhandene Fonttabelle wird dabei in die Task "configurator" gebracht
+       werden. Die Fonttabelle sollte in allen bestehenden Tasks - insbesondere in
+       der Task "PUBLIC" und der Task "PRINTER" - mit dem #on("i")##on("b")#fonttable#off("i")##off("b")#-Kommando
+       eingestellt werden. 
+ 
+ 
+ 
+ 
+#ib(9)#6.2. Das #ib#Druckertreiber-Interface#ie##ie(9)# 
+ 
+ 
+Da der EUMEL-Drucker vor dem Druckertreiber insertiert ist, aber auf dem Drucker­
+treiber aufbaut, müssen beim Aufruf der 'print'-Prozedur des EUMEL-Druckers die
+Prozeduren des Druckertreibers mit übergeben werden. Aus progammtechnischen
+Gründen sollte ihre Anzahl möglichst gering gehalten werden. Deshalb gibt es die
+folgende drei Prozeduren, die mit einem 'op code' parametrisiert werden. Die Bedeu­
+tung der weiteren Parameter der Interfaceprozeduren hängen von diesem 'op code' ab.
+Die folgende Beschreibung der Prozeduren gibt einen Programmrahmen vor, in dem
+die Parameter durch Refinements entsprechend ihrer Bedeutung umdefiniert sind. 
+ 
+ 
+ 
+PROC open (INT CONST op code, INT VAR param 1, param 2) : 
+ 
+  LET document code  =  1 , 
+      page code      =  2 ; 
+ 
+  SELECT op code OF 
+    CASE document code  :  open document 
+    CASE page code      :  open page 
+  END SELECT. 
+ 
+ 
+  x steps : param1 . 
+  y steps : param2 . 
+ 
+  #ib#open document#ie# : 
+ 
+      Zweck: Die Prozedur wird vom EUMEL-Drucker zur Einleitung jedes Ausdrucks
+             aufgerufen. Hier können notwendige Initialisierungen der Hardware
+             durchgeführt werden. In 'x steps' und 'y steps' muß die Breite bzw.
+             Höhe der bedruckbaren Fläche des Papieres in Mikroschritten des
+             Druckers angegeben werden.#u##count#)#e# 
+#foot# 
+ 
+#value#) Zur Definition der Mikroschritte siehe Bemerkung 2. 
+#end# 
+ 
+ 
+ 
+  x start : param1 . 
+  y start : param2 . 
+ 
+  #ib#open page#ie# : 
+ 
+      Zweck: Hiermit wird dem Hardware-Interface der Beginn einer neuen Seite
+             mitgeteilt. Die Parameter 'x start' und 'y start' liefern die gewünschte
+             Position der linken oberen Ecke des Schreibfeldes. Das Hardware-In­
+             terface muß in diesen Parametern seine augenblickliche Position auf
+             dem Papier zurückmelden, wobei die Position (0,0) die linke obere
+             Ecke des Papieres ist. 
+             Vor der Rückmeldung kann aber auch auf die angegebene Startpo­
+             sition positioniert und diese zurückgemeldet werden. Es ist jedoch
+             darauf zu achten, daß die zurückgemeldete Position den internen
+             Nullpunkt für die Absolutkoordinaten im EUMEL-Drucker definiert.
+             Deswegen muß das Hardware-Interface sicherstellen, daß bei einem
+             "Zeilenrücklauf" die zurückgemeldete Position 'x start' erreicht wird.
+             (Siehe 'carriage return' in der Prozedur 'execute'). Auch gibt es Fälle,
+             bei denen links von der gemeldeten 'x start'-Position positioniert wird. 
+             Bei #ib#Druckern mit Einzelblatteinzug#ie#, bei denen das Papier gleich auf die
+             zweite oder dritte Zeile positioniert wird, sollte, um ein korrektes Druck­
+             bild zu erreichen, diese Postion in 'y start' zurückgemeldet werden. 
+ 
+ 
+END PROC open; 
+ 
+ 
+PROC close (INT CONST op code, INT CONST param 1) : 
+ 
+  LET document code  =  1 , 
+      page code      =  2 ; 
+ 
+  SELECT op code OF 
+    CASE document code  :  close document 
+    CASE page code      :  close page 
+  END SELECT. 
+ 
+ 
+  #ib#close document#ie# : 
+ 
+      Zweck: Hiermit wird dem Hardware-Interface das Ende eines Druckvorgangs
+             mitgeteilt. 
+ 
+ 
+ 
+  remaining y steps : param 1 . 
+ 
+  #ib#close page#ie# : 
+ 
+      Zweck: Hiermit wird dem Hardware-Interface mitgeteilt, daß der Druck der
+             aktuellen Seite abgeschlossen ist. 
+             'remaining y steps' gibt an, wieviel Mikroschritte das vertikale Papier­
+             ende noch von der aktuellen Druckposition entfernt ist. Die x-Position
+             des Druckers ist bei Aufruf dieser Prozedur immer der linke Rand
+             'x start'. 
+ 
+ 
+END PROC close; 
+ 
+ 
+PROC execute (INT CONST op code, TEXT CONST string, 
+                                 INT  CONST param1, param2) : 
+ 
+  LET write text code       =  1 , 
+      write cmd code        =  2 , 
+      carriage return code  =  3 , 
+      move code             =  4 , 
+      draw code             =  5 , 
+      on code               =  6 , 
+      off code              =  7 , 
+      type code             =  8 ; 
+ 
+  SELECT op code OF 
+    CASE write text code       :  write text 
+    CASE write cmd code        :  write cmd 
+    CASE carriage return code  :  carriage return 
+    CASE move code             :  move 
+    CASE draw code             :  draw 
+    CASE on code               :  on 
+    CASE off code              :  off 
+    CASE type code             :  type 
+  END SELECT . 
+ 
+ 
+  from : param1 . 
+  to   : param2 . 
+ 
+  #ib#write text#ie# : 
+ 
+      Zweck: Der übergebene Text 'string' muß von der Zeichenposition 'from' bis
+             'to' (einschließlich) auf dem Drucker ausgegeben werden. Die Über­
+             schreitung der Papierbreite braucht nicht überprüft zu werden. 
+ 
+ 
+ 
+  #ib#write cmd#ie# : 
+ 
+      Zweck: Der übergebene Text 'string' enthält zwischen den Positionen 'from'
+             und 'to' ein direkt angegebenes #ib#Druckerkommando#ie# (\#"..."\#). Wenn
+             direkte Druckerkommandos erlaubt sein sollen, müssen sie ausgege­
+             ben werden. 
+ 
+ 
+ 
+  x steps to left margin : param 1 . 
+ 
+  #ib#carriage return#ie# : 
+ 
+      Zweck: Der Druckkopf muß (ohne Zeilenvorschub) an den linken Rand be­
+             wegt werden, d.h. an die bei 'open page' vom Druckertreiber gemel­
+             dete Position 'x start'. 'x steps to left margin' gibt an, wieviel Minimal­
+             schritte die augenblickliche Position vom linken Rand entfernt ist. 
+ 
+ 
+ 
+  x steps : param 1 . 
+  y steps : param 2 . 
+ 
+  #ib#move#ie# : 
+ 
+      Zweck: Die Schreibposition muß um 'x steps' Mikroschritte nach rechts und um
+             'y steps' Mikroschritte nach unten verschoben werden. Negative
+             Schrittwerte bedeuten dabei die jeweils andere Richtung. Das Über­
+             schreiten des Papiers braucht nicht überprüft zu werden. Bei einer
+             horizontalen Bewegung nach rechts ('x steps' > 0) müssen die einge­
+             schalteten Modifikationen beachtet werden. Wenn z.B. 'underline'
+             eingeschaltet ist, muß die Strecke unterstrichen werden. 
+             Kann eine Leistung (z.B. Bewegung nach links) nicht erbracht wer­
+             den, muß ein 'errorstop' ausgelöst werden. Im Fehlerfall bei einer
+             Horizontalbewegung versucht der EUMEL-Drucker nach einem Zei­
+             lenrücklauf nochmals die angestrebte x-Position zu erreichen. Somit
+             brauchen horizontale Bewegungen nach links ('x steps' < 0) nicht
+             unbedingt implementiert zu werden, sondern können mit einem 'error­
+             stop' beantwortet werden. Im Fehlerfall bei einer vertikalen Bewegung
+             wird an der alten Position weitergeschrieben. 
+ 
+ 
+ 
+  #ib#draw#ie# : 
+ Zweck: Von der aktuellen Schreibposition an (linke untere Ecke der Zeichenposition)
+             soll eine gerade Linie zum Zielpunkt ('x steps' weiter rechts, 'y steps' weiter
+             unten) gezogen werden. Kann eine Leistung (z.B. schräge Linie, Linie nach
+             oben o.ä.) nicht erbracht werden, muß ein 'errorstop' ausgelöst werden.
+             Dieser Fehlerfall wird vom EUMEL-Drucker ignoriert. Das Überschreiten
+             des Schreibfeldes braucht nicht überprüft zu werden. 
+ 
+ 
+ 
+  modification : param 1 . 
+ 
+  #ib#on#ie# : 
+ 
+      Zweck: Die #ib#Modifikation#ie# der Nummer 'modification' soll eingeschaltet wer­
+             den, sofern die Hardware es erlaubt. Augenblicklich gibt es folgende
+             Modifikationen: 
+ 
+                         1      underline 
+                         2      bold 
+                         4      italics 
+                         8      reverse 
+ 
+             Die in der Fonttabelle spezifizierte Befehlssequenz, um die entspre­
+             chende Modifikation anzuschalten, kann mit der Prozedur #on("i")#on string
+             (modification)#off("i")# abgefragt werden. 
+             Kann eine Leistung nicht erbracht werden, muß ein 'errorstop' aus­
+             gelöst werden. Im Fehlerfall der Modifikation 'underline' versucht der
+             neue EUMEL-Drucker die Zeile mit Hilfe von 'draw' zu unterstreichen.
+             Im Fehlerfall der Modifikation 'bold' wird die Zeile nochmals, um den in
+             der Fonttabelle spezifizierten 'bold offset' verschoben, ausgegeben.
+             Bei den restlichen beiden Modifkationen wird der Fehlerfall ignoriert. 
+ 
+ 
+ 
+  #ib#off#ie# : 
+ 
+      Zweck: Die angegebene #ib#Modifikation#ie# 'modification' soll ausgeschaltet wer­
+             den. Die in der Fonttabelle spezifizierte Befehlssequenz, um die ent­
+             sprechende Modifikation auszuschalten, kann mit der Prozedur #on("i")#off
+             string (modification)#off("i")# abgefragt werden. Ein Fehlerfall wird hier igno­
+             riert. 
+ 
+ 
+ 
+  font nr : param 1 . 
+ 
+  #ibie# : 
+ 
+      Zweck: Die Druckausgabe soll auf den #ib#Schrifttyp#ie# mit der angegebenen Font­
+             nummer 'font nr' umgeschaltet werden. Diese Nummer bezieht sich auf
+             die eingestellte Fonttabelle. Mit den Prozeduren des Fontspeichers
+             können anhand dieser Nummer die nötigen Informationen beschafft
+             werden. So liefert z.B. die Prozedur #on("i")#font string (font nr)#off("i")# die in der Font­
+             tabelle spezifizierte Befehlssequenz oder die Prozedur #on("i")#font (font nr)#off("i")#
+             den Namen des Fonts. Die Breite des Leerzeichens kann mit #on("i")#char pitch
+             (font nr, " ")#off("i")# bestimmt werden. 
+ 
+ 
+END PROC execute; 
+ 
+ 
+ 
+ 
+ 
+#ib(9)#6.3. Prozedur-Schnittstelle des EUMEL- 
+     Druckers#ie(9)# 
+ 
+ 
+ 
+#ib#print#ie# 
+     PROC print  (PROC (TEXT VAR) next line, BOOL PROC eof, 
+                  PROC (INT CONST, INT VAR, INT VAR) open, 
+                  PROC (INT CONST, INT CONST) close, 
+                  PROC (INT CONST, TEXT CONST, 
+                                      INT CONST, INT CONST) execute, 
+                  BOOL CONST elan listing, TEXT CONST file name) 
+     Zweck:  Solange die Prozedur 'eof' FALSE liefert wird mit der Prozedur 'next
+             line' eine Zeile eingelesen. Dieser Eingabestrom wird für den Druck
+             aufbereitet. Ist die Konstante 'elan listing' auf FALSE gesetzt, so wird
+             der Eingabestrom als Textdatei mit Textkosmetik-Anweisungen aus­
+             gedruckt. Andernfalls wird der Eingabestrom wie ein ELAN-Listing
+             behandelt. In der Textkonstanten 'file name' muß dann der Dateiname
+             der Programmdatei enthalten sein. 
+ 
+ 
+      PROC print (FILE VAR file, 
+                  PROC (INT CONST, INT VAR, INT VAR) open 
+                  PROC (INT CONST, INT CONST) close 
+                  PROC (INT CONST, TEXT CONST, 
+                                   INT CONST, INT CONST) execute) 
+      Zweck: Der Eingabestrom kommt aus der angegebenen Datei. Anhand vorge­
+             gebener Kriterien wird entschieden, ob diese Datei als Textdatei oder
+             als ELAN-Listing ausgedruckt wird. 
+ 
+#ib#with elan listings#ie# 
+      PROC with elan listings (BOOL CONST flag) 
+      Zweck: Mit dieser Prozedur kann bei der vorangegangenen 'print'-Prozedur
+             gesteuert werden, ob überhaupt irgendwelche Dateien als ELAN-Lis­
+             tings gedruckt werden sollen. Wird damit FALSE eingestellt, so wer­
+             den alle Dateien als Textdateien gedruckt. 
+ 
+     BOOL PROC with elan listings 
+     Zweck:  Liefert die aktuelle Einstellung. 
+ 
+ 
+#ib#is elan source#ie# 
+     PROC is elan source (FILE VAR file) 
+     Zweck:  Entscheidet nach vorgebenen Kriterien, ob die angegebene Datei ein
+             ELAN-Listing ist. 
+ 
+ 
+#ib#bottom label for elan listings#ie# 
+     PROC bottom label for elan listings (TEXT CONST label) 
+     Zweck:  Bei ELAN-Listings wird in der Fußzeile ein Text eingestellt, der durch
+             Schägstrich getrennt vor die Seitennummer geschrieben wird. (z.B. zur
+             Durchnumerierung der Pakete im Quellcode) 
+ 
+     TEXT PROC bottom label for elan listings 
+     Zweck:  Liefert die aktuelle Einstellung. 
+ 
+ 
+#ib#material#ie# 
+     TEXT PROC material 
+     Zweck:  Hier kann das Hardware-Interface jeder Zeit den aktuellen Material­
+             wert abfragen, der vom Benutzer mit der 'material'-Anweisung einge­
+             stellt ist. 
+ 
+ 
+#ib#x pos#ie# 
+     INT PROC x pos 
+     Zweck:  Wird in der Prozedur 'execute' die Funktion 'move' oder 'draw' ange­
+             steuert, so liefert diese Prozedur die absolute Zielposition in x-Rich­
+             tung, wo bei der Nullpunkt durch das zurückgelieferte 'x start' bei 'open
+             page' definiert ist. Diese Prozedur dient zur Unterstützung von Druk­
+             kern, die eine absolute Positionierung in horizontaler Richtung benöti­
+             gen. 
+ 
+ 
+#ib#y pos#ie# 
+     INT PROC y pos 
+     Zweck:  Wird in der Prozedur 'execute' die Funktion 'move' oder 'draw' an­
+             gesteuert, so liefert diese Prozedur die absolute Zielposition in y-Rich­
+             tung, wo bei der Nullpunkt durch das zurückgelieferte 'y start' bei 'open
+             page' definiert ist. Diese Prozedur dient zur Unterstützung von Druk­
+             kern, die eine absolute Positionierung in vertikaler Richtung benötigen. 
+ 
+ 
+#ibie# 
+     INT PROC linetype 
+     Zweck:  Wird in der Prozedur 'execute' die Funktion 'draw' angesteuert, so gibt
+             diese Prozedur den gewünschten Linientyp an. Bisher ist nur definiert: 
+                         1      underline 
+ 
+     Anmerkung:  Bis jetzt benutzt der EUMEL-Druckers die Funktion 'draw' lediglich
+                 zum Unterstreichen in Fehlerfall der Modifikation 'underline', d.h.
+                 zeichnen mit 'y steps = 0' und 'x steps >= 0' mit 'line type = 1'
+                 reicht aus. 
+ 
+ 
+#ib#y offset index#ie# 
+     INT PROC y offset index 
+     Zweck:  Wurde der Font mit 'y offsets' definiert, so kann hiermit in der bei der
+             Funktion 'write text' in der Prozedur 'execute' der jeweilige Offset-In­
+             dex für den auszugebenden Text abgefragt werden. Der Offset-Index
+             sagt aus, die wievielte Verschiebung nun ausgegeben wird. Dabei
+             werden die Verschiebungen in der Reihenfolge durchnummeriert, in
+             der sie in der Fonttabelle angegeben wurden. Anhand dieses Offset-In­
+             dex muß das Hardware-Interface entscheiden, welche Bitmuster aus­
+             gegeben werden müssen. 
+ 
+ 
+#ib#pages printed#ie# 
+     INT PROC pages printed 
+     Zweck:  Gibt nach dem Ausdruck an, wieviel Seiten gedruckt wurden. 
+ 
+ 
+ 
+ 
+#ib(9)#6.4. Bemerkungen und Ratschläge#ie(9)# 
+ 
+ 
+ 
+1) Für ein Paket, das dieses Interface implementiert, sind folgende Punkte wichtig: 
+ 
+    -  Man braucht sich keine Zustände (aktuelle Position o.ä.) zu merken. 
+ 
+    -  Rückmeldungen über die Leistungsfähigkeit eines Druckers bzw. seiner An­
+       passung erfolgen über 'errorstop'. Der #ib#EUMEL-Drucker#ie# stellt fest, ob bestimm­
+       te Leistungen (Einschalten der Attribute und Bewegungen des Druckers)
+       verfügbar sind, indem er sie versuchsweise ausführen läßt. Bei den Prozedu­
+       ren 'open', 'close' und den Funktionen 'write text', 'write cmd', 'carriage return'
+       und 'type' der Prozedur 'execute' führt ein 'errorstop' jedoch zum Abbruch des
+       Drucks. 
+ 
+2) Die #on("i")##on("b")##ib#Mikroschritte#ie##off("i")##off("b")# sollten die kleinsten durchführbaren horizontalen bzw. vertikalen
+   Bewegungen des Druckers sein. Oft gibt aber das Handbuch des Druckers keine
+   eindeutige Angabe über die Mikroschritte in horizontaler Richtung, sondern sagt
+   nur, daß es gewisse Schriften mit einer bestimmten Anzahl von Zeichen pro Zoll
+   gibt.#u##count#)#e# Dann ergibt sich die Anzahl von Mikroschritten pro Zoll aus dem kleinsten#foot#
+    
+#value#) 1 Zoll = 1 Inch = 2.54 cm 
+ 
+#end# 
+   gemeinsamen Vielfachen der Anzahl Zeichen pro Zoll aller Schriften. 
+ 
+   Beispiel: 
+      Der Olivetti Drucker PR1470 hat drei Schriften mit 10, 12, und 16.6 Zeichen pro
+      Zoll. Das kleinste gemeinsame Vielfache ist 300. Ein Mikroschritt bei dem Druk­
+      ker PR1470 entspricht also einem 300stel Zoll. Die Breite der einzelnen Schrif­
+      ten läßt sich nun aus der folgenden Tabelle ablesen. 
+ 
+       Anzahl Zeichen pro Zoll           Breite in 1/300 Zoll 
+                10                            30 
+                12                            25 
+               16.6                           18 
+ 
+   Wenn der Drucker in diesen theoretischen Mikroschritten nicht positionieren kann,
+   so muß er bei einem #on("i")#move#off("i")#-Befehl so genau wie möglich positionieren. Der Rest
+   sollte abgespeichert und beim nächsten #on("i")#move#off("i")#-Befehl hinzuaddiert werden. 
+ 
+3) Um ein optimales Druckbild zu bekommen, müssen alle Breiten und Höhenanga­
+   ben der Zeichen genau angegeben werden. 
+ 
+4) Die Fonttabelle bietet eine einfache Möglichkeit, Zeichen mit Hilfe der #ib#Ersatzdar­
+   stellung#ie#en umzucodieren. Deshalb sollte der Druckerkanal auch mit der Konfigu­
+   rationstabelle 'transparent' konfiguriert werden. 
+ 
+5) Um den Schrifttyp festzulegen, mit dem #ib#ELAN-Listing#ie#s gedruckt werden sollen,
+   kann in der Fonttabelle einem Font der Name #on("i")##on("b")#"#ib#elanlist#ie#"#off("i")##off("b")# zugeordnet werden, denn
+   der ELAN-Lister versucht auf einen Schrifttyp mit diesem Namen zuschalten. Wenn
+   kein Schrifttyp "elanlist" existiert, dann wird für ELAN-Listings der erste Schrifttyp
+   der Fonttabelle genommen. 
+ 
+6) Nach der Installation des #ib#Druckertreiber#ie#s ist darauf zu achten, daß in der Task
+   "PRINTER" eine Fonttabelle des Druckers eingestellt ist. 
+ 
+7) Der #ib#Druckertreiber#ie# sollte eventuell noch ein Prozedur bereitstellen, mit der die
+   Papierbreite bzw. -höhe eingestellt werden kann, die bei 'open document' dem
+   EUMEL-Drucker gemeldet wird. 
+ 
+ 
+ 
+ 
+#ib(9)#6.5. Arbeitsweise des EUMEL-Druckers#ie(9)# 
+ 
+ 
+ 
+Der EUMEL-Drucker arbeitet mit der folgenden Strategie: 
+ 
+Die Datei wird zeilenweise analysiert. Bei der Analyse werden einzelne #ib#Token#ie# be­
+stimmt. Ein Token ist ein Textteil, der zusammenhängend gedruckt werden kann, ohne
+daß es zu Typumschaltungen, Modifkationsänderungen oder Positionierungen in x-
+bzw. y-Richtung kommt. So ist bei einfachem Zeilendruck jede Zeile ein Token, wäh­
+rend im Blocksatz jedes Wort ein Token ist. Ein Token hat also immer 
+ 
+  -  einen Text, 
+  -  die Länge des Textes bei der Ausgabe, 
+  -  eine absolute x- und y- Position auf dem Papier, 
+  -  einen Schrifttyp, 
+  -  Modifikationen für den Text, 
+  -  Modifikationen für den Zwischenraum vom letzten Token zu diesem Token. 
+ 
+Sind alle Token einer Zeile bestimmt, so werden sie in eine Liste aller bisher erzeug­
+ten, aber noch nicht gedruckten Token der absoluten y-Position nach einsortiert. Diese
+Tokenliste wird erst dann ausgedruckt, wenn sichergestellt ist, daß im weiteren Verlauf
+der Datei kein Token vor das letzte Token der sortierten Liste kommt. Beim Zeilendruck
+ist dies nach jeder Zeile der Fall. Bei Spaltendruck kann jedoch erst dann ausgedruckt
+werden, wenn sich die Analyse in der letzten Spalte befindet. Spätestens bei einem
+Seitenwechsel muß die Tokenliste ausgegeben werden. 
+ 
+Durch diese Strategie lassen sich Spaltendruck oder Indizes und Exponenten sehr
+leicht für alle Drucker implementieren, ohne daß ein Drucker in vertikaler Richtung
+rückwärts positionieren muß. 
+ 
+Bei der Ausgabe der Tokenliste wird jeweils auf die nächst größere y-Position posi­
+tioniert und dort werden alle Token zu dieser y-Position ausgegeben. Die Ausgabe
+eines Tokens erfolgt in der folgenden Reihenfolge: 
+ 
+  -  der Schrifttyp wird eingeschaltet, 
+  -  die Modifikationen für den Zwischenraum werden eingeschaltet, 
+  -  der Positionsbefehl für horizontale Bewegungen wird gegeben, 
+  -  die Modifikationen für den Text werden eingeschaltet, 
+  -  der Text wird ausgegeben. 
+ 
+Die ersten vier Punkte werden nur dann ausgeführt, wenn sie notwendig sind. Über­
+schreitet der Text die Papierbreite, so zeigen Punkte am Ende der Zeile dies an.
+

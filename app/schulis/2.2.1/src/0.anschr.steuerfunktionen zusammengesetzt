@@ -1,0 +1,87 @@
+PACKET anschrsteuerfunktionenfuerzusammengesetzteanschreibenDEFINES 
+zusammengesetztesanschreiben,naechsteszusammengesetztesanschreiben:LET 
+niltext="",nildatum="01.01.00";LET nproc=1,eingangsbildschirm=2;LET 
+vorwaertstaste="a";LET tupelstackgroesse=10;LET druckmeldnr=125,
+existiertnichtnr=126,leermeldnr=127,endemeldnr=128,weitereangabenr=129,
+nichterstellbarmeldnr=130;TEXT VAR druckmeld:="",anschreibentext;LET meldkz=
+"#";INT VAR dateinummer,aktuellerindex,anzgeftupel;BOOL VAR einzelbearbeitung
+;PROC zusammengesetztesanschreiben(INT CONST aktuellerinx,BOOL CONST 
+anschreibenzeigen,peinzelbearbeitung,BOOL PROC sonderwerteundueberpruefungauf
+erstellbarkeit,BOOL PROC pruefespeziell,TEXT PROC druckdatei):ROW 10TEXT VAR 
+schluesselsve1,schluesselsve2;INT VAR i;vorbereitungen;IF einzelbearbeitung
+THEN einzelanschreibenELSE anschreibenfuerbestandFI .anschreibenfuerbestand:
+IF leererbestandTHEN meldeleerenbestand;zurueckzumeingangsbildschirmELSE 
+bearbeiteallediesesbestandesFI .bearbeiteallediesesbestandes:IF 
+anschreibenzeigenTHEN erstenbearbeitenELSE anschreibenleseschleife(BOOL PROC 
+sonderwerteundueberpruefungauferstellbarkeit,BOOL PROC pruefespeziell,TEXT 
+PROC druckdatei);meldeendederbrieferstellung;zurueckzumeingangsbildschirmFI .
+erstenbearbeiten:BOOL VAR erstellbar:=TRUE ;BOOL VAR bestandleer:=FALSE ;
+erstellbar:=sonderwerteundueberpruefungauferstellbarkeit;IF erstellbarTHEN 
+bearbeitenzumzeigenELSE REP IF anzgeftupel=0THEN anzgeftupel:=
+tupelstackgroesse;multisucc(aktuellerindex,anzgeftupel)FI ;IF anzgeftupel<>0
+THEN multisucc;anzgeftupelDECR 1;bestandleer:=NOT pruefespeziellELSE 
+bestandleer:=TRUE FI UNTIL bestandleerCOR 
+sonderwerteundueberpruefungauferstellbarkeitPER ;IF NOT bestandleerTHEN 
+bearbeitenzumzeigenELSE zurueckzumeingangsbildschirm;
+meldeendederbrieferstellungFI FI .bearbeitenzumzeigen:IF einzelbearbeitung
+CAND NOT sonderwerteundueberpruefungauferstellbarkeitTHEN 
+meldenichterstellbar;zurueckzumeingangsbildschirmELSE anschreibentext:=
+druckdatei;editierebriefFI .einzelanschreiben:direktlesen;IF gefundenTHEN IF 
+eindeutigTHEN datenlesen;IF anschreibenzeigenTHEN bearbeitenzumzeigenELSE 
+einzelbriefschreiben;zurueckzumeingangsbildschirmFI ELSE 
+meldeanforderunggenauererangaben;return(1)FI ELSE meldenichtgefunden;return(1
+)FI .vorbereitungen:dateinummer:=dateinr(primdatid(aktuellerinx));
+aktuellerindex:=aktuellerinx;einzelbearbeitung:=peinzelbearbeitung;
+meldungstext(druckmeldnr,druckmeld);setzesonderwerteschulkenndaten;.
+direktlesen:gesetztenschluesselsichern(schluesselsve1);anzgeftupel:=2;
+multisearchforward(aktuellerindex,anzgeftupel).gefunden:IF anzgeftupel=0THEN 
+FALSE ELSE multisucc;pruefespeziellFI .eindeutig:anzgeftupel=1COR 
+naechsterungleich.naechsterungleich:gesetztenschluesselsichern(schluesselsve2
+);multisucc;IF NOT pruefespeziellTHEN TRUE ELSE FOR iFROM 1UPTO anzkey(
+dateinummer)REP IF schluesselsve1[i]=""COR (feldtyp(dateinummer+i)=datumfeld
+CAND schluesselsve1[i]=nildatum)THEN LEAVE naechsterungleichWITH FALSE FI ;
+IF schluesselsve2[i]<>wert(dateinummer+i)THEN LEAVE naechsterungleichWITH 
+TRUE FI PER ;FALSE FI .datenlesen:stackentry(1).einzelbriefschreiben:IF NOT 
+sonderwerteundueberpruefungauferstellbarkeitTHEN meldenichterstellbarELSE 
+briefschreibenFI .meldenichtgefunden:standardmeldung(existiertnichtnr,niltext
+).meldeanforderunggenauererangaben:standardmeldung(weitereangabenr,niltext).
+meldenichterstellbar:standardmeldung(nichterstellbarmeldnr,sonderwert(
+indexadressat)+meldkz).meldeendederbrieferstellung:standardmeldung(endemeldnr
+,niltext).zurueckzumeingangsbildschirm:enter(nproc).leererbestand:anzgeftupel
+:=tupelstackgroesse;multisearchforward(aktuellerindex,anzgeftupel);IF 
+anzgeftupel<>0THEN multisucc;anzgeftupelDECR 1;NOT pruefespeziellELSE TRUE 
+FI .meldeleerenbestand:standardmeldung(leermeldnr,niltext).briefschreiben:
+anschreibentext:=druckdatei;print(anschreibentext);standardmeldung(
+druckmeldnr,sonderwert(indexadressat)+meldkz);forget(anschreibentext,quiet).
+END PROC zusammengesetztesanschreiben;PROC gesetztenschluesselsichern(ROW 10
+TEXT VAR schluesselsve):INT VAR i;FOR iFROM 1UPTO anzkey(dateinummer)REP 
+schluesselsve[i]:=wert(dateinummer+i)PER ENDPROC gesetztenschluesselsichern;
+PROC anschreibenleseschleife(BOOL PROC sonderwerteundueberpruefungauf
+erstellbarkeit,BOOL PROC pruefespeziell,TEXT PROC druckdatei):BOOL VAR 
+schluss:=FALSE ;vorlesen;leseschleife.leseschleife:WHILE NOT schlussREP IF 
+sonderwerteundueberpruefungauferstellbarkeitTHEN briefschreibenELSE 
+standardmeldung(nichterstellbarmeldnr,sonderwert(indexadressat)+meldkz)FI ;
+lesenPER .lesen:IF anzgeftupel=0THEN anzgeftupel:=tupelstackgroesse;multisucc
+(aktuellerindex,anzgeftupel)FI ;satzlesen.vorlesen:anzgeftupel:=
+tupelstackgroesse;multisearchforward(aktuellerindex,anzgeftupel);satzlesen.
+satzlesen:IF anzgeftupel<>0THEN multisucc;anzgeftupelDECR 1;schluss:=NOT 
+pruefespeziellELSE schluss:=TRUE FI .briefschreiben:anschreibentext:=
+druckdatei;print(anschreibentext);standardmeldung(druckmeldnr,sonderwert(
+indexadressat)+meldkz);forget(anschreibentext,quiet).END PROC 
+anschreibenleseschleife;PROC editierebrief:editiere(anschreibentext,
+vorwaertstaste,FALSE )END PROC editierebrief;PROC 
+naechsteszusammengesetztesanschreiben(BOOL PROC 
+sonderwerteundueberpruefungauferstellbarkeit,BOOL PROC pruefespeziell,BOOL 
+CONST drucken,TEXT PROC druckdatei):BOOL VAR bestandleer:=FALSE ;IF drucken
+THEN print(anschreibentext);standardmeldung(druckmeld#nr,#,sonderwert(
+indexadressat)+meldkz)FI ;forget(anschreibentext,quiet);IF einzelbearbeitung
+THEN enter(eingangsbildschirm)ELSE REP IF anzgeftupel=0THEN anzgeftupel:=
+tupelstackgroesse;multisucc(aktuellerindex,anzgeftupel)FI ;IF anzgeftupel<>0
+THEN multisucc;anzgeftupelDECR 1;bestandleer:=NOT pruefespeziellELSE 
+bestandleer:=TRUE FI UNTIL bestandleerCOR 
+sonderwerteundueberpruefungauferstellbarkeitPER ;IF NOT bestandleerTHEN 
+anschreibentext:=druckdatei;return(nproc)ELSE standardmeldung(endemeldnr,
+niltext);enter(eingangsbildschirm)FI FI END PROC 
+naechsteszusammengesetztesanschreiben;END PACKET 
+anschrsteuerfunktionenfuerzusammengesetzteanschreiben;
+

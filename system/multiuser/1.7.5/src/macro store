@@ -1,0 +1,298 @@
+(* ------------------- VERSION 13 vom 28.05.86 -------------------- *)
+PACKET macro store DEFINES macro command and then process parameters,
+                           get macro line,
+                           number macro lines,
+                           load macros,
+                           list macros:
+
+(* Programm zur Behandlung von Textkosemtik-Macros
+   Autor: Rainer Hahn
+   Stand: 1.7.1 (Febr. 1984)
+*)
+
+INITFLAG VAR this packet :: FALSE;
+
+DATASPACE VAR ds;
+
+BOUND MACROTABLE VAR macro table;
+
+FILE VAR f;
+
+LET MACROTABLE = STRUCT (ROW max macros TEXT replacement store,
+                         ROW max macro zeilen TEXT macro zeilen,
+                         ROW max macros TEXT macro namen,
+                         ROW max macros INT  anz parameter,
+                         ROW max macros INT  macro start);
+
+ 
+LET tag              = 1, 
+    number           = 3,
+    delimiter        = 6, 
+    end of scan      = 7,
+    max macro zeilen = 1000,
+    max macros       = 200;
+
+INT VAR index aktuelle macro zeile,
+        type,
+        anz zeilen in macro,
+        anz macro zeilen,
+        anz macros :: 0;
+
+TEXT VAR symbol,
+         fehlertext, 
+         dummy,
+         kommando,
+         zeile;
+
+BOOL VAR with parameters,
+         macro end gewesen;
+
+PROC init macros:
+  IF NOT initialized (this packet)
+    THEN ds := nilspace;
+         macro table := ds;
+         macros leeren
+  FI.
+
+macros leeren:
+  anz macro zeilen := 0;
+  anz macros := 0.
+END PROC init macros;
+
+PROC load macros (TEXT CONST fname):
+  init macros;
+  line;
+  IF exists (fname)
+    THEN f := sequential file (input, fname);
+         forget (ds);
+         ds := nilspace;
+         macro table := ds;
+         macros einlesen
+    ELSE errorstop ("Datei existiert nicht")
+  FI.
+
+macros einlesen:
+  macro end gewesen := TRUE;
+  anz macros        := 0;
+  anz macro zeilen  := 0;
+  WHILE NOT eof (f) REP
+    anz macro zeilen INCR 1;
+    IF anz macro zeilen > max macro zeilen
+      THEN errorstop ("Zu viele Zeilen (max.1000)") 
+    FI;
+    cout (anz macro zeilen);
+    getline (f, zeile);
+    IF zeile = ""
+      THEN zeile := " "
+    ELIF pos (zeile, "#*") > 0
+      THEN macro name oder end vermerken
+    FI;
+    IF macro end gewesen AND zeile = " "
+      THEN anz macro zeilen DECR 1
+      ELSE macro table . macro zeilen [anz macro zeilen] := zeile
+    FI
+  END REP;
+  anz macro zeilen INCR 1;
+  macro table . macro zeilen [anz macro zeilen] := " "; 
+  IF anz macros = 0
+    THEN putline  ("Macros geleert")
+  FI.
+
+macro name oder end vermerken:
+  INT CONST komm anfang :: pos (zeile, "#*") + 2,
+            komm ende   :: pos (zeile, "#", komm anfang);
+  IF komm anfang <> 3 OR hinter dem kommando steht noch was
+    THEN errorstop ("Macro-Anweisung steht nicht alleine auf der Zeile");
+  FI;
+  kommando := subtext (zeile, komm anfang, komm ende -1); 
+  scan (kommando); 
+  next symbol (symbol, type); 
+  IF type = tag 
+    THEN macro namen aufnehmen
+    ELSE errorstop ("kein Macroname nach #*") 
+  FI; 
+  next symbol (symbol, type);
+  IF type >= end of scan 
+    THEN macro table . anz parameter [anz macros] := 0; 
+         LEAVE macro name oder end vermerken 
+  ELIF symbol = "(" 
+    THEN parameter aufsammeln;
+    ELSE errorstop ("keine ( nach Macro-Name") 
+  FI.
+ 
+macro namen aufnehmen:
+  IF symbol = "macroend"
+    THEN put ("mit"); put (macro table . anz parameter [anz macros]);
+         put ("Parameter(n) geladen"); 
+         macro end gewesen := TRUE;
+         line;
+         LEAVE macro name oder end vermerken
+  ELIF NOT macro end gewesen
+    THEN errorstop ("macro end fehlt")
+    ELSE macro end gewesen := FALSE;
+         anz macros INCR 1; 
+         IF anz macros > max macros 
+           THEN errorstop ("Zu viele Macros (max. 200") 
+         FI;
+         macro table . macro namen [anz macros] := symbol;
+         macro table . macro start [anz macros] := anz macro zeilen;
+         line;
+         put (symbol);
+  FI.
+
+hinter dem kommando steht noch was:
+  NOT (komm ende = length (zeile) COR
+    (komm ende + 1 = length (zeile) AND (zeile SUB komm ende + 1) = " ")).
+ 
+parameter aufsammeln: 
+  INT VAR parameter number :: 1;
+  next symbol (symbol, type); 
+  WHILE symbol = "$" REP 
+    next symbol (symbol, type); 
+    IF type = number CAND int (symbol) = parameter number 
+      THEN IF parameter number > 9
+             THEN errorstop ("Anzahl Parameter > 9")
+           FI;
+           macro table . anz parameter [anz macros] := parameter number; 
+           parameter number INCR 1; 
+      ELSE errorstop ("Parameter-Nummer inkorrekt: " + symbol)
+    FI;  
+    next symbol (symbol, type); 
+    IF symbol = ")" 
+      THEN LEAVE parameter aufsammeln 
+    ELIF symbol = "," 
+      THEN next symbol (symbol, type) 
+      ELSE errorstop (", oder ) erwartet:" + symbol) 
+    FI 
+  END REP;
+  errorstop ("Parameterliste inkorrekt bei" + symbol).
+END PROC load macros;
+
+PROC load macros: 
+  load macros (last param)
+END PROC load macros;
+
+PROC list macros:
+  init macros;
+  note ("");
+  INT VAR i := 1;
+  WHILE i <= anz macro zeilen REP
+    cout (i);
+    note (macro table . macro zeilen [i]);
+    note line;
+    i INCR 1
+  END REP;
+  note edit
+END PROC list macros;
+
+BOOL PROC macro exists (TEXT CONST name, INT VAR anz params):
+  INT VAR i;
+  FOR i FROM 1 UPTO anz macros REP
+    IF macro table . macro namen [i] = name
+      THEN anz params := macro table . anz parameter [i]; 
+           index aktuelle macro zeile := macro table . macro start [i] + 1;
+           berechne anzahl zeilen in macro;
+           IF anz params = 0 
+             THEN with parameters := FALSE 
+             ELSE with parameters := TRUE;
+                  lade macro in replacement store;
+                  index aktuelle macro zeile := 1;
+           FI;
+           LEAVE macro exists WITH TRUE
+    FI
+  END REP;
+  FALSE.
+ 
+berechne anzahl zeilen in macro: 
+  IF i = anz macros 
+    THEN anz zeilen in macro := 
+           anz macro zeilen - index aktuelle macro zeile; 
+    ELSE anz zeilen in macro := 
+           macro table . macro start [i + 1] - index aktuelle macro zeile 
+  FI.
+ 
+lade macro in replacement store: 
+  INT VAR k; 
+  FOR k FROM 1 UPTO anz zeilen in macro REP 
+    macro table . replacement store [k] := 
+          macro table . macro zeilen [index aktuelle macro zeile +k-1]
+  END REP. 
+END PROC macro exists;
+
+PROC replace macro parameter (INT CONST number, TEXT CONST param): 
+  TEXT VAR param text := "$" + text (number); 
+  INT VAR k; 
+  FOR k FROM 1 UPTO anz zeilen in macro - 1 REP 
+    change all (macro table . replacement store [k], param text, param); 
+  END REP 
+END PROC replace macro parameter; 
+ 
+BOOL PROC macro command and then process parameters (TEXT VAR komm):
+  init macros;
+  LET tag = 1;
+  scan (komm); 
+  next symbol (symbol, type); 
+  IF type = tag  
+    THEN untersuche ob deklariertes macro 
+    ELSE FALSE 
+  FI. 
+ 
+untersuche ob deklariertes macro: 
+  INT VAR anz macro params; 
+  IF macro exists (symbol, anz macro params) 
+    THEN fehlertext := "in Makro: "; fehlertext CAT symbol;
+         IF anz macro params > 0 
+           THEN macro parameter ersetzen
+         FI;
+         TRUE 
+    ELSE FALSE 
+  FI. 
+ 
+macro parameter ersetzen:
+  next symbol (symbol, type); 
+  IF symbol = "(" 
+    THEN ersetze 
+    ELSE report text processing error (34, 0, dummy, symbol + fehlertext); 
+         LEAVE macro command and then process parameters WITH FALSE 
+  FI.
+ 
+ersetze: 
+  LET text type = 4,
+      end of scan = 7;
+  INT VAR number parameter :: 1;
+  REP  
+    next symbol (symbol, type);  
+    IF type = texttype 
+      THEN replace macro parameter (number parameter, symbol);
+      ELSE report text processing error (35, 0, dummy, fehlertext + symbol); 
+           LEAVE macro command and then process parameters WITH FALSE 
+    FI; 
+    number parameter INCR 1; 
+    IF number parameter > anz macro params 
+      THEN LEAVE macro command and then process parameters WITH TRUE 
+    FI; 
+    next symbol (symbol, type); 
+    IF symbol <> "," OR type >= end of scan
+      THEN report text processing error (36, 0, dummy, fehlertext + symbol); 
+           LEAVE macro command and then process parameters WITH FALSE 
+    FI 
+  END REP.
+END PROC macro command and then process parameters;
+ 
+PROC get macro line (TEXT VAR macro zeile):
+  IF index aktuelle macro zeile > anz zeilen in macro
+    THEN macro zeile := "#### "
+  ELIF with parameters 
+    THEN macro zeile :=
+           macro table . replacement store [index aktuelle macro zeile]
+    ELSE macro zeile := 
+           macro table . macro zeilen [index aktuelle macro zeile] 
+  FI; 
+  index aktuelle macro zeile INCR 1; 
+END PROC get macro line;
+ 
+INT PROC number macro lines: 
+  anz zeilen in macro
+END PROC number macro lines; 
+END PACKET macro store;
+

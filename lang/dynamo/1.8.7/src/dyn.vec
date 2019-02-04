@@ -1,0 +1,209 @@
+PACKET vector DEFINES TAB, :=, vector,         (* Autor : H.Indenbirken *)
+                      SUB, LENGTH, laenge, norm,  (* Stand : 24.09.81      *)
+                      nilvector, replace, =, <>, wert,
+                      +, -, *, /,
+                      get, put :
+ 
+LET n = 4000;
+ 
+TYPE TAB = STRUCT (INT lng, TEXT elem);
+TYPE INITTAB = STRUCT (INT lng, REAL value);
+ 
+INT VAR i;
+TEXT VAR t :: "12345678";
+TAB VAR v :: nilvector;
+ 
+ 
+REAL PROC wert (TAB CONST t, INT CONST i) :
+ t SUB i
+END PROC wert;
+ 
+OP := (TAB VAR l, TAB CONST r) :
+  l.lng := r.lng;
+  l.elem := r.elem
+ 
+END OP :=;
+ 
+OP := (TAB VAR l, INITTAB CONST r) :
+  l.lng := r.lng;
+  replace (t, 1, r.value);
+  l.elem := r.lng * t
+ 
+END OP :=;
+ 
+INITTAB PROC nilvector :
+   vector (1, 0.0)
+ 
+END PROC nilvector;
+ 
+INITTAB PROC vector (INT CONST lng, REAL CONST value) :
+  IF lng <= 0
+  THEN errorstop ("PROC vector : lng <= 0") FI;
+  INITTAB : (lng, value)
+ 
+END PROC vector;
+ 
+INITTAB PROC vector (INT CONST lng) :
+  vector (lng, 0.0)
+ 
+END PROC vector;
+ 
+REAL OP SUB (TAB CONST v, INT CONST i) :
+  test ("REAL OP SUB : ", v, i);
+  v.elem RSUB i
+ 
+END OP SUB;
+ 
+INT OP LENGTH (TAB CONST v) :
+  v.lng
+ 
+END OP LENGTH;
+ 
+INT PROC laenge (TAB CONST v) :
+  v.lng
+ 
+END PROC laenge;
+ 
+REAL PROC norm (TAB CONST v) :
+  REAL VAR result :: 0.0;
+  FOR i FROM 1 UPTO v.lng
+  REP result INCR ((v.elem RSUB i)**2) PER;
+  sqrt (result)  .
+ 
+END PROC norm;
+ 
+PROC replace (TAB VAR v, INT CONST i, REAL CONST r) :
+  test ("PROC replace : ", v, i);
+  replace (v.elem, i, r)
+ 
+END PROC replace;
+ 
+BOOL OP = (TAB CONST l, r) :
+  l.elem = r.elem
+END OP =;
+ 
+BOOL OP <> (TAB CONST l, r) :
+  l.elem <> r.elem
+END OP <>;
+ 
+TAB OP + (TAB CONST v) :
+  v
+END OP +;
+ 
+TAB OP + (TAB CONST l, r) :
+  test ("TAB OP + : ", l, r);
+  v := l;
+  FOR i FROM 1 UPTO v.lng
+  REP replace (v.elem, i, (l.elem RSUB i) + (r.elem RSUB i)) PER;
+  v
+ 
+END OP +;
+ 
+TAB OP - (TAB CONST a) :
+  v := a;
+  FOR i FROM 1 UPTO v.lng
+  REP replace (v.elem, i, - (a.elem RSUB i)) PER;
+  v
+ 
+END OP -;
+ 
+TAB OP - (TAB CONST l, r) :
+  test ("TAB OP - : ", l, r);
+  v := l;
+  FOR i FROM 1 UPTO v.lng
+  REP replace (v.elem, i, (l.elem RSUB i) - (r.elem RSUB i)) PER;
+  v
+END OP -;
+ 
+REAL OP * (TAB CONST l, r) :
+  test ("REAL OP * : ", l, r);
+  REAL VAR x :: 0.0;
+  FOR i FROM 1 UPTO l.lng
+  REP x INCR ((l.elem RSUB i) * (r.elem RSUB i)) PER;
+  x
+ 
+END OP *;
+ 
+TAB OP * (TAB CONST v, REAL CONST r) :
+  r*v
+ 
+END OP *;
+ 
+TAB OP * (REAL CONST r, TAB CONST a) :
+  v := a;
+  FOR i FROM 1 UPTO v.lng
+  REP replace (v.elem, i, r*(a.elem RSUB i)) PER;
+  v
+ 
+END OP *;
+ 
+TAB OP / (TAB CONST a, REAL CONST r) :
+  v := a;
+  FOR i FROM 1 UPTO v.lng
+  REP replace (v.elem, i, (a.elem RSUB i)/r) PER;
+  v
+ 
+END OP /;
+ 
+TEXT VAR error :: "";
+PROC test (TEXT CONST proc, TAB CONST v, INT CONST i) :
+  IF i > v.lng
+  THEN error := proc;
+       error CAT "subscript overflow (LENGTH v=";
+       error CAT text (v.lng);
+       error CAT ", i=";
+       error CAT text (i);
+       error CAT ")";
+       errorstop (error)
+  ELIF i < 1
+  THEN error := proc;
+       error CAT "subscript underflow (i = ";
+       error CAT text (i);
+       error CAT ")";
+       errorstop (error)
+  FI  .
+ 
+END PROC test;
+ 
+PROC test (TEXT CONST proc, TAB CONST a, b) :
+  IF a.lng <> b.lng
+  THEN error := proc;
+       error CAT "LENGTH a (";
+       IF a.lng <= 0
+       THEN error CAT "undefined"
+       ELSE error CAT text (a.lng) FI;
+       error CAT ") <> LENGTH b (";
+       error CAT text (b.lng);
+       error CAT ")";
+       errorstop (error)
+  FI
+ 
+END PROC test;
+ 
+PROC get (TAB VAR v, INT CONST lng) :
+  v.lng := lng;
+  v.elem := lng * "12345678";
+  REAL VAR x;
+  FOR i FROM 1 UPTO lng
+  REP get (x);
+      replace (v.elem, i, x)
+  PER  .
+ 
+END PROC get;
+ 
+PROC put (TAB CONST v, INT CONST laenge, fracs) :
+  FOR i FROM 1 UPTO v.lng
+  REP put (text (v.elem RSUB i, laenge, fracs)) PER
+ 
+END PROC put;
+ 
+PROC put (TAB CONST v) :
+  FOR i FROM 1 UPTO v.lng
+  REP put (text (v.elem RSUB i)) PER
+ 
+END PROC put;
+ 
+END PACKET vector;
+ 
+ 
+

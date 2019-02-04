@@ -1,0 +1,1554 @@
+
+(*************************************************************************) 
+(*                                            Stand   : 03. 1.89         *) 
+(*   Module-Datei für 24-Nadel-Drucker        Version : 0.9              *) 
+(*                                            Autor   : hjh              *) 
+(*************************************************************************) 
+ 
+$begin$ 
+PACKET printer driver 
+ 
+       DEFINES printer,
+               open,
+               close,
+               execute,
+               paper size,
+               std quality,
+
+$headnecp6$    paper feed:
+(* Treiber fuer NEC P6, automatisch generiert *)
+LET underline linetype = 1; 
+INT VAR factor 1, factor 2, draft factor 1, draft factor 2;
+
+$headnecp5p7$  paper feed:
+(* Treiber fuer NEC P5, P7 , automatisch generiert *)
+LET underline linetype = 1; 
+INT VAR factor 1, factor 2, draft factor 1, draft factor 2;
+
+$headnecp6+$   std speed, 
+               top margin, 
+               paper feed, 
+               std typeface:
+(* Treiber für NEC P6 plus/P7 plus ,automatisch generiert *) 
+ 
+
+$headlq850$    std speed, 
+               top margin, 
+               paper feed, 
+               std typeface:
+(* Treiber für EPSON LQ-850/1050 ,automatisch generiert *) 
+ 
+$headbrotherm1724l$ 
+               std speed, 
+               top margin, 
+               paper feed: 
+INT VAR vertical factor := 1; 
+(* Treiber für BROTHER M-1724L in IBM-Emulation, automatisch generiert *) 
+ 
+$headoki390/391$ 
+               std speed, 
+               top margin, 
+               paper feed, 
+               std typeface:
+INT VAR vertical factor := 1; 
+(* Treiber für OKI MIKROLINE 390/391  ,automatisch generiert *) 
+ 
+$headoki393/393Ceps$ 
+               std speed, 
+               top margin, 
+               paper feed, 
+               std typeface:
+INT VAR vertical factor := 1; 
+(* Treiber für OKI MIKROLINE 393/393C EPSON-kompatibel, automatisch generiert *) 
+ 
+$headoki393/393Cibm$ 
+               std speed, 
+               top margin, 
+               paper feed, 
+               std typeface:
+INT VAR vertical factor := 1; 
+(* Treiber für OKI MIKROLINE 393/393C IBM-kompatibel, automatisch generiert *) 
+ 
+$headtoshp321$   std speed, 
+                 paper feed: 
+(* Treiber für TOSHIBA P321, automatisch generiert *) 
+ 
+$headstarnb24$ 
+               std speed, 
+               top margin, 
+               paper feed, 
+               std typeface:
+(* Treiber für STAR NB 24-10/15 in Standard Betriebsart automatisch generiert *) 
+ 
+$declarations$
+INT VAR font nr, font bits, modification bits, 
+        blankbreite, x rest, high, low, steps;
+REAL VAR x size, y size;
+TEXT VAR buffer :: "";
+BOOL VAR is nlq ;
+TEXT VAR font text :: "";
+TEXT VAR std quality name :: "draft";
+ 
+. is pica  : font bits = 0
+. is elite : font bits = 1
+.;
+
+ 
+PROC paper size (REAL CONST x, y) :
+ 
+  x size := x;
+  y size := y;
+END PROC paper size;
+ 
+papersize (20.32, 30.48); 
+ 
+PROC paper size : 
+ 
+  line;
+  putline ("Papierbreite  =  " + text (x size, 5, 2) + " cm  =  " + text (x size / 2.54, 5, 2) + " Zoll");
+  putline ("Papierlaenge  =  " + text (y size, 5, 2) + " cm  =  " + text (y size / 2.54, 5, 2) + " Zoll");
+END PROC paper size;
+ 
+ 
+ 
+PROC std quality (TEXT CONST quality) :
+ 
+  IF quality = "nlq" OR quality = "draft"
+     THEN std quality name := quality
+     ELSE errorstop ("unzulässige Qualitätsbezeichnung")
+  FI
+END PROC std quality;
+ 
+TEXT PROC std quality : 
+ 
+  std quality name 
+END PROC std quality;
+                        
+ 
+$topmargin$ 
+REAL VAR  y margin := 0.0 ;
+ 
+PROC top margin (REAL CONST margin): 
+ 
+  y margin := margin 
+END PROC top margin; 
+ 
+REAL PROC top margin: 
+ 
+  y margin 
+END PROC top margin;
+ 
+ 
+$speed$
+BOOL VAR is slow :: TRUE; 
+TEXT VAR std speed name :: "slow";
+ 
+PROC std speed (TEXT CONST speed) :
+ 
+  IF speed = "fast" OR speed = "slow"
+     THEN std speed name := speed
+     ELSE errorstop ("unzulässige Geschwindigkeit")
+  FI
+END PROC std speed;
+ 
+TEXT PROC std speed : 
+ 
+std speed name 
+END PROC std speed;
+ 
+ 
+$typefacelq850$ 
+TEXT VAR act typeface name :: "";
+TEXT VAR std typeface name :: "";
+ 
+. is roman: 
+  act typeface name = "roman". 
+. is sansserif: 
+  act typeface name = "sansserif"
+.; 
+ 
+PROC std typeface (TEXT CONST typeface) :
+ 
+  IF typeface = "" OR typeface = "roman" OR typeface = "sansserif"
+     THEN std typeface name := typeface
+     ELSE errorstop ("unzulässige Schriftart")
+  FI
+END PROC std typeface;
+ 
+TEXT PROC std typeface : 
+ 
+  std typeface name 
+END PROC std typeface;
+ 
+ 
+ 
+$typefacep6+$ 
+BOOL VAR is courier :: TRUE; 
+TEXT VAR std typeface name :: "courier";
+ 
+PROC std typeface (TEXT CONST typeface) :
+ 
+  IF typeface = "courier" OR typeface = "souvenir" 
+     THEN std typeface name := typeface
+     ELSE errorstop ("unzulässige Schriftart")
+  FI
+END PROC std typeface;
+ 
+TEXT PROC std typeface : 
+ 
+  std typeface name 
+END PROC std typeface;
+ 
+$typefaceoki$ 
+BOOL VAR is courier ; 
+TEXT VAR std typeface name :: "";
+ 
+PROC std typeface (TEXT CONST typeface) :
+ 
+  IF typeface = "" OR typeface = "courier" OR typeface = "kassette" 
+     THEN std typeface name := typeface
+     ELSE errorstop ("unzulässige Schriftart")
+  FI
+END PROC std typeface;
+ 
+TEXT PROC std typeface : 
+ 
+  std typeface name 
+END PROC std typeface;
+ 
+$typefacestar$ 
+BOOL VAR is roman ; 
+TEXT VAR std typeface name :: "";
+ 
+PROC std typeface (TEXT CONST typeface) :
+ 
+  IF typeface = "" OR typeface = "roman" OR typeface = "font1" 
+     THEN std typeface name := typeface
+     ELSE errorstop ("unzulässige Schriftart")
+  FI
+END PROC std typeface;
+ 
+TEXT PROC std typeface : 
+ 
+  std typeface name 
+END PROC std typeface;
+ 
+$feed$ 
+BOOL VAR is sheet feed :: FALSE;
+ 
+PROC paper feed (TEXT CONST feeder) :
+ 
+  IF feeder = "sheet"
+    THEN is sheet feed := TRUE 
+  ELIF feeder = "tractor" 
+    THEN is sheet feed := FALSE 
+    ELSE errorstop ("unzulässige Einzugsart")
+  FI
+END PROC paper feed;
+ 
+TEXT PROC paper feed: 
+  IF is sheet feed
+    THEN "sheet" 
+    ELSE "tractor" 
+  FI 
+END PROC paper feed;
+ 
+$feedschacht$
+BOOL VAR is sheet feed :: FALSE;
+TEXT VAR feeder name :: "tractor";
+ 
+PROC paper feed (TEXT CONST feeder) :
+ 
+  IF feeder = "tractor" 
+     THEN feeder name := "tractor"; 
+          is sheet feed := FALSE
+  ELIF feeder = "sheet" OR feeder = "schacht1" 
+     THEN feeder name := "schacht1" ; 
+          is sheet feed := TRUE
+  ELIF feeder = "schacht2" 
+     THEN feeder name := "schacht2" ; 
+          is sheet feed := TRUE 
+     ELSE errorstop ("unzulässige Einzugsart")
+  FI
+END PROC paper feed;
+ 
+TEXT PROC paper feed: feeder name END PROC paper feed;
+ 
+$open$
+PROC open (INT CONST op code, INT VAR param1, param2):
+ 
+  SELECT op code OF
+    CASE 1: open document(param1,param2)
+    CASE 2: open page    (param1,param2)
+  END SELECT. 
+END PROC open ; 
+ 
+ 
+$opendoch$
+PROC open document (INT VAR x steps,y steps): 
+    modification bits := 0; 
+    x steps := x step conversion ( x size );
+    y steps := y step conversion ( y size );
+    y steps := (y steps DIV 30) * 30;
+ 
+$opendochtosh$
+PROC open document (INT VAR x steps,y steps): 
+    modification bits := 0; 
+    x steps := x step conversion ( x size );
+    y steps := y step conversion ( y size );
+    y steps := (y steps DIV 36) * 36;
+ 
+$initspeed$ 
+    IF pos (material, "slow") <> 0 
+         THEN is slow := TRUE;
+    ELIF pos (material, "fast") <> 0 
+         THEN is slow := FALSE;
+         ELSE is slow := std speed name = "slow"
+    FI;
+ 
+$opendocp6+$ 
+    out (""24""27""64"");                  (* Reset des Druckers *) 
+    out (""27"t"1""27"6"27"R"0"");         (* Zeichentabelle 4 (Grafik) *) 
+    out (""27"O"); 
+    out (""27"2" + ""27"C" + code (y steps DIV 30));   (* Formularlaenge   *) 
+    out (""27"x"0"");                                  (* Entwurfsqualität *) 
+    IF is sheet feed
+       THEN out (""27""25"4");             (* Sheetmode ein             *)
+    FI;
+    IF   pos (material, "nlq") <> 0 
+         THEN is nlq := TRUE;
+    ELIF pos (material, "draft") <> 0 
+         THEN is nlq := FALSE;
+         ELSE is nlq := std quality = "nlq"
+    FI;
+    IF pos (material, "courier") <> 0 
+      THEN is courier := TRUE ; 
+    ELIF pos (material, "souvenir") <> 0 
+      THEN is courier := FALSE ; 
+      ELSE is courier := std typeface name = "courier" 
+    FI; 
+END PROC open document ;
+ 
+$opendocp5p7$ 
+    out (""24""27""64"");                  (* Reset des Druckers         *)
+    out (""27"R"0"");                      (* Amerikanischer Zeichensatz *)
+    out (""27"C" + code (y steps DIV 30)); (* Formularlaenge             *)
+    out (""27"x"0"");                      (* Entwurfsqualität           *) 
+    IF   pos (material, "nlq") <> 0 
+         THEN is nlq := TRUE;
+    ELIF pos (material, "draft") <> 0 
+         THEN is nlq := FALSE;
+         ELSE is nlq := std quality = "nlq"
+    FI;
+    IF is sheet feed
+       THEN out (""27""25"4");             (* Sheetmode ein             *)
+            center paper ;
+    FI;
+ 
+    . center paper :
+        INT CONST x steps in chars := x steps DIV x step conversion (2.54 / 10.0),
+                  left margin      := (136 - x steps in chars) DIV 2;
+        out (""27"P");
+        out (""27"l"); out (code (left margin + 1));
+END PROC open document ;
+
+$opendocp6$ 
+    out (""24""27""64"");                  (* Reset des Druckers         *)
+    out (""27"R"0"");                      (* Amerikanischer Zeichensatz *)
+    out (""27"C" + code (y steps DIV 30)); (* Formularlaenge             *)
+    out (""27"x"0"");                      (* Entwurfsqualität           *) 
+    IF   pos (material, "nlq") <> 0 
+         THEN is nlq := TRUE;
+    ELIF pos (material, "draft") <> 0 
+         THEN is nlq := FALSE;
+         ELSE is nlq := std quality = "nlq"
+    FI;
+    IF is sheet feed
+       THEN out (""27""25"4");             (* Sheetmode ein              *)
+    FI;
+END PROC open document ;
+
+$opendoclq850$ 
+    out (""24""27""64"");                  (* Reset des Druckers *) 
+    out (""27"t"1""27"6"27"R"0"");         (* Zeichentabelle 4 (Grafik) *) 
+    out (""27"O"); 
+    out (""27"2" + ""27"C" + code (y steps DIV 30));   (* Formularlaenge   *) 
+    out (""27"x"0"");                                  (* Entwurfsqualität *) 
+    IF is sheet feed
+         THEN out (""27""25"4");                       (* Sheetmode ein    *)
+    FI;
+    IF   pos (material, "nlq") <> 0 
+         THEN is nlq := TRUE;
+    ELIF pos (material, "draft") <> 0 
+         THEN is nlq := FALSE;
+         ELSE is nlq := std quality = "nlq"
+    FI;
+    IF pos (material, "roman") <> 0 
+      THEN act typeface name := "roman" 
+    ELIF pos (material, "sansserif") <> 0 
+      THEN act typeface name := "sansserif" 
+      ELSE act typeface name := std typeface name  
+    FI; 
+END PROC open document ; 
+ 
+$opendocokieps$ 
+    out (""24""27""64"");                  (* Reset des Druckers *) 
+    out (""27"t"1""27"6"27"R"0"");         (* Zeichentabelle 4 (Grafik) *) 
+    out (""27"O"); 
+    out (""27"2" + ""27"C" + code (y steps DIV 30));   (* Formularlaenge   *) 
+    out (""27"x"0"");                                  (* Entwurfsqualität *) 
+    IF is sheet feed
+         THEN IF feeder name = "schacht2"
+                 THEN out (""27""25"2")  
+                 ELSE out (""27""25"1")
+              FI 
+    FI;                                                (* Sheetmode ein    *) 
+    IF   pos (material, "nlq") <> 0 
+         THEN is nlq := TRUE;
+    ELIF pos (material, "draft") <> 0 
+         THEN is nlq := FALSE;
+         ELSE is nlq := std quality = "nlq"
+    FI;
+    IF pos (material, "courier") <> 0 
+      THEN is courier := TRUE ; 
+    ELIF pos (material, "kassette") <> 0 
+      THEN is courier := FALSE ; 
+      ELSE is courier := std typeface name = "courier" 
+    FI; 
+END PROC open document ; 
+ 
+$opendoctosh$ 
+    out (""24""27"5"0""27"4"27"O");             (* Reset des Druckers *) 
+    out (""27"6");                              (* Zeichensatz *) 
+    out (""27"A"12""27"2") ;
+    out (""27"C" + code (y steps DIV 36));      (* Formularlaenge   *) 
+    out (""27"x"0"");                                  (* Entwurfsqualität *) 
+    IF   pos (material, "nlq") <> 0 
+         THEN is nlq := TRUE;
+    ELIF pos (material, "draft") <> 0 
+         THEN is nlq := FALSE;
+         ELSE is nlq := std quality = "nlq"
+    FI;
+END PROC open document ; 
+ 
+$opendocbrother$ 
+    out (""24""27"5"0""27"4"27"O");             (* Reset des Druckers *) 
+    out (""27"6" + ""27"R"0"");                (* Zeichensatz II ascii *) 
+    out (""27"A"10""27"2") ;                    (* Zeilenabstand *)
+    out (""27"C" + code (y steps DIV 36));      (* Formularlaenge   *) 
+    IF is sheet feed
+       THEN out (""27""25"4")  
+    FI;                                                (* Sheetmode ein    *) 
+    IF   pos (material, "nlq") <> 0 
+         THEN is nlq := TRUE;
+    ELIF pos (material, "draft") <> 0 
+         THEN is nlq := FALSE;
+         ELSE is nlq := std quality = "nlq"
+    FI;
+END PROC open document ; 
+ 
+$opendocokiibm$ 
+    out (""24""27"5"0""27"4"27"O");             (* Reset des Druckers *) 
+    out (""27"6" + ""27"!"64"");                (* Zeichensatz II ascii *) 
+    out (""27""91""92""4""0""0""0""180"");      (* 1/180 *)
+    out (""27"A"12""27"2") ;                    (* Zeilenabstand *)
+    out (""27"C" + code (y steps DIV 36));      (* Formularlaenge   *) 
+    IF is sheet feed
+         THEN IF feeder name = "schacht2"
+                 THEN out (""27""25"2")  
+                 ELSE out (""27""25"1")
+              FI 
+    FI;                                                (* Sheetmode ein    *) 
+    IF   pos (material, "nlq") <> 0 
+         THEN is nlq := TRUE;
+    ELIF pos (material, "draft") <> 0 
+         THEN is nlq := FALSE;
+         ELSE is nlq := std quality = "nlq"
+    FI;
+    IF pos (material, "courier") <> 0 
+      THEN is courier := TRUE ; 
+    ELIF pos (material, "kassette") <> 0 
+      THEN is courier := FALSE ; 
+      ELSE is courier := std typeface name = "courier" 
+    FI; 
+END PROC open document ; 
+ 
+$opendocstar$ 
+    out (""24""27""64"");                  (* Reset des Druckers *) 
+    out (""27"R"0"");                  (* amerikanischer Zeichensatz *) 
+    out (""27"O"); 
+    out (""27"2" + ""27"C" + code (y steps DIV 30));   (* Formularlaenge   *) 
+    out (""27"x"0"");                                  (* Entwurfsqualität *) 
+    IF is sheet feed
+         THEN IF feeder name = "schacht2"
+                 THEN out (""27""25"2")  
+                 ELSE out (""27""25"1")
+              FI 
+    FI;                                                (* Sheetmode ein    *) 
+    IF   pos (material, "nlq") <> 0 
+         THEN is nlq := TRUE;
+    ELIF pos (material, "draft") <> 0 
+         THEN is nlq := FALSE;
+         ELSE is nlq := std quality = "nlq"
+    FI;
+    IF pos (material, "roman") <> 0 
+      THEN is roman := TRUE ; 
+    ELIF pos (material, "font1") <> 0 
+      THEN is roman := FALSE ; 
+      ELSE is roman := std typeface name = "roman" 
+    FI; 
+END PROC open document ; 
+ 
+$openpagetosh$ 
+PROC open page (INT VAR x start , y start): 
+ 
+    x start := 0;
+    IF is sheet feed
+       THEN y start := y step conversion (2.54)    (* 1 Inch *)
+       ELSE y start := 0;
+    FI;
+    x rest  := 0;
+    out (""13"");
+END PROC open page; 
+ 
+$openpage$ 
+PROC open page (INT VAR x start , y start): 
+ 
+    x start := 0 ; 
+    y start := y step conversion (y margin) ; 
+    x rest := 0; 
+    out (""13""). 
+END PROC open page; 
+ 
+$openpagep5-7$ 
+PROC open page (INT VAR x start , y start): 
+ 
+    x start := 0;
+    IF is sheet feed
+       THEN y start := y step conversion (8.466667e-1)    (* 2/6 Inch *)
+       ELSE y start := 0;
+    FI;
+    x rest  := 0;
+    out (""13"");
+END PROC open page; 
+ 
+$close$
+ 
+PROC close (INT CONST op code, INT CONST param1) :
+ 
+  SELECT op code OF
+    CASE 1: close document 
+    CASE 2: close page (param1)
+  END SELECT.
+ 
+close document : 
+. 
+END PROC close ; 
+ 
+$closepage$ 
+PROC close page (INT CONST remaining y steps) : 
+    IF remaining y steps > 0
+       THEN out (""12"")
+    ELIF is sheet feed
+       THEN out (""27""25"R")
+    FI;
+END PROC close page;
+
+$closepagetosh$ 
+PROC close page (INT CONST remaining y steps) : 
+    IF   is sheet feed
+         THEN out (""12"")
+    ELIF remaining y steps > 0
+         THEN out (""12"")
+    FI;
+END PROC close page;
+
+$execute$
+PROC execute (INT CONST op code, TEXT CONST string, INT CONST param1, param2) :
+ 
+SELECT op code OF
+  CASE 1:  write text
+  CASE 2:  write cmd
+  CASE 3:  carriage return
+  CASE 4:  move
+  CASE 5:  draw
+  CASE 6:  on
+  CASE 7:  off
+  CASE 8:  type
+END SELECT.
+
+from : param1. 
+to   : param2. 
+ 
+  write text :
+    out subtext (string, from, to).
+ 
+$cmdp6+$ 
+  write cmd :
+    buffer := subtext (string, from, to); 
+    IF   buffer = "nlq"
+      THEN IF NOT is nlq THEN is nlq := TRUE; switch to nlq FI;
+    ELIF buffer = "draft"
+      THEN IF is nlq THEN is nlq := FALSE; switch to draft FI;
+    ELIF   buffer = "courier"
+      THEN IF NOT is courier THEN is courier := TRUE; switch to courier FI;
+    ELIF buffer = "souvenir"
+      THEN IF is courier THEN is courier := FALSE; switch to souvenir FI;
+    ELIF buffer = "schwarz" 
+      THEN out (""27"r0")
+    ELIF buffer = "rot" 
+      THEN out (""27"r1")
+    ELIF buffer = "blau" 
+      THEN out (""27"r2")
+    ELIF buffer = "violett" 
+      THEN out (""27"r3")
+    ELIF buffer = "gelb" 
+      THEN out (""27"r4")
+    ELIF buffer = "orange" 
+      THEN out (""27"r5")
+    ELIF buffer = "grün" 
+      THEN out (""27"r6")
+      ELSE out (buffer) 
+    FI. 
+ 
+$cmdp5-7$ 
+  write cmd :
+    buffer := subtext (string, from, to);
+    IF   buffer = "nlq"
+         THEN IF NOT is nlq THEN switch to nlq FI;
+              is nlq := TRUE;
+    ELIF buffer = "draft"
+         THEN IF     is nlq THEN switch to draft FI;
+              is nlq := FALSE;
+         ELSE out (buffer);
+    FI;.
+ 
+$cmdlq850$ 
+  write cmd :
+    buffer := subtext (string, from, to); 
+    IF   buffer = "nlq"
+      THEN IF NOT is nlq THEN is nlq := TRUE; switch to nlq FI;
+    ELIF buffer = "draft"
+      THEN IF is nlq THEN is nlq := FALSE; switch to draft FI;
+    ELIF   buffer = "roman"
+      THEN IF NOT is roman THEN act typeface name := "roman" ; 
+                                switch to roman FI;
+    ELIF buffer = "sansserif"
+      THEN IF NOT is sansserif THEN act typeface name := "sansserif"; 
+                                    switch to sansserif FI;
+      ELSE out (buffer) 
+    FI. 
+ 
+$cmdoki$ 
+  write cmd :
+    buffer := subtext (string, from, to); 
+    IF   buffer = "nlq"
+      THEN IF NOT is nlq THEN is nlq := TRUE; switch to nlq FI;
+    ELIF buffer = "draft"
+      THEN IF is nlq THEN is nlq := FALSE; switch to draft FI;
+    ELIF   buffer = "courier"
+      THEN IF NOT is courier THEN is courier := TRUE; switch to courier FI;
+    ELIF buffer = "kassette"
+      THEN IF is courier THEN is courier := FALSE; switch to kassette FI;
+    ELIF buffer = "schwarz" 
+      THEN out (""27"r0")
+    ELIF buffer = "rot" 
+      THEN out (""27"r1")
+    ELIF buffer = "blau" 
+      THEN out (""27"r2")
+    ELIF buffer = "violett" 
+      THEN out (""27"r3")
+    ELIF buffer = "gelb" 
+      THEN out (""27"r4")
+    ELIF buffer = "orange" 
+      THEN out (""27"r5")
+    ELIF buffer = "grün" 
+      THEN out (""27"r6")
+      ELSE out (buffer) 
+    FI. 
+ 
+$cmdtosh$ 
+  write cmd :
+    buffer := subtext (string, from, to);
+    IF   buffer = "nlq"
+      THEN IF NOT is nlq THEN is nlq := TRUE; switch to nlq FI;
+    ELIF buffer = "draft"
+      THEN IF is nlq THEN is nlq := FALSE;  switch to draft FI;
+      ELSE out (buffer);
+    FI;.
+ 
+$cmdstar$ 
+  write cmd :
+    buffer := subtext (string, from, to); 
+    IF   buffer = "nlq"
+      THEN IF NOT is nlq THEN is nlq := TRUE; switch to nlq FI;
+    ELIF buffer = "draft"
+      THEN IF is nlq THEN is nlq := FALSE; switch to draft FI;
+    ELIF   buffer = "roman"
+      THEN IF NOT is roman THEN is roman := TRUE; switch to roman FI;
+    ELIF buffer = "font1"
+      THEN IF is roman THEN is roman := FALSE; switch to font1 FI;
+    FI. 
+ 
+$crs$
+  carriage return :
+    x rest := 0;
+    out (""13"").
+ 
+$move$ 
+x steps : param1.
+y steps : param2.
+
+move :
+  IF x steps < 0 OR y steps < 0 THEN stop FI; 
+  IF x steps > 0 THEN x move FI; 
+  IF y steps > 0 THEN y move FI. 
+
+$stdmove$ 
+x move : 
+  x rest INCR x steps;
+  high   := (x rest) DIV blankbreite;
+  x rest := (x rest) MOD blankbreite; 
+  steps := x rest DIV 3;
+  IF high   > 0 THEN high TIMESOUT " " FI;
+  IF steps > 0 AND is slow
+     THEN IF is underline THEN out (" "8"") FI;
+          out (""27"Y" + code (steps) + ""0"");  (* 1/360 *)
+          steps TIMESOUT ""0"";
+          x rest := x rest MOD 3
+  FI. 
+ 
+is underline: 
+  bit (modification bits,7). 
+ 
+y move : 
+  IF y steps > 0
+     THEN high := y steps DIV 255;
+          low  := y steps MOD 255;
+          IF high > 0 THEN high TIMESOUT ""27"J"255"" FI;   (* 1/180 *)
+          IF low  > 0 THEN out (""27"J" + code (low)) FI;
+  FI. 
+ 
+draw :
+  IF x steps < 0 OR y steps <> 0 OR linetype <> 1 
+    THEN stop
+  ELIF x steps > 0
+    THEN x draw
+  FI. 
+ 
+x draw : 
+  x rest INCR x steps ; 
+  steps := x steps DIV 3 ; 
+  IF steps > 0 THEN 
+    x rest := x steps MOD 3 ; 
+    out (""27"Y");
+    out (code (steps MOD 256));
+    out (code (steps DIV 256));
+    steps TIMESOUT ""1""; 
+  FI.
+ 
+$movep5-7$ 
+      x move :
+        x rest INCR x steps; 
+        IF not is underline
+           THEN simple x move
+           ELSE underline x move
+        FI;
+
+        . not is underline :
+            NOT bit (modification bits, 7)
+ 
+        . simple x move :
+            high   := x rest DIV factor 1;
+            x rest := x rest MOD factor 1;
+            out (""27"\");
+            out (code (high MOD 256));
+            out (code (high DIV 256));
+ 
+        . underline x move :
+            high   := x rest DIV factor 2;
+            x rest := x rest MOD factor 2;
+            IF high < blankbreite
+               THEN stop
+               ELSE low  := high MOD 127;
+                    high := high DIV 127;
+                    IF low >= blankbreite
+                       THEN low  DECR blankbreite;
+                       ELSE high DECR 1;
+                            low  DECR (blankbreite - 127);
+                    FI;
+                    IF high > 0 
+                       THEN out (""27" ");
+                            out (code (127 - blankbreite));
+                            high TIMESOUT " ";
+                    FI;
+                    out (""27" ");
+                    out (code (low)); 
+                    out (" "27" "0"");
+            FI;
+. y move:
+
+  low  := y steps MOD 255;
+  high := y steps DIV 255;
+  IF high > 0 THEN high TIMESOUT (""27"J"255"") FI;
+  IF low  > 0 THEN out (""27"J" + code (low))   FI;
+ 
+. draw :
+    IF   x steps < 0 OR y steps <> 0 
+         THEN stop
+    ELIF x steps > 0
+         THEN x draw
+    FI;
+ 
+    . x draw :
+        x rest INCR x steps;
+        steps  := x rest DIV 4;
+        x rest := x rest MOD 4;
+        IF steps > 0
+           THEN low  := steps MOD 256;
+                high := steps DIV 256;
+                out (""27"*"39"");
+                out (code (low));
+                out (code (high));
+                steps TIMESOUT dot;
+        FI;
+
+        . dot :
+            IF linetype = underline linetype
+               THEN ""000""000""001""
+               ELSE ""000""000""048""
+            FI. 
+ 
+ 
+$onoff$ 
+  modification : param1
+.
+  on :
+    buffer := on string (modification);
+    IF buffer <> ""
+       THEN modification bits := modification bits OR code (buffer);
+            switch to font;
+       ELSE stop
+    FI
+ 
+.
+  off :
+    buffer := off string (modification);
+    IF buffer <> ""
+       THEN modification bits := modification bits XOR code (buffer);
+            switch to font;
+       ELSE stop
+    FI.
+ 
+$typep6+$ 
+   type : 
+    font nr := param1 ; 
+    buffer := font string (font nr);
+    font bits   := code (buffer SUB 3);
+    font text   := subtext (buffer, 4);
+    blankbreite := char pitch (font nr, " ") ; 
+    IF is courier 
+      THEN switch to courier 
+      ELSE switch to souvenir 
+    FI ; 
+    switch to font;
+    IF is nlq 
+      THEN switch to nlq 
+      ELSE switch to draft 
+    FI;
+ 
+. switch to font :
+    out (""27"!");
+    out (code (font bits OR modification bits));
+    out (font text);
+ 
+. switch to nlq :
+    out (""27"x"1"");
+ 
+. switch to draft :
+    out (""27"x"0"");
+ 
+. switch to courier : 
+    out (""27"k"0"") ; 
+
+. switch to souvenir : 
+    out (""27"k"15"") ; 
+END PROC execute;
+ 
+$typeplq850$ 
+   type : 
+    font nr := param1 ; 
+    buffer := font string (font nr);
+    font bits   := code (buffer SUB 3);
+    font text   := subtext (buffer, 4);
+    blankbreite := char pitch (font nr, " ") ; 
+    IF is roman 
+      THEN switch to roman 
+      ELSE switch to sansserif 
+    FI ; 
+    switch to font;
+    IF is nlq 
+      THEN switch to nlq 
+      ELSE switch to draft 
+    FI;
+ 
+. switch to font :
+    out (""27"!");
+    out (code (font bits OR modification bits));
+    out (font text);
+ 
+. switch to nlq :
+    out (""27"x"1"");
+ 
+. switch to draft :
+    out (""27"x"0"");
+ 
+. switch to roman : 
+    out (""27"k"0"") ; 
+
+. switch to sansserif : 
+    out (""27"k"1"") ; 
+END PROC execute;
+ 
+$typeokieps$ 
+   type : 
+    font nr := param1 ; 
+    buffer := font string (font nr);
+    font bits   := code (buffer SUB 3);
+    vertical factor := code (buffer SUB 1); 
+    font text   := subtext (buffer, 4);
+    blankbreite := char pitch (font nr, " ") ; 
+    IF is courier 
+      THEN switch to courier 
+      ELSE switch to kassette 
+    FI ; 
+    switch to font;
+    IF is nlq 
+      THEN switch to nlq 
+      ELSE switch to draft 
+    FI;
+ 
+. switch to font :
+    out (""27"!");
+    out (code (font bits OR modification bits));
+    IF vertical factor = 2 
+      THEN out (""27"w"1"") 
+      ELSE out (""27"w"0"") 
+    FI; 
+    out (font text);
+ 
+. switch to nlq :
+    out (""27"x"1"");
+ 
+. switch to draft :
+    out (""27"x"0"");
+ 
+. switch to courier : 
+    out (""27"k"0"") ; 
+
+. switch to kassette : 
+    out (""27"k"127"") ; 
+END PROC execute;
+ 
+$typep5-7$ 
+  type :
+    font nr     := param1;
+    buffer      := font string (font nr);
+    factor 1    := code (buffer SUB 1);  (* 720 / Mikroschritte pro Inch mit ESC \ *)
+    factor 2    := code (buffer SUB 2);  (* 720 / Mikroschritte pro Inch mit ESC Blank *)
+    font bits   := code (buffer SUB 3);
+    font text   := subtext (buffer, 4);
+    blankbreite := char pitch (font nr, " ") DIV factor 2; 
+    switch to font;
+    IF is nlq THEN switch to nlq FI;
+ 
+END PROC execute;
+ 
+ 
+PROC switch to font :
+ 
+  out (""27"!");
+  out (code (font bits OR modification bits));
+  out (font text);
+ 
+END PROC switch to font;
+ 
+ 
+PROC switch to nlq :
+ 
+  IF is pica OR is elite
+     THEN draft factor 1 := factor 1;
+          factor 1       := 4;
+          draft factor 2 := factor 2; 
+          IF is pica
+             THEN factor 2    := 4 * factor 2 DIV 6;
+                  blankbreite := char pitch (font nr, " ") DIV factor 2;
+          FI;
+          out (""27"x"1"");
+     ELSE out (""27"x"0"");
+  FI;
+ 
+END PROC switch to nlq;
+ 
+ 
+PROC switch to draft :
+ 
+  IF is pica OR is elite
+     THEN factor 1 := draft factor 1;
+          factor 2 := draft factor 2;
+          out (""27"x"0"");
+  FI;
+ 
+END PROC switch to draft;
+
+$typetosh$ 
+   type : 
+    font nr := param1 ; 
+    buffer := font string (font nr);
+    font bits   := code (buffer SUB 3);
+    font text   := subtext (buffer, 4);
+    blankbreite := char pitch (font nr, " ") ; 
+    IF is nlq 
+      THEN switch to nlq
+      ELSE switch to draft 
+    FI;
+    switch to font;
+ 
+. switch to font :
+    INT VAR master select bits := font bits OR modification bits ; 
+    IF bit (master select bits,0) 
+       THEN out (""27":")
+       ELSE out (""18"") 
+    FI;
+    IF bit (master select bits,1) 
+       THEN out (""27"I"2""27"P"1"")
+       ELSE out (""27"P"0"") 
+    FI;
+    IF bit (master select bits,2) 
+       THEN out (""27""15"")
+    FI;
+    IF bit (master select bits,3) 
+       THEN out (""27"E")
+       ELSE out (""27"F") 
+    FI;
+    IF bit (master select bits,4) 
+       THEN out (""27"G")
+       ELSE out (""27"H") 
+    FI;
+    IF bit (master select bits,5) 
+       THEN out (""27"W"1"")
+       ELSE out (""27"W"0"") 
+    FI;
+    IF bit (master select bits,6) 
+       THEN
+       ELSE
+    FI;
+    IF bit (master select bits,7) 
+       THEN out (""27"-"1"")
+       ELSE out (""27"-"0"") 
+    FI;
+    out (font text);
+ 
+ 
+. switch to nlq :
+    out (""27"I"2"");
+ 
+. switch to draft :
+    out (""27"I"1"");
+ 
+END PROC execute;
+ 
+$typeokiibm$ 
+   type : 
+    font nr := param1 ; 
+    buffer := font string (font nr);
+    vertical factor := code (buffer SUB 1); 
+    font bits   := code (buffer SUB 3);
+    font text   := subtext (buffer, 4);
+    blankbreite := char pitch (font nr, " ") ; 
+    IF is courier 
+      THEN switch to courier 
+      ELSE switch to kassette 
+    FI ; 
+    IF is nlq 
+      THEN switch to nlq
+      ELSE switch to draft 
+    FI;
+    switch to font;
+ 
+. switch to font :
+    INT VAR master select bits := font bits OR modification bits ; 
+    IF bit (master select bits,0) 
+       THEN out (""27":")
+       ELSE out (""18"") 
+    FI;
+    IF bit (master select bits,1) 
+       THEN out (""27"I"2""27"P"1"")
+       ELSE out (""27"P"0"") 
+    FI;
+    IF bit (master select bits,2) 
+       THEN out (""27""15"")
+    FI;
+    IF bit (master select bits,3) 
+       THEN out (""27"E")
+       ELSE out (""27"F") 
+    FI;
+    IF bit (master select bits,4) 
+       THEN out (""27"G")
+       ELSE out (""27"H") 
+    FI;
+    IF bit (master select bits,5) 
+       THEN out (""27"W"1"")
+       ELSE out (""27"W"0"") 
+    FI;
+    IF bit (master select bits,6) 
+       THEN  out(""27"%G")
+       ELSE  out(""27"%H")
+    FI;
+    IF bit (master select bits,7) 
+       THEN out (""27"-"1"")
+       ELSE out (""27"-"0"") 
+    FI;
+    IF vertical factor = 2 
+      THEN out (""27""91""64""4""0""0""0""2""0"") 
+      ELSE out (""27""91""64""4""0""0""0""1""0"") 
+    FI; 
+    out (font text);
+ 
+ 
+. switch to nlq :
+    out (""27"I"2"");
+ 
+. switch to draft :
+    out (""27"I"0"");
+ 
+. switch to courier : 
+    out (""27"k"0"") ; 
+
+. switch to kassette : 
+    out (""27"k"127"") ; 
+END PROC execute;
+ 
+$typebrother$ 
+   type : 
+    font nr := param1 ; 
+    buffer := font string (font nr);
+    vertical factor := code (buffer SUB 1); 
+    font bits   := code (buffer SUB 3);
+    font text   := subtext (buffer, 4);
+    blankbreite := char pitch (font nr, " ") ; 
+    IF is nlq 
+      THEN switch to nlq
+      ELSE switch to draft 
+    FI;
+    switch to font;
+ 
+. switch to font :
+    INT VAR master select bits := font bits OR modification bits ; 
+    IF bit (master select bits,0) 
+       THEN out (""27":")
+       ELSE out (""18"") 
+    FI;
+    IF bit (master select bits,1) 
+       THEN out (""27"I"2""27"P"1"")
+       ELSE out (""27"P"0"") 
+    FI;
+    IF bit (master select bits,2) 
+       THEN out (""27""15"")
+    FI;
+    IF bit (master select bits,3) 
+       THEN out (""27"E")
+       ELSE out (""27"F") 
+    FI;
+    IF bit (master select bits,4) 
+       THEN out (""27"G")
+       ELSE out (""27"H") 
+    FI;
+    IF bit (master select bits,5) 
+       THEN out (""27"W"1"")
+       ELSE out (""27"W"0"") 
+    FI;
+    IF bit (master select bits,6) 
+       THEN
+       ELSE
+    FI;
+    IF bit (master select bits,7) 
+       THEN out (""27"-"1"")
+       ELSE out (""27"-"0"") 
+    FI;
+    IF vertical factor = 2 
+      THEN out (""27""91""64""4""0""0""0""2""0"") 
+      ELSE out (""27""91""64""4""0""0""0""1""0"") 
+    FI; 
+    out (font text);
+ 
+. switch to nlq :
+    out (""27"I"2"");
+ 
+. switch to draft :
+    out (""27"I"0"");
+ 
+END PROC execute;
+ 
+$typestar$ 
+   type : 
+    font nr := param1 ; 
+    buffer := font string (font nr);
+    font bits   := code (buffer SUB 3);
+    font text   := subtext (buffer, 4);
+    blankbreite := char pitch (font nr, " ") ; 
+    IF is roman 
+      THEN switch to roman 
+      ELSE switch to font1 
+    FI ; 
+    switch to font;
+    IF is nlq 
+      THEN switch to nlq 
+      ELSE switch to draft 
+    FI;
+ 
+. switch to font :
+    out (""27"!");
+    out (code (font bits OR modification bits));
+    out (font text);
+ 
+. switch to nlq :
+    out (""27"x"1"");
+ 
+. switch to draft :
+    out (""27"x"0"");
+ 
+. switch to roman : 
+    out (""27"k"0"") ; 
+
+. switch to font1 : 
+    out (""27"k"1"") ; 
+END PROC execute;
+ 
+ 
+
+$printerlq1500$ 
+PACKET printer driver
+ 
+(**************************************************************************)
+(*                                                Stand   : 29.07.86      *)
+(*   EPSON   LQ-1500                              Version : 4             *)
+(*                                                Autor   : Rudolf Ruland *)
+(*   geändert am 15.12.88 hjh                                             *)
+(**************************************************************************)
+ 
+       DEFINES printer,
+               open,
+               close,
+               execute,
+ 
+               paper size,
+               std quality:
+ 
+LET
+(*  underline           =  1,
+    bold                =  2,
+    italics             =  4,
+    reverse             =  8, *)
+ 
+    underline linetype  =  1,
+ 
+    c document          =  1,
+    c page              =  2,
+ 
+    c write text        =  1,
+    c write cmd         =  2,
+    c carriage return   =  3, 
+    c move              =  4,
+    c draw              =  5,
+    c on                =  6, 
+    c off               =  7,
+    c type              =  8;
+ 
+INT VAR rest, high, low, factor;
+BOOL VAR is nlq, factor was 6, condensed;
+REAL VAR x size, y size;
+TEXT VAR std quality name, buffer;
+ 
+(*********************************************************************)
+ 
+paper size  (13.6 * 2.54, 12.0 * 2.54);
+std quality ("draft");
+ 
+PROC paper size (REAL CONST x, y) :
+ 
+  x size := x;
+  y size := y;
+ 
+END PROC paper size;
+ 
+PROC paper size : 
+ 
+  line;
+  putline ("Papierbreite  =  " + text (x size, 5, 2) + " cm  =  " + text (x size / 2.54, 5, 2) + " Zoll");
+  putline ("Papierlaenge  =  " + text (y size, 5, 2) + " cm  =  " + text (y size / 2.54, 5, 2) + " Zoll");
+ 
+END PROC paper size;
+ 
+ 
+PROC std quality (TEXT CONST quality) :
+ 
+  IF quality = "nlq" OR quality = "draft"
+     THEN std quality name := quality;
+     ELSE errorstop ("unzulaessige Betriebsart")
+  FI;
+ 
+END PROC std quality;
+ 
+TEXT PROC std quality : std quality name END PROC std quality;
+ 
+(*********************************************************************)
+ 
+PROC open (INT CONST op code, INT VAR param1, param2) :
+ 
+SELECT op code OF
+  CASE c document : open document 
+  CASE c page     : open page
+END SELECT; 
+ 
+ 
+. x steps : param1
+. y steps : param2
+. 
+  open document :
+    IF   pos (material, "nlq") <> 0 
+         THEN is nlq := TRUE;
+    ELIF pos (material, "draft") <> 0 
+         THEN is nlq := FALSE;
+         ELSE is nlq := std quality = "nlq"
+    FI;
+    factor       := 0;
+    factor was 6 := FALSE;
+    condensed    := FALSE; 
+    x steps := x step conversion ( x size );
+    y steps := y step conversion ( y size );
+    y steps := (y steps DIV 30) * 30;
+    out (""27""64"");                      (* Reset des Druckers             *)
+    out (""27"R"0"");                      (* Amerikanischer Zeichensatz     *)
+    out (""27"C" + code (y steps DIV 30)); (* Formularlaenge                 *)
+    out (""27"x"0"");                      (* Entwurfsqualität               *) 
+ 
+ 
+. x start : param1
+. y start : param2
+. 
+  open page :
+    x start := 0;
+    y start := 0;
+    rest    := 0;
+    out (""13"");
+ 
+END PROC open;
+ 
+ 
+PROC close (INT CONST op code, INT CONST param1) :
+ 
+SELECT op code OF
+  CASE c document : close document 
+  CASE c page     : close page
+END SELECT; 
+ 
+. 
+  close document :
+ 
+ 
+. remaining y steps : param1
+.
+  close page :
+    IF remaining y steps > 0 THEN out (""12"") FI
+ 
+END PROC close;
+ 
+ 
+PROC execute (INT CONST op code, TEXT CONST string, INT CONST param1, param2) :
+ 
+SELECT op code OF
+  CASE c write text       :  write text
+  CASE c write cmd        :  write cmd
+  CASE c carriage return  :  carriage return
+  CASE c move             :  move
+  CASE c draw             :  draw
+  CASE c on               :  on
+  CASE c off              :  off
+  CASE c type             :  type
+END SELECT
+
+ 
+. from : param1
+. to   : param2
+.
+  write text :
+    out subtext (string, from, to)
+ 
+.
+  write cmd :
+    buffer := subtext (string, from, to);
+    IF   buffer = "nlq"
+         THEN is nlq := TRUE;
+              near letter quality;
+    ELIF buffer = "draft"
+         THEN is nlq := FALSE;
+              draft quality;
+         ELSE out (buffer);
+    FI;
+ 
+    . near letter quality :
+        IF factor = 6
+           THEN factor was 6 := TRUE;
+                factor       := 4; 
+           ELSE factor was 6 := FALSE;
+        FI;
+        IF condensed
+           THEN out (""27"x"0"")
+           ELSE out (""27"x"1"") 
+        FI;
+ 
+    . draft quality :
+        IF factor was 6
+           THEN factor was 6 := FALSE;
+                factor       := 6; 
+        FI;
+        out (""27"x"0"");
+ 
+ 
+(*. x steps to left margin : param1*)
+.
+  carriage return :
+    rest := 0;
+    out (""13"");
+ 
+ 
+. x steps : param1
+. y steps : param2
+.
+  move :
+    IF   x steps < 0 OR y steps < 0
+         THEN stop
+    ELIF x steps > 0
+         THEN x move
+    ELIF y steps > 0
+         THEN y move
+    FI;
+ 
+    . x move :
+        high := (x steps + rest) DIV factor;
+        rest := (x steps + rest) MOD factor;
+        out (""27"\");
+        out (code (high MOD 256));
+        out (code (high DIV 256));
+ 
+    . y move :
+        high := y steps DIV 255;
+        low  := y steps MOD 255;
+        IF high > 0 THEN high TIMESOUT ""27"J"255""      FI;
+        IF low  > 0 THEN out (""27"J"); out (code (low)) FI;
+ 
+. 
+  draw :
+    IF   x steps < 0 OR y steps <> 0 OR linetype <> underline linetype
+         THEN stop
+    ELIF x steps > 0
+         THEN x draw
+    FI;
+ 
+    . x draw :
+        high := (x steps + rest) DIV 6;
+        rest := (x steps + rest) MOD 6;
+        IF high > 0
+           THEN low  := high MOD 255;
+                high := high DIV 255;
+                out (""27"V");
+                out (code (low));
+                out (""27"*"1""1""0""1""27"V"0"");
+                FOR low FROM 1 UPTO high
+                    REP out (""27"V"255""27"*"1""1""0""1""27"V"0"") PER; 
+        FI;
+ 
+ 
+. modification : param1
+.
+  on :
+    IF on string (modification) <> "" 
+       THEN out (on string (modification))
+       ELSE stop
+    FI
+ 
+.
+  off :
+    IF off string (modification) <> ""
+       THEN out (off string (modification))
+       ELSE stop
+    FI
+ 
+ 
+. font nr : param1
+.
+  type :
+    buffer := font string (font nr);
+    out (buffer);
+    factor := pitch factor;
+    IF is nlq THEN near letter quality FI;
+ 
+    . pitch factor :                           (*             Mikroschritt *)
+        INT CONST font bits := code (buffer SUB 3);
+        IF   bit (font bits, 1) 
+             THEN condensed := FALSE;       2  (* proportional  1/360 Inch *)
+        ELIF pos (buffer, ""27"x"1"") <> 0
+             THEN condensed := FALSE;       4  (* near letter   1/180 Inch *)
+        ELIF bit (font bits, 2) 
+             THEN condensed := TRUE;        3  (* condensed     1/240 Inch *)
+        ELIF bit (font bits, 0) 
+             THEN condensed := FALSE;       4  (* elite         1/180 Inch *)
+             ELSE condensed := FALSE;       6  (* pica          1/120 Inch *)
+        FI
+ 
+END PROC execute;
+
+
+$end$
+INT VAR reply; DATASPACE VAR ds; FILE VAR file;
+ 
+PROC printer:
+ 
+  disable stop;
+  continue (server channel);
+  check error (error message);
+  ds := nilspace;
+  REP forget (ds);
+      execute print;
+      IF is error AND online THEN put error; clear error; FI;
+  PER;
+END PROC printer;
+ 
+PROC execute print:
+ 
+  LET ack = 0, fetch code = 11, file type = 1003;
+  enable stop;
+  ds := nilspace;
+  call (father, fetch code, ds, reply);
+  IF reply = ack CAND type (ds) = file type
+     THEN file := sequential file (input, ds);
+          print (file,
+            PROC (INT CONST, INT VAR, INT VAR) open,
+            PROC (INT CONST, INT CONST) close,
+            PROC (INT CONST, TEXT CONST, INT CONST, INT CONST) execute);
+  FI;
+END PROC execute print;
+ 
+PROC check error(TEXT CONST message):
+ 
+  IF is error
+     THEN clear error; rename myself (message);
+          IF is error THEN end(myself) FI;
+          pause (9000); end(myself);
+  FI;
+END PROC check error;
+ 
+END PACKET printerdriver
+
+

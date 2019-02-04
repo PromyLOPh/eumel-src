@@ -1,0 +1,1057 @@
+(*************************************************************************)
+(*** AT-spezifische Software, die zum Lesen der Hardwareuhr und        ***)
+(*** Booten in anderen Partitionen benötigt wird.                      ***)
+(***                                                                   ***)
+(*** Zusammengestellt und geändert : Werner Sauerwein, GMD             ***)
+(***                         Stand : 31.10.86                          ***)
+(*************************************************************************)
+
+PACKET splitting DEFINES  low byte,     (* Copyright (C) 1985       *)
+                          high byte,    (* Martin Schönbeck, Spenge *)
+                          low word,     (* Stand: 13.09.85          *)
+                          high word: 
+ 
+INT PROC high byte (INT CONST value):
+ 
+    TEXT VAR x := "  ";
+    replace (x, 1, value);
+    code (x SUB 2)
+
+END PROC high byte;
+
+INT PROC low byte (INT CONST value):
+ 
+    TEXT VAR x := "  ";
+    replace (x, 1, value);
+    code (x SUB 1)
+
+END PROC low byte; 
+ 
+INT PROC high word (REAL CONST double precission int):
+
+    int (double precission int / 65536.0)
+
+END PROC high word;
+
+INT PROC low word (REAL CONST double precission int): 
+ 
+    string of low bytes ISUB 1.
+
+string of low bytes:
+    code (int (double precission int MOD 256.0)) +
+    code (int ((double precission int MOD 65536.0) / 256.0)). 
+ 
+END PROC low word; 
+
+END PACKET splitting;
+
+
+PACKET basic block io DEFINES
+ 
+  read block,
+  write block:
+
+PROC read block (DATASPACE VAR ds,
+                 INT CONST ds page no, 
+                 INT CONST block no,
+                 INT VAR return code):
+  read block; 
+  retry if read error.
+ 
+read block: 
+  block in (ds, ds page no, 0, block no, return code).
+ 
+retry if read error: 
+  INT VAR retry;
+  FOR retry FROM 1 UPTO 10 WHILE return code = 2 REP 
+    reset to block 0 if fifth try; 
+    read block 
+  PER. 
+ 
+reset to block 0 if fifth try: 
+  IF retry = 5 
+    THEN block in (ds, ds page no, 0, 0, return code) 
+  FI. 
+ 
+END PROC read block;
+ 
+PROC write block (DATASPACE CONST ds,
+                 INT CONST ds page no, 
+                 INT CONST block no,
+                 INT VAR return code):
+  write block; 
+  retry if write error. 
+ 
+write block: 
+  block out (ds, ds page no, 0, block no, return code).
+ 
+retry if write error: 
+  INT VAR retry;
+  FOR retry FROM 1 UPTO 10 WHILE return code = 2 REP 
+    reset to block 0 if fifth try; 
+    write block 
+  PER. 
+ 
+reset to block 0 if fifth try: 
+  IF retry = 5 
+    THEN disable stop;
+         DATASPACE VAR dummy ds := nilspace;
+         block in (dummy ds, 2, 0, 0, return code);
+         forget (dummy ds);
+         enable stop
+  FI. 
+ 
+END PROC write block; 
+
+PROC read block (DATASPACE VAR ds, INT CONST ds page,
+                 REAL CONST archive block):
+
+   enable stop;
+   read block (ds, ds page, archive block, error);
+   INT VAR error;
+   SELECT error OF
+      CASE 0:
+      CASE 1: error stop ("Platte kann nicht gelesen werden");
+      CASE 2: error stop ("Lesefehler bei Block "+ text (archive block));
+      CASE 3: error stop ("Versorgungsfehler Archiv");
+      OTHERWISE error stop ("unbekannter Fehler auf Platte");
+   END SELECT;
+
+END PROC read block;
+
+PROC write block (DATASPACE CONST ds, INT CONST ds page,
+                  REAL CONST archive block):
+
+   enable stop;
+   write block (ds, ds page, archive block, error);
+   INT VAR error;
+   SELECT error OF
+      CASE 0:
+      CASE 1: error stop ("Platte kann nicht geschrieben werden");
+      CASE 2: error stop ("Schreibfehler bei Block "+ text (archive block));
+      CASE 3: error stop ("Versorgungsfehler Archiv");
+      OTHERWISE error stop ("unbekannter Fehler auf Platte");
+   END SELECT;
+
+END PROC write block;
+
+PROC read block (DATASPACE VAR ds,
+                 INT CONST ds page no, 
+                 REAL CONST block no,
+                 INT VAR return code):
+  read block; 
+  retry if read error.
+ 
+read block: 
+  block in (ds, ds page no, high word (block no),
+                             low word (block no), return code).
+ 
+retry if read error: 
+  INT VAR retry;
+  FOR retry FROM 1 UPTO 10 WHILE return code = 2 REP 
+    reset to block 0 if fifth try; 
+    read block 
+  PER. 
+ 
+reset to block 0 if fifth try: 
+  IF retry = 5 
+    THEN block in (ds, ds page no, 0, 0, return code) 
+  FI. 
+ 
+END PROC read block;
+ 
+PROC write block (DATASPACE CONST ds,
+                 INT CONST ds page no, 
+                 REAL CONST block no,
+                 INT VAR return code):
+  write block; 
+  retry if write error. 
+ 
+write block: 
+  block out (ds, ds page no, high word (block no),
+                              low word (block no), return code).
+ 
+retry if write error: 
+  INT VAR retry;
+  FOR retry FROM 1 UPTO 10 WHILE return code = 2 REP 
+    reset to block 0 if fifth try; 
+    write block 
+  PER. 
+ 
+reset to block 0 if fifth try: 
+  IF retry = 5 
+    THEN disable stop;
+         DATASPACE VAR dummy ds := nilspace;
+         block in (dummy ds, 2, 0, 0, return code);
+         forget (dummy ds);
+         enable stop
+  FI. 
+ 
+END PROC write block; 
+
+END PACKET basic block io;
+
+
+PACKET utilities DEFINES getchoice, cleol, cleop, inverse, put center:
+ 
+INT PROC get choice (INT CONST von, bis, TEXT VAR retchar):
+  get choice (von, bis, von, retchar)
+END PROC get choice;
+
+INT PROC get choice (INT CONST von, bis, zusatz, TEXT VAR retchar):
+   LET return  = ""13"",
+       escape  = ""27"",
+       left    = ""8"";
+   TEXT VAR buffer; 
+   INT VAR cx, cy;
+   get cursor (cx, cy); out (" " + left);
+   REP
+      REP 
+         cursor (cx, cy); buffer := incharety;
+      UNTIL input ok OR buffer = escape PER; 
+      IF buffer = escape THEN retchar := escape;
+                              LEAVE get choice WITH 0
+      FI;
+      out (buffer); 
+      leseschleife bis left or ret;
+      IF retchar = left   THEN out (left + " ") FI;
+      IF retchar = escape THEN LEAVE get choice WITH 0 FI
+   UNTIL retchar = return OR retchar = escape PER;
+   int (buffer). 
+ 
+input ok : (buffer >= text (von) AND buffer <= text (bis)) OR buffer = text (zusatz).
+
+leseschleife bis left or ret:
+   REP 
+     inchar (retchar) 
+   UNTIL retchar = return OR retchar = left OR retchar = escape PER.
+
+END PROC get choice;
+
+PROC cl eol (INT CONST cx, cy): 
+   cursor (cx, cy); 
+   cl eol 
+END PROC cl eol; 
+ 
+PROC cl eop (INT CONST cx, cy): 
+   cursor (cx, cy); 
+   cl eop 
+END PROC cl eop; 
+
+
+PROC cl eol: 
+  out (""5"") 
+END PROC cl eol;
+
+PROC cl eop: 
+  out (""4"") 
+END PROC cl eop; 
+
+TEXT PROC inverse (TEXT CONST t):
+  ""15"" + t + " " + ""14""
+END PROC inverse; 
+ 
+PROC put center (TEXT CONST t):
+   put center (t, 80)
+END PROC put center;
+
+PROC put center (INT CONST zeile, TEXT CONST t):
+   put center (zeile, t, 80)
+END PROC put center;
+
+PROC put center (TEXT CONST t, INT CONST gesamtbreite):
+   INT VAR cy;
+   get cursor (cy, cy);
+   put center (cy, t, gesamtbreite)
+END PROC put center;
+
+PROC put center (INT CONST zeile, TEXT CONST t, INT CONST gesamtbreite):
+   cursor ((gesamtbreite - length (t)) DIV 2, zeile);
+   put (t).
+END PROC put center;
+
+END PACKET utilities
+
+
+PACKET part DEFINES activate, show actual partition table:
+                                           (* Copyright (C) 1985       *)
+                                           (* Martin Schönbeck, Spenge *)
+                                           (* Stand      : 02.02.86    *)
+                                           (* Changed by : W.Sauerwein *)
+                                           (*              I.Ley       *)
+                                           (* Stand      : 03.10.86    *) 
+    LET fd channel           = 28;
+
+ROW 256 INT VAR boot block;
+INT VAR boot block session := session - 1;
+
+PROC get boot block:
+    IF boot block session <> session
+       THEN hole aktuellen boot block
+    FI.
+
+hole aktuellen boot block:
+    disable stop;
+    DATASPACE VAR dummy ds := nilspace;
+    BOUND STRUCT (ALIGN dummy, 
+                  ROW 256 INT block) VAR partition table := dummy ds; 
+    get external block (dummy ds, 2, 0, fd channel); 
+    IF NOT is error
+        THEN transfer data to boot block
+    FI; 
+    forget (dummy ds). 
+ 
+transfer data to boot block:
+    IF not valid boot block
+        THEN try to get valid boot block from file
+    FI;
+    boot block := partition table. block;
+    boot block session := session.
+
+not valid boot block:
+    partition table. block [256] <> boot indicator OR
+    it is an old boot block of eumel.
+
+boot indicator: -21931.
+
+it is an old boot block of eumel:
+    partition table. block [1] = 1514.
+
+try to get valid boot block from file:
+    forget (dummy ds);
+    partition table := old ("bootblock");
+    IF is error THEN LEAVE transfer data to boot block FI.
+ 
+END PROC get boot block;
+
+PROC put boot block:
+    IF boot block ist uptodate
+        THEN schreibe block auf platte
+        ELSE errorstop ("boot block nicht uptodate")
+    FI.
+
+boot block ist uptodate:
+    boot block session = session.
+
+schreibe block auf platte:
+    disable stop;
+    DATASPACE VAR dummy ds := nilspace;
+    BOUND STRUCT (ALIGN dummy, 
+                  ROW 256 INT block) VAR partition table := dummy ds; 
+    transfer data to dataspace;
+    put external block (dummy ds, 2, 0, fd channel); 
+    forget (dummy ds). 
+ 
+transfer data to dataspace:
+    partition table. block := boot block.
+
+END PROC put boot block;
+
+INT PROC partition type (INT CONST partition):
+    low byte (boot block [entry (partition) + 2])
+END PROC partition type;
+
+REAL PROC partition start (INT CONST partition):
+    unsigned low word + high word.
+
+unsigned low word:
+    real (low byte (boot block [entry (partition) + 4])) +
+    real (high byte (boot block [entry (partition) + 4])) * 256.0.
+
+high word:
+    real (boot block [entry (partition) + 5]).
+
+END PROC partition start;
+
+INT PROC partition word 0 (INT CONST partition):
+   boot block (entry (partition))
+END PROC partition word 0;
+
+INT PROC first track (INT CONST partition):
+    high byte (boot block [entry (partition) + 1]) 
+    + 4 * (low byte (boot block [entry (partition) + 1]) AND (128 + 64)) 
+END PROC first track;
+
+INT PROC last track (INT CONST partition):
+    high byte (boot block [entry (partition) + 3]) 
+    + 4 * (low byte (boot block [entry (partition) + 3]) AND (128 + 64)) 
+END PROC last track;
+
+BOOL PROC partition activ (INT CONST partition):
+    low byte (boot block [entry (partition)]) = 128
+END PROC partition activ;
+
+REAL PROC partition size (INT CONST partition):
+    unsigned low word + high word.
+
+unsigned low word:
+    real (low byte (boot block [entry (partition) + 6])) +
+    real (high byte (boot block [entry (partition) + 6])) * 256.0.
+
+high word:
+    real (boot block [entry (partition) + 7]).
+
+END PROC partition size;
+
+INT PROC tracks: 
+   get value (-10, fd channel) 
+END PROC tracks; 
+
+PROC activate (INT CONST part type):
+    IF partition type exists AND is possible type
+         THEN deactivate all partitions and
+              activate desired partition
+         ELSE errorstop ("Gewünschte Partitionart gibt es nicht")
+    FI.
+
+is possible type:
+   part type > 0 AND
+   part type < 256.
+
+partition type exists:
+    INT VAR partition;
+    FOR partition FROM 1 UPTO 4 REP
+         IF partition type (partition) = part type 
+             THEN LEAVE partition type exists WITH TRUE
+         FI;
+    PER;
+    FALSE.
+
+deactivate all partitions and activate desired partition:
+    FOR partition FROM 1 UPTO 4 REP
+         deactivate this partition;
+         IF partition type (partition) = part type
+              THEN activate partition
+         FI
+    PER;
+    put boot block.
+
+deactivate this partition:
+    set bit (boot block [entry (partition)], 7);
+    (* first setting needed, because reset bit does xor *)
+    reset bit (boot block [entry (partition)], 7).
+
+activate partition:
+    set bit (boot block [entry (partition)], 7)
+
+END PROC activate;
+
+INT PROC entry (INT CONST partition):
+    get boot block;
+    256 - 5 * 8 + (partition * 8)
+END PROC entry;
+
+INT PROC get value (INT CONST control code, channel for value): 
+    enable stop; 
+    INT VAR old channel := channel;
+    continue (channel for value); 
+    INT VAR value; 
+    control (control code, 0, 0, value); 
+    continue (old channel); 
+    value 
+END PROC get value; 
+ 
+PROC get external block (DATASPACE VAR ds, INT CONST ds page,
+                                             archive block, get channel):
+   INT VAR old channel := channel; 
+   continue (get channel);
+   disable stop;
+   read block (ds, ds page, archive block, error);
+   INT VAR error;
+   SELECT error OF
+      CASE 0:
+      CASE 1: error stop ("Platte kann nicht gelesen werden");
+      CASE 2: error stop ("Lesefehler bei Block "+ text (archive block));
+      CASE 3: error stop ("Versorgungsfehler Archiv");
+      OTHERWISE error stop ("unbekannter Fehler auf Platte");
+   END SELECT;
+   continue (old channel).
+END PROC get external block;
+
+PROC put external block (DATASPACE CONST ds, INT CONST ds page,
+                                             archive block, get channel):
+   INT VAR old channel := channel; 
+   continue (get channel);
+   disable stop;
+   write block (ds, ds page, archive block, error);
+   INT VAR error;
+   SELECT error OF
+      CASE 0:
+      CASE 1: error stop ("Platte kann nicht geschrieben werden");
+      CASE 2: error stop ("Schreibfehler bei Block "+ text (archive block));
+      CASE 3: error stop ("Versorgungsfehler Archiv");
+      OTHERWISE error stop ("unbekannter Fehler auf Platte");
+   END SELECT;
+   continue (old channel).
+END PROC put external block;
+ 
+(**************************************************************************)
+ 
+   LET                           max partitions           =   4;
+   ROW max partitions INT  VAR   part list;
+   ROW max partitions INT  VAR   part type, part active,
+                                 part first track, part last track;
+   ROW max partitions REAL VAR   part start,
+                                 part size;
+                      INT  VAR   zylinder,
+                                 startzeile tabelle      ::   1,
+                                 active partition,
+                                 partitions,
+                                 partition, i, j, help;
+
+                                 
+PROC get actual partition data :
+   get boot block;
+   zylinder := tracks;
+   FOR i FROM 1 UPTO max partitions REP
+      part type        (i) := partition type (i);
+      part first track (i) := first track (i);
+      part last track  (i) := last track (i);
+      part start       (i) := partition start (i);
+      part size        (i) := partition size (i);
+      part active      (i) := partition word 0 (i);
+      IF partition activ (i) THEN active partition := i FI
+   PER;
+   get number of installed partitions;
+   generate part list.
+
+get number of installed partitions :
+   partitions := 0;
+   FOR i FROM 1 UPTO max partitions REP
+     IF part type (i) <> 0 THEN partitions INCR 1 FI
+   PER.
+
+generate part list :
+   FOR i FROM 1 UPTO max partitions REP
+      IF part type (i) <> 0 THEN part list (i) := i
+                            ELSE part list (i) := 0
+      FI;
+   PER;
+   schiebe nullen nach hinten;
+   sort part list.
+
+schiebe nullen nach hinten :
+   i := 1; INT VAR k := 0;
+   REP k INCR 1;
+       IF part list (i) = 0 THEN circle
+                            ELSE i INCR 1
+       FI
+   UNTIL k = max partitions - 1 PER.
+
+circle :
+   FOR j FROM i UPTO max partitions - 1 REP
+      part list (j) := part list (j + 1)
+   PER;
+   part list (max partitions) := 0.
+
+sort part list :
+   FOR i FROM 2 UPTO partitions REP
+      FOR j FROM 1 UPTO i - 1 REP
+          IF part first track (part list (i)) < part first track (part list (j))
+             THEN tausche FI
+      PER
+   PER.
+
+tausche :
+   help := part list (i);
+   part list (i) := part list (j);
+   part list (j) := help.
+
+END PROC get actual partition data;
+
+
+PROC show partition table :
+   headline;
+   devide table;
+   columns;
+   underlines;
+   rows;
+   footlines.
+
+head line :
+   cl eop (1, startzeile tabelle);
+   put center (inverse ("                       "
+                      + "Aktuelle Partitions - Tabelle"
+                      + "                       ")).
+
+devide table :
+   FOR i FROM 1 UPTO 8
+   REP
+      cursor (50, startzeile tabelle + i); out (inverse (""))
+   PER.
+
+columns :
+   cursor ( 1, startzeile tabelle + 2);
+   out (" Nr. System    Typ-Nr. Zustand Größe Start Ende");
+   cursor (54, startzeile tabelle + 2);
+   out ("Plattengröße / Zylinder ").
+
+underlines :
+   cursor ( 1, startzeile tabelle + 3);
+   out ("-------------------------------------------------");
+   cursor (52, startzeile tabelle + 3);
+   out ("--------------------------").
+
+rows :
+   FOR i FROM 1 UPTO max partitions
+   REP cursor (2, startzeile tabelle + 3 + i);
+       put (text (i) + " :")
+   PER.
+
+footlines:
+   cursor (1, startzeile tabelle + 9);
+   put center (inverse (75 * " ")).
+
+END PROC show partition table;
+
+PROC update table :
+   get actual partition data;
+   FOR i FROM 1 UPTO partitions REP update partition PER;
+   FOR i FROM partitions + 1 UPTO max partitions REP rubout partition PER;
+   zeige plattengroesse.
+
+update partition :
+   partition := part list (i);
+   show partition.
+
+rubout partition :
+   cursor (6, startzeile tabelle + 3 + i);
+   out ("                                          ").
+
+show partition :
+   cursor (6, startzeile tabelle + 3 + i);
+   put (name + type + zustand  + groesse + startspur + endspur).
+
+name : subtext (subtext (part name, 1, 9)
+              + "          ", 1, 10).
+
+type : text (part type (partition), 5) + "   ".
+
+zustand   : IF active partition = partition THEN (" aktiv ")
+                                            ELSE ("       ")
+            FI.
+
+startspur : " " + text (part first track (partition), 5).
+endspur   :       text (part last track   (partition), 6).
+groesse   :       text (part groesse, 5).
+
+zeige plattengroesse :
+   put gesamt;
+   put noch freie;
+   put maximaler zwischenraum.
+
+put maximaler zwischenraum :
+   cursor (54, startzeile tabelle + 6);
+   put ("max. zusammenh. : " + text (maximaler zwischenraum, 4)).
+
+put gesamt :
+   cursor (54, startzeile tabelle + 4);
+   put ("insgesamt       : " + text (zylinder, 4)).
+
+put noch freie :
+   cursor (54, startzeile tabelle + 5);
+   put ("davon noch frei : " + text (freie zylinder, 4)).
+
+part groesse :
+   partition groesse (partition).
+
+part name :
+   SELECT part type (partition) OF
+     CASE              1 : "DOS"
+     CASE 69, 70, 71, 72 : "EUMEL"
+     OTHERWISE text (part type (partition))
+   END SELECT.
+
+freie zylinder :
+   zylinder - belegte zylinder.
+
+belegte zylinder :
+   help := 0;
+   FOR i FROM 1 UPTO partitions REP
+      help INCR partition groesse (part list (i))
+   PER;
+   help.
+
+END PROC update table;
+ 
+INT PROC maximaler zwischenraum :
+   IF partitions = 0 THEN zylinder
+                     ELSE max (maximaler platz vor und zwischen den partitionen,
+                               platz hinter letzter partition)
+   FI.
+
+maximaler platz vor und zwischen den partitionen :
+   help := platz vor erster partition;
+   FOR i FROM 1 UPTO partitions - 1
+   REP
+      help := max (help, begin of part i plus 1 - end of part i - 1)
+   PER;
+   help.
+
+platz vor erster partition :
+   part first track (part list (1)).
+
+platz hinter letzter partition :
+   zylinder - part last track (part list (partitions)) - 1.
+
+begin of part i plus 1 :
+   part first track (part list (i + 1)).
+
+end of part i :
+   part last track (part list (i)).
+
+END PROC maximaler zwischenraum;
+
+INT PROC partition groesse (INT CONST part) :
+   part last track (part) - part first track (part) + 1
+END PROC partition groesse;
+
+PROC show actual partition table:
+   show partition table;
+   update table;
+   line (4)
+END PROC show actual partition table;
+
+PROC show actual partition table (ROW max partitions INT VAR typnr):
+   show actual partition table;
+   FOR i FROM 1 UPTO max partitions REP
+      typnr (i) := partition type (part list (i))
+   PER;
+END PROC show actual partition table;
+
+END PACKET part;
+
+
+PACKET hw clock DEFINES hw clock:        (* Copyright (C) 1985       *)
+                                         (* Martin Schönbeck, Spenge *)
+LET clock length  = 7,                   (* Stand: 06.11.85          *)
+    clock command = 4;
+
+BOUND STRUCT (ALIGN dummy,
+              ROW clock length INT clock field) VAR clock data;
+
+REAL PROC hw clock:
+ 
+    disable stop;
+    get clock;
+    hw date + hw time.
+
+get clock:
+    DATASPACE VAR ds := nilspace;
+    clock data := ds;
+    INT VAR return code, actual channel := channel;
+    go to shard channel;
+    blockin (ds, 2, -clock command, 0, return code);
+    IF actual channel = 0 THEN break (quiet)
+                          ELSE continue (actual channel)
+    FI;
+    IF return code <> 0 
+        THEN errorstop ("Keine Hardware Uhr vorhanden");
+    FI;
+    put clock into text;
+    forget (ds).
+
+put clock into text:
+    TEXT VAR clock text := clock length * "  ";
+    INT VAR i;
+    FOR i FROM 1 UPTO clock length REP
+         replace (clock text, i, clock data. clock field [i]);
+    PER.
+
+go to shard channel:
+    INT VAR retry;
+    FOR retry FROM 1 UPTO 20 REP
+        continue (32);
+        IF is error
+            THEN clear error;
+                 pause (30)
+        FI;
+    UNTIL channel = 32 PER.
+
+hw date:
+    date (day + "." + month + "." + year).
+
+day:    subtext (clock text, 7, 8).
+
+month:  subtext (clock text, 5, 6).
+
+year:   subtext (clock text, 1, 4).
+
+hw time:
+    time (hour + ":" + minute + ":" + second).
+
+hour:   subtext (clock text, 9, 10).
+
+minute: subtext (clock text, 11, 12).
+
+second: subtext (clock text, 13, 14).
+
+END PROC hw clock;
+
+END PACKET hw clock
+
+
+PACKET old shutup DEFINES old shutup,       (* Copyright (C) 1985       *)
+                          old save system:  (* Martin Schönbeck, Spenge *)
+                                            (* Stand: 06.11.85          *)
+PROC old shutup : shutup END PROC old shutup;
+
+PROC old save system : save system END PROC old save system;
+
+END PACKET old shutup;
+
+
+PACKET new shutup DEFINES shutup,
+                          shutup dialog,
+                          save system,
+                          generate shutup manager,
+                          generate shutup dialog manager:
+
+LET ack = 0;
+
+PROC shutup:
+ 
+    system down (PROC old shutup)
+
+END PROC shutup;
+
+PROC shutup (INT CONST new system):
+ 
+    IF new system <> 0
+         THEN prepare for new system
+    FI;
+    system down (PROC old shutup).
+
+prepare for new system:
+    activate (new system);
+    prepare for rebooting.
+
+prepare for rebooting:
+    INT VAR old channel := channel;
+    continue (32);
+    INT VAR dummy;
+    control (-5, 0, 0, dummy);
+    break (quiet);
+    continue (old channel).
+
+END PROC shutup;
+
+PROC save system:
+ 
+    IF yes ("Leere Floppy eingelegt")
+       THEN system down (PROC old save system)
+    FI
+
+END PROC save system;
+
+PROC system down (PROC operation):
+
+   BOOL VAR dialogue :: command dialogue;
+   command dialogue (FALSE);
+   operation;
+   command dialogue (dialogue);
+   IF command dialogue
+      THEN wait for configurator;
+           show date;
+   FI.
+
+show date:
+   page;
+   line (2); 
+   put ("      Heute ist der"); putline (date);
+   put ("      Es ist"); put (time of day); putline ("Uhr");
+   line (2).
+
+END PROC system down;
+
+DATASPACE VAR ds := nilspace;
+
+PROC wait for configurator:
+
+   INT VAR i, receipt;
+   FOR i FROM 1 UPTO 20 WHILE configurator exists REP
+      pause (30);
+      forget (ds);
+      ds := nilspace;
+      ping pong (configurator, ack, ds, receipt)
+   UNTIL receipt >= 0 PER.
+
+configurator exists:
+   disable stop;
+   TASK VAR configurator := task ("configurator");
+   clear error;
+   NOT is niltask (configurator).
+
+END PROC wait for configurator;
+
+PROC generate shutup manager:
+ 
+     generate shutup manager ("shutup", 0);
+
+END PROC generate shutup manager;
+
+PROC generate shutup manager (TEXT CONST name, INT CONST new system):
+ 
+     TASK VAR son;
+     shutup question := name;
+     new system for manager := new system;
+     begin (name, PROC shutup manager, son)
+
+END PROC generate shutup manager;
+
+INT VAR new system for manager;
+TEXT VAR shutup question;
+
+PROC shutup manager:
+
+     disable stop;
+     command dialogue (TRUE);
+     REP 
+        break;
+        line ;
+        IF yes (shutup question)
+            THEN clear error;
+                 shutup (new system for manager);
+                 pause (300);
+        FI;
+     PER
+
+END PROC shutup manager;
+
+PROC shutup dialog:
+   init;
+   show actual partition table (typnr);
+   REP
+      enter part number;
+      get cursor (cx, cy);
+      IF NOT escaped CAND yes (shutup question)
+         THEN message;
+              shutup (partition type);
+              LEAVE shutup dialog
+      FI;
+   PER.
+
+shutup question:
+   IF partition null
+      THEN "Shutup ausführen"
+      ELSE "Shutup nach Partition mit Typnummer " + text (typnr (partition)) + " ausführen"
+   FI.
+
+message:
+   cl eol (1, cy);
+   put line ("Bitte auf ENDE - Meldung warten !").
+
+partition type:
+   IF partition = 0
+      THEN 0
+      ELSE typnr (partition)
+   FI.
+
+init:
+   LET  startzeile menu  =  12, 
+        escape           = ""27"",
+        max partitions   =   4;
+
+   ROW max partitions INT VAR typnr;
+   INT VAR partition, cx, cy;
+   TEXT VAR retchar.
+
+partition null:
+   partition = 0 COR typnr (partition) = 0.
+
+enter part number :
+   cl eop (1, startzeile menu);
+   cursor (54, startzeile menu    ); put ("Abbruch mit <ESC>");
+   cursor (54, startzeile menu + 1); put ("Shutup ohne Wechsel mit <0>");
+   cursor ( 1, startzeile menu);
+   put ("Zu welcher Partition wollen Sie wechseln :");
+   get cursor (cx, cy);
+   REP
+      REP cursor (cx, cy);
+          partition := get choice (0, 4, retchar);
+          IF sure escaped THEN LEAVE shutup dialog FI;
+      UNTIL NOT escaped PER;
+      IF partition <> 0 CAND NOT partition exists
+         THEN fehler;
+              put ("Diese Partition gibt es nicht")
+      FI;
+   UNTIL partition = 0 OR partition exists PER;
+   cl eol (54, startzeile menu);
+   cl eol (54, startzeile menu + 1);
+   cl eop (1, cy + 2).
+
+partition exists:
+   typnr (partition) <> 0.
+
+escaped :
+   retchar = escape.
+
+sure escaped :
+   IF escaped THEN cl eop (1, 20); cursor (1, 22);
+                   IF yes ("Shutup-Dialog abbrechen") THEN TRUE
+                                                      ELSE cl eop (1, 20);
+                                                           FALSE
+                   FI
+              ELSE FALSE
+   FI.
+
+fehler :
+   cl eop (1, 20);
+   put (""7"" + inverse ("FEHLER :")); line (2).
+
+END PROC shutup dialog;
+
+PROC generate shutup dialog manager:
+     TASK VAR son;
+     begin ("shutup dialog", PROC shutup dialog manager, son)
+END PROC generate shutup dialog manager;
+
+PROC shutup dialog manager:
+     disable stop;
+     command dialogue (TRUE);
+     REP 
+        break; line;
+        clear error;
+        INT VAR sess := session;
+        shutup dialog;
+        IF sess <> session THEN pause (300) FI;
+     PER;
+END PROC shutup dialog manager;
+
+END PACKET new shutup
+
+
+PACKET config manager with time DEFINES configuration manager ,
+                                        configuration manager with time :
+                                      (* Copyright (C) 1985       *)
+INT VAR old session := 0;             (* Martin Schönbeck, Spenge *)
+                                      (* Stand: 06.11.85          *)
+PROC configuration manager: 
+ 
+   configurate;
+   break;
+   global manager (PROC (DATASPACE VAR, INT CONST, INT CONST, TASK CONST) 
+                      configuration manager with time) 
+ 
+END PROC configuration manager; 
+ 
+PROC configuration manager with time (DATASPACE VAR ds, INT CONST order, 
+                                      phase, TASK CONST order task): 
+ 
+    IF old session <> session
+      THEN
+        disable stop;
+        set clock (hw clock); 
+        set clock (hw clock); (* twice, to avoid all paging delay *) 
+        IF is error THEN IF online THEN put error; clear error; pause (100)
+                                   ELSE clear error
+        FI FI;
+        old session := session;
+        set autonom;
+    FI; 
+    configuration manager (ds, order, phase, order task); 
+
+END PROC configuration manager with time; 
+
+END PACKET config manager with time;
+

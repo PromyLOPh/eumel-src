@@ -1,0 +1,43 @@
+PACKET hoeherstufenanwdoprogDEFINES halbjahreswechselbearbeitung,
+hochsetzeneingangsbehandlung,hochsetzenbearbeitung,hochsetzenprotokolldrucken
+:#LET schuljahreswechsel="isp.hoeherstufen local.sj",halbjahreswechsel=
+"isp.hoeherstufen local.hj";#LET niltext="",tofather=1,tograndfather=2,
+maxjahr=100,minjahr="00";LET zumschuljahresende=1,zumhalbjahresende=0;LET 
+schluesselschuljahr="Schuljahr",schluesselhalbjahr="Schulhalbjahr",
+schuljahresfeld=2,infofeld=3;LET meldende=110,melddruck=58,meldwarten=156;
+LET protname="Fehlerprotokoll";LET rcodeprot=1001;DATASPACE VAR ds;INT VAR 
+kanal:=channel,rcode;TAG VAR aktuellemaske;TEXT VAR aktschuljahr,akthalbjahr,
+kommendesschuljahr;LET logbucheintragsjwechsel="Anw. 1.5.1 Hochsetzen ",
+logbucheintraghjwechsel="Anw. 1.5.2 Halbjahreswechsel ";TEXT VAR 
+logbuchtextanfang;PROC hochsetzeneingangsbehandlung:reinitparsing;
+eingangsbildschirmzeigen;schuljahrzeigen;aufaktionwarten.
+eingangsbildschirmzeigen:initmaske(aktuellemaske,maske(vergleichsknoten));
+standardstartproc(maske(vergleichsknoten)).schuljahrzeigen:schuljahrIN 
+schuljahresfeld.schuljahr:aktschuljahr:=schulkenndatum(schluesselschuljahr);
+akthalbjahr:=schulkenndatum(schluesselhalbjahr);kommendesschuljahr:=subtext(
+aktschuljahr,3,4);kommendesschuljahrCAT (jahrestext(int(kommendesschuljahr)+1
+));aktschuljahr.aufaktionwarten:infeld(infofeld);standardnproc.END PROC 
+hochsetzeneingangsbehandlung;PROC halbjahreswechselbearbeitung:
+logbuchtextanfang:=logbucheintraghjwechsel;logeintrag(logbucheintraghjwechsel
++"gestartet");abschnittsendebearbeitung(zumhalbjahresende)END PROC 
+halbjahreswechselbearbeitung;PROC hochsetzenbearbeitung:logbuchtextanfang:=
+logbucheintragsjwechsel;logeintrag(logbucheintragsjwechsel+"gestartet");
+abschnittsendebearbeitung(zumschuljahresende)END PROC hochsetzenbearbeitung;
+PROC abschnittsendebearbeitung(INT CONST zeitpunkt):meldewarten;
+fehlerbehandlungvorbereiten;verarbeitung;reinitparsing;fehlerauswertung.
+meldewarten:standardmeldung(meldwarten,niltext).fehlerbehandlungvorbereiten:
+forget(protname,quiet);disablestop.verarbeitung:kanal:=channel;#17.10.88dr#
+putsndparam(1,text(kanal));break(quiet);IF zeitpunkt=zumschuljahresendeTHEN 
+doonserver("schuljahreswechsel",rcode)ELSE doonserver("halbjahreswechsel",
+rcode)FI ;continue(kanal).fehlerauswertung:loeschemeldung(aktuellemaske);IF 
+rcode=rcodeprotTHEN ds:=getrcvds;copy(ds,protname);forget(ds);logeintrag(
+logbuchtextanfang+"beendet mit Fehlern");zeigefehlerprotokollELSE logeintrag(
+logbuchtextanfang+"beendet ohne Fehler");fertigmeldungFI .
+zeigefehlerprotokoll:store(FALSE );clearerror;enablestop;editiere(protname).
+fertigmeldung:IF NOT iserrorTHEN standardmeldung(meldende,niltext);FI ;return
+(tofather).END PROC abschnittsendebearbeitung;PROC hochsetzenprotokolldrucken
+:print(protname);forget(protname,quiet);reorganizescreen;standardmeldung(
+melddruck,niltext);return(tograndfather)END PROC hochsetzenprotokolldrucken;
+TEXT PROC jahrestext(INT CONST jahr):IF jahr=maxjahrTHEN minjahrELSE text(
+jahr)FI END PROC jahrestext;END PACKET hoeherstufenanwdoprog
+

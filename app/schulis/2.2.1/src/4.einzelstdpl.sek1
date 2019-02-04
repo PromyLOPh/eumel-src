@@ -1,0 +1,233 @@
+PACKET einzelstdplsek1DEFINES einzelstdplsek1eingang,einzelstdplsek1starten,
+einzelstdplsek1sonderwerte,einzelstdplsek1multistop,
+einzelstdplsek1druckdateibauen:LET laengelv=8,geplantestd="1",
+maxlvgnproschuelergr=100,maxwochstdn=66,swschuelergruppe=511,swschuljahr=512,
+swhalbjahr=513,swklassenleiter=514,swstellvertreter=516,swtagesstunde=520,
+sw4fach=518,sw4kopplung=519,sw4fachlangtext=520,sw4erllehrer=521,sw6kopplung=
+530,sw7lv=540,maske="ms einzelstdpl sek1 eingang",fnr2jgst=2,fnr3kennung=3,
+fnr4ohneerlaeuterung=4,fnr5akthj=5,fnr6ausgabebs=6,fnr7ausgabedr=7,blank=" ",
+vierblanks="    ",null=0,niltext="",meldnrauswahlunsinnig=56,
+meldnrbittewarten=69,meldnrkeinestundenplandatenvorhanden=366,
+meldnrkeineentsprechendenschuelerda=127,meldnrungueltigeklassengr=320,
+meldnrungueltigejgst=146,maxzeichenimvordruck=79;TASK VAR vordruckserver;
+TEXT CONST dateimitvordruck1:="vordruck1 einzelstdpl sek1",dateimitvordruck2
+:="vordruck2 einzelstdpl sek1",dateimitvordruck3:=
+"vordruck3 einzelstdpl sek1",dateimitvordruck4:="vordruck4 einzelstdpl sek1",
+dateimitvordruck5:="vordruck5 einzelstdpl sek1",dateimitvordruck6:=
+"vordruck6 einzelstdpl sek1",dateimitvordruck7:="vordruck7 einzelstdpl sek1",
+strich:="-",kreuz:="+",abschlusslinie:=76*strich+blank,normaletrennlinie:=3*
+strich+kreuz+5*(11*strich+kreuz)+11*strich+": ";TEXT VAR kopplg:="",hj,sj,
+sjaufber,jgst:="",kennung:="",stdplanrede,uebfolgeseiten,l:="",r:="",p:="",
+lvgnproschuelgr,lv,paraphezurlv,string,schuelergr,kopplungsbez,hilfstext,
+lehrer:="";BOUND ROW maxlvgnproschuelergrTEXT VAR zeitenzulv;BOUND ROW 
+maxwochstdnTEXT VAR kopplungen;BOOL VAR gesamtesek1:=FALSE ,bestjgst:=FALSE ,
+bestschuelergruppe:=FALSE ,korrektewahl:=FALSE ,anschreibenaufbszeigen:=TRUE 
+,miterlaeuterung:=TRUE ,einzelanschreiben:=TRUE ,aktuelleshjgewaehlt:=TRUE ;
+INT VAR anzzeilen,eingabestatus,i,x,y,z:=0,anzlvgnprokopplg,
+anzlvgnproschuelergr,meldnr;INT CONST aktuellerindex:=dnraktschuelergruppen,
+erstestd:=1,letztestd:=12,sek1max:=10,sek1min:=5,maxwochtage:=6;PROC 
+einzelstdplsek1eingang:standardvproc(maske)END PROC einzelstdplsek1eingang;
+PROC einzelstdplsek1starten:IF maskenwerteokTHEN IF stundenplanokTHEN 
+startenausfuehrenELSE meldnr:=meldnrkeinestundenplandatenvorhanden;
+meldedenfehler;zurueckzumdialog;FI ;ELSE meldedenfehler;zurueckzumdialogFI ;.
+meldedenfehler:standardmeldung(meldnr,niltext).zurueckzumdialog:return(1).
+startenausfuehren:vordruckserver:=/"anschreiben server";forget(
+dateimitvordruck1,quiet);forget(dateimitvordruck2,quiet);fetch(
+dateimitvordruck1,vordruckserver);fetch(dateimitvordruck2,vordruckserver);
+forget("datenraum1",quiet);forget("datenraum2",quiet);IF miterlaeuterungTHEN 
+forget(dateimitvordruck3,quiet);forget(dateimitvordruck4,quiet);forget(
+dateimitvordruck5,quiet);forget(dateimitvordruck6,quiet);forget(
+dateimitvordruck7,quiet);fetch(dateimitvordruck3,vordruckserver);fetch(
+dateimitvordruck4,vordruckserver);fetch(dateimitvordruck5,vordruckserver);
+fetch(dateimitvordruck6,vordruckserver);fetch(dateimitvordruck7,
+vordruckserver);FI ;setzesonderwerteschulkenndaten;standardmeldung(
+meldnrbittewarten,niltext);zusammengesetztesanschreiben(aktuellerindex,
+anschreibenaufbszeigen,einzelanschreiben,BOOL PROC einzelstdplsek1sonderwerte
+,BOOL PROC einzelstdplsek1multistop,TEXT PROC einzelstdplsek1druckdateibauen)
+;END PROC einzelstdplsek1starten;BOOL PROC maskenwerteok:BOOL VAR ok:=FALSE ;
+standardpruefe(5,fnr6ausgabebs,fnr7ausgabedr,null,niltext,eingabestatus);IF 
+eingabestatus<>0THEN meldnr:=meldnrauswahlunsinnig;infeld(fnr6ausgabebs);
+ELSE sortierungsetzen;aktuelleshjgewaehlt:=standardmaskenfeld(fnr5akthj)<>
+niltext;sj:=schulkenndatum("Schuljahr");hj:=schulkenndatum("Schulhalbjahr");
+IF NOT (aktuelleshjgewaehlt)THEN geplanteshjundsjberechnen(hj,sj)FI ;sjaufber
+:=subtext(sj,1,2)+"/"+subtext(sj,3,4);anschreibenaufbszeigen:=
+standardmaskenfeld(fnr7ausgabedr)=niltext;miterlaeuterung:=standardmaskenfeld
+(fnr4ohneerlaeuterung)=niltext;korrektewahl:=FALSE ;inittupel(
+dnraktschuelergruppen);putwert(fnrsgrpsj,sj);putwert(fnrsgrphj,hj);IF 
+gesamtesek1THEN IF gueltigesek1THEN einzelanschreiben:=FALSE ;ok:=TRUE ELSE 
+meldnr:=meldnrkeineentsprechendenschuelerda;infeld(fnr2jgst)FI ;ELIF bestjgst
+THEN IF gueltigejgstTHEN einzelanschreiben:=FALSE ;ok:=TRUE ELSE meldnr:=
+meldnrungueltigejgst;infeld(fnr2jgst)FI ;ELIF bestschuelergruppeTHEN IF 
+gueltigeschuelergrTHEN einzelanschreiben:=TRUE ;ok:=TRUE ELSE meldnr:=
+meldnrungueltigeklassengr;infeld(fnr2jgst)FI ;ELSE meldnr:=
+meldnrauswahlunsinnig;infeld(fnr2jgst);FI ;FI ;ok.sortierungsetzen:IF (
+standardmaskenfeld(fnr2jgst)=niltextAND standardmaskenfeld(fnr3kennung)=
+niltext)THEN gesamtesek1:=TRUE ;ELSE IF (standardmaskenfeld(fnr2jgst)<>
+niltextAND standardmaskenfeld(fnr3kennung)<>niltext)THEN bestschuelergruppe:=
+TRUE ELSE IF standardmaskenfeld(fnr3kennung)=niltextTHEN bestjgst:=TRUE FI ;
+FI ;FI END PROC maskenwerteok;BOOL PROC stundenplanok:
+stundenplanhalbjahrsetzen(hj,sj);stundenplanbasisundstundenplanholen(
+eingabestatus);eingabestatus=0OR eingabestatus=8END PROC stundenplanok;BOOL 
+PROC gueltigesek1:search(dnraktschuelergruppen);IF (sek1min<=int(wert(
+fnrsgrpjgst))AND sek1max>=int(wert(fnrsgrpjgst))AND dbstatus=0)THEN IF length
+(wert(fnrsgrpjgst))=1THEN jgst:="0"+wert(fnrsgrpjgst);ELSE jgst:=wert(
+fnrsgrpjgst)FI ;kennung:=wert(fnrsgrpkennung);korrektewahl:=TRUE FI ;
+korrektewahlEND PROC gueltigesek1;BOOL PROC gueltigejgst:IF length(
+standardmaskenfeld(fnr2jgst))=1THEN jgst:="0"+standardmaskenfeld(fnr2jgst)
+ELSE jgst:=standardmaskenfeld(fnr2jgst)FI ;IF int(jgst)<=sek1maxAND int(jgst)
+>=sek1minTHEN putwert(fnrsgrpjgst,jgst);search(dnraktschuelergruppen);IF 
+dbstatus=0THEN kennung:=wert(fnrsgrpkennung);korrektewahl:=TRUE FI ;FI ;
+korrektewahlEND PROC gueltigejgst;BOOL PROC gueltigeschuelergr:IF length(
+standardmaskenfeld(fnr2jgst))=1THEN jgst:="0"+standardmaskenfeld(fnr2jgst)
+ELSE jgst:=standardmaskenfeld(fnr2jgst)FI ;kennung:=standardmaskenfeld(
+fnr3kennung);IF int(jgst)<=sek1maxAND int(jgst)>=sek1minTHEN putwert(
+fnrsgrpjgst,jgst);putwert(fnrsgrpkennung,kennung);search(
+dnraktschuelergruppen,TRUE );IF dbstatus=0THEN korrektewahl:=TRUE FI ;FI ;
+korrektewahlEND PROC gueltigeschuelergr;BOOL PROC einzelstdplsek1multistop:
+BOOL VAR b;IF bestschuelergruppeTHEN b:=intwert(fnrsgrpsj)=int(sj)AND intwert
+(fnrsgrphj)=int(hj)AND intwert(fnrsgrpjgst)=int(jgst)AND wert(fnrsgrpkennung)
+=kennungAND dbstatus=okELIF bestjgstTHEN b:=intwert(fnrsgrpsj)=int(sj)AND 
+intwert(fnrsgrphj)=int(hj)AND intwert(fnrsgrpjgst)=int(jgst)AND dbstatus=ok
+ELSE b:=intwert(fnrsgrpsj)=int(sj)AND intwert(fnrsgrphj)=int(hj)AND intwert(
+fnrsgrpjgst)<=sek1maxAND intwert(fnrsgrpjgst)>=sek1minAND dbstatus=okFI ;b
+ENDPROC einzelstdplsek1multistop;BOOL PROC einzelstdplsek1sonderwerte:INT 
+VAR gemerkterdbstatus;initialisieresonderwerte;setzesonderwert(swschuljahr,
+sjaufber);setzesonderwert(swhalbjahr,hj);IF length(wert(fnrsgrpjgst))=1THEN 
+jgst:="0"+wert(fnrsgrpjgst);ELSE jgst:=wert(fnrsgrpjgst)FI ;kennung:=wert(
+fnrsgrpkennung);schuelergr:=jgst+kennung;setzesonderwert(swschuelergruppe,
+jgst+kennung);adressat(schuelergr);gemerkterdbstatus:=dbstatus;inittupel(
+dnrlehrer);putwert(fnrlparaphe,wert(fnrsgrplehrer));search(dnrlehrer,TRUE );
+IF dbstatus=0THEN IF wert(fnrlgeschlecht)="m"THEN lehrer:="Hr. "ELSE lehrer:=
+"Fr. "FI ;hilfstext:=wert(fnrlamtsbeztitel);IF hilfstext<>niltextTHEN lehrer
+CAT hilfstext;lehrerCAT blank;FI ;hilfstext:=wert(fnrlzusatz);IF hilfstext<>
+niltextTHEN lehrerCAT hilfstext;lehrerCAT blank;FI ;lehrerCAT wert(
+fnrlfamname);setzesonderwert(swklassenleiter,lehrer);FI ;inittupel(dnrlehrer)
+;putwert(fnrlparaphe,wert(fnrsgrpstellvlehrer));search(dnrlehrer,TRUE );IF 
+dbstatus=0THEN IF wert(fnrlgeschlecht)="m"THEN lehrer:="Hr. "ELSE lehrer:=
+"Fr. "FI ;hilfstext:=wert(fnrlamtsbeztitel);IF hilfstext<>niltextTHEN lehrer
+CAT hilfstext;lehrerCAT blank;FI ;hilfstext:=wert(fnrlzusatz);IF hilfstext<>
+niltextTHEN lehrerCAT hilfstext;lehrerCAT blank;FI ;lehrerCAT wert(
+fnrlfamname);setzesonderwert(swstellvertreter,lehrer);FI ;dbstatus(
+gemerkterdbstatus);TRUE END PROC einzelstdplsek1sonderwerte;TEXT PROC 
+einzelstdplsek1druckdateibauen:LET stddruckdatei="liste.1",druckdatei=
+"Stundenplan",hilfsdatei="hilfsdatei";FILE VAR f;IF miterlaeuterungTHEN 
+kopplungsmerkrowinitialisieren;setzemitseitennummern(TRUE )FI ;forget(
+druckdatei,quiet);druckvorbereiten;setzeanzahlderzeichenprozeile(
+maxzeichenimvordruck);uebfolgeseiten:="Stundenplan für Klasse "+schuelergr+
+"(Schuljahr "+sjaufber+", "+hj+". Halbjahr)";anzzeilen:=1;briefalternative(
+dateimitvordruck1,hilfsdatei);zeilenweisehilfsdateiindruckdatei(hilfsdatei);
+forget(hilfsdatei,quiet);proschuelergruppeallelvgnmitzeitenind2ablegen;FOR x
+FROM erstestdUPTO letztestdREP 
+datendeszweitenvordrucksindruckdateiundggfkopplgmerken(x)PER ;IF 
+miterlaeuterungTHEN briefalternative(dateimitvordruck3,hilfsdatei);
+zeilenweisehilfsdateiindruckdatei(hilfsdatei);forget(hilfsdatei,quiet);FOR x
+FROM 1UPTO anzlvgnproschuelergrREP datendesviertenvordrucksindruckdatei;PER ;
+IF anzzeilen+8>=drucklaengeTHEN seitenwechsel;druckzeileschreiben(
+uebfolgeseiten);druckzeileschreiben(blank);anzzeilen:=3FI ;briefalternative(
+dateimitvordruck5,hilfsdatei);zeilenweisehilfsdateiindruckdatei(hilfsdatei);
+forget(hilfsdatei,quiet);FOR xFROM 1UPTO maxwochstdnREP 
+datendessechstenundsiebtenvordrucksindruckdatei(x);PER ;FI ;
+drucknachbereitenohneausdrucken;rename(stddruckdatei,druckdatei);f:=
+sequentialfile(modify,druckdatei);toline(f,1);input(f);druckdatei.
+kopplungsmerkrowinitialisieren:forget("datenraum1",quiet);kopplungen:=new(
+"datenraum1");FOR xFROM 1UPTO maxwochstdnREP kopplungen(x):=niltext;PER .
+proschuelergruppeallelvgnmitzeitenind2ablegen:lvgnproschuelgr:=
+lvderschuelergruppe(schuelergr);anzlvgnproschuelergr:=(length(lvgnproschuelgr
+))DIV laengelv;forget("datenraum2",quiet);zeitenzulv:=new("datenraum2");INT 
+VAR position:=0;FOR xFROM 1UPTO anzlvgnproschuelergrREP lv:=subtext(
+lvgnproschuelgr,position+1,position+laengelv);string:=allezeitenvon("L",lv);
+stringCAT lv;zeitenzulv(x):=string;positionINCR laengelv;PER ;FOR xFROM 
+anzlvgnproschuelergr+1UPTO maxlvgnproschuelergrREP zeitenzulv(x):=niltext;
+PER ;.datendesviertenvordrucksindruckdatei:TEXT VAR fach:=subtext(zeitenzulv(
+x),maxwochstdn+3,maxwochstdn+4);fachCAT blank;setzesonderwert(sw4fach,fach);
+IF length(zeitenzulv(x))>maxwochstdn+laengelvTHEN kopplg:=subtext(zeitenzulv(
+x),maxwochstdn+laengelv+1,maxwochstdn+2*laengelv);setzesonderwert(sw4kopplung
+,"("+kopplg+")");ELSE setzesonderwert(sw4kopplung,10*blank)FI ;inittupel(
+dnrfaecher);putwert(fnrffach,compress(fach));search(dnrfaecher,TRUE );IF 
+dbstatus=okTHEN setzesonderwert(sw4fachlangtext,wert(fnrffachbez))ELSE 
+setzesonderwert(sw4fachlangtext,blank)FI ;paraphezurlv:=datenzurlv("P",
+subtext(zeitenzulv(x),maxwochstdn+1,maxwochstdn+laengelv));inittupel(
+dnrlehrer);putwert(fnrlparaphe,compress(paraphezurlv));search(dnrlehrer,TRUE 
+);IF dbstatus=okTHEN IF wert(fnrlgeschlecht)="w"THEN lehrer:="Fr. "ELSE 
+lehrer:="Hr. "FI ;hilfstext:=wert(fnrlamtsbeztitel);IF hilfstext<>niltext
+THEN lehrerCAT hilfstext;lehrerCAT blank;FI ;hilfstext:=wert(fnrlzusatz);IF 
+hilfstext<>niltextTHEN lehrerCAT hilfstext;lehrerCAT blank;FI ;lehrerCAT wert
+(fnrlfamname);setzesonderwert(sw4erllehrer,lehrer);ELSE setzesonderwert(
+sw4erllehrer,blank);FI ;briefalternative(dateimitvordruck4,hilfsdatei);
+zeilenweisehilfsdateiindruckdatei(hilfsdatei);forget(hilfsdatei,quiet);END 
+PROC einzelstdplsek1druckdateibauen;PROC zeilenweisehilfsdateiindruckdatei(
+TEXT CONST hilfsdatei):TEXT VAR zeile:=niltext;FILE VAR f;f:=sequentialfile(
+input,hilfsdatei);FOR iFROM 1UPTO lines(f)REP getline(f,zeile);anzzeilenINCR 
+1;IF anzzeilen<drucklaengeTHEN druckzeileschreiben(zeile);ELSE seitenwechsel;
+druckzeileschreiben(uebfolgeseiten);druckzeileschreiben(blank);
+druckzeileschreiben(zeile);anzzeilen:=3;FI ;PER ;END PROC 
+zeilenweisehilfsdateiindruckdatei;PROC 
+datendeszweitenvordrucksindruckdateiundggfkopplgmerken(INT CONST std):LET 
+hilfsdatei="hilfsdatei";TEXT VAR zeile:=niltext;FILE VAR f;setzesonderwert(
+swtagesstunde,text(std,2));IF miterlaeuterungTHEN 
+stdplanprowochstdlesenswsetzenunddatenprokopplgmerken(std)ELSE 
+stdplanprowochstdlesenundswsetzen(std)FI ;briefalternative(dateimitvordruck2,
+hilfsdatei);zeilenweisehilfsdateiindruckdatei(hilfsdatei);f:=sequentialfile(
+input,hilfsdatei);IF std<>letztestdTHEN zeile:=normaletrennlinieELSE zeile:=
+abschlusslinieFI ;druckzeileschreiben(zeile);anzzeilenINCR 1;forget(
+hilfsdatei,quiet);END PROC 
+datendeszweitenvordrucksindruckdateiundggfkopplgmerken;PROC 
+datendessechstenundsiebtenvordrucksindruckdatei(INT CONST d1index):LET 
+hilfsdatei="hilfsdatei";FILE VAR f;INT VAR y,z,index:=d1index;TEXT VAR tagstd
+,zeiten,altekopplg,fach,allelvsderkopplg;INT CONST maxauszugebendezeiten:=8;
+INT VAR anzzeitenprokopplg,poslv,sonderwert;IF kopplungen(index)<>niltext
+THEN altekopplg:=kopplungen(index);setzesonderwert(sw6kopplung,altekopplg);
+zeiten:=text(index,2);FOR zFROM index+1UPTO maxwochstdnREP IF kopplungen(z)=
+altekopplgTHEN zeitenCAT text(z,2);kopplungen(z):=niltext;FI ;PER ;
+anzzeitenprokopplg:=length(zeiten)DIV 2;poslv:=1;sonderwert:=sw6kopplung+1;
+FOR zFROM 1UPTO 8REP IF anzzeitenprokopplg>=zTHEN tagstd:=subtext(zeiten,
+poslv,poslv+1);setzesonderwert(sonderwert,tagstunde(int(tagstd),TRUE ));ELSE 
+setzesonderwert(sonderwert,blank)FI ;poslvINCR 2;sonderwertINCR 1PER ;
+briefalternative(dateimitvordruck6,hilfsdatei);
+zeilenweisehilfsdateiindruckdatei(hilfsdatei);forget(hilfsdatei,quiet);
+allelvsderkopplg:=allelvmit("K",altekopplg);anzlvgnprokopplg:=(length(
+allelvsderkopplg)DIV laengelv);poslv:=1;TEXT VAR lvderkopplg;BOOL VAR 
+lvmind1malgeplant;FOR yFROM 1UPTO anzlvgnprokopplgREP lvmind1malgeplant:=
+FALSE ;lvderkopplg:=subtext(allelvsderkopplg,poslv,poslv+7);IF pos(
+lvgnproschuelgr,lvderkopplg)<>0THEN 
+fuerallezeitenderlvplaneintraegelesenundsonderwertesetzen;FI ;IF 
+lvmind1malgeplantTHEN briefalternative(dateimitvordruck7,hilfsdatei);
+zeilenweisehilfsdateiindruckdatei(hilfsdatei);forget(hilfsdatei,quiet);FI ;
+poslvINCR laengelv;PER ;TEXT VAR leerzeile:=blank;druckzeileschreiben(
+leerzeile);FI ;.fuerallezeitenderlvplaneintraegelesenundsonderwertesetzen:
+TEXT VAR l,r,p;INT VAR zeit,poszeit;sonderwert:=sw7lv;fach:=subtext(
+lvderkopplg,3,4);setzesonderwert(sonderwert,fach);poszeit:=1;FOR zFROM 1UPTO 
+maxauszugebendezeitenREP sonderwertINCR 1;IF anzzeitenprokopplg>=zTHEN zeit:=
+int(subtext(zeiten,poszeit,poszeit+1));IF lvgeplant(zeit,lvderkopplg)THEN 
+planeintraglesen(zeit,"L",lvderkopplg,l,r,p);IF r=vierblanksTHEN 
+setzesonderwert(sonderwert,"x");ELSE setzesonderwert(sonderwert,r);FI ;
+lvmind1malgeplant:=TRUE ;FI ;ELSE setzesonderwert(sonderwert,blank);FI ;
+poszeitINCR 2PER END PROC datendessechstenundsiebtenvordrucksindruckdatei;
+PROC stdplanprowochstdlesenundswsetzen(INT CONST std):INT VAR x,sonderwert:=
+521;INT VAR wochenstd:=std;FOR iFROM 1UPTO maxwochtageREP IF wochenstd<=
+maxwochstdnTHEN string:="";FOR xFROM 1UPTO anzlvgnproschuelergrREP IF (
+zeitenzulv(x)SUB wochenstd)=geplantestdTHEN stringCAT (subtext(zeitenzulv(x),
+maxwochstdn+1,maxwochstdn+laengelv));FI ;PER ;IF length(string)<=laengelv
+THEN planeintraglesen(wochenstd,"L",string,l,r,p);setzesonderwert(sonderwert,
+subtext(l,3,4)+" "+r)ELSE planeintraglesen(wochenstd,"L",subtext(string,1,8),
+l,r,p);setzesonderwert(sonderwert,"*"+datenzurlv("K",l))FI ;wochenstdINCR 
+letztestd;sonderwertINCR 1;ELSE setzesonderwert(sonderwert,blank)FI ;PER ;
+END PROC stdplanprowochstdlesenundswsetzen;PROC 
+stdplanprowochstdlesenswsetzenunddatenprokopplgmerken(INT CONST stunde):INT 
+VAR x,pos,posstring,sonderwert:=521;INT VAR wochenstd:=stunde;TEXT VAR 
+lvposimrow;FOR iFROM 1UPTO maxwochtageREP IF wochenstd<=maxwochstdnTHEN 
+string:="";lvposimrow:=niltext;FOR xFROM 1UPTO anzlvgnproschuelergrREP IF (
+zeitenzulv(x)SUB wochenstd)=geplantestdTHEN stringCAT (subtext(zeitenzulv(x),
+maxwochstdn+1,maxwochstdn+laengelv));lvposimrowCAT text(x,3);FI ;PER ;IF 
+length(lvposimrow)=3THEN planeintraglesen(wochenstd,"L",string,l,r,p);
+setzesonderwert(sonderwert,subtext(l,3,4)+" "+r);ELIF length(lvposimrow)>3
+THEN kopplungsbez:=datenzurlv("K",subtext(string,1,laengelv));setzesonderwert
+(sonderwert,"*"+kopplungsbez);kopplungen(wochenstd):=kopplungsbez;pos:=1;
+posstring:=1;FOR yFROM 1UPTO (length(lvposimrow)DIV 3)REP IF length(
+zeitenzulv(int(subtext(lvposimrow,pos,pos+2))))=maxwochstdn+laengelvTHEN 
+zeitenzulv(int(subtext(lvposimrow,pos,pos+2)))CAT kopplungsbezFI ;posINCR 3;
+posstringINCR 8PER ;ELSE setzesonderwert(sonderwert,blank);FI ;wochenstdINCR 
+letztestd;sonderwertINCR 1;ELSE setzesonderwert(sonderwert,blank)FI ;PER ;
+END PROC stdplanprowochstdlesenswsetzenunddatenprokopplgmerken;END PACKET 
+einzelstdplsek1;
+

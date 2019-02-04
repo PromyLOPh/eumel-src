@@ -1,0 +1,80 @@
+PACKET ispbaisyserverDEFINES baisyserver:LET PARAM =STRUCT (TEXT textkey1,
+textkey2,TAG maske);LET endcode=37,savedbcode=38,restoredbcode=39,
+maxthesaurusentry=252,nak=1,aktionsavebase=38,aktionloadbase=39,sendall=47,
+pruefen=40,init=41,loeschen=42,speichern=43,umbenennen=44,kopieren=45,liste=
+46,newtree=52,reorg=53,refinementlist=54,translate=55,retranslate=56,
+eraserefinement=57;LET ack=0,nack=1,ende=3;LET fehldat="Übersetzungsfehler:";
+BOUND PARAM VAR p;INT VAR status;PROC baisyserver:boot;globalmanager(PROC (
+DATASPACE VAR ,INT CONST ,INT CONST ,TASK CONST )baisyserver)END PROC 
+baisyserver;PROC baisyserver(DATASPACE VAR ds,INT CONST auftragsnr,INT CONST 
+dummy,TASK CONST auftraggeber):BOUND THESAURUS VAR boundthesau;THESAURUS VAR 
+thesau;enablestop;status:=ack;fuehreauftragaus;meldezurueck.fuehreauftragaus:
+IF auftragsnr>=newtreeTHEN baumbearbeitungELSE andererdienstFI .
+baumbearbeitung:IF auftragsnr=newtreeTHEN schicktabelleELSE bearbeitetabelle
+FI .bearbeitetabelle:TEXT VAR dateiname:=headline(sequentialfile(input,ds));
+forget(dateiname,quiet);copy(ds,dateiname);forget(ds);SELECT auftragsnrOF 
+CASE refinementlist:listeallerrefinementsCASE translate,reorg:
+bearbeitendesbaumesCASE retranslate:ausdembaumCASE eraserefinement:
+refinementloeschenOTHERWISE falscherauftragEND SELECT ;forget(dateiname,quiet
+).schicktabelle:p:=ds;TEXT VAR startknotenname:=p.textkey1;forget(ds);
+gibbaumtabelle(startknotenname,ds).listeallerrefinements:listederteilbaeume(
+dateiname);ds:=old(dateiname).ausdembaum:BOOL VAR ok;teilbaeumeaussystembaum(
+dateiname,ok);IF NOT okTHEN status:=nackFI ;ds:=old(dateiname).
+refinementloeschen:loescheteilbaeume(dateiname,ok);IF NOT okTHEN status:=nack
+FI ;ds:=old(dateiname).bearbeitendesbaumes:INT CONST dl:=length(dateiname);
+disablestop;continue(int(subtext(dateiname,dl-1,dl)));IF auftragsnr=reorg
+THEN reorganisierenELSE BOOL VAR falsch;uebersetze(dateiname,falsch)FI ;
+startesystembaum;break(quiet);clearerror;enablestop;IF falschTHEN status:=
+nack;ds:=old(fehldat);forget(fehldat,quiet)ELSE ds:=old(dateiname)FI .
+falscherauftrag:errorstop("Ungültiger Auftrag an "+name(myself)).
+andererdienst:p:=ds;SELECT auftragsnrOF CASE pruefen:maskepruefenCASE init:
+maskeinitialisierenCASE loeschen:maskeloeschenCASE speichern:maskespeichern
+CASE umbenennen:maskeumbenennenCASE kopieren:maskekopierenCASE liste:
+maskenlisteCASE sendall:savefast(auftraggeber)CASE aktionsavebase:#savebase#
+senddb(auftraggeber)CASE aktionloadbase:#fetchbase#boundthesau:=ds;thesau:=
+boundthesau;restoredb(auftraggeber,thesau);startesystembaum;
+startemaskenverarbeitungOTHERWISE systemaufrufEND SELECT .maskepruefen:IF 
+NOT tagexists(p.textkey1)THEN status:=endeFI .maskeinitialisieren:p.maske
+INITBY p.textkey1.maskeloeschen:forgettag(p.textkey1).maskespeichern:storetag
+(p.maske,p.textkey1).maskekopieren:copytag(p.textkey1,p.textkey2);.
+maskeumbenennen:renametag(p.textkey1,p.textkey2).maskenliste:TEXT VAR 
+listdatei:=p.textkey1;listedermasken(listdatei);forget(ds);ds:=old(listdatei)
+;forget(listdatei,quiet).meldezurueck:send(auftraggeber,status,ds).
+systemaufruf:IF auftragsnr>=100THEN forget(ds);LEAVE baisyserverELSE 
+freemanager(ds,auftragsnr,dummy,auftraggeber)FI .#savebase:sbase(auftraggeber
+).fetchbase:fbase(auftraggeber,katalog);boot.katalog:BOUND THESAURUS VAR kat
+:=ds;kat.#END PROC baisyserver;PROC boot:startesystembaum;
+startemaskenverarbeitungEND PROC boot;PROC sbase(TASK CONST auftraggeber):
+meldezurueck;saveall(auftraggeber).meldezurueck:DATASPACE VAR ds:=nilspace;
+send(auftraggeber,0,ds).END PROC sbase;PROC fbase(TASK CONST auftraggeber,
+THESAURUS VAR katalog):meldezurueck;interessierendeeintraege(katalog);fetch(
+katalog,auftraggeber).meldezurueck:DATASPACE VAR ds:=nilspace;send(
+auftraggeber,0,ds).END PROC fbase;PROC interessierendeeintraege(THESAURUS 
+VAR t):LET datenraumpraefix="BAISY-";beginneliste;naechster;WHILE 
+nochwelchedaREP pruefen;naechsterPER .beginneliste:TEXT VAR name;INT VAR 
+index:=0.naechster:get(t,name,index).nochwelcheda:index>0.pruefen:IF pos(name
+,datenraumpraefix)<>1THEN delete(t,index)FI .END PROC 
+interessierendeeintraege;ROW maxthesaurusentryDATASPACE VAR receiveddb;PROC 
+senddb(TASK CONST ordertask):THESAURUS VAR dbthesaurus:=ALL myself;DATASPACE 
+VAR ds;INT VAR tindex;forget(ds);ds:=nilspace;interessierendeeintraege(
+dbthesaurus);sendthesaurus;sendfilesinthesaurus.sendthesaurus:BOUND 
+THESAURUS VAR thesau:=ds;thesau:=dbthesaurus;send(ordertask,savedbcode,ds);.
+sendfilesinthesaurus:TEXT VAR fname;tindex:=0;get(dbthesaurus,fname,tindex);
+WHILE tindex>0REP sendfile;get(dbthesaurus,fname,tindex)PER ;sendend.sendfile
+:pause(10);forget(ds);ds:=old(fname);send(ordertask,savedbcode,ds);.sendend:
+pause(10);ds:=nilspace;send(ordertask,endcode,ds).ENDPROC senddb;PROC 
+restoredb(TASK CONST ordertask,THESAURUS CONST dbthesaurus):INT VAR replycode
+;#THESAURUS VAR olddb:=ALL myself;#DATASPACE VAR ds;TASK VAR sourcetask:=
+niltask;INT VAR tindex;TEXT VAR fname:="";#deleteallfiles;#sendack;rcvdb;
+builddb.#deleteallfiles:TEXT VAR fname;INT VAR tindex;tindex:=0;get(olddb,
+fname,tindex);WHILE tindex>0REP forget(fname,quiet);get(olddb,fname,tindex)
+PER .#sendack:forget(ds);ds:=nilspace;send(ordertask,restoredbcode,ds).rcvdb:
+INT VAR l:=1;REP forget(receiveddb[l]);wait(receiveddb[l],replycode,
+sourcetask);IF NOT (sourcetask=ordertask)THEN forget(receiveddb[l]);sendnack
+ELSE IF replycode=restoredbcodeTHEN lINCR 1ELSE forget(receiveddb[l])FI FI 
+UNTIL replycode=endcodePER .builddb:tindex:=0;l:=1;get(dbthesaurus,fname,
+tindex);WHILE tindex>0REP forget(fname,quiet);copy(receiveddb[l],fname);
+forget(receiveddb[l]);lINCR 1;get(dbthesaurus,fname,tindex)PER .sendnack:
+forget(ds);ds:=nilspace;send(sourcetask,nak,ds).ENDPROC restoredb;ENDPACKET 
+ispbaisyserver;
+

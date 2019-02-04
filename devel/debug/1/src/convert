@@ -1,0 +1,154 @@
+PACKET convert DEFINES dec, hex, dsget2b, exhilo,    (* Stand: 87-01-13  *)
+                       addc, subc, addl, subl, incl, (* Autor: G. Szalay *)
+                       txt, CT, gethex, integ:
+
+LET dectab = "0123456789", hextab="0123456789abcdef", mask16=15;
+INT VAR number, digit, i;
+TEXT VAR buffer, char;
+INT CONST min 1     := dec ("ffff"),
+          min 2     := dec ("fffe"),
+          minint    := dec ("8000"),
+          maxint    := dec ("7fff"),
+       maxint min 1 := dec ("7ffe");
+
+INT PROC integ (TEXT CONST text): (*only digits allowed*)
+  number := 0;
+  FOR i FROM 1 UPTO LENGTH text REP
+    digit := pos (dectab, text SUB i);
+    IF digit > 0
+    THEN number := number * 10 + digit - 1
+    FI
+  UNTIL digit = 0 PER;
+  number
+END PROC integ;
+
+TEXT PROC hex (INT CONST n):
+  buffer := ""; number := n;
+  FOR i FROM 1 UPTO 4 REP
+    rotate (number,4);
+    digit := number AND mask16;
+    buffer CAT (hextab SUB (digit + 1))
+  PER;
+  buffer
+END PROC hex;
+
+INT PROC dec (TEXT CONST t):
+  IF LENGTH t > 4 THEN leave with message FI;
+  number := 0;
+  FOR i FROM 1 UPTO LENGTH t
+  REP char := t SUB i;
+      digit := pos (hextab, char) - 1;
+      IF digit<0 THEN leave with message FI;
+      rotate (number, 4);
+      number INCR digit
+  PER;
+  number.
+
+  leave with message:
+    error stop ("wrong param for dec");
+    LEAVE dec WITH 0.
+
+END PROC dec;
+
+INT PROC exhilo (INT CONST val):
+  INT VAR ex := val; rotate (ex, 8);
+  ex
+END PROC exhilo;
+
+INT PROC dsget2b (INT CONST drid, off hi, off lo):
+  INT VAR val := dsgetw (drid, off hi, off lo);
+  IF drid <> 1 THEN rotate (val, 8) FI;
+  val
+END PROC dsget2b;
+
+PROC addc (INT CONST a, b, INT VAR sum, BOOL VAR carry):
+  INT VAR s;
+  disable stop;
+  s := a + b;
+  IF a >= 0 AND b >= 0 THEN carry := FALSE
+  ELIF a < 0 AND b < 0 THEN carry := TRUE
+  ELSE carry := s >= 0
+  FI;
+  sum := s;
+  clear error
+END PROC addc;
+
+PROC subc (INT CONST a, b, INT VAR diff, BOOL VAR carry):
+  INT VAR d;
+  disable stop;
+  d := a - b;
+  IF a >= 0 AND b < 0 THEN carry := TRUE
+  ELIF a < 0 AND b >= 0 THEN carry := FALSE
+  ELSE carry := d < 0
+  FI;
+  diff := d;
+  clear error
+END PROC subc;
+
+PROC incl (INT VAR ah, al, INT CONST ainc):
+  BOOL VAR ov;
+  IF ainc = 1
+  THEN IF al = min1 THEN al := 0; ah INCR 1
+       ELIF al = maxint THEN al := minint
+       ELSE al INCR 1
+       FI
+  ELIF ainc = 2
+  THEN IF al = min2 THEN al := 0; ah INCR 1
+       ELIF al = maxint min1 THEN al := minint
+       ELSE al INCR 2
+       FI
+  ELSE addc (al, ainc, al, ov);
+       IF ov THEN addc (ah, 1, ah, ov) FI
+  FI
+END PROC incl;
+
+PROC addl (INT CONST ah, al, bh, bl, INT VAR sumh, suml, BOOL VAR carry):
+  BOOL VAR low carry, high carry;
+  addc (al, bl, suml, low carry);
+  addc (ah, bh, sumh, high carry);
+  IF low carry THEN addc (sumh, 1, sumh, low carry) FI;
+  carry := low carry OR high carry
+END PROC addl;
+
+PROC subl (INT CONST ah, al, bh, bl, INT VAR diffh, diffl, BOOL VAR carry):
+  BOOL VAR low carry, high carry;
+  subc (al, bl, diffl, low carry);
+  subc (ah, bh, diffh, high carry);
+  IF low carry THEN subc (diffh, 1, diffh, low carry) FI;
+  carry := low carry OR high carry
+END PROC subl;
+
+TEXT PROC txt (INT CONST num):
+  IF   num = minint  THEN "-32768"
+  ELIF num < 0       THEN "-" CT txt (-num)
+  ELIF num <= 9      THEN code (num + 48)
+  ELSE                    txt (num DIV 10) CT code (num MOD 10 + 48)
+  FI
+END PROC txt;
+
+TEXT OP CT (TEXT CONST left, right):
+  buffer := left; buffer CAT right; buffer
+END OP CT;
+
+PROC gethex (TEXT VAR hexline):
+  buffer := "";
+  REP inchar (char);
+      SELECT pos (""13""12"0123456789abcdef", char) OF
+        CASE 0: out(""7"")
+        CASE 1: hexline := buffer; out (""13""10""); LEAVE gethex
+        CASE 2: delete last char
+        OTHERWISE buffer CAT char; out (char)
+      ENDSELECT
+  PER.
+
+delete last char:
+  IF buffer = ""
+  THEN out (""7"")
+  ELSE buffer := subtext (buffer, 1, LENGTH buffer - 1);
+       out (""8" "8"")
+  FI.
+
+ENDPROC gethex;
+
+END PACKET convert;
+

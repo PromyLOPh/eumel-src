@@ -1,0 +1,268 @@
+PACKET dos single DEFINES                       (* Copyright (C) 1985 *)
+                                                (* Frank Klapper      *)
+                                                (* 11.09.87           *)
+  /,
+  dos,
+  provide dos channel,
+  archive,
+  reserve,
+  release,
+  save,
+  fetch,
+  erase,
+  check,
+  exists,
+  ALL,
+  SOME,
+  clear,
+  list, 
+  format:
+
+LET std archive channel = 31,
+    main    channel = 1;
+
+INT VAR dos channel := std archive channel;
+INT VAR fetch save modus;
+
+TYPE DOSTASK = TEXT;
+
+DOSTASK CONST dos := "DOS";
+
+OP := (DOSTASK VAR d, TEXT CONST t):
+  CONCR (d) := t
+
+END OP :=;
+
+DOSTASK OP / (TEXT CONST text):
+  DOSTASK VAR d;
+  CONCR (d) := text;
+  d
+
+END OP /;
+
+BOOL PROC is dostask (DOSTASK CONST d):
+  CONCR (d) = "DOS"
+
+END PROC is dos task;
+
+PROC provide dos channel (INT CONST channel no):
+  dos channel := channel no
+
+END PROC provide dos channel;
+
+DATASPACE VAR space := nilspace;
+forget (space);
+
+PROC reserve (TEXT CONST string, DOSTASK CONST task):
+   IF is dostask (task)
+    THEN fetch save modus := save fetch mode (string);
+         open dos disk (path (string))
+    ELSE error stop ("die angesprochene Task existiert nicht")
+  FI.
+
+END PROC reserve;
+
+PROC archive (TEXT CONST string, DOSTASK CONST task):
+  reserve (string, task)
+
+END PROC archive;
+
+PROC release (DOSTASK CONST task):
+  IF is dos task (task)
+    THEN close dos disk
+    ELSE error stop ("die angesprochene Task existiert nicht")
+  FI.
+
+END PROC release;
+
+PROC fetch (TEXT CONST name, DOSTASK CONST from):
+  IF is dostask (from)
+    THEN fetch from dos disk
+    ELSE error stop ("die angesprochene Task existiert nicht")
+  FI.
+
+fetch from dos disk:
+  IF NOT exists (name) COR overwrite permitted
+    THEN do fetch 
+  FI.
+
+overwrite permitted:
+  say ("eigene Datei """) ; 
+  say (name) ; 
+  yes (""" auf der Diskette ueberschreiben"). 
+
+do fetch:
+  last param (name);
+  disable stop;
+  continue (dos channel);
+  fetch (dos name (name, read modus), space, fetch save modus);
+  continue (main channel);
+  IF NOT is error
+    THEN forget (name, quiet);
+         copy (space, name)
+  FI;
+  forget (space).
+
+END PROC fetch;
+
+PROC erase (TEXT CONST name, DOSTASK CONST task):
+  IF is dos task (task)
+    THEN do erase dos file
+    ELSE error stop ("die angesprochene Task existiert nicht")
+  FI.
+
+do erase dos file:
+  IF NOT exists (name, /"DOS")
+    THEN error stop ("die Datei """ + name + """ gibt es nicht")
+  ELIF yes ("""" + dos name (name, read modus)+ """ auf Der Diskette loeschen")
+    THEN disable stop;
+         continue (dos channel);
+         erase dos file (dos name (name, read modus));
+         continue (main channel)
+  FI.
+
+END PROC erase;
+
+PROC save (TEXT CONST name, DOSTASK CONST task):
+  IF is dos task (task)
+    THEN save to dos disk
+    ELSE error stop ("die angesprochene Task existiert nicht")
+  FI.
+
+save to dos disk:
+  TEXT CONST save file name :: dos name (name, write modus);
+  disable stop;
+  continue (dos channel);
+  IF NOT dos file exists (save file name) COR overwrite permitted
+    THEN IF dos file exists (save file name)
+           THEN erase dos file (save file name)
+         FI;
+         save (save file name, old (name), fetch save modus);
+  FI;
+  continue (main channel).
+
+overwrite permitted:
+  continue (main channel);
+  BOOL CONST result :: yes ("""" + save file name + """ auf der Diskette ueberschreiben");
+  continue (dos channel);
+  result.
+
+END PROC save;
+
+PROC check (TEXT CONST name, DOSTASK CONST from):
+  IF is dostask (from)
+    THEN disable stop;
+         continue (dos channel);
+         check file (dos name (name, read modus));
+         continue (main channel)
+    ELSE error stop ("die angesprochene Task existiert nicht")
+  FI.
+
+END PROC check;
+
+BOOL PROC exists (TEXT CONST name, DOSTASK CONST task):
+  IF is dos task (task)
+    THEN disable stop;
+         continue (dos channel);
+         BOOL VAR dummy := dos file exists (dos name (name, read modus));
+         continue (main channel);
+         enable stop;
+         dummy
+    ELSE error stop ("die angesprochene Task existiert nicht"); FALSE
+  FI.
+
+END PROC exists;
+
+PROC list (DOSTASK CONST from):
+  forget (space);
+  space := nilspace;
+  FILE VAR list file := sequential file (output, space);
+  list (list file, from);
+  modify (list file);
+  show (list file);
+  forget (space).
+
+ENDPROC list;
+
+PROC list (FILE VAR list file, DOSTASK CONST from):
+  IF is dos task (from)
+    THEN list dos disk
+    ELSE error stop ("die angesprochene Task existiert nicht")
+  FI.
+
+list dos disk:
+  disable stop;
+  continue (dos channel);
+  dos list (space);
+  continue (main channel);
+  enable stop;
+  output (list file);
+  FILE VAR list source := sequential file (output, space);
+  TEXT VAR line;
+  WHILE NOT eof (list source) REP
+    getline (list source, line);
+    putline (list file,   line)
+  PER.
+
+END PROC list;
+
+THESAURUS OP ALL (DOSTASK CONST task):
+  IF is dos task (task)
+    THEN disable stop;
+         continue (dos channel);
+         THESAURUS VAR dummy := all dos files;
+         continue (main channel);
+         enable stop;
+         dummy
+    ELSE error stop ("die angesprochene Task existiert nicht"); empty thesaurus
+  FI.
+
+END OP ALL;
+
+THESAURUS OP SOME (DOSTASK CONST task):
+  IF is dos task (task)
+    THEN disable stop;
+         continue (dos channel);
+         THESAURUS VAR dummy := all dos files;
+         continue (main channel);
+         enable stop;
+         SOME dummy
+    ELSE error stop ("die angesprochene Task existiert nicht"); empty thesaurus
+  FI.
+
+END OP SOME;
+
+PROC clear (DOSTASK CONST task):
+  IF is dos task (task)
+    THEN clear disk
+    ELSE error stop ("die angesprochene Task existiert nicht")
+  FI.
+
+clear disk:
+  disable stop;
+  IF yes ("Diskette loeschen")
+    THEN continue (dos channel);
+         clear dos disk;
+         continue (main channel)
+  FI.
+
+END PROC clear;
+
+PROC format (INT CONST format code, DOSTASK CONST task):
+  IF is dos task (task)
+    THEN format disk
+    ELSE error stop ("die angesprochene Task existiert nicht")
+  FI.
+
+format disk:
+  disable stop;
+  IF yes ("Diskette formatieren")
+    THEN continue (dos channel);
+         format dos disk (format code);
+         continue (main channel)
+  FI.
+
+END PROC format;
+
+END PACKET dos single;
+

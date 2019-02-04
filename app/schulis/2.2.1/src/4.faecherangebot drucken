@@ -1,0 +1,110 @@
+PACKET druckefaecherangebotDEFINES faecherangebotspezielleteile:LET AUSGFELD 
+=ROW ausgfeldlaengeTEXT ,AUSGKOPF =ROW ausgkopflaengeTEXT ,ausgfeldlaenge=1,
+ausgkopflaenge=2,sj="Schuljahr",hj="Schulhalbjahr",ueberschrzeilen=1,
+ausgabeparam="#",jg="Jgst.",fc="Fach",ar="Art",ws="Wstd.",an=
+"Anz. Lehrveranst.",eingmaske="ms liste faecherangebot",meldungbearb=352,
+meldungpraez=129,fldgeplshj=2,fldaktshj=3,fldsortjgst=4,fldsortfach=5,
+fldaufdr=6,fldaufbs=7,zeilenanzahl=17,jgstbezbreite=5,fachbezbreite=4,
+artbezbreite=3,wstdbezbreite=5,anzbezbreite=17;AUSGFELD VAR ausgfeld;
+AUSGKOPF VAR ausgkopf;INT VAR i,status,index,druckzeilenzahl;TEXT VAR 
+geplschj,geplschhj,aktschj,aktschhj,schj,schhj:="0";TEXT VAR meldungaltejgst
+:="",meldungaltesfach:="",altejgst:="",altesfach:="",jgst,fach,art,wstd,anzlv
+,druckstrich,faecherangebotueberschrift;BOOL VAR erstezeile;BOOL PROC 
+multistop:IF dbstatus=okTHEN LEAVE multistopWITH wert(fnrfanghj)=schhjCAND 
+wert(fnrfangsj)=schjFI ;FALSE END PROC multistop;BOOL PROC multistopsim:IF 
+dbstatus=okTHEN IF wert(fnrfanghj)=schhjCAND wert(fnrfangsj)=schjTHEN LEAVE 
+multistopsimWITH TRUE ELSE setzebestandende(TRUE );LEAVE multistopsimWITH 
+FALSE FI ELSE setzebestandende(TRUE )FI ;FALSE END PROC multistopsim;PROC 
+holeakthj:holakthj;holaktj;bergeplhjuj.holakthj:aktschhj:=schulkenndatum(hj).
+holaktj:aktschj:=schulkenndatum(sj).bergeplhjuj:geplschhj:=aktschhj;geplschj
+:=aktschj;geplanteshjundsjberechnen(geplschhj,geplschj).END PROC holeakthj;
+PROC faecherangebotspezielleteile(INT CONST anwahl):SELECT anwahlOF CASE 1:
+faecherangebotdialogvorbereitenCASE 2:faecherangebotrichtigCASE 3:
+faecherangebotlistenvorbereitenCASE 4:faecherangebotdruckvorbereitenCASE 5:
+faecherangebotseitedruckenCASE 6:faecherangebotbsvorbereitenCASE 7:
+faecherangebotseitezeigenEND SELECT .END PROC faecherangebotspezielleteile;
+PROC faecherangebotdialogvorbereiten:holeakthj;faecherangebotueberschrift:=
+text(vergleichsknoten);setzeanfangswerte(eingmaske,fldgeplshj)END PROC 
+faecherangebotdialogvorbereiten;PROC faecherangebotrichtig:IF (
+standardmaskenfeld(fldgeplshj)=""CAND standardmaskenfeld(fldaktshj)="")COR (
+standardmaskenfeld(fldsortjgst)=""CAND standardmaskenfeld(fldsortfach)="")
+COR (standardmaskenfeld(fldaufdr)=""CAND standardmaskenfeld(fldaufbs)="")
+THEN standardmeldung(meldungpraez,"");setzeeingabetest(FALSE );infeld(
+fldgeplshj);LEAVE faecherangebotrichtigFI ;standardpruefe(5,fldgeplshj,
+fldaktshj,0,"",status);IF status<>0THEN infeld(status);setzeeingabetest(
+FALSE )ELSE standardpruefe(5,fldsortjgst,fldsortfach,0,"",status);IF status<>
+0THEN infeld(status);setzeeingabetest(FALSE )ELSE standardpruefe(5,fldaufdr,
+fldaufbs,0,"",status);IF status<>0THEN infeld(status);setzeeingabetest(FALSE 
+)ELSE IF standardmaskenfeld(fldgeplshj)<>""THEN schj:=geplschj;schhj:=
+geplschhjELSE schj:=aktschj;schhj:=aktschhjFI ;IF standardmaskenfeld(
+fldsortjgst)<>""THEN index:=dnrfaecherangebot;setzescanendewert("255")ELSE 
+index:=ixfangsjhjfach;setzescanendewert("�")FI ;setzeausgabedrucker(
+standardmaskenfeld(fldaufdr)<>"");setzeeingabetest(TRUE );FI ;FI ;FI END 
+PROC faecherangebotrichtig;PROC faecherangebotlistenvorbereiten:BOOL VAR b;
+inittupel(dnrfaecherangebot);initobli(zeilenanzahl);reinitparsing;
+setzeidentiwert("");setzewerte;objektlistestarten(index,schj,staticfield,
+TRUE ,b);setzebestandende(NOT multistopCOR b).setzewerte:putwert(fnrfangsj,
+schj);putwert(fnrfanghj,schhj).staticfield:IF index=dnrfaecherangebotTHEN 
+fnrfangjgstELSE fnrfangfachFI .END PROC faecherangebotlistenvorbereiten;PROC 
+faecherangebotbsvorbereiten:standardkopfmaskeaktualisieren(
+faecherangebotueberschrift+" für "+schhj+". "+text(schj,2)+"/"+subtext(schj,3
+));initspalten;setzespaltentrenner("       ");setzespaltenbreiten;
+initausgabekopf(bildbreite*"-");ausgkopf(1)IN 2;ausgkopf(2)IN 3;
+setzebildanfangsposition(4).END PROC faecherangebotbsvorbereiten;PROC 
+setzespaltenbreiten:setzespaltenbreite(jgstbezbreite);setzespaltenbreite(
+fachbezbreite);setzespaltenbreite(artbezbreite);setzespaltenbreite(
+wstdbezbreite);setzespaltenbreite(anzbezbreite);END PROC setzespaltenbreiten;
+PROC faecherangebotseitezeigen:altejgst:="";blaettern(PROC (INT CONST )
+faecherangebotzeigen,aktion,TRUE ,TRUE ,BOOL PROC multistop);END PROC 
+faecherangebotseitezeigen;PROC faecherangebotzeigen(INT CONST procparameter):
+faecherangebotholen;faecherangebotaufbereiten;faecherangebotaufbs;END PROC 
+faecherangebotzeigen;PROC faecherangebotholen:jgst:=text(intwert(fnrfangjgst)
+,2);fach:=wert(fnrfangfach);art:=wert(fnrfangart);wstd:=text(intwert(
+fnrfangwochenstd),2);anzlv:=text(intwert(fnrfanganzlv),2);IF NOT multistop
+THEN setzebestandende(TRUE )FI .END PROC faecherangebotholen;PROC 
+faecherangebotaufbereiten:IF jgst<>altejgstTHEN spaltenweise(jgst);altejgst:=
+jgstELSE spaltenweise(" ")FI ;spaltenweise(fach);spaltenweise(art);
+spaltenweise(wstd);spaltenweise(anzlv);ausgfeld(1):=zeile.END PROC 
+faecherangebotaufbereiten;PROC faecherangebotaufbs:ausgfeld(1)IN ausgabepos;
+erhoeheausgabeposumeinsEND PROC faecherangebotaufbs;PROC initausgabekopf(
+TEXT CONST t):spaltenweise(jg);spaltenweise(fc);spaltenweise(ar);spaltenweise
+(ws);spaltenweise(an);ausgkopf(1):=zeile;ausgkopf(2):=t;END PROC 
+initausgabekopf;PROC faecherangebotdruckvorbereiten:druckvorbereiten;
+variablensetzen;initdruckkopf(zentriert(faecherangebotueberschrift+" für "+
+schhj+". "+text(schj,2)+"/"+subtext(schj,3),druckbreite));initspalten;
+setzespaltentrenner("       ");setzespaltenbreiten;initausgabekopf(
+druckbreite*"-");inittupel(index);setzebestandende(FALSE );setzewerte;
+lesenvorbereitendruck(PROC (INT CONST ,BOOL PROC ,INT VAR )scanforward,BOOL 
+PROC multistopsim).variablensetzen:druckstrich:=druckbreite*"-";
+druckzeilenzahl:=drucklaenge(ueberschrzeilen)-ausgkopflaenge.setzewerte:
+putwert(fnrfangsj,schj);putwert(fnrfanghj,schhj).END PROC 
+faecherangebotdruckvorbereiten;PROC faecherangebotseitedrucken:altejgst:="";
+altesfach:="";erstezeile:=TRUE ;faecherangebotueberschriftdrucken;
+seitedrucken(PROC (INT VAR )faecherangebotdrucken,druckzeilenzahl,
+ausgfeldlaenge,BOOL PROC multistopsim);seitenwechsel;END PROC 
+faecherangebotseitedrucken;PROC faecherangebotueberschriftdrucken:
+druckkopfschreiben;FOR iFROM 1UPTO ausgkopflaengeREP druckzeileschreiben(
+ausgkopf(i))PER .END PROC faecherangebotueberschriftdrucken;PROC 
+faecherangebotdrucken(INT VAR zz):faecherangebotholen;IF index=
+dnrfaecherangebotTHEN IF meldungaltejgst<>jgstTHEN meldungaltejgst:=jgst;
+standardmeldung(meldungbearb,"Jgst. "+jgst+ausgabeparam)FI ;ELSE IF 
+meldungaltesfach<>fachTHEN meldungaltesfach:=fach;standardmeldung(
+meldungbearb,"Fach "+fach+ausgabeparam)FI ;FI ;
+faecherangebotaufbereitenmitleerzeile(zz);faecherangebotindruckdatei(zz);IF 
+zz>=druckzeilenzahl-1THEN zzINCR ausgfeldlaengeFI .END PROC 
+faecherangebotdrucken;PROC faecherangebotaufbereitenmitleerzeile(INT VAR zz):
+IF index=dnrfaecherangebotTHEN IF jgst<>altejgstTHEN gibleerzeileaus;
+spaltenweise(jgst)ELSE spaltenweise(" ")FI ELSE IF fach<>altesfachTHEN 
+gibleerzeileaus;altejgst:=""FI ;IF jgst<>altejgstTHEN spaltenweise(jgst)ELSE 
+spaltenweise(" ")FI FI ;spaltenweise(fach);spaltenweise(art);spaltenweise(
+wstd);spaltenweise(anzlv);ausgfeld(1):=zeile.gibleerzeileaus:IF NOT 
+erstezeileTHEN spaltenweise(" ");spaltenweise(" ");spaltenweise(" ");
+spaltenweise(" ");spaltenweise(" ");ausgfeld(1):=zeile;
+faecherangebotindruckdatei(zz)FI .END PROC 
+faecherangebotaufbereitenmitleerzeile;PROC faecherangebotindruckdatei(INT 
+VAR zz):zzINCR ausgfeldlaenge;IF jgst<>altejgstTHEN altejgst:=jgstFI ;IF fach
+<>altesfachCAND index=ixfangsjhjfachTHEN altesfach:=fachFI ;IF erstezeile
+THEN erstezeile:=FALSE FI ;FOR iFROM 1UPTO ausgfeldlaengeREP 
+druckzeileschreiben(ausgfeld(i))PER END PROC faecherangebotindruckdatei;END 
+PACKET druckefaecherangebot
+

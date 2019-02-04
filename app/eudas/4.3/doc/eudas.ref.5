@@ -1,0 +1,432 @@
+#limit (11.0)##pagelength (16.5)##block#                                   
+#start (2.0,0.0)# 
+#page (49)# 
+#headodd# 
+#center#EUDAS#right#% 
+ 
+#end# 
+#headeven# 
+%#center#EUDAS 
+ 
+#end# 
+#center#1 
+ 
+5 Drucken und Druckmuster 
+ 
+ 
+ 
+5.1 Druckmustersyntax 
+ 
+Ein Druckmuster ist eine Beschreibung für die Form, in der die In­
+halte einer EUDAS-Datei ausgedruckt werden sollen. Der syntakti­
+sche Aufbau des Druckmusters ist zeilenorientiert und gehorcht
+folgender Syntax: 
+ 
+    Druckmuster : 
+      [ Initialisierungsteil ] 
+      [ Vorspann ] 
+      [ Wiederholungsteil ] 
+      [ Nachspann ] 
+ 
+    Initialisierungsteil : 
+      ( Kommandozeile #char (""124"")# Textzeile )* 
+      ( GRUPPE-Anweisung #char(""124"")# Textzeile )* 
+ 
+    Vorspann : 
+      VORSPANN-Anweisung  Abschnitt 
+ 
+    Wiederholungsteil : 
+      WIEDERHOLUNG-Anweisung  Abschnitt 
+ 
+    Nachspann : 
+      NACHSPANN-Anweisung  Abschnitt 
+ 
+    Abschnitt : 
+      Musterteil 
+      [ ABKUERZUNGEN-Anweisung  Abkürzungsteil ] 
+ 
+    Musterteil : 
+      ( Musterzeile #char(""124"")# Kommandozeile #char(""124"")# 
+        MODUS-Anweisung #char (""124"")# MEHR-Anweisung )* 
+ 
+Zur Notation: [] bedeutet optional, ()* beliebig häufige Wiederho­
+lung, #char(""124"")# Alternative und keine Angabe einfache Aneinanderreihung.
+Die verschiedenen Zeilentypen werden weiter unten beschrieben. 
+    Zusätzlich gilt die Bedingung, daß von Vorspann, Wiederho­
+lungsteil und Nachspann mindestens einer vorhanden sein muß. 
+ 
+#on("b")#Zeilentypen#off("b")# Im Druckmuster gibt es 6 verschiedene
+Zeilentypen: 
+ 
+#on("i")#Kommandozeilen#off("i")# 
+    Eine Kommandozeile beginnt mit '%%' in der ersten und zweiten
+    Spalte. Der Inhalt der Zeile ab Spalte 3 wird dem ELAN-Compi­
+    ler übergeben. Die Bedeutung dieser Zeilen ergibt sich aus dem
+    in 5.4 beschriebenen Übersetzungsmechanismus. 
+ 
+#on("i")#Anweisungen#off("i")# 
+    Anweisungen beginnen mit '%' in der ersten Spalte und dienen
+    zur Steuerung des Druckgenerators. Der Name der Anweisung
+    muß in Großbuchstaben und ohne Leerzeichen geschrieben
+    werden. Davor dürfen sich noch Leerzeichen befinden. An­
+    schließend können noch Parameter folgen, die nur durch Leer­
+    zeichen getrennt aneinander gereiht werden. Die Syntax einer
+    Anweisung ähnelt der eines Operators in ELAN. 
+ 
+#on("i")#Textzeilen#off("i")# 
+    Textzeilen sind die nicht anderweitig markierten Zeilen im
+    Initialisierungsteil. Sie werden unverändert an den Anfang
+    jeder Druckdatei gestellt. 
+ 
+#on("i")#Musterzeilen#off("i")# 
+    Musterzeilen sind nicht besonders gekennzeichnete Zeilen im
+    Musterteil. Sie enthalten Feldmuster und werden nach dem
+    Einsetzen von Inhalten in die Ausgabedatei übernommen. Die
+    Interpretation der Musterzeilen wird in Abschnitt 5.3 beschrie­
+    ben. 
+ 
+#on("i")#Abkürzungszeilen#off("i")# 
+    Abkürzungszeilen markieren den Beginn einer Abkürzung im
+    Abkürzungsteil eines Abschnittes. Sie werden durch '&' in der
+    ersten Spalte gekennzeichnet. Darauf folgt ohne Zwischenraum
+    der Name einer Abkürzung (ohne Leerzeichen) und danach
+    durch Leerzeichen getrennt ein Semikolon. Der Name der Ab­
+    kürzung wird bei der Übersetzung durch einen Refinementnamen
+    ersetzt und die Zeile dem ELAN-Compiler übergeben. Der Rest
+    der Zeile kann also den Beginn eines werteliefernden Refine­
+    ments enthalten. 
+ 
+#on("i")#Programmzeilen#off("i")# 
+    Programmzeilen sind die nicht durch '&' markierten Zeilen im
+    Abkürzungsteil. Sie werden unverändert an den ELAN-Compiler
+    übergeben. Der erlaubte Inhalt richtet sich nach dem Überset­
+    zungsmechanismus (5.4). 
+ 
+ 
+5.2 Der Druckvorgang 
+ 
+Der Druckvorgang besteht im wesentlichen darin, daß für alle zu
+bearbeitenden Sätze der Wiederholungsteil einmal interpretiert wird
+und das Ergebnis in eine Ausgabedatei geschrieben wird, die dann
+gedruckt werden kann. Wenn mindestens ein Satz markiert ist, wer­
+den alle markierten Sätze der virtuellen Datei bearbeitet, ansonsten
+alle durch die Suchbedingung erfaßten. 
+ 
+#on("b")#Gruppen#off("b")# Eine #on("i")#Gruppe#off("i")# ist eine Folge von Sätzen, die in einem be­
+stimmten Merkmal übereinstimmen. Durch eine GRUPPE-Anweisung
+der Form 
+ 
+ 
+        % GRUPPE n  Ausdruck 
+ 
+ 
+werden aufeinanderfolgende Sätze mit gleichem Wert des angegebe­
+nen Ausdrucks gruppiert. Über die Nummer 'n' kann festgestellt
+werden, ob sich das angegebene Merkmal verändert hat. Dies ge­
+schieht mit der Prozedur 
+ 
+ 
+        BOOL PROC gruppenwechsel (INT CONST gruppennr) 
+ 
+ 
+Immer wenn zwischen zwei Sätzen ein Gruppenwechsel stattfindet,
+wird beim vorigen Satz der Nachspann und beim folgenden Satz der
+Vorspann einmal interpretiert. Dies führt dazu, daß entsprechende
+Vorspann- bzw. Nachspannzeilen gedruckt werden. 
+    Vor dem ersten und nach dem letzten zu bearbeitenden Satz
+wechseln alle Gruppen, d.h. dort wird immer ein Vorspann bzw.
+Nachspann erzeugt. 
+    Ist ein zu interpretierender Abschnitt nicht vorhanden, so wird
+an dieser Stelle keine Ausgabe erzeugt. Die Textzeilen des Initali­
+sierungsteils werden auf jeden Fall bei Beginn des Druckvorganges
+in die Ausgabedatei geschrieben. Falls die Ausgabedatei voll ist,
+wird eine neue Datei angefangen und die Zeilen des Initialisie­
+rungsteils erneut an den Anfang gestellt. 
+ 
+ 
+        Satz-  Gruppen-  Ausgabe 
+        nummer merkmal 
+#free (0.1)# 
+                                     Initialisierungsteil 
+        ------------------------------------------------- 
+          1        x                 Vorspann 
+                         WDH-Teil 
+          2        x     WDH-Teil 
+                                     Nachspann 
+        ------------------------------------------------- 
+          3        y                 Vorspann 
+                         WDH-Teil 
+          4        y     WDH-Teil 
+          5        y     WDH-Teil 
+                                     Nachspann 
+        ------------------------------------------------- 
+        ENDE 
+ 
+#center#Abb. 5-1   Ablauf des Druckvorganges mit Gruppen 
+ 
+ 
+#on("b")#Spaltendruck#off("b")# Normalerweise werden die Ausgaben der
+einzelnen
+Abschnitte hintereinander in der Ausgabedatei plaziert. Durch An­
+gabe einer Nummer als Parameter in der WIEDERHOLUNG-Anweisung
+können auch soviel Spalten wie angegeben nebeneinander gedruckt
+werden. Die Spaltenbreite wird dabei durch das Dateilimit (Komman­
+do 'limit' im Editor) festgelegt. Alternativ kann die Spaltenbreite
+auch als zweiter Parameter durch Leerzeichen getrennt angegeben
+werden. 
+    Vorspann und Nachspann werden jedoch auf jeden Fall wieder
+in eine eigene Zeile geschrieben, der Spaltendruck also unterbro­
+chen. 
+ 
+ 
+5.3 Interpretation von Musterzeilen 
+ 
+Musterzeilen können Feldmuster enthalten, die bei der Interpreta­
+tion durch entsprechende Inhalte ersetzt werden, ehe die Muster­
+zeile in die Ausgabedatei übernommen wird. Der Beginn eines Feld­
+musters wird durch ein Musterzeichen ('&' oder '%') markiert. Wo
+und wie der Inhalt eingesetzt wird, kann durch folgende Variationen
+angegeben werden: 
+ 
+ 
+        Typ ! Beispiel  ! Position ! Länge    ! bündig 
+        ----+-----------+------------------------------ 
+         1  ! &Name     ! fest     ! variabel ! links 
+         2  ! %Name     ! variabel ! variabel ! links 
+         3  ! &Name&&&  ! fest     ! fest     ! links 
+         4  ! %Name%%%  ! variabel ! fest     ! links 
+         5  ! &&&Name&  ! fest     ! fest     ! rechts 
+         6  ! %%%Name%  ! variabel ! fest     ! rechts 
+ 
+ 
+Der in dem Feldmuster angegebene Name muß Name einer Abkür­
+zung in irgendeinem Abkürzungsteil oder eines Feldes sein. Der
+Name darf kein Leerzeichen oder Musterzeichen enthalten. Falls dies
+doch der Fall ist, muß der Name in spitze Klammern eingeschlossen
+werden. 
+    Bei fester Länge wird bei zu kurzem Inhalt mit Leerzeichen
+aufgefüllt, bei zu langem Inhalt abgeschnitten. Bei linksbündigem
+Einsetzen geschieht dies an der rechten, sonst an der linken Seite. 
+    Feldmuster variabler Länge können je nach Inhalt dazu führen,
+daß der folgende Teil der Musterzeile verschoben wird. Für diesen
+Einsetzprozeß gelten die folgenden Regeln: 
+ 
+#on("b")#Position#off("b")# Feldmuster fester Position (mit '&' beginnend)
+werden
+immer in der Position eingesetzt, in der sie stehen. Feldmuster
+variabler Position (mit '%' beginnen) können nach rechts verschoben
+werden, wenn vorherige Inhalte länger als ihre Muster sind, und
+nach links, wenn Modus 1 oder 3 eingestellt ist und vorherige In­
+halte kürzer sind. 
+ 
+#on("b")#Länge#off("b")# Feldmuster variabler Länge erhalten auf jeden Fall
+den
+Platz, der durch die Länge des Feldmusters reserviert ist. Sind die
+Inhalte kürzer, kann der gewonnene Platz als Reserve für andere
+Feldmuster verwendet werden; sind die Inhalte länger, so wird der
+Inhalt so weit eingesetzt, wie noch Reserve vorhanden ist und der
+Rest abgeschnitten. 
+    Muß in ein Feldmuster variabler Länge ein leerer Inhalt einge­
+setzt werden, so werden beim Drucken auch die auf das Feldmuster
+folgenden Leerzeichen unterdrückt, falls vor dem Feldmuster noch
+ein Leerzeichen steht oder das Feldmuster in Spalte 1 beginnt. 
+    Feldmuster fester Länge werden immer in ihrer reservierten
+Länge eingesetzt. Sie werden im folgenden behandelt wie Feldmuster
+variabler Länge, deren Inhalt so lang ist wie das Feldmuster. 
+ 
+#on("b")#Verteilung#off("b")# Die Verteilung der verschiebbaren Feldmuster
+auf der
+Zeile geschieht jeweils in dem Abschnitt zwischen zwei Feldmustern
+fester Position bzw. Zeilenanfang oder Zeilenende. Für jeden Ab­
+schnitt wird festgestellt, wieviel Stellen die Inhalte insgesamt mehr
+oder weniger als ihre Muster benötigen. 
+    Der Längenausgleich geschieht zwischen dem letzten Feldmuster
+und dem Ende des Abschnitts. Dort wird ein Pufferplatz bestimmt,
+der bei Überlänge bis auf ein Leerzeichen verkleinert werden kann
+und an dem bei Unterlänge zusätzliche Leerzeichen eingefügt wer­
+den. 
+    Außer am Pufferplatz wird an keinem Mustertext des Abschnitts
+etwas geändert. Zwischentexte zwischen den Feldmustern werden
+unverändert übertragen und mit den umgebenden Feldmustern ver­
+schoben. 
+    Als Pufferplatz wird die erste Lücke hinter dem letzten Feld­
+muster eines Abschnittes verwendet, die mehr als ein Leerzeichen
+enthält. Ist keine solche Lücke vorhanden, wird das Ende des Ab­
+schnitts verwendet, falls dort ein Leerzeichen steht, und sonst das
+Ende des letzten Feldmusters. 
+    Die durch den Pufferplatz und kürzere Inhalte gewonnene Re­
+serve wird von links an die Feldmuster mit Überlänge verteilt, bis
+die Reserve verbraucht ist. 
+ 
+#on("b")#Zeilende#off("b")# Das Zeilenende wird als ein Quasi-Feldmuster mit
+fester
+Position aufgefaßt, das am Limit der Druckmusterdatei steht. Es
+sind also keine Einsetzungen möglich, die über das Limit der Datei
+hinausgehen. Als Pufferplatz wird hier jedoch die erste Blanklücke
+vom Zeilenende her verwendet, damit Mustertexte am Zeilenende
+gegebenenfalls stehenbleiben. Ist keine solche Lücke vorhanden, so
+wird das Zeilenende als Pufferplatz verwendet. 
+    Obwohl nicht als Pufferplatz ausgewiesen, kann der Raum zwi­
+schen Zeilenende und Dateilimit als Reserve verwendet werden. 
+ 
+#on("b")#Modi#off("b")# Der Einsetzmechanismus kann durch die MODUS-Anweisung
+mit einem Parameter verändert werden. Folgende Modi stehen zur
+Verfügung: 
+ 
+ 
+        Modus ! Effekt 
+        ------+---------------------------------------- 
+          1   ! Normalmodus. 
+              ! '%'-Feldmuster werden auch 
+              ! nach links geschoben. 
+              ! Keine Zeilenwiederholung. 
+        ------+---------------------------------------- 
+          2   ! Tabellenmodus. 
+              ! '%'-Feldmuster werden nicht 
+              ! nach links geschoben. 
+              ! Keine Zeilenwiederholung. 
+        ------+---------------------------------------- 
+          3   ! Normalmodus mit Zeilenwiederholung. 
+              ! '%'-Feldmuster werden auch 
+              ! nach links geschoben. 
+              ! Zeilenwiederholung ohne Zwischentexte. 
+        ------+---------------------------------------- 
+          4   ! Tabellenmodus mit Zeilenwiederholung. 
+              ! '%'-Feldmuster werden nicht 
+              ! nach links geschoben. 
+              ! Zeilenwiederholung mit Zwischentexten. 
+        ------+---------------------------------------- 
+ 
+ 
+Bei Zeilenwiederholung werden Inhalte in einer folgenden Zeile
+fortgesetzt, falls sie in der ersten Zeile nicht untergebracht werden
+konnten. Dazu wird die Musterzeile mit den Restinhalten erneut
+interpretiert. Je nach Modus werden auch die Zwischentexte noch
+wiederholt. Der Restinhalt umfaßt immer noch das ganze letzte Wort,
+das nicht mehr auf die vorige Zeile paßte. Es findet also ein Um­
+bruch statt. Die Positionen, die in der vorigen Zeile vom Anfang des
+Wortes eingenommen würden, werden durch Leerzeichen ersetzt. 
+    Durch die MEHR-Anweisung mit einem Parameter kann die Zahl
+der Zeilenwiederholungen für die nächste Musterzeile festgesetzt
+werden. Dies hat jedoch nur eine Auswirkung, falls Zeilenwieder­
+holung zugelassen ist. Stehen zur Interpretation keine Restinhalte
+mehr zur Verfügung, wird mit leeren Inhalten weitergearbeitet. Kann
+ein Inhalt bei der vorgegebenen Anzahl von Zeilen nicht ganz dar­
+gestellt werden, wird der Rest nicht ausgegeben. 
+ 
+ 
+5.4 Anschluß zum ELAN-Compiler 
+ 
+Falls in einem Druckmuster Abkürzungen, Kommandozeilen oder
+Gruppendefinitionen vorkommen, wird das Druckmuster in ein
+ELAN-Programm umgewandelt, das dann vom ELAN-Compiler über­
+setzt wird. 
+    Alle Zeilen eines Abkürzungsteils werden direkt in das Pro­
+gramm übernommen, wobei der Name einer Abkürzung durch einen
+beliebig gewählten Refinementnamen ersetzt wird ('abk' + eine lau­
+fende Nummer). Alle Abkürzungen und Refinements werden als glo­
+bale Refinements definiert, also außerhalb von Prozeduren. Dadurch
+wird erreicht, daß sie an jeder Stelle verwendet werden können. 
+    Damit eine Abkürzung richtig als Refinement übersetzt wird,
+muß sie ein TEXT-Objekt als Wert liefern. Die anderen Refinements
+sind beliebig, da sie nur in selbstdefinierten Anweisungen verwen­
+det werden. Die Refinements der Abkürzungen werden in einer Zu­
+weisung an eine TEXT-Variable verwendet, damit der Druckgenera­
+tor auf den entsprechenden Wert zugreifen kann. 
+    Jeder Abschnitt wird dagegen als eine Prozedur übersetzt. Eine
+Folge von Musterzeilen wird in eine Anweisung übersetzt, diese
+Musterzeilen einzusetzen und zu drucken. Eine '%%'-Anweisung wird
+einfach unverändert dazwischengeschrieben. Die Prozedur für den
+Wiederholungsteil wird einmal für jeden ausgewählten Satz aufgeru­
+fen, die Vorspann- und die Nachspann-Prozedur einmal bei jedem
+Gruppenwechsel. 
+    Anweisungen im Initialisierungsteil werden an den Anfang des
+Programms als globale Definitionen gestellt. 
+ 
+#on("b")#Fehler#off("b")# Findet sich in dem erzeugten ELAN-Programm ein
+Fehler,
+der durch den Druckgenerator nicht erkannt werden konnte (z.B.
+eine Abkürzung liefert keinen Wert), so muß der ELAN-Compiler
+diesen Fehler erkennen. Anschließend zeigt er das erzeugte Pro­
+gramm zusammen mit seinen Fehlermeldungen im Paralleleditor. Sie
+müssen nun die Fehlermeldung lokalisieren und anhand der eben
+gegebenen Hinweise in das ursprüngliche Druckmuster zurücküber­
+setzen, damit Sie dort den Fehler korrigieren können. 
+ 
+ 
+5.5 Fehlermeldungen 
+ 
+Folgende Fehlermeldungen können bei der Übersetzung eines Druck­
+musters auftreten: 
+ 
+#on("i")#keine schliessende Klammer in Feldmuster#off("i")# 
+  Wenn der Name in einem Feldmuster in spitze Klammern einge­
+  schlossen werden soll, muß noch in der gleichen Zeile eine
+  schließende Klammer vorhanden sein. 
+ 
+#on("i")#kein Kommando in Kommandozeile#off("i")# 
+  Eine Zeile, die mit '%' beginnt, enthält keinen weiteren Text. 
+ 
+#on("i")#unbekanntes Kommando#off("i")# 
+  Das erste Wort in einer Kommandozeile ist kein bekanntes Kom­
+  mando. 
+ 
+#on("i")#kein % WIEDERHOLUNG gefunden#off("i")# 
+  Das Druckmuster enthält keine Anweisung, die den Beginn eines
+  Abschnittes markiert. Es muß aber mindestens ein Abschnitt
+  vorhanden sein. 
+ 
+#on("i")#nur GRUPPE-Anweisung erlaubt#off("i")# 
+  Im Initialisierungsteil ist nur die GRUPPE-Anweisung erlaubt. 
+ 
+#on("i")#keine ELAN-Anweisung im Initialisierungsteil nach Gruppen­ 
+definition#off("i")# 
+  Sobald im Initialisierungsteil eine GRUPPE-Anweisung aufgetreten
+  ist, ist keine Kommandozeile mehr möglich. 
+ 
+#on("i")#illegale Gruppennummer#off("i")# 
+  In einer GRUPPE-Anweisung wurde eine zu große Nummer angege­
+  ben. Gruppen sollten von 1 an durchnumeriert werden. 
+ 
+#on("i")#diese Gruppe wurde schon definiert#off("i")# 
+  Eine Gruppennummer wurde mehrfach verwendet. 
+ 
+#on("i")#diese Abkürzung ist nicht definiert#off("i")# 
+  Ein Name in einem Feldmuster tritt nicht als Feld-oder Abkür­
+  zungsname auf. Eventuell enthält er ein Leerzeichen! 
+ 
+#on("i")#dieser Abschnitt wurde schon einmal definiert#off("i")# 
+  Kein Abschnitt kann mehrmals angegeben werden. 
+ 
+#on("i")#falscher Modus#off("i")# 
+  In einer MODUS-Anweisung wurde ein nicht definierter Modus als
+  Parameter angegeben. 
+ 
+#on("i")#diese Anweisung darf im Musterteil nicht vorkommen#off("i")# 
+ 
+#on("i")#im Abkürzungsteil darf keine Anweisung auftreten#off("i")# 
+ 
+#on("i")#in dieser Zeile stehen zu viele Feldmuster#off("i")# 
+  Es können maximal 24 Feldmuster in einer Zeile stehen. Abhilfe:
+  mehrere Feldmuster durch eine Abkürzung zusammenfassen. 
+ 
+#on("i")#das Druckmuster enthält zu viele Feldmuster#off("i")# 
+  Die Gesamtanzahl der Feldmuster ist begrenzt. Abhilfe: mehrere
+  Feldmuster durch eine Abkürzung zusammenfassen. 
+ 
+#on("i")#nach dem "&" soll direkt der Name einer Abkürzung folgen#off("i")# 
+  In einer Abkürzungszeile stehen Leerzeichen hinter dem '&'. 
+ 
+#on("i")#kein Doppelpunkt nach Abkürzung#off("i")# 
+  Nach dem Abkürzungsnamen in einer Abkürzungszeile muß durch
+  ein Leerzeichen getrennt ein Doppelpunkt folgen. 
+ 
+#on("i")#Abkürzung mehrfach definiert#off("i")# 
+  Die Abkürzung wurde unter dem gleichen Namen schon einmal,
+  vielleicht in einem anderen Abschnitt, definiert. 
+ 
+#on("i")#das Druckmuster enthält zu viele Abkürzungen#off("i")# 
+  Abhilfe: mehrere Abkürzungen zu einem Ausdruck zusammenfas­
+  sen. 
+ 
+

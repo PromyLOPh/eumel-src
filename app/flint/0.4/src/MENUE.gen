@@ -1,0 +1,93 @@
+page;
+putline ("Generierung MENUE 0.5");
+BOOL CONST box := yes ("Mit IBM Grafikzeichen");
+BOOL CONST l3 := maxint DIV 2 > 17000;
+TASK VAR dummy, ar;
+IF l3 THEN ar := /"EUMEL" ELSE ar := archive END IF;
+INT VAR kanal := channel;
+fetch ("eudas.satzzugriffe", ar);
+fetch ("eudas.fenster", ar);
+fetch ("eudas.menues", ar);
+fetch ("offline.1", ar);
+fetch ("eudas.1", ar);
+fetch ("eudas.2", ar);
+fetch ("eudas.3", ar);
+fetch ("eudas.dialoghilfen", ar);
+fetch ("flint.init", ar);
+IF yes ("Ggf zweites Archiv eingelegt") THEN END IF;
+fetch ("eudas.steuerung", ar);
+fetch ("eudas.init", ar);
+fetch ("klartextbelegung", ar);
+fetch ("editormenue", ar);
+fetch ("eudas.manager", ar);
+fetch ("flint.manager", ar);
+fetch ("flint", ar);
+IF l3 THEN fetch ("isub.replace", ar) END IF;
+IF box THEN fetch ("boxzeichen", ar) END IF;
+release (ar);
+check off;
+IF l3 THEN do (PROC (TEXT CONST) reorganize, all) END IF;
+IF l3 THEN insert ("isub.replace"); forget ("isub.replace", quiet) END IF;
+insert ("eudas.satzzugriffe"); forget ("eudas.satzzugriffe", quiet);
+insert ("eudas.fenster"); forget ("eudas.fenster", quiet);
+insert ("eudas.menues"); forget ("eudas.menues", quiet);
+IF l3 THEN
+  TEXT VAR zeile; FILE VAR f;
+  f := sequential file (modify, "offline.1");
+  to line (f, 1);
+  read record (f, zeile);
+  INT CONST pp := pos (zeile, ",PROCA");
+  change (zeile, pp, pp + 7, "");
+  write record (f, zeile)
+END IF;
+insert ("offline.1"); forget ("offline.1", quiet);
+IF box THEN run ("boxzeichen"); forget ("boxzeichen", quiet) END IF;
+do ("ausfuehrtaste (""""13"""")");
+begin ("FLINT", PROC flint init, dummy);
+do ("global manager");
+
+PROC flint init :
+
+  disable stop;
+  fetch ("eudas.init");
+  fetch ("flint.init");
+  continue (kanal);
+  command dialogue (FALSE);
+  page;
+  i ("eudas.1");
+  i ("eudas.2");
+  i ("eudas.3");
+  i ("eudas.dialoghilfen");
+  i ("eudas.steuerung");
+  i ("klartextbelegung");
+  i ("editormenue");
+  i ("eudas.manager");
+  i ("flint.manager");
+  i ("flint");
+  do ("menue loeschen (FALSE)");
+  do ("menuedaten einlesen (""eudas.init"")");
+  forget ("eudas.init", quiet);
+  erase ("eudas.init");
+  do ("menuedaten einlesen (""flint.init"")");
+  forget ("flint.init", quiet);
+  erase ("flint.init");
+  erase ("MENUE.gen");
+  command dialogue (TRUE);
+  check on;
+  do ("begin (""OP"", ""OPMENUE"")");
+  do ("global manager")
+
+END PROC flint init;
+
+PROC i (TEXT CONST name) :
+
+  fetch (name);
+  insert (name);
+  IF is error THEN
+    put error; clear error; pause (1000); do ("global manager")
+  END IF;
+  forget (name);
+  erase (name)
+
+END PROC i;
+

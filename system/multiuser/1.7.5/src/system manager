@@ -1,0 +1,117 @@
+(* ------------------- VERSION 4 vom 31.01.86 ------------------- *)
+PACKET system manager DEFINES                       (* F. Klapper *)
+  system manager , 
+  generate shutup manager ,
+  put log :
+ 
+LET ack            = 0  ,
+    error nak      = 2  ,
+    fetch code     = 11 ,
+    list code      = 15 ,
+    all code       = 17 ,
+    log code       = 21 ,
+    eszet          = ""251"" ,
+    log file name  = "logbuch";
+
+DATASPACE VAR ds;
+
+BOUND STRUCT (TEXT name, write pass, read pass) VAR msg ;
+BOUND TEXT VAR log message, 
+               error msg;
+
+INT VAR reply;
+
+TEXT VAR xname;
+ 
+FILE VAR log file;
+
+PROC system manager:
+  lernsequenz auf taste legen ("s", eszet) ;
+  global manager 
+  (PROC (DATASPACE VAR, INT CONST, INT CONST, TASK CONST) sys manager) 
+ 
+END PROC system manager; 
+ 
+PROC sys manager (DATASPACE VAR ds, INT CONST order, phase,
+                  TASK CONST order task):
+  enable stop;
+  SELECT order OF
+  CASE log code      : y put log
+  CASE list code     : y list
+  CASE all code      : y all
+  CASE fetch code    : y fetch
+  OTHERWISE std manager (ds, order, phase, order task)
+  END SELECT.
+ 
+y fetch :
+  msg := ds;
+  xname := msg.name;
+  IF read permission (xname, msg.read pass)
+  THEN forget (ds) ;
+       ds := old (xname) ;
+       send (order task, ack, ds)
+  ELSE errorstop ("Passwort falsch")
+  FI .
+ 
+y list :
+  forget (ds) ;
+  ds := nilspace ;
+  FILE VAR list file := sequential file (output, ds) ;
+  list (list file) ;
+  send (order task, ack, ds) .
+ 
+y all :
+  forget (ds);
+  ds := nilspace;
+  BOUND THESAURUS VAR all names := ds ;
+  all names := all ;
+  send (order task, ack, ds) .
+ 
+y put log :
+  log file := sequential file (output, log file name) ;
+  IF lines (log file) < 4000
+    THEN max line length (log file,1000);
+         put (log file, date) ;
+         put (log file, time of day) ;
+         put (log file, text (name (order task), 8));
+         log message := ds ;
+         put (log file, CONCR (log message)) ;
+  FI ;
+  send (order task, ack, ds) .
+
+END PROC sys manager;
+ 
+PROC put log (TEXT CONST message) :
+  enable stop;
+  forget (ds) ;
+  ds := nilspace ;
+  log message := ds ;
+  CONCR (log message) := message ;
+  call (task("SYSUR"), log code, ds, reply) .
+
+ENDPROC put log ;
+
+PROC generate shutup manager :
+
+  TASK VAR son ;
+  begin ("shutup", PROC shutup manager, son)
+
+ENDPROC generate shutup manager ;
+
+PROC shutup manager :
+  disable stop ;
+  task password ("") ;
+  command dialogue (TRUE) ;
+  REP
+    break ;
+    line ;
+    IF yes ("shutup")
+       THEN clear error ;
+            shutup
+    FI
+  PER
+
+ENDPROC shutup manager ;
+
+ENDPACKET system manager ;
+

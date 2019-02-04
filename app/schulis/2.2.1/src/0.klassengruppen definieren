@@ -1,0 +1,81 @@
+PACKET erfklassengruppenDEFINES erfassungklassengruppen:LET maskenname=
+"ms erf klassengruppen",fnrkennung=2,fnrletztesfeld=32,trenner=" = ",
+maxsugruppen=15,laengejgst=2,laengezug=4,laengeeinersugruppe=6,
+laengeklassengruppe=4,felderprozeile=2;INT VAR fnrjgst;TEXT VAR sugruppen:=""
+;TEXT VAR sugruppe:="";INT VAR anzsugruppen;TEXT VAR gueltigeschuelergruppen
+:="";LET postrenner="�";LET fuehrendenull="0",jgst5=5,jgst10=10,jgst13=13;
+LET meldnrfehlendeangabe=52,meldnrungueltigesugruppe=55,
+meldnrklassengruppezulang=60,meldnrungueltigegruppenbez=86;LET wertaktuell=
+"aktuell",wertgeplant="geplant";PROC erfassungklassengruppen(INT CONST proznr
+):systemdboff;reinitparsing;SELECT proznrOF CASE 1:setzeerfassungsparameter
+CASE 2:zeigeklassengruppezurbearbeitungCASE 3:pruefeplausibilitaetCASE 4:
+setzewertefuerdbspeicherungCASE 5:setzeidentiobjektfuerobjektlisteCASE 6:
+klassengruppenlesenCASE 7:klassengruppenaendernCASE 8:klassengruppeneinfuegen
+CASE 9:klassengruppenloeschenEND SELECT END PROC erfassungklassengruppen;
+PROC setzeerfassungsparameter:gueltigeschuelergruppen:="";
+setzeerfassungsparameter(dnrklassengruppen,maskenname,fnrletztesfeld)END 
+PROC setzeerfassungsparameter;PROC zeigeklassengruppezurbearbeitung:
+setzeerfassungsfeld(wert(fnrkgklassengrp),fnrkennung);sugruppen:=wert(
+fnrkgschuelergrp);anzsugruppen:=(length(sugruppen))DIV laengeeinersugruppe;
+INT VAR i:=1;fnrjgst:=fnrkennung+1;WHILE i<=anzsugruppenREP sugruppe:=subtext
+(sugruppen,1,laengeeinersugruppe);sugruppen:=subtext(sugruppen,
+laengeeinersugruppe+1);setzeerfassungsfeld(subtext(sugruppe,1,laengejgst),
+fnrjgst);setzeerfassungsfeld(compress(subtext(sugruppe,laengejgst+1)),fnrjgst
++1);fnrjgstINCR felderprozeile;iINCR 1PER ;WHILE i<=maxsugruppenREP 
+setzeerfassungsfeld("",fnrjgst);setzeerfassungsfeld("",fnrjgst+1);fnrjgst
+INCR felderprozeile;iINCR 1PER ;END PROC zeigeklassengruppezurbearbeitung;
+PROC pruefeplausibilitaet:LET leer="",null=0;INT VAR pruefbez;IF 
+gueltigeschuelergruppen=""THEN 
+holeallegeplundaktschuelergruppeningueltigesugruppenFI ;INT VAR fehlerstatus;
+pruefe(1,erfassungsmaske,PROC erfassungswert,fnrkennung,null,null,leer,
+fehlerstatus);IF fehlerstatus<>0THEN setzefehlerstatus(fehlerstatus);LEAVE 
+pruefeplausibilitaetELIF length(erfassungswert(fnrkennung))>
+laengeklassengruppeTHEN meldeauffaellig(erfassungsmaske,
+meldnrklassengruppezulang);setzefehlerstatus(fnrkennung);LEAVE 
+pruefeplausibilitaetELSE pruefbez:=int(erfassungswert(fnrkennung));IF 
+lastconversionokTHEN IF pruefbez>=jgst5CAND pruefbez<=jgst13THEN 
+meldeauffaellig(erfassungsmaske,meldnrungueltigegruppenbez);setzefehlerstatus
+(fnrkennung);LEAVE pruefeplausibilitaetFI FI FI ;INT VAR i;fnrjgst:=
+fnrkennung+1;FOR iFROM 1UPTO maxsugruppenREP IF erfassungswert(fnrjgst)<>""
+THEN pruefe(3,erfassungsmaske,PROC erfassungswert,fnrjgst,jgst5,jgst13,leer,
+fehlerstatus);IF fehlerstatus<>0THEN setzefehlerstatus(fehlerstatus);LEAVE 
+pruefeplausibilitaetELIF kennungangegebenCAND ungueltigeschuelergruppenangabe
+THEN setzefehlerstatus(fnrjgst);meldeauffaellig(erfassungsmaske,
+meldnrungueltigesugruppe);LEAVE pruefeplausibilitaetFI ;ELIF kennungangegeben
+THEN setzefehlerstatus(fnrjgst);meldeauffaellig(erfassungsmaske,
+meldnrfehlendeangabe);LEAVE pruefeplausibilitaetFI ;fnrjgstINCR 
+felderprozeilePER .kennungangegeben:erfassungswert(fnrjgst+1)<>"".
+ungueltigeschuelergruppenangabe:pos(gueltigeschuelergruppen,suchwert)=0.
+suchwert:postrenner+text(int(erfassungswert(fnrjgst)))+compress(
+erfassungswert(fnrjgst+1))+postrenner.END PROC pruefeplausibilitaet;PROC 
+holeallegeplundaktschuelergruppeningueltigesugruppen:gueltigeschuelergruppen
+:=postrenner;statleseschleife(dnraktschuelergruppen,"","",fnrsgrpsj,fnrsgrpsj
+,PROC sugruppelesen);END PROC 
+holeallegeplundaktschuelergruppeningueltigesugruppen;PROC sugruppelesen(BOOL 
+VAR b):IF dbstatus<>0THEN b:=TRUE ELSE gueltigeschuelergruppenCAT wert(
+fnrsgrpjgst)+wert(fnrsgrpkennung)+postrennerFI END PROC sugruppelesen;PROC 
+setzewertefuerdbspeicherung:putwert(fnrkgklassengrp,erfassungswert(fnrkennung
+));sugruppen:="";INT VAR i;fnrjgst:=fnrkennung+1;FOR iFROM 1UPTO maxsugruppen
+REP sugruppe:=erfassungswert(fnrjgst);IF sugruppe<>""THEN sugruppenCAT 
+jgstangabe;sugruppenCAT text(erfassungswert(fnrjgst+1),laengezug)FI ;fnrjgst
+INCR felderprozeilePER ;putwert(fnrkgschuelergrp,sugruppen).jgstangabe:INT 
+VAR ijgst:=int(sugruppe);IF ijgst>=jgst10CAND ijgst<=jgst13THEN sugruppeELSE 
+fuehrendenull+text(ijgst,1)FI .END PROC setzewertefuerdbspeicherung;PROC 
+setzeidentiobjektfuerobjektliste:LET trennsymbolfuerobli="$";TEXT VAR 
+identizeile;identizeile:=wert(fnrkgklassengrp)+trenner+wert(fnrkgschuelergrp)
+;setzeidentiwert(identizeilemitschluesselanhang).
+identizeilemitschluesselanhang:identizeile+trennsymbolfuerobli+wert(
+fnrkgklassengrp).END PROC setzeidentiobjektfuerobjektliste;PROC 
+klassengruppenlesen:putwert(fnrkgklassengrp,schluessel);search(
+dnrklassengruppen,TRUE );IF dbstatus=okTHEN saveupdateposition(
+dnrklassengruppen)FI END PROC klassengruppenlesen;PROC klassengruppenaendern:
+restoreupdateposition(dnrklassengruppen);update(dnrklassengruppen);
+aenderungsvermerksetzen(wertaktuell);aenderungsvermerksetzen(wertgeplant)END 
+PROC klassengruppenaendern;PROC klassengruppeneinfuegen:insert(
+dnrklassengruppen);aenderungsvermerksetzen(wertaktuell);
+aenderungsvermerksetzen(wertgeplant)END PROC klassengruppeneinfuegen;PROC 
+klassengruppenloeschen:delete(dnrklassengruppen);aenderungsvermerksetzen(
+wertaktuell);aenderungsvermerksetzen(wertgeplant)END PROC 
+klassengruppenloeschen;TEXT PROC schluessel:erfassungswert(fnrkennung)END 
+PROC schluessel;END PACKET erfklassengruppen;
+

@@ -1,0 +1,1989 @@
+PACKET datenverwaltung
+
+(*************************************************************************)
+(*                                                                       *)
+(*     Verwaltung der aktuellen EUDAS-Dateien                            *)
+(*                                                                       *)
+(*     Version 09                                                        *)
+(*                                                                       *)
+(*     Autor: Thomas Berlage                                             *)
+(*     Stand: 01.10.87                                                   *)
+(*                                                                       *)
+(*************************************************************************)
+
+  DEFINES
+
+  oeffne,
+  kopple,
+  kette,
+  zugriff,
+  sichere,
+  dateien loeschen,
+  auf koppeldatei,
+
+  anzahl koppeldateien,
+  anzahl dateien,
+  aendern erlaubt,
+  inhalt veraendert,
+  eudas dateiname,
+  folgedatei,
+
+  dateiversion,
+
+  anzahl felder,
+  feldnamen lesen,
+  feldnamen bearbeiten,
+  feldnummer,
+  feldinfo,
+  notizen lesen,
+  notizen aendern,
+
+  feld lesen,
+  feld bearbeiten,
+  feld aendern,
+
+  satznummer,
+  satzkombination,
+  dateiende,
+  weiter,
+  zurueck,
+  auf satz,
+
+  satz einfuegen,
+  satz loeschen,
+  aenderungen eintragen,
+
+  suchbedingung,
+  suchbedingung lesen,
+  suchbedingung loeschen,
+  suchversion,
+  satz ausgewaehlt,
+  markierung aendern,
+  satz markiert,
+  markierungen loeschen,
+  markierte saetze :
+
+
+LET
+  INTVEC = TEXT,
+
+  DATEI = STRUCT
+    (TEXT name,
+     SATZ feldnamen,
+     INTVEC koppelfelder,
+     INT anz koppelfelder,
+     INT naechste datei,
+     INT alte koppelposition,
+     DATASPACE ds,
+     EUDAT eudat,
+     SATZ satzpuffer,
+     BOOL gepuffert,
+     BOOL veraendert, datei veraendert, koppelfeld veraendert,
+     TEXT muster,
+     INTVEC marksaetze,
+     INT markzeiger),
+
+  VERWEIS = STRUCT (INT datei, feld);
+ 
+LET
+  niltext = "",
+  empty intvec =  "";
+
+LET
+  maxint = 32767,
+  maxdateien = 10,
+  maxfelder = 256,
+  maxkoppeln = 32;
+
+ROW maxdateien DATEI VAR daten;
+
+INT VAR
+  anz dateien := 0,
+  anz koppeldateien := 0,
+  hauptdatei,
+  erste koppeldatei := 0,
+  felderzahl der ersten datei,
+  anz felder := 0,
+  satznummer offset,
+  kombination,
+  markierungen,
+  laufzaehler := 0;
+
+BOOL VAR
+  ende der datei := TRUE,
+  aenderungserlaubnis,
+  globales muster vorhanden;
+
+TEXT VAR globales muster;
+
+ROW maxfelder VERWEIS VAR verweis;
+
+ROW maxkoppeln VERWEIS VAR koppeln;
+
+INT VAR koppeleintraege;
+
+LET
+  zuviel dateien =  #301#
+    "Zuviel Dateien geoeffnet",
+  datei existiert nicht =  #302#
+    "Datei existiert nicht",
+  nicht im umgeschalteten zustand =  #303#
+    "Nicht moeglich, wenn auf Koppeldatei geschaltet",
+  zu viele felder =  #304#
+    "Zu viele Felder",
+  zu viele koppelfelder =  #305#
+    "Zu viele Koppelfelder",
+  keine koppelfelder =  #306#
+    "keine Koppelfelder vorhanden",
+  kein zugriff bei ketten oder koppeln =  #307#
+    "kein direkter Dateizugriff bei geketteten oder gekoppelten Dateien",
+  keine datei geoeffnet =  #308#
+    "keine Datei geoeffnet",
+  datei nicht gesichert =  #309#
+    "Datei nicht gesichert",
+  suchmuster zu umfangreich =  #310#
+    "Suchmuster zu umfangreich";
+
+TEXT VAR feldpuffer;
+
+
+(***************************** INTVEC ************************************)
+
+TEXT VAR raum fuer ein int := "  ";
+
+INTVEC VAR puffer;
+
+OP CAT (INTVEC VAR text, INT CONST wert) :
+
+  replace (raum fuer ein int, 1, wert);
+  text CAT raum fuer ein int
+
+END OP CAT;
+
+PROC insert (INTVEC VAR vector, INT CONST stelle, wert) :
+
+  INT CONST trennung := stelle + stelle - 2;
+  puffer := subtext (vector, trennung + 1);
+  vector := subtext (vector, 1, trennung);
+  vector CAT wert;
+  vector CAT puffer
+
+END PROC insert;
+
+PROC delete (INTVEC VAR vector, INT CONST stelle) :
+
+  INT CONST trennung := stelle + stelle - 2;
+  puffer := subtext (vector, trennung + 3);
+  vector := subtext (vector, 1, trennung);
+  vector CAT puffer
+
+END PROC delete;
+
+PROC inkrement (INTVEC VAR vector, INT CONST ab, um) :
+
+  INT VAR i;
+  FOR i FROM ab UPTO length (vector) DIV 2 - 1 REP
+    replace (vector, i, (vector ISUB i) + um)
+  END REP
+
+END PROC inkrement;
+
+
+(***************************** Dateien eintragen *************************)
+
+EUDAT VAR eudas datei;
+
+SATZ VAR namen;
+
+PROC datei testen (TEXT CONST dateiname) :
+
+  IF anz dateien = maxdateien THEN
+    errorstop (zuviel dateien)
+  END IF;
+  IF NOT exists (dateiname) THEN
+    errorstop (datei existiert nicht)
+  END IF;
+  IF umgeschaltet THEN
+    errorstop (nicht im umgeschalteten zustand)
+  END IF;
+  oeffne (eudas datei, dateiname)
+
+END PROC datei testen;
+
+PROC datei eintragen (DATEI VAR datei, TEXT CONST dateiname) :
+
+  IF aenderungserlaubnis THEN
+    datei. ds := old (dateiname);
+    oeffne (datei. eudat, datei. ds)
+  ELSE
+    oeffne (datei. eudat, dateiname)
+  END IF;
+  datei. naechste datei := 0;
+  datei. veraendert := FALSE;
+  datei. datei veraendert := FALSE;
+  datei. name := dateiname;
+  mark loeschen (datei)
+
+END PROC datei eintragen;
+
+PROC in dateikette (INT CONST anfang) :
+
+  INT VAR dateiindex := anfang;
+  WHILE daten (dateiindex). naechste datei <> 0 REP
+    dateiindex := daten (dateiindex). naechste datei
+  END REP;
+  daten (dateiindex). naechste datei := anz dateien
+
+END PROC in dateikette;
+
+PROC anfangsposition einnehmen :
+
+  IF dateiende (daten (1). eudat) THEN
+    auf satz (1)
+  ELSE
+    auf satz (satznr (daten (1). eudat))
+  END IF
+
+END PROC anfangsposition einnehmen;
+
+PROC felder anlegen :
+
+  felderzahl der ersten datei := felderzahl (daten (1). eudat);
+  anz felder := felderzahl der ersten datei;
+  feldnamen lesen (daten (1). eudat, daten (1). feldnamen);
+  koppeleintraege := 0;
+  INT VAR i;
+  FOR i FROM 1 UPTO anz felder REP
+    verweis (i). datei := 0
+  END REP
+
+END PROC felder anlegen;
+
+PROC laufzaehler erhoehen :
+
+  laufzaehler INCR 1;
+  IF laufzaehler > 32000 THEN
+    laufzaehler := - 32000
+  END IF
+
+END PROC laufzaehler erhoehen;
+
+PROC oeffne (TEXT CONST dateiname, BOOL CONST auch aendern) :
+
+  enable stop;
+  dateien loeschen (FALSE);
+  suchbedingung loeschen;
+  datei testen (dateiname);
+  aenderungserlaubnis := auch aendern;
+  status setzen;
+  datei eintragen (daten (anz dateien), dateiname);
+  anfangsposition einnehmen;
+  felder anlegen .
+
+status setzen :
+  anz dateien := 1;
+  laufzaehler erhoehen;
+  markierungen := 0 .
+
+END PROC oeffne;
+
+PROC kopple (TEXT CONST dateiname) :
+
+  enable stop;
+  IF anz dateien = 0 THEN
+    errorstop (keine datei geoeffnet)
+  END IF;
+  datei testen (dateiname);
+  koppelfelder bestimmen;
+  platz in feldtabellen belegen;
+  in kette der koppeldateien einfuegen;
+  datei eintragen (daten (anz dateien), dateiname);
+  koppelstatus setzen .
+
+koppelfelder bestimmen :
+  feldnamen lesen (eudas datei, namen);
+  INT VAR koppelfelder := 0;
+  INTVEC VAR koppelfeldnr := empty intvec;
+  WHILE koppelfelder < felderzahl (eudas datei) REP
+    feld lesen (namen, koppelfelder + 1, feldpuffer);
+    INT CONST index := feldindex (daten (1). feldnamen, feldpuffer);
+    IF index > 0 THEN
+      koppelfelder INCR 1;
+      koppelfeldnr CAT index
+    END IF
+  UNTIL index = 0 END REP .
+
+platz in feldtabellen belegen :
+  IF anz felder + felderzahl (eudas datei) - koppelfelder > maxfelder THEN
+    errorstop (zu viele felder)
+  ELIF koppeleintraege + koppelfelder > maxkoppeln THEN
+    errorstop (zu viele koppelfelder)
+  ELIF koppelfelder = 0 THEN
+    errorstop (keine koppelfelder)
+  END IF;
+  anz dateien INCR 1;
+  daten (anz dateien). feldnamen := namen;
+  daten (anz dateien). koppelfelder := koppelfeldnr;
+  daten (anz dateien). anz koppelfelder := koppelfelder;
+  INT VAR feldnr := koppelfelder;
+  WHILE feldnr < felderzahl (eudas datei) REP
+    anz felder INCR 1; feldnr INCR 1;
+    verweis (anz felder). datei := anz dateien;
+    verweis (anz felder). feld := feldnr
+  END REP;
+  FOR feldnr FROM 1 UPTO koppelfelder REP
+    koppelfeld eintragen
+  END REP .
+
+koppelfeld eintragen :
+  INT CONST koppelfeld := koppelfeldnr ISUB feldnr;
+  IF verweis (koppelfeld). datei = 0 THEN
+    neues koppelfeld eintragen
+  ELSE
+    alten eintrag erweitern
+  END IF .
+
+neues koppelfeld eintragen :
+  koppeleintraege INCR 1;
+  koppeln (koppeleintraege). datei := anz dateien;
+  koppeln (koppeleintraege). feld := feldnr;
+  verweis (koppelfeld). datei := koppeleintraege;
+  verweis (koppelfeld). feld := 1 .
+
+alten eintrag erweitern :
+  INT CONST eintragposition :=
+    verweis (koppelfeld). datei + verweis (koppelfeld). feld;
+  folgende eintraege hochschieben;
+  verweis (koppelfeld). feld INCR 1;
+  koppeln (eintragposition). datei := anz dateien;
+  koppeln (eintragposition). feld := feldnr .
+
+folgende eintraege hochschieben :
+  INT VAR eintrag;
+  FOR eintrag FROM koppeleintraege DOWNTO eintragposition REP
+    koppeln (eintrag + 1) := koppeln (eintrag)
+  END REP;
+  koppeleintraege INCR 1;
+  FOR eintrag FROM 1 UPTO felderzahl der ersten datei REP
+    IF verweis (eintrag). datei >= eintragposition THEN
+      verweis (eintrag). datei INCR 1
+    END IF
+  END REP .
+
+in kette der koppeldateien einfuegen :
+  anz koppeldateien INCR 1;
+  IF erste koppeldatei = 0 THEN
+    erste koppeldatei := anz dateien
+  ELSE
+    in dateikette (erste koppeldatei)
+  END IF .
+
+koppelstatus setzen :
+  laufzaehler erhoehen;
+  daten (anz dateien). gepuffert := FALSE;
+  daten (anz dateien). koppelfeld veraendert := FALSE;
+  daten (anz dateien). alte koppelposition := satznr (eudas datei);
+  koppeldatei aktualisieren (daten (anz dateien)) .
+
+END PROC kopple;
+
+PROC kette (TEXT CONST dateiname) :
+
+  enable stop;
+  IF anz dateien = 0 THEN
+    errorstop (keine datei geoeffnet)
+  END IF;
+  datei testen (dateiname);
+  anz dateien INCR 1;
+  datei eintragen (daten (anz dateien), dateiname);
+  in dateikette (1);
+  IF ende der datei THEN auf satz (satznummer) END IF
+
+END PROC kette;
+
+PROC zugriff (PROC (EUDAT VAR) bearbeitung) :
+
+  IF anz dateien > 1 OR umgeschaltet THEN
+    errorstop (kein zugriff bei ketten oder koppeln)
+  ELSE
+    aenderungen eintragen;
+    bearbeitung (daten (1). eudat);
+    laufzaehler erhoehen;
+    anfangsposition einnehmen;
+    felder anlegen;
+    daten (1). datei veraendert := TRUE
+  ENDIF
+
+END PROC zugriff;
+
+PROC sichere (INT CONST dateinummer, TEXT CONST dateiname) :
+
+  aenderungen eintragen;
+  notizen aendern (daten (dateinummer). eudat, 2, date);
+  IF aenderungserlaubnis THEN
+    forget (dateiname, quiet);
+    copy (daten (dateinummer). ds, dateiname)
+  END IF;
+  daten (dateinummer). datei veraendert := FALSE
+
+END PROC sichere;
+
+PROC dateien loeschen (BOOL CONST auch geaenderte) :
+
+  aenderungen eintragen;
+  IF umgeschaltet THEN auf koppeldatei (0) END IF;
+  kontrollvariablen loeschen;
+  dateien einzeln loeschen .
+
+kontrollvariablen loeschen :
+  anz koppeldateien := 0;
+  erste koppeldatei := 0;
+  daten (1). naechste datei := 0;
+  anz felder := 0;
+  ende der datei := TRUE .
+
+dateien einzeln loeschen :
+  WHILE anz dateien > 0 REP
+    IF wirklich veraendert AND NOT auch geaenderte THEN
+      errorstop (datei nicht gesichert);
+      LEAVE dateien loeschen
+    END IF;
+    forget (daten (anz dateien). ds);
+    anz dateien DECR 1
+  END REP .
+
+wirklich veraendert :
+  aenderungserlaubnis AND daten (anz dateien). datei veraendert .
+
+END PROC dateien loeschen;
+
+
+(*********************** Umschalten Koppeldatei **************************)
+
+INT VAR
+  save hauptdatei,
+  save felderzahl der ersten datei,
+  save anz felder,
+  save satznummer offset,
+  save kombination,
+  save markierungen,
+  save erste koppeldatei,
+  save naechste koppeldatei;
+
+BOOL VAR
+  save globales muster vorhanden;
+
+INTVEC VAR
+  save oder anfang;
+
+SATZ VAR
+  save muster gespeichert;
+
+
+BOOL VAR
+  umgeschaltet := FALSE;
+
+INT VAR
+  anzahl hauptmuster := 0,
+  feldnamendatei := 1;
+
+
+BOOL PROC auf koppeldatei :
+
+  umgeschaltet
+
+END PROC auf koppeldatei;
+
+PROC auf koppeldatei (INT CONST nr) :
+
+  disable stop;
+  laufzaehler erhoehen;
+  IF umgeschaltet THEN
+    alte variablen wiederherstellen;
+    umgeschaltet := FALSE;
+    ggf koppelfelder uebernehmen;
+    fuer korrekten zustand sorgen
+  ELSE
+    alte variablen sichern;
+    umgeschaltet := TRUE;
+    neuen zustand herstellen
+  END IF .
+
+alte variablen wiederherstellen :
+  hauptdatei := save hauptdatei;
+  felderzahl der ersten datei := save felderzahl der ersten datei;
+  anz felder := save anz felder;
+  satznummer offset := save satznummer offset;
+  markierungen := save markierungen;
+  erste koppeldatei := save erste koppeldatei;
+  daten (feldnamendatei). naechste datei := save naechste koppeldatei;
+  anzahl muster := anzahl hauptmuster;
+  globales muster vorhanden := save globales muster vorhanden;
+  oder anfang := save oder anfang;
+  muster gespeichert := save muster gespeichert;
+  IF anzahl muster > 0 THEN
+    erster musterindex := 1
+  ELSE
+    erster musterindex := -1
+  END IF .
+
+fuer korrekten zustand sorgen :
+  anzahl hauptmuster := 0;
+  feldnamendatei := 1;
+  enable stop;
+  auf satz (satznummer);
+  WHILE kombination <> save kombination REP
+    weiter (1)
+  END REP .
+
+ggf koppelfelder uebernehmen :
+  daten (feldnamendatei). alte koppelposition :=
+    satznr (daten (feldnamendatei). eudat);
+  IF nr = 1 AND NOT dateiende (daten (hauptdatei). eudat) THEN
+    alle koppelfelder in hauptdatei uebernehmen
+  END IF .
+
+alle koppelfelder in hauptdatei uebernehmen :
+  INT VAR koppel nr;
+  FOR koppel nr FROM 1 UPTO daten (feldnamendatei). anz koppelfelder REP
+    feld aendern (daten (hauptdatei). eudat, feld nr koppelfeld,
+                  feldinhalt koppelfeld)
+  END REP;
+  save kombination := 1 .
+
+feld nr koppelfeld :
+  daten (feldnamendatei). koppelfelder ISUB koppel nr .
+
+feldinhalt koppelfeld :
+  feld lesen (daten (feldnamendatei). eudat, koppel nr, feldpuffer);
+  feldpuffer .
+
+alte variablen sichern :
+  save hauptdatei := hauptdatei;
+  save felderzahl der ersten datei := felderzahl der ersten datei;
+  save anz felder := anz felder;
+  save satznummer offset := satznummer offset;
+  save kombination := kombination;
+  save markierungen := markierungen;
+  save erste koppeldatei := erste koppeldatei;
+  save naechste koppeldatei := daten (nr). naechste datei;
+  save globales muster vorhanden := globales muster vorhanden;
+  save oder anfang := oder anfang;
+  save muster gespeichert := muster gespeichert .
+
+neuen zustand herstellen :
+  hauptdatei := nr;
+  anzahl hauptmuster := anzahl muster;
+  feldnamendatei := nr;
+  felderzahl der ersten datei := felderzahl (daten (nr). eudat);
+  anz felder := felderzahl der ersten datei;
+  satznummer offset := 0;
+  markierungen := (length (daten (nr). marksaetze) - 1) DIV 2;
+  erste koppeldatei := 0;
+  daten (nr). naechste datei := 0;
+  suchbedingung loeschen;
+  auf satz (daten (nr). alte koppelposition) .
+
+END PROC auf koppeldatei;
+
+
+(************************** Dateiabfragen ********************************)
+
+INT PROC anzahl koppeldateien :
+
+  anz koppeldateien
+
+END PROC anzahl koppeldateien;
+
+INT PROC anzahl dateien :
+
+  anz dateien
+
+END PROC anzahl dateien;
+
+BOOL PROC aendern erlaubt :
+
+  aenderungserlaubnis
+
+END PROC aendern erlaubt;
+
+BOOL PROC inhalt veraendert (INT CONST dateinr) :
+
+  aenderungen eintragen;
+  daten (dateinr). datei veraendert
+
+END PROC inhalt veraendert;
+
+TEXT PROC eudas dateiname (INT CONST dateinr) :
+
+  daten (dateinr). name
+
+END PROC eudas dateiname;
+
+INT PROC folgedatei (INT CONST dateinr) :
+
+  IF dateinr = 0 THEN
+    erste koppeldatei
+  ELSE
+    daten (dateinr). naechste datei
+  END IF
+
+END PROC folgedatei;
+
+
+(*************************** Dateiversion ********************************)
+
+(* Die Dateiversion wird bei jedem neuen 'oeffne' hochgezaehlt. Sie      *)
+(* dient dazu, ein neues 'oeffne' festzustellen, um eventuell als        *)
+(* Optimierung gespeicherte Daten als ungueltig zu kennzeichnen.         *)
+
+INT PROC dateiversion :
+
+  laufzaehler
+
+END PROC dateiversion;
+
+
+(******************************* Felder **********************************)
+
+INT PROC anzahl felder :
+
+  anz felder
+
+END PROC anzahl felder;
+
+PROC feldnamen lesen (INT CONST feldnr, TEXT VAR name) :
+
+  IF feldnr <= felderzahl der ersten datei THEN
+    feld lesen (daten (feldnamendatei). feldnamen, feldnr, name)
+  ELSE
+    feld lesen (dateiverweis, feldverweis, name)
+  END IF .
+
+dateiverweis :
+  daten (verweis (feldnr). datei). feldnamen .
+
+feldverweis :
+  verweis (feldnr). feld .
+
+END PROC feldnamen lesen;
+
+PROC feldnamen bearbeiten (INT CONST feldnr,
+     PROC (TEXT CONST, INT CONST, INT CONST) bearbeite) :
+
+  IF feldnr <= felderzahl der ersten datei THEN
+    feld bearbeiten (daten (feldnamendatei). feldnamen, feldnr,
+              PROC (TEXT CONST, INT CONST, INT CONST) bearbeite)
+  ELSE
+    feld bearbeiten (dateiverweis, feldverweis,
+              PROC (TEXT CONST, INT CONST, INT CONST) bearbeite)
+  END IF .
+
+dateiverweis :
+  daten (verweis (feldnr). datei). feldnamen .
+
+feldverweis :
+  verweis (feldnr). feld .
+
+END PROC feldnamen bearbeiten;
+
+INT PROC feldnummer (TEXT CONST feldname) :
+
+  INT VAR 
+    offset := felderzahl der ersten datei,
+    nr := feldindex (daten (feldnamendatei). feldnamen, feldname),
+    dateiindex := erste koppeldatei;
+  WHILE nr = 0 AND dateiindex <> 0 REP
+    nr := feldindex (daten (dateiindex). feldnamen, feldname);
+    offset oder nr erhoehen;
+    dateiindex := daten (dateiindex). naechste datei
+  END REP;
+  nr .
+
+offset oder nr erhoehen :
+  INT CONST zahl der koppelfelder := daten (dateiindex). anz koppelfelder;
+  IF nr = 0 THEN
+    offset INCR felderzahl (daten (dateiindex). eudat);
+    offset DECR zahl der koppelfelder
+  ELSE
+    nr INCR offset;
+    nr DECR zahl der koppelfelder
+  END IF .
+
+END PROC feldnummer;
+
+INT PROC feldinfo (INT CONST feldnr) :
+
+  IF feldnr <= felderzahl der ersten datei THEN
+    feldinfo (daten (feldnamendatei). eudat, feldnr)
+  ELSE
+    feldinfo (daten (dateiverweis). eudat, feldverweis)
+  END IF .
+
+dateiverweis :
+  verweis (feldnr). datei .
+
+feldverweis :
+  verweis (feldnr). feld .
+
+END PROC feldinfo;
+
+PROC notizen lesen (INT CONST nr, TEXT VAR inhalt) :
+
+  notizen lesen (daten (feldnamendatei). eudat, nr, inhalt)
+
+END PROC notizen lesen;
+
+PROC notizen aendern (INT CONST nr, TEXT CONST inhalt) :
+
+  notizen aendern (daten (feldnamendatei). eudat, nr, inhalt)
+
+END PROC notizen aendern;
+
+
+(*************************** Feldzugriffe ********************************)
+
+PROC feld lesen (INT CONST feldnr, TEXT VAR inhalt) :
+
+  IF feldnr <= felderzahl der ersten datei THEN
+    feld lesen (daten (hauptdatei). eudat, feldnr, inhalt)
+  ELSE
+    in koppeldatei lesen
+  END IF .
+
+in koppeldatei lesen :
+  INT CONST dateiverweis := verweis (feldnr). datei;
+  IF daten (dateiverweis). gepuffert THEN
+    feld lesen (daten (dateiverweis). satzpuffer, feldverweis, inhalt)
+  ELSE
+    feld lesen (daten (dateiverweis). eudat, feldverweis, inhalt)
+  END IF .
+
+feldverweis :
+  verweis (feldnr). feld .
+
+END PROC feld lesen;
+
+PROC feld bearbeiten (INT CONST feldnr,
+          PROC (TEXT CONST, INT CONST, INT CONST) bearbeite) :
+
+  IF feldnr <= felderzahl der ersten datei THEN
+    feld bearbeiten (daten (hauptdatei). eudat, feldnr,
+         PROC (TEXT CONST, INT CONST, INT CONST) bearbeite)
+  ELSE
+    in koppeldatei bearbeiten
+  END IF .
+
+in koppeldatei bearbeiten :
+  INT CONST dateiverweis := verweis (feldnr). datei;
+  IF daten (dateiverweis). gepuffert THEN
+    feld bearbeiten (daten (dateiverweis). satzpuffer, feldverweis,
+         PROC (TEXT CONST, INT CONST, INT CONST) bearbeite)
+  ELSE
+    feld bearbeiten (daten (dateiverweis). eudat, feldverweis,
+         PROC (TEXT CONST, INT CONST, INT CONST) bearbeite)
+  END IF .
+
+feldverweis :
+  verweis (feldnr). feld .
+
+END PROC feld bearbeiten;
+
+PROC feld aendern (INT CONST feldnr, TEXT CONST inhalt) :
+
+  INT CONST dateiverweis := verweis (feldnr). datei;
+  IF feldnr <= felderzahl der ersten datei THEN
+    in hauptdatei aendern
+  ELSE
+    in koppeldatei aendern
+  END IF .
+
+in hauptdatei aendern :
+  daten (hauptdatei). datei veraendert := TRUE;
+  IF ist koppelfeld CAND wirklich veraenderung THEN
+    weitere dateien aktualisieren
+  END IF;
+  feld aendern (daten (hauptdatei). eudat, feldnr, inhalt) .
+
+ist koppelfeld :
+  NOT umgeschaltet CAND dateiverweis > 0 .
+
+wirklich veraenderung :
+  feld lesen (daten (hauptdatei). eudat, feldnr, feldpuffer);
+  feldpuffer <> inhalt .
+
+weitere dateien aktualisieren :
+  INT VAR
+    koppelzaehler := feldverweis,
+    koppelverweis := dateiverweis;
+  REP 
+    satzpuffer aktualisieren (daten (koppeldatei));
+    daten (koppeldatei). koppelfeld veraendert := TRUE;
+    feld aendern (daten (koppeldatei). satzpuffer, koppelfeld, inhalt);
+    koppelverweis INCR 1;
+    koppelzaehler DECR 1
+  UNTIL koppelzaehler = 0 END REP .
+
+in koppeldatei aendern :
+  satzpuffer aktualisieren (daten (dateiverweis));
+  IF koppeldatei wirklich veraendert THEN
+    daten (dateiverweis). veraendert := TRUE;
+    feld aendern (daten (dateiverweis). satzpuffer, feldverweis, inhalt)
+  END IF .
+
+koppeldatei wirklich veraendert :
+  feld lesen (daten (dateiverweis). satzpuffer, feldverweis, feldpuffer);
+  feldpuffer <> inhalt .
+
+feldverweis :
+  verweis (feldnr). feld .
+
+koppeldatei :
+  koppeln (koppelverweis). datei .
+
+koppelfeld :
+  koppeln (koppelverweis). feld .
+
+END PROC feld aendern;
+
+PROC satzpuffer aktualisieren (DATEI VAR datei) :
+
+  IF NOT datei. gepuffert THEN
+    datei. gepuffert := TRUE;
+    satzpuffer lesen
+  END IF .
+
+satzpuffer lesen :
+  IF dateiende (datei. eudat) THEN
+    satz initialisieren (datei. satzpuffer, datei. anz koppelfelder);
+    koppelfelder in satzpuffer schreiben
+  ELSE
+    satz lesen (datei. eudat, datei. satzpuffer)
+  END IF .
+
+koppelfelder in satzpuffer schreiben :
+  INT VAR i;
+  FOR i FROM 1 UPTO datei. anz koppelfelder REP
+    feld lesen (datei. koppelfelder ISUB i, feldpuffer);
+    feld aendern (datei. satzpuffer, i, feldpuffer)
+  END REP .
+
+END PROC satzpuffer aktualisieren;
+
+PROC koppeldatei aktualisieren (DATEI VAR datei) :
+
+  muster lesen;
+  koppeldatei positionieren .
+
+muster lesen :
+  feld lesen (daten (hauptdatei). eudat, musterfeld, muster) .
+
+musterfeld :
+  datei. koppelfelder ISUB 1 .
+
+muster :
+  datei. muster .
+
+koppeldatei positionieren :
+  auf satz (datei. eudat, muster);
+  WHILE NOT koppelfelder gleich (datei) REP
+    weiter (datei. eudat, muster)
+  END REP;
+  IF dateiende (datei. eudat) THEN
+    satzpuffer aktualisieren (datei)
+  ELSE
+    datei. gepuffert := FALSE
+  END IF .
+
+END PROC koppeldatei aktualisieren;
+
+PROC koppeldateien aktualisieren :
+
+  INT VAR dateiindex := erste koppeldatei;
+  WHILE dateiindex <> 0 REP
+    koppeldatei aktualisieren (daten (dateiindex));
+    dateiindex := daten (dateiindex). naechste datei
+  END REP;
+  kombination := 1
+
+END PROC koppeldateien aktualisieren;
+
+BOOL PROC koppelfelder gleich (DATEI CONST datei) :
+
+  IF NOT dateiende (datei. eudat) THEN
+    koppelfelder vergleichen
+  END IF;
+  TRUE .
+
+koppelfelder vergleichen :
+  INT VAR koppelindex;
+  FOR koppelindex FROM 2 UPTO datei. anz koppelfelder REP
+    feld lesen (daten (hauptdatei). eudat, koppelfelder ISUB koppelindex,
+                feldpuffer);
+    feld bearbeiten (datei. eudat, koppelindex,
+         PROC (TEXT CONST, INT CONST, INT CONST) feld vergleichen);
+    IF NOT vergleich erfolgreich THEN
+      LEAVE koppelfelder gleich WITH FALSE
+    END IF
+  END REP .
+
+koppelfelder :
+  datei. koppelfelder .
+
+END PROC koppelfelder gleich;
+
+BOOL VAR vergleich erfolgreich;
+
+PROC feld vergleichen (TEXT CONST satz, INT CONST anfang, ende) :
+
+  vergleich erfolgreich := length (feldpuffer) + anfang = ende + 1 CAND
+            pos (satz, feldpuffer, anfang, ende + 1) = anfang
+
+END PROC feld vergleichen;
+
+
+(**************************** Anhalten ***********************************)
+
+LET
+  halt error = 22101,
+  halt zeichen = "h",
+  esc = ""27"";
+
+BOOL VAR esc zustand;
+
+
+PROC halt abfrage starten :
+
+  TEXT VAR z;
+  esc zustand := FALSE;
+  REP
+    z := incharety; type (z)
+  UNTIL z = niltext END REP
+
+END PROC halt abfrage starten;
+
+PROC halt abfrage beenden :
+
+  IF esc zustand THEN
+    type (esc)
+  END IF
+
+END PROC halt abfrage beenden;
+
+BOOL PROC angehalten :
+
+  TEXT VAR z;
+  REP
+    z := incharety;
+    IF z = niltext THEN
+      LEAVE angehalten WITH FALSE
+    ELSE
+      zeichen behandeln
+    END IF
+  END REP;
+  FALSE .
+
+zeichen behandeln :
+  IF esc zustand THEN
+    esc zustand := FALSE;
+    auf halt zeichen testen
+  ELSE
+    auf esc testen
+  END IF .
+
+auf halt zeichen testen :
+  IF z = halt zeichen THEN
+    tastenpuffer loeschen;
+    errorstop (halt error, niltext);
+    LEAVE angehalten WITH TRUE
+  ELSE
+    type (esc); type (z)
+  END IF .
+
+auf esc testen :
+  IF z = esc THEN
+    esc zustand := TRUE
+  ELSE
+    type (z)
+  END IF .
+
+tastenpuffer loeschen :
+  REP UNTIL getcharety = niltext END REP .
+
+END PROC angehalten;
+
+
+(************************** Positionieren ********************************)
+
+PROC weiter (INT CONST modus) :
+
+  IF NOT ende der datei THEN
+    aenderungen eintragen;
+    nach modus weiter gehen
+  END IF .
+
+nach modus weitergehen :
+  SELECT modus OF
+  CASE 1 : einen satz weiter
+  CASE 2 : weiter bis ausgewaehlt
+  CASE 3 : weiter bis markiert
+  END SELECT .
+
+einen satz weiter :
+  weiter gehen (FALSE) .
+
+weiter bis ausgewaehlt :
+  halt abfrage starten;
+  REP
+    weiter gehen (globales muster vorhanden);
+    cout (satznummer)
+  UNTIL satz ausgewaehlt OR ende der datei OR angehalten END REP;
+  halt abfrage beenden .
+
+weiter bis markiert :
+  INT VAR satzpos := satznr (daten (hauptdatei). eudat);
+  WHILE kein markierter satz mehr AND naechste datei <> 0 REP
+    eine datei weiter;
+    satzpos := 1
+  END REP;
+  auf satz (daten (hauptdatei). eudat, naechster markierter satz);
+  cout (satznummer);
+  koppeldateien aktualisieren;
+  ende der datei := dateiende (daten (hauptdatei). eudat);
+  suchbedingung auswerten .
+
+kein markierter satz mehr :
+  mark stelle (daten (hauptdatei), satzpos + 1);
+  INT CONST naechster markierter satz :=
+    daten (hauptdatei). marksaetze ISUB daten (hauptdatei). markzeiger;
+  naechster markierter satz = maxint .
+
+naechste datei :
+  daten (hauptdatei). naechste datei .
+
+END PROC weiter;
+
+PROC zurueck (INT CONST modus) :
+
+  IF satznummer > 1 THEN
+    aenderungen eintragen;
+    nach modus zurueckgehen
+  END IF .
+
+nach modus zurueckgehen :
+  SELECT modus OF
+  CASE 1 : einen satz zurueck
+  CASE 2 : zurueck bis ausgewaehlt
+  CASE 3 : zurueck bis markiert
+  END SELECT .
+
+einen satz zurueck :
+  zurueck gehen (FALSE) .
+
+zurueck bis ausgewaehlt :
+  halt abfrage starten;
+  REP
+    zurueck gehen (globales muster vorhanden);
+    cout (satznummer)
+  UNTIL satz ausgewaehlt OR satznummer = 1 OR angehalten END REP;
+  halt abfrage beenden .
+
+zurueck bis markiert :
+  INT VAR satzpos := satznr (daten (hauptdatei). eudat);
+  WHILE kein markierter satz mehr AND hauptdatei <> 1 REP
+    eine datei zurueck;
+    satzpos := maxint - 1
+  END REP;
+  auf satz (daten (hauptdatei). eudat, neuer satz);
+  cout (satznummer);
+  koppeldateien aktualisieren;
+  ende der datei := FALSE;
+  suchbedingung auswerten .
+
+kein markierter satz mehr :
+  INT VAR neuer satz;
+  mark stelle (daten (hauptdatei), satzpos);
+  IF daten (hauptdatei). markzeiger = 1 THEN
+    neuer satz := 1;
+    TRUE
+  ELSE
+    neuer satz := daten (hauptdatei). marksaetze ISUB
+                  (daten (hauptdatei). markzeiger - 1);
+    FALSE
+  END IF .
+
+END PROC zurueck;
+
+PROC weiter gehen (BOOL CONST muster vorgegeben) :
+
+  neue kombination suchen;
+  IF keine kombination mehr THEN
+    einen satz weiter;
+    koppeldateien aktualisieren
+  ELSE
+    kombination INCR 1
+  END IF;
+  suchbedingung auswerten .
+
+neue kombination suchen :
+  INT VAR dateiindex := erste koppeldatei;
+  WHILE dateiindex > 0 REP
+    in koppeldatei weitergehen;
+    dateiindex := daten (dateiindex). naechste datei
+  END REP .
+
+in koppeldatei weitergehen :
+  BOOL VAR match gefunden;
+  kombination suchen (daten (dateiindex), match gefunden);
+  IF match gefunden THEN
+    LEAVE neue kombination suchen
+  END IF .
+
+keine kombination mehr :
+  dateiindex = 0 .
+
+einen satz weiter :
+  IF muster vorgegeben THEN
+    weiter (daten (hauptdatei). eudat, globales muster)
+  ELSE
+    weiter (daten (hauptdatei). eudat)
+  END IF;
+  WHILE dateiende (daten (hauptdatei). eudat) REP
+    auf naechste datei
+  UNTIL ende der datei END REP .
+
+auf naechste datei :
+  IF daten (hauptdatei). naechste datei <> 0 THEN
+    eine datei weiter;
+    auf ersten satz der naechsten datei
+  ELSE
+    ende der datei := TRUE
+  END IF .
+
+auf ersten satz der naechsten datei :
+  auf satz (daten (hauptdatei). eudat, 1) .
+
+END PROC weiter gehen;
+
+PROC kombination suchen (DATEI VAR datei, BOOL VAR match gefunden) :
+
+  IF dateiende (datei. eudat) THEN
+    match gefunden := FALSE
+  ELSE
+    in datei weitergehen
+  END IF .
+
+in datei weitergehen :
+  match gefunden := TRUE;
+  REP
+    weiter (datei. eudat, datei. muster);
+    IF dateiende (datei. eudat) THEN
+      match gefunden := FALSE;
+      auf satz (datei. eudat, datei. muster)
+    END IF
+  UNTIL koppelfelder gleich (datei) END REP .
+
+END PROC kombination suchen;
+
+PROC zurueck gehen (BOOL CONST muster vorgegeben) :
+
+  WHILE satznr (daten (hauptdatei). eudat) = 1 CAND satznummer > 1 REP
+    eine datei zurueck;
+    auf dateiende (daten (hauptdatei). eudat)
+  END REP;
+  IF muster vorgegeben THEN
+    zurueck (daten (hauptdatei). eudat, globales muster)
+  ELSE
+    zurueck (daten (hauptdatei). eudat)
+  END IF;
+  ende der datei := FALSE;
+  koppeldateien aktualisieren;
+  suchbedingung auswerten
+
+END PROC zurueck gehen;
+
+PROC eine datei weiter :
+
+  satznummer offset INCR saetze (daten (hauptdatei). eudat);
+  hauptdatei := daten (hauptdatei). naechste datei
+
+END PROC eine datei weiter;
+
+PROC eine datei zurueck :
+
+  INT VAR neuer index := 1;
+  WHILE daten (neuer index). naechste datei <> hauptdatei REP
+    neuer index := daten (neuer index). naechste datei
+  END REP;
+  satznummer offset DECR saetze (daten (neuer index). eudat);
+  hauptdatei := neuer index
+
+END PROC eine datei zurueck;
+
+PROC aenderungen eintragen :
+
+  INT VAR dateiindex := erste koppeldatei;
+  WHILE dateiindex <> 0 REP
+    koppeldatei betrachten;
+    dateiindex := daten (dateiindex). naechste datei
+  END REP .
+
+koppeldatei betrachten :
+  IF daten (dateiindex). gepuffert THEN
+    datei aktualisieren (daten (dateiindex))
+  END IF .
+
+END PROC aenderungen eintragen;
+
+PROC datei aktualisieren (DATEI VAR datei) :
+
+  IF alter satz geaendert AND NOT koppelfelder veraendert THEN
+    satz in koppeldatei aendern
+  ELIF nicht nur koppelfelder belegt AND irgendwas veraendert THEN
+    neuen satz in koppeldatei einfuegen
+  ELIF koppelfelder veraendert THEN
+    koppeldatei aktualisieren (datei)
+  END IF;
+  puffer deaktivieren;
+  veraendert := FALSE;
+  koppelfelder veraendert := FALSE .
+
+alter satz geaendert :
+  NOT dateiende (datei. eudat) AND veraendert .
+
+nicht nur koppelfelder belegt :
+  felderzahl (satzpuffer) > datei. anz koppelfelder .
+
+irgendwas veraendert :
+  koppelfelder veraendert OR veraendert .
+
+neuen satz in koppeldatei einfuegen :
+  datei veraendert := TRUE;
+  feld lesen (satzpuffer, 1, datei. muster);
+  satz einfuegen (datei. eudat, satzpuffer) .
+
+puffer deaktivieren :
+  datei. gepuffert := FALSE .
+
+satz in koppeldatei aendern :
+  datei veraendert := TRUE;
+  satz aendern (datei. eudat, satzpuffer) .
+
+veraendert :
+  datei. veraendert .
+
+koppelfelder veraendert :
+  datei. koppelfeld veraendert .
+
+satzpuffer :
+  datei. satzpuffer .
+
+datei veraendert :
+  datei. datei veraendert .
+
+END PROC datei aktualisieren;
+
+PROC auf dateiende (EUDAT VAR eudat) :
+
+  auf satz (eudat, saetze (eudat) + 1)
+
+END PROC auf dateiende;
+
+PROC auf satz (INT CONST satznr) :
+
+  aenderungen eintragen;
+  hauptdatei := feldnamendatei;
+  satznummer offset := 0;
+  WHILE ueber datei hinaus AND noch weitere datei REP
+    eine datei weiter
+  END REP;
+  auf satz (daten (hauptdatei). eudat, satznr - satznummer offset);
+  koppeldateien aktualisieren;
+  ende der datei := dateiende (daten (hauptdatei). eudat);
+  suchbedingung auswerten .
+
+ueber datei hinaus :
+  satznr - satznummer offset > saetze (daten (hauptdatei). eudat) .
+
+noch weitere datei :
+  daten (hauptdatei). naechste datei <> 0 .
+
+END PROC auf satz;
+
+INT PROC satznummer :
+
+  satznummer offset + satznr (daten (hauptdatei). eudat)
+
+END PROC satznummer;
+
+INT PROC satzkombination :
+
+  kombination
+
+END PROC satzkombination;
+
+BOOL PROC dateiende :
+
+  ende der datei
+
+END PROC dateiende;
+
+
+(*************************** Satzverwaltung ******************************)
+
+SATZ VAR leersatz;
+satz initialisieren (leersatz);
+
+PROC satz einfuegen :
+
+  aenderungen eintragen;
+  mark satz einfuegen;
+  satz einfuegen (daten (hauptdatei). eudat, leersatz);
+  daten (hauptdatei). datei veraendert := TRUE;
+  alle koppeldateien ans ende;
+  ende der datei := FALSE;
+  suchbedingung auswerten .
+
+mark satz einfuegen :
+  mark stelle (daten (hauptdatei), satznr (daten (hauptdatei). eudat));
+  inkrement (daten (hauptdatei). marksaetze,
+             daten (hauptdatei). markzeiger, 1) .
+
+alle koppeldateien ans ende :
+  kombination := 1;
+  INT VAR dateiindex := erste koppeldatei;
+  WHILE dateiindex <> 0 REP
+    auf dateiende (daten (dateiindex). eudat);
+    dateiindex := daten (dateiindex). naechste datei
+  END REP .
+
+END PROC satz einfuegen;
+
+PROC satz loeschen :
+
+  IF NOT ende der datei THEN
+    aenderungen eintragen;
+    mark satz loeschen;
+    satz loeschen (daten (hauptdatei). eudat);
+    daten (hauptdatei). datei veraendert := TRUE;
+    auf satz (satznummer)
+  END IF .
+
+mark satz loeschen :
+  IF satz markiert THEN
+    delete (daten (hauptdatei). marksaetze, daten (hauptdatei). markzeiger);
+    markierungen DECR 1
+  END IF;
+  inkrement (daten (hauptdatei). marksaetze,
+             daten (hauptdatei). markzeiger, -1) .
+
+END PROC satz loeschen;
+
+
+(*************************** Suchmuster **********************************)
+
+LET
+  maxmuster = 100;
+
+ROW maxmuster STRUCT (INT feld, relator, true exit, false exit,
+                      TEXT muster)
+              VAR bedingung;
+
+SATZ VAR muster gespeichert;
+
+INT VAR
+  anzahl muster,
+  erster musterindex,
+  versionszaehler := 1;
+
+BOOL VAR
+  bereits ausgewertet,
+  erfuellt;
+
+suchbedingung loeschen;
+
+INT VAR
+  muster index;
+
+LET
+  gleich test = 1,
+  beginn test = 2,
+  endet test = 3,
+  enthalten test = 4,
+  kleiner test = 5,
+  groesser test = 6,
+  nicht leer test = 7,
+  markiert test = 8,
+  true test = 9;
+
+
+PROC suchbedingung auswerten :
+
+  IF ende der datei THEN
+    erfuellt := FALSE
+  ELSE
+    kette verfolgen;
+    erfuellt := in true exit
+  END IF .
+
+kette verfolgen :
+  musterindex := erster musterindex;
+  WHILE muster index > 0 REP
+    gegenfeld bearbeiten;
+    feld bearbeiten (suchfeld, 
+         PROC (TEXT CONST, INT CONST, INT CONST) bedingung ueberpruefen)
+  END REP .
+
+gegenfeld bearbeiten :
+  INT VAR verwendeter relator := bedingung (musterindex). relator;
+  IF verwendeter relator >= 256 THEN
+    gegenfeld lesen;
+    bei datum umdrehen
+  END IF .
+
+gegenfeld lesen :
+  feld lesen ((verwendeter relator AND 255) + 1, feldpuffer) .
+
+bei datum umdrehen :
+  IF jeweiliges feldinfo = 2 THEN
+    feldpuffer drehen
+  END IF;
+  bedingung (musterindex). muster := feldpuffer .
+
+suchfeld :
+  bedingung (musterindex). feld .
+
+in true exit :
+  musterindex < 0 .
+
+END PROC suchbedingung auswerten;
+
+PROC bedingung ueberpruefen (TEXT CONST satz, INT CONST von, bis) :
+
+  INT VAR verwendeter relator := bedingung (musterindex). relator;
+  IF verwendeter relator >= 256 THEN
+    verwendeter relator := verwendeter relator DIV 256
+  END IF;
+  IF bedingung trifft zu THEN
+    musterindex := bedingung (musterindex). true exit
+  ELSE
+    musterindex := bedingung (musterindex). false exit
+  END IF .
+
+bedingung trifft zu :
+  SELECT verwendeter relator OF
+    CASE gleich test     :  ist gleich
+    CASE beginn test     :  beginnt mit
+    CASE endet test      :  endet mit
+    CASE enthalten test  :  ist enthalten
+    CASE kleiner test    :  ist kleiner
+    CASE groesser test   :  ist groesser
+    CASE nicht leer test :  ist nicht leer
+    CASE markiert test   :  ist markiert
+    CASE true test       :  ist true
+    OTHERWISE FALSE
+  END SELECT .
+
+ist gleich :
+  SELECT jeweiliges feldinfo OF
+  CASE 0 : feldpuffer als subtext; feldpuffer LEXEQUAL muster
+  CASE 1 : feldpuffer als subtext; feldwert = musterwert
+  OTHERWISE length (muster) = bis - von + 1 AND text gleich
+  END SELECT .
+
+text gleich :
+  von > bis COR beginnt mit .
+
+beginnt mit :
+  pos (satz, muster, von, bis) = von .
+
+endet mit :
+  pos (satz, muster, bis + 1 - length (muster), bis) > 0 .
+
+ist enthalten :
+  pos (satz, muster, von, bis) > 0 .
+
+ist kleiner :
+  feldpuffer als subtext;
+  SELECT jeweiliges feldinfo OF
+  CASE 0 : muster LEXGREATER feldpuffer
+  CASE 1 : feldwert < musterwert
+  CASE 2 : feldpuffer drehen; feldpuffer < muster
+  OTHERWISE feldpuffer < muster
+  END SELECT .
+
+ist groesser :
+  feldpuffer als subtext;
+  SELECT jeweiliges feldinfo OF
+  CASE 0 : feldpuffer LEXGREATEREQUAL muster
+  CASE 1 : feldwert >= musterwert
+  CASE 2 : feldpuffer drehen; feldpuffer >= muster
+  OTHERWISE feldpuffer >= muster
+  END SELECT .
+
+ist nicht leer :
+  von <= bis .
+
+ist markiert :
+  satz markiert .
+
+ist true :
+  TRUE .
+
+feldpuffer als subtext :
+  feldpuffer := subtext (satz, von, bis) .
+
+END PROC bedingung ueberpruefen;
+
+TEXT PROC muster :
+
+  bedingung (musterindex). muster
+
+END PROC muster;
+
+PROC feldpuffer drehen :
+
+  IF length (feldpuffer) = 8 THEN
+    TEXT CONST jahr := subtext (feldpuffer, 7, 8);
+    replace (feldpuffer, 7, subtext (feldpuffer, 1, 2));
+    replace (feldpuffer, 1, jahr)
+  ELSE
+    feldpuffer := niltext
+  END IF
+
+END PROC feldpuffer drehen;
+
+INT PROC jeweiliges feldinfo :
+  feldinfo (bedingung (musterindex). feld)
+END PROC jeweiliges feldinfo;
+
+REAL PROC feldwert :
+
+  REAL VAR r;
+  wert berechnen (feldpuffer, r);
+  r
+
+END PROC feldwert;
+
+REAL PROC musterwert :
+
+  REAL VAR r;
+  wert berechnen (muster, r);
+  r
+
+END PROC musterwert;
+
+
+LET
+  grosses oder = ";",
+  kleines oder = ",",
+  intervall symbol = "..",
+  markierungssymbol = "++",
+  negation = "--",
+  stern = "*";
+
+BOOL VAR
+  neue alternative,
+  neue disjunktion,
+  verneinung;
+
+INT VAR
+  erstes feldmuster,
+  oder index,
+  naechster oder anfang,
+  anfang der disjunktion,
+  bearbeitetes feld;
+
+INTVEC VAR oder anfang;
+
+
+PROC suchbedingung (INT CONST feldnr, TEXT CONST bedingung) :
+
+  INT VAR
+    anfang := 1,
+    semi pos := 0;
+  INT CONST
+    bedingung ende := length (bedingung) + 1;
+  oder index := 0;
+  bearbeitetes feld := feldnr;
+  erstes feldmuster := anzahl muster + 1;
+  WHILE anfang < bedingung ende REP
+    feldende feststellen;
+    bedingung eintragen;
+    anfang := ende + 2
+  END REP;
+  feld aendern (muster gespeichert, feldnr, bedingung) .
+
+feldende feststellen :
+  INT VAR
+    oder pos := pos (bedingung, kleines oder, anfang);
+  IF oder pos = 0 THEN oder pos := bedingung ende END IF;
+  IF semi pos < anfang THEN
+    neue alternative beginnen
+  END IF;
+  INT CONST ende := min (oder pos, semi pos) - 1 .
+
+neue alternative beginnen :
+  oder index INCR 1;
+  neue alternative := TRUE;
+  IF oder index > 1 THEN globales muster vorhanden := FALSE END IF;
+  semi pos := pos (bedingung, grosses oder, anfang);
+  IF semi pos = 0 THEN semi pos := bedingung ende END IF .
+
+bedingung eintragen :
+  verneinung testen;
+  neue disjunktion := TRUE;
+  INT CONST
+    intervall pos := pos (bedingung, intervall symbol, anfang, ende + 1);
+  IF leere bedingung THEN
+    eintragen (niltext, true test, - oder index)
+  ELIF intervall pos = 0 THEN
+    textvergleich
+  ELSE
+    groessenvergleich
+  END IF .
+
+verneinung testen :
+  IF subtext (bedingung, anfang, anfang + 1) = negation THEN
+    anfang INCR 2; verneinung := TRUE
+  ELSE
+    verneinung := FALSE
+  END IF .
+
+leere bedingung :
+  anfang > ende .
+
+text vergleich :
+  IF test auf markierung THEN
+    test auf markierung eintragen
+  ELSE
+    sterne suchen
+  END IF .
+
+test auf markierung :
+  anfang + 1 = ende CAND 
+    subtext (bedingung, anfang, ende) = markierungssymbol .
+
+test auf markierung eintragen :
+  eintragen (niltext, markiert test, - oder index) .
+
+sterne suchen :
+  INT VAR stern pos := pos (bedingung, stern, anfang, ende + 1);
+  IF stern pos = 0 THEN
+    teste ob feld gleich
+  ELIF anfang = ende THEN
+    test auf nichtleeres feld
+  ELSE
+    relator bestimmen;
+    REP
+      teste auf enthalten sein
+    END REP
+  END IF .
+
+teste ob feld gleich :
+  IF globales muster moeglich THEN
+    globales muster vorhanden := TRUE;
+    globales muster := bedingung
+  END IF;
+  eintragen (subtext (bedingung, anfang, ende), gleich test, - oder index) .
+
+globales muster moeglich :
+  feldnr = 1 AND anfang = 1 AND ende = bedingung ende - 1 AND
+  noch keine globalen alternativen AND NOT umgeschaltet AND
+  (bedingung SUB 1) <> "&" .
+
+noch keine globalen alternativen :
+  length (oder anfang) <= 2 .
+
+test auf nichtleeres feld :
+  eintragen (niltext, nichtleer test, - oder index) .
+
+relator bestimmen :
+  INT VAR relator;
+  IF stern pos = anfang THEN
+    relator := gleich test
+  ELSE
+    relator := beginn test
+  END IF .
+
+teste auf enthalten sein :
+  IF relator <> gleich test THEN
+    teilmuster eintragen
+  END IF;
+  anfang := stern pos + 1;
+  stern pos := pos (bedingung, stern, anfang, ende + 1);
+  IF stern pos = 0 THEN
+    stern pos := ende + 1;
+    relator := endet test
+  ELSE
+    relator := enthalten test
+  END IF .
+
+teilmuster eintragen :
+  TEXT CONST muster := subtext (bedingung, anfang, stern pos - 1);
+  IF verneinung OR letztes feld THEN
+    IF verneinung THEN neue disjunktion := TRUE END IF;
+    eintragen (muster, relator, - oder index);
+    IF letztes feld THEN LEAVE sterne suchen END IF
+  ELSE
+    eintragen (muster, relator, anzahl muster + 2)
+  END IF .
+
+letztes feld :
+  stern pos >= ende .
+
+groessenvergleich :
+  TEXT CONST
+    muster 1 := subtext (bedingung, anfang, intervall pos - 1),
+    muster 2 := subtext (bedingung, intervall pos + 2, ende);
+  IF intervall pos = anfang THEN
+    eintragen (muster 2, kleiner test, - oder index)
+  ELIF intervall pos = ende - 1 THEN
+    eintragen (muster 1, groesser test, - oder index)
+  ELSE
+    intervall eintragen
+  END IF .
+
+intervall eintragen :
+  IF verneinung THEN
+    eintragen (muster 1, groesser test, - oder index);
+    neue disjunktion := TRUE
+  ELSE
+    eintragen (muster 1, groesser test, anzahl muster + 2)
+  END IF;
+  eintragen (muster 2, kleiner test, - oder index) .
+
+END PROC suchbedingung;
+
+PROC eintragen (TEXT CONST textmuster, INT CONST relator, true exit) :
+
+  musterstatus verwalten;
+  musterplatz belegen;
+  IF neue alternative THEN
+    alte false exits auf neuen anfang setzen;
+    alte true exits auf diesen platz setzen;
+    anfang der disjunktion := anzahl muster
+  ELIF neue disjunktion THEN
+    false exits der letzten disjunktion anketten
+  END IF;
+  vergleichsdaten eintragen;
+  textmuster eintragen .
+
+musterstatus verwalten :
+  bereits ausgewertet := FALSE;
+  IF anzahl muster = anzahl hauptmuster THEN
+    versionszaehler INCR 1;
+    IF versionszaehler > 32000 THEN versionszaehler := 1 END IF
+  END IF .
+
+musterplatz belegen :
+  IF anzahl muster = maxmuster THEN
+    suchbedingung loeschen;
+    errorstop (suchmuster zu umfangreich)
+  ELSE
+    anzahl muster INCR 1;
+    erster musterindex := anzahl hauptmuster + 1
+  END IF .
+
+alte false exits auf neuen anfang setzen :
+  IF oder index > length (oder anfang) DIV 2 THEN
+    oder anfang CAT anzahl muster;
+    setze verkettung (erster musterindex, 0, anzahl muster)
+  END IF;
+  IF oder index = length (oder anfang) DIV 2 THEN
+    naechster oder anfang := 0
+  ELSE
+    naechster oder anfang := oder anfang ISUB (oder index + 1)
+  END IF .
+
+alte true exits auf diesen platz setzen :
+  setze verkettung (erster musterindex, - oder index, anzahl muster);
+  neue alternative := FALSE;
+  neue disjunktion := FALSE .
+
+false exits der letzten disjunktion anketten :
+  setze verkettung (anfang der disjunktion, naechster oder anfang,
+                    anzahl muster);
+  anfang der disjunktion := anzahl muster;
+  neue disjunktion := FALSE .
+
+vergleichsdaten eintragen :
+  bedingung (anzahl muster). relator := relator;
+  bedingung (anzahl muster). feld := bearbeitetes feld;
+  IF verneinung THEN
+    bedingung (anzahl muster). true exit := naechster oder anfang;
+    bedingung (anzahl muster). false exit := true exit
+  ELSE
+    bedingung (anzahl muster). true exit := true exit;
+    bedingung (anzahl muster). false exit := naechster oder anfang
+  END IF .
+
+textmuster eintragen :
+  IF textmuster ist gegenfeld THEN
+    feldnummer des gegenfelds eintragen
+  ELSE
+    textmuster original eintragen
+  END IF .
+
+textmuster ist gegenfeld :
+  (textmuster SUB 1) = "&" CAND gueltiges feld .
+
+gueltiges feld :
+  INT CONST nr gegenfeld := feldnummer (subtext (textmuster, 2));
+  nr gegenfeld > 0 .
+
+feldnummer des gegenfelds eintragen :
+  bedingung (anzahl muster). relator := nr gegenfeld - 1 + 256 * relator .
+
+textmuster original eintragen :
+  INT CONST info := feldinfo (bearbeitetes feld);
+  IF info = 2 AND (relator = kleiner test OR relator = groesser test) THEN
+    feldpuffer := textmuster;
+    feldpuffer drehen;
+    bedingung (anzahl muster). muster := feldpuffer
+  ELSE
+    bedingung (anzahl muster). muster := textmuster
+  END IF .
+
+END PROC eintragen;
+
+PROC setze verkettung (INT CONST von, wert, durch) :
+
+  INT VAR i;
+  FOR i FROM von UPTO anzahl muster - 1 REP
+    IF bedingung (i). true exit = wert THEN
+      bedingung (i). true exit := durch
+    ELIF bedingung (i). false exit = wert THEN
+      bedingung (i). false exit := durch
+    END IF
+  END REP
+
+END PROC setze verkettung;
+
+PROC suchbedingung lesen (INT CONST feldnr, TEXT VAR bedingung) :
+
+  feld lesen (muster gespeichert, feldnr, bedingung)
+
+END PROC suchbedingung lesen;
+
+PROC suchbedingung loeschen :
+
+  disable stop;
+  IF umgeschaltet THEN
+    anzahl muster := anzahl hauptmuster
+  ELSE
+    anzahl hauptmuster := 0;
+    anzahl muster := 0
+  END IF;
+  erster musterindex := -1;
+  oder anfang := empty intvec;
+  satz initialisieren (muster gespeichert);
+  globales muster vorhanden := FALSE;
+  bereits ausgewertet := TRUE;
+  erfuellt := NOT ende der datei
+
+END PROC suchbedingung loeschen;
+
+BOOL PROC satz ausgewaehlt :
+
+  IF NOT bereits ausgewertet THEN
+    suchbedingung auswerten;
+    bereits ausgewertet := TRUE
+  END IF;
+  erfuellt
+
+END PROC satz ausgewaehlt;
+
+INT PROC suchversion :
+
+  IF anzahl muster = anzahl hauptmuster THEN
+    0
+  ELSE
+    versionszaehler
+  END IF
+
+END PROC suchversion;
+
+
+(*************************** Markierung **********************************)
+
+PROC mark stelle (DATEI VAR datei, INT CONST satz) :
+
+  IF (datei. marksaetze ISUB datei. markzeiger) < satz THEN
+    vorwaerts gehen
+  ELSE
+    rueckwaerts gehen
+  END IF .
+
+vorwaerts gehen :
+  REP
+    datei. markzeiger INCR 1
+  UNTIL (datei. marksaetze ISUB datei. markzeiger) >= satz END REP .
+
+rueckwaerts gehen :
+  WHILE datei. markzeiger > 1 CAND
+      (datei. marksaetze ISUB (datei. markzeiger - 1)) >= satz REP
+    datei. markzeiger DECR 1
+  END REP .
+
+END PROC mark stelle;
+
+PROC markierung aendern :
+
+  disable stop;
+  IF satz markiert THEN
+    delete (daten (hauptdatei). marksaetze, daten (hauptdatei). markzeiger);
+    markierungen DECR 1
+  ELSE
+    insert (daten (hauptdatei). marksaetze, daten (hauptdatei). markzeiger,
+            satznr (daten (hauptdatei). eudat));
+    markierungen INCR 1
+  END IF
+
+END PROC markierung aendern;
+
+BOOL PROC satz markiert :
+
+  INT CONST satz := satznr (daten (hauptdatei). eudat);
+  mark stelle (daten (hauptdatei), satz);
+  satz =
+    (daten (hauptdatei). marksaetze ISUB daten (hauptdatei). markzeiger) 
+
+END PROC satz markiert;
+
+INT PROC markierte saetze :
+
+  markierungen
+
+END PROC markierte saetze;
+
+PROC markierungen loeschen :
+
+  disable stop;
+  IF umgeschaltet THEN
+    mark loeschen (daten (hauptdatei))
+  ELSE
+    in allen geketteten dateien loeschen
+  END IF;
+  markierungen := 0 .
+
+in allen geketteten dateien loeschen :
+  INT VAR dateiindex := 1;
+  REP
+    mark loeschen (daten (dateiindex));
+    dateiindex := daten (dateiindex). naechste datei
+  UNTIL dateiindex = 0 END REP .
+
+END PROC markierungen loeschen;
+
+PROC mark loeschen (DATEI VAR datei) :
+
+  datei. marksaetze := niltext;
+  datei. marksaetze CAT maxint;
+  datei. markzeiger := 1
+
+END PROC mark loeschen;
+
+
+END PACKET datenverwaltung;
+

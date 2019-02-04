@@ -1,0 +1,3412 @@
+(* Rainer Kottmann  *) 
+(* Klaus Bovermann  *) 
+(* Lutz Prechelt    *) 
+(* Carsten Weinholz *)
+(* 19.06.87         *) 
+ 
+(* Pakete :   1. mpg test elan programs 
+              2. mpg archive system    <---  **************************
+              3. mpg some              <---  Sind für seperaten Hamster 
+              4. mpg dm                <---  notwendig.
+              5. mpg tools             <---  **************************
+              6. mpg target handling 
+              7. mpg print cmd 
+              8. edit monitor 
+              9. mpg global manager *) 
+ 
+(************************* ELAN TEST ****************************) 
+ 
+PACKET mpg test elan programs DEFINES elan test :
+
+LET  scan end           = 7,
+     in comment         = 8,
+     in text            = 9,
+     bold               = 2,
+     char               = 4,
+     delimiter          = 6,
+     limit              = 77,
+     max denoter length = 255,
+     end bolds     = "ENDIFIENDSELECTENDREPEATPERENDPROCEDURENDPACKETENDOP",
+     w                  = "WARNING: ",
+     e                  = "ERROR  : ";
+
+INT  VAR zeile;
+FILE VAR err;
+TEXT VAR last error;
+
+
+PROC elan test :
+  elan test (last param)
+END PROC elan test;
+
+PROC elan test (TEXT CONST datei) :
+  INT  VAR byte :: 0, kbyte :: 0, (* Byte/Kilobyte der EUMEL Datei      *)
+           sbyte:: 0, skbyte:: 0, (* Byte/Kilobyte des Elan Quelltextes *)
+           denoter length :: 0, units :: 0, typ, scan operations :: 0,
+           round brackets :: 0, square brackets :: 0; (* Klammerzaehler *) 
+  TEXT VAR in, symbol;
+  FILE VAR inputfile :: sequential file (input , datei);
+  err := note file;
+  zeile := 0;
+  last error := "";
+  scan (""); next symbol (in);
+  WHILE NOT eof (inputfile) REP
+    naechste zeile;
+    analyse;
+    in := incharety
+  UNTIL in <> "" PER;
+  IF in <> ""
+  THEN putline (err, "***  ELAN TEST VORZEITIG ABGEBROCHEN ***")  FI;
+  last error := "";
+  ausgabe der enddaten;
+  modify (inputfile);
+  note edit (inputfile);
+  line.
+
+naechste zeile :
+  getline (inputfile , in);
+  continue scan (in);
+  byte  INCR LENGTH in;
+  kbyte INCR byte DIV 1000;
+  byte  := byte MOD 1000;
+  zeile INCR 1; cout (zeile);
+  IF LENGTH in > limit
+  THEN error (w + "line exceeding screen")
+  FI.
+
+analyse :
+  REPEAT
+    next symbol (symbol, typ);
+    scan operations INCR 1;
+    analysiere symbol
+  UNTIL typ >= scan end
+  PER;
+  IF typ = in comment
+  THEN error (w + "comment exceeding line")
+  FI;
+  IF typ = in text
+  THEN denoter length INCR LENGTH symbol;
+       IF denoter length > max denoter length
+       THEN error (e + "text denoter too long (" + text (denoter length) +
+                       " characters)")
+       ELSE error (w + "text denoter exceeding source line")
+       FI
+  ELSE denoter length := 0
+  FI;
+  skbyte INCR sbyte DIV 1000;
+  sbyte  := sbyte MOD 1000.
+
+analysiere symbol :
+  IF   typ = scan end    THEN test brackets
+  ELIF typ = delimiter   THEN delimiters
+  ELIF typ = char
+  THEN denoter length INCR LENGTH symbol;
+       IF denoter length > max denoter length
+       THEN error (e + "text denoter too long (" + text (denoter length) +
+                       " characters)")
+       FI
+  ELIF typ = bold CAND pos (endbolds, symbol) <> 0 
+  THEN unitend
+  FI;
+  sbyte INCR LENGTH symbol.
+
+test brackets :
+  IF round brackets <> 0
+  THEN error (w + text (round brackets) + " ""("" open")
+  FI;
+  IF square brackets <> 0
+  THEN error (w + text (square brackets) + " ""["" open")
+  FI.
+
+delimiters :
+  IF   symbol = ";" OR (symbol = "." AND is refinement)
+  THEN unitend
+  ELIF symbol = "(" THEN round  brackets INCR 1
+  ELIF symbol = ")" THEN round  brackets DECR 1
+  ELIF symbol = "[" THEN square brackets INCR 1
+  ELIF symbol = "]" THEN square brackets DECR 1
+  FI.
+
+unitend :
+  units INCR 1;
+  IF round brackets <> 0
+  THEN error (e + text (round brackets) + " ""("" open at end of unit");
+    round brackets := 0
+  FI;
+  IF square brackets <> 0
+  THEN error (e + text (square brackets) + " ""["" open at end of unit");
+    square brackets := 0
+  FI.
+
+is refinement :   FALSE.    (* vorlaeufig *)
+
+ausgabe der enddaten :
+  line (err);
+  putline (err, 77 * "=");
+  putline (err, "EUMEL - Datei     :  " + text (zeile) + " Zeilen ,  " +
+                bytes (kbyte, byte));
+  putline (err, "Elan  - Quelltext :  " + text (units) + " Units  ,  " + 
+                bytes (skbyte, sbyte));
+  putline (err, text (scan operations) +
+                " Scanner - Operationen durchgefuehrt.");
+  putline (err, 77 * "=").
+END PROC elan test;
+ 
+PROC error (TEXT CONST error message) :
+  IF error message = last error
+  THEN putline (err, "dito   " + text (zeile));
+       IF online THEN put (zeile); putline ("dito")  FI;
+       LEAVE error  FI;
+  last error := error message;
+  putline (err, "EOLN " + text (zeile) + "  " + error message);
+  IF online THEN put (zeile); putline (error message)  FI
+END PROC error;
+
+TEXT PROC bytes (INT CONST kilobytes, bytes) :
+  TEXT VAR t :: text (kilobytes);
+  IF   bytes < 10  THEN t CAT "00"
+  ELIF bytes < 100 THEN t CAT "0"
+  FI;
+  t CAT text (bytes);
+  t CAT " Byte";
+  t
+END PROC bytes
+
+END PACKET mpg test elan programs;
+
+(************************* ARCHIV **********************************)
+ 
+PACKET mpg archive system DEFINES reserve, archive, release, 
+                                  archiv, archiv name,archiv error,
+                                  archiv angemeldet,
+                                  from, to,
+                                  pla : 
+ 
+ 
+LET archive 0 code      = 90,
+    archive 1 code      = 91,
+    altos archive 0     =  0,
+    altos archive 1     =  1,
+    bicos archive 0     =  2, 
+    altos station       =  1, 
+    free code           = 20,
+    reserve code        = 19, 
+    type                = "#type (""micron"")#",
+    configurator        = "configurator";
+
+BOOL VAR angemeldet;
+TEXT VAR err :: "";
+
+(************************ Standard - Prozeduren ****************************)
+(* Erlaubt jedoch nur eine ARCHIVE-Task                                    *)
+ 
+PROC reserve (TASK CONST task): 
+  reserve ("", task) 
+END PROC reserve; 
+ 
+PROC reserve (TEXT CONST msg, TASK CONST task): 
+   IF task = archive 
+      THEN angemeldet := TRUE 
+   FI; 
+   call (reserve code, msg, task) 
+END PROC reserve; 
+ 
+PROC archive (TEXT CONST name): 
+   reserve (name, archive) 
+END PROC archive; 
+ 
+PROC archive (TEXT CONST name, INT CONST station): 
+   reserve (name,station/archive) 
+END PROC archive; 
+ 
+PROC archive (TEXT CONST name, TASK CONST task): 
+   reserve (name, task) 
+END PROC archive; 
+
+PROC release (TASK CONST task): 
+   call (free code, "", task); 
+   IF task = archive 
+      THEN angemeldet := FALSE 
+   FI 
+END PROC release; 
+ 
+PROC release : 
+  release (archive);
+END PROC release; 
+
+PROC archiv (INT CONST nr): 
+   SELECT nr OF 
+     CASE altos archive 0, altos archive 1: altos anmelden 
+     CASE bicos archive 0                 : archiv
+     OTHERWISE unbekannte laufwerksnummer 
+   END SELECT. 
+ 
+   altos anmelden: 
+     IF station (myself) <> altos station 
+        THEN unbekannte laufwerksnummer
+     ELSE reserve (archive); 
+          SELECT nr OF 
+            CASE altos archive 0: call (archive 0 code, "",task(configurator)) 
+            CASE altos archive 1: call (archive 1 code, "",task(configurator)) 
+          END SELECT; 
+          archiv
+     FI. 
+
+   unbekannte laufwerksnummer:
+     errorstop ("Unbekannte Laufwerksnummer") 
+END PROC archiv;
+
+PROC archiv :
+  angemeldet := TRUE;
+  TEXT CONST name :: archiv name;
+  IF err = ""
+    THEN display ("Gefundenes Archiv: """ + name + """");
+    ELSE errorstop (err)
+  FI;
+  display (""13""10"").
+ 
+END PROC archiv;
+ 
+BOOL PROC archiv angemeldet: 
+   angemeldet 
+END PROC archiv angemeldet; 
+ 
+TEXT PROC archiv name: 
+  TEXT VAR name :: ""; 
+  THESAURUS VAR th;
+  IF NOT angemeldet 
+   THEN errorstop ("Archiv nicht angemeldet");"" 
+   ELSE angemeldet := FALSE;
+        err := "";
+        disable stop;
+        archive ("");
+        IF is error 
+         THEN err := errormessage; 
+              LEAVE archiv name WITH "" 
+        FI;
+        th := ALL archive; 
+        richtigen namen suchen;
+        clear error;
+        enable stop;
+        archive (name); 
+        angemeldet := TRUE;
+        name
+  FI.
+ 
+richtigen namen suchen:
+  IF subtext (error message, 1, 13) = "Archiv heisst"
+    THEN name := subtext (error message, 16, LENGTH error message - 1)
+    ELSE err  := error message
+  FI
+END PROC archiv name; 
+ 
+TEXT PROC archiv error: 
+  err 
+END PROC archiv error;
+ 
+PROC from (TEXT CONST name) :
+  fetch (name, archive)
+END PROC from; 
+ 
+PROC to (TEXT CONST name) : 
+  BOOL CONST cd :: command dialogue;
+  command dialogue (FALSE);
+  save (name, archive);
+  command dialogue (cd)
+END PROC to;
+
+PROC to : 
+  to (last param) 
+END PROC to;
+
+PROC from (THESAURUS CONST nameset): 
+  fetch (nameset, archive) 
+END PROC from; 
+ 
+PROC to (THESAURUS CONST nameset): 
+  BOOL CONST cd :: command dialogue;
+  command dialogue (FALSE);
+  save (nameset, archive);
+  command dialogue (cd)
+END PROC to; 
+ 
+PROC pla:
+  LET dummy name pos = 18;
+
+  FILE VAR listfile;
+  INT  VAR i;
+  TEXT CONST head :: 70 * "=",
+             end  :: 70 * "_";
+  TEXT VAR   record;
+  WHILE yes ("Archiv eingelegt") REP
+    print archive listing
+  PER;
+  release.
+
+print archive listing:
+  archiv;
+  listfile := sequential file (output , "PLA");
+  list (listfile, archive);
+  print head;
+  erase dummy names;
+  print bottom;
+  print and erase listing.
+
+print head :
+  modify (listfile);
+  to line (listfile, 1);
+  FOR i FROM 1 UPTO 6 REP
+    insert record (listfile)
+  PER;
+  to line (listfile, 1);
+  write record (listfile, type); down (listfile);
+  write record (listfile, head); down (listfile);
+  write record (listfile, "ARCHIVNAME: "+headline (listfile) + "  " +
+                time of day  +"  " + date ); down (listfile);
+  write record (listfile, head); down (listfile);
+  write record (listfile, " "); down (listfile);
+  write record (listfile, "Date      Store  Contents").
+
+erase dummy names :
+  to line (listfile, 6);
+  WHILE NOT eof (listfile) REP
+    read record (listfile, record);
+    IF (record SUB dummy name pos) = "-"
+      THEN delete record (listfile)
+      ELSE down (listfile) 
+    FI 
+  PER.
+
+print bottom :
+   output (listfile);
+   putline (listfile, end).
+
+print and erase listing :
+  modify (listfile);
+  edit (listfile);
+  line (3);
+  IF yes ("Archivlisting drucken")
+    THEN print ("PLA")
+  FI;
+  forget ("PLA", quiet)
+END PROC pla
+
+END PACKET mpg archive system;
+ 
+(************************ MPG SOME TOOLS *********************) 
+
+PACKET mpg some                      (*************************) 
+                                     (* Klaus Bovermann       *) 
+                                     (* Andreas Dieckmann     *) 
+                                     (* Thomas Clermont       *) 
+                                     (* Version 3.2           *) 
+                                     (* EUMEL   1.8.1         *) 
+                                     (* Datum:  21.10.87      *) 
+                                     (*************************) 
+  
+DEFINES some, SOME,                  (* in mehreren Versionen *) 
+        one,                         (* in mehreren Versionen *) 
+        inchar,                      (*                       *) 
+        center,                      (* Hilfsroutinen         *) 
+        invers ,                     (*                       *) 
+        edit some,                   (* fuer Anfaenger        *) 
+        edit one,                    (* fuer Anfaenger        *) 
+
+        reorganize:                  (* auf Thesaurus         *)
+ 
+LET max bild laenge = 80; 
+ 
+TEXT PROC center (TEXT CONST n): 
+  center (n," ",max bild laenge - 1) 
+END PROC center; 
+ 
+TEXT PROC center (TEXT CONST n,fuell zeichen,INT CONST max text laenge): 
+  TEXT VAR fuell text :: 
+       ((max text laenge - length (n)) DIV 2) * fuell zeichen; 
+  fuelltext CAT (n + fuelltext); 
+  IF (LENGTH fuelltext) - max text laenge = 0 
+   THEN fuelltext 
+   ELSE fuelltext + fuellzeichen 
+  FI 
+END PROC center; 
+ 
+TEXT PROC invers (TEXT CONST n): 
+  mark ein + n + " " + mark aus 
+END PROC invers; 
+ 
+PROC inchar (TEXT VAR t, TEXT CONST allowed chars): 
+  enable stop;
+  REP getchar (t);                 (* Auslesen nur aus virtuellem Puffer *) 
+      IF pos (allowed chars,t) = 0 
+         THEN out (""7"") 
+      FI 
+  UNTIL pos (allowed chars,t) <> 0 PER
+END PROC inchar; 
+ 
+(*********************************************************************) 
+ 
+LET min zeilen          =   3,
+    bildschirm          =  24, 
+    min x size          =  30,
+    max entries         = 200; 
+ 
+LET trennzeichen                      = ""222"",   (* ESC # *) 
+    zeichenstring                     = ""1""27""3""10""13"x"12"o?"11"", 
+    oben unten rubout o return x      = ""3""10""12"o"13"x", 
+    q eins neun a return x rubout o s = "q19a"13"x"12"os"; 
+ 
+LET mark ein          = ""15"", 
+    mark aus          = ""14""; 
+  
+LET stdtext1 = "Auswahl einer Datei ",
+    stdtext2 = "Auswahl mehrerer Dateien ",
+    stdhelp  = "( Bei Unklarheiten bitte <?> )";
+ 
+LET hop   = 1, 
+    esc   = 2, 
+    obe   = 3, 
+    unt   = 4, 
+    ank   = 5, 
+    ank 1 = 6, 
+    aus   = 7, 
+    aus 1 = 8, 
+    fra   = 9, 
+    ins   = 10; 
+ 
+LET filetype = 1003; 
+ 
+INT  VAR anzahl,               begin x,begin y,
+         kopf zeilen ,         size  x,size y,
+         max eintraege,        
+         realc, 
+         virtc; 
+ 
+TEXT VAR string, 
+         weitertext,
+         niltext,
+         kopfzeilen text, 
+         kz1,  
+         kz2;  
+ 
+BOOL VAR raender, 
+         auswahlende, 
+         abbruch; 
+ 
+ROW max entries TEXT VAR eintrag; 
+ 
+THESAURUS VAR gesamt liste; 
+FILE VAR tools info; 
+DATASPACE VAR tools info ds; 
+ 
+INITFLAG VAR init tools info; 
+ 
+(******************* Grundlegende Prozedur *************************) 
+ 
+THESAURUS PROC einzelne (THESAURUS CONST t, BOOL CONST viele, 
+                         TEXT CONST k1,
+                         INT CONST x begin,y begin, 
+                                   x size ,y size): 
+   begin x    := x begin; 
+   begin y    := y begin; 
+   size x     := x size;
+   size y     := y size;
+   kz1        := k1; 
+   string     := ""; 
+   raender    := FALSE;
+   gen kopf zeilen; 
+   IF groesster editor > 0 
+      THEN INT VAR x,y; 
+           get edit cursor (x,y) ; 
+           IF bildschirm - kopfzeilen - min zeilen + 1 < y 
+              THEN begin y       := 1; 
+                   size y        := 24;
+                   begin x       := 1;
+                   size x        := 79
+              ELSE begin y       := y; 
+                   size y        := bildschirm - y + 1;
+                   max eintraege := size y - min zeilen - kopfzeilen;
+                   IF (80 - x) < min x size OR col = 1
+                     THEN begin x        := 1; 
+                          size x         := 79
+                     ELSE raender        := TRUE; 
+                          begin x        := x;
+                          size x         := 80 - x - 2
+                   FI
+           FI;
+           gen kopfzeilen
+   FI; 
+   IF (size y - kopf zeilen) < min zeilen OR 
+                     begin y < 0          OR 
+      (begin y + size y - 1) > bildschirm OR
+      (begin x + size x - 1) > 79
+      THEN errorstop ("Fenster zu klein") 
+   FI; 
+   init weitertext;
+   init niltext;
+   THESAURUS VAR ausgabe :: empty thesaurus; 
+   gesamt liste := t; 
+   INT VAR i; 
+   anzahl := 0; 
+   FOR i FROM 1 UPTO highest entry (t) REP 
+     IF name (t,i) <> "" 
+        THEN anzahl INCR 1; 
+             eintrag [anzahl] := name (t,i) 
+     FI 
+   PER; 
+   IF anzahl = 0 THEN LEAVE einzelne WITH ausgabe FI; 
+   bild aufbauen; 
+   abbruch := FALSE; 
+   kreuze an (viele); 
+   IF abbruch 
+      THEN LEAVE einzelne WITH ausgabe 
+   FI; 
+   cursor (begin x,begin y + size y - 1); 
+   out (niltext); (* Folgende Ausgaben werden sonst unleserlich *) 
+   ausgabe erzeugen; 
+   ausgabe. 
+  
+ausgabe erzeugen: 
+  TEXT VAR nam; 
+  WHILE string <> "" REP 
+        nam := subtext (string,1,3); 
+        string := subtext (string,5); 
+        insert (ausgabe, eintrag [int (nam)]) 
+  PER 
+END PROC einzelne; 
+ 
+PROC realcursor setzen: 
+  cursor (begin x,kopf zeilen + realc + begin y); 
+  IF raender
+   THEN out ("|")
+  FI;
+  out (marke (virtc, TRUE) + 6 * ""8"") 
+END PROC real cursor setzen; 
+ 
+TEXT PROC marke (INT CONST zeiger, BOOL CONST mit cursor): 
+  INT VAR pl :: nr (zeiger); 
+  IF pl = 0 
+     THEN leer 
+     ELSE mit zahl 
+  FI. 
+ 
+mit zahl: 
+  IF mit cursor 
+     THEN (3-length(text(pl))) * "-" + text (pl) + "-> " 
+     ELSE text (pl,3) + " > " 
+  FI. 
+ 
+leer: 
+  IF mit cursor 
+     THEN "----> " 
+     ELSE 6 * " " 
+  FI 
+END PROC marke; 
+ 
+PROC init weitertext: 
+  weitertext := "----> " + mark ein + "weitere  Eintraege " + mark aus  
+                         + ((size x - 27) * "-") 
+END PROC init weitertext; 
+ 
+PROC init niltext: 
+  IF size x > 78 
+    THEN niltext := ""5"" 
+    ELSE IF raender 
+           THEN niltext := ((size x + 2) * " " + (size x + 2) * ""8"")
+           ELSE niltext := (size x * " " + size x * ""8"")
+         FI
+  FI
+END PROC init niltext; 
+ 
+PROC bild (INT CONST anfang): 
+  INT VAR i; 
+  gib oberlinie aus; 
+  FOR i FROM anfang UPTO grenze REP 
+     cursor (begin x,kopfzeilen + begin y + i - anfang + 1);
+     rand;
+     out (marke (i, FALSE)); 
+     IF LENGTH ("""" + eintrag [i] + """") <= (size x - 6) 
+       THEN out (text ("""" + eintrag [i] + """",size x - 6)) 
+       ELSE out (text ("""" + eintrag [i],size x - 10) + " ...")
+     FI;
+     rand
+  PER; 
+  gib unterlinie aus; 
+  IF grenze < (anfang + max eintraege)
+     THEN FOR i FROM 0 UPTO (anfang + max eintraege - anzahl - 1) REP
+           cursor (begin x,begin y + kopfzeilen + i +
+                           grenze - anfang + min zeilen);
+           out (niltext) 
+          PER
+  FI. 
+  
+gib oberlinie aus: 
+  cursor (begin x,kopfzeilen + begin y); 
+  rand;
+  IF realc = virtc 
+     THEN out (size x * "-") 
+     ELSE out (weitertext) 
+  FI;
+  rand.
+  
+gib unterlinie aus: 
+  cursor (begin x,begin y + grenze - anfang + kopfzeilen + min zeilen - 1);
+  rand;
+  IF anzahl <= (anfang + max eintraege)
+     THEN out (size x * "-") 
+     ELSE out (weitertext) 
+  FI;
+  rand.
+ 
+grenze: 
+  min (anzahl,anfang + max eintraege).
+ 
+END PROC bild; 
+ 
+PROC gen kopfzeilen: 
+  kopfzeilen := 0; 
+  kopfzeilen text := ""; 
+  kopfzeilen text CAT code (0);
+  IF   pos (kz1,trenn zeichen) > 0 
+       THEN analysiere kopfzeile 
+  ELIF kz1 <> "" AND length (kz1) <= size x
+       THEN kopfzeilen text := kz1 + code (1);
+            kopf zeilen := 1 
+  ELIF kz1 <> "" 
+       THEN analysiere kopfzeile 
+  FI; 
+  IF kopfzeilen > size y - min zeilen 
+     THEN kopfzeilen := size y - min zeilen 
+  FI; 
+  max eintraege := size y - kopfzeilen - min zeilen.
+ 
+analysiere kopfzeile: 
+   kz2 := compress (kz1); 
+   BOOL VAR mark is on :: FALSE;
+   TEXT VAR einschub;
+   REP kopf zeilen INCR 1; 
+       kontrolliere pos; 
+       einschub := subtext(kz2,1,pos (kz2,trennzeichen)-1);
+       kontrolliere auf markiert;
+       kopfzeilen text CAT einschub;
+       kopfzeilen text CAT code (kopf zeilen);
+       kz2 := compress (subtext(kz2,pos (kz2,trennzeichen) + 1));
+   UNTIL NOT (length (kz2) > size x OR pos (kz2,trennzeichen) > 0 )PER; 
+   IF kz2 <> "" 
+      THEN einschub := kz2; 
+           kontrolliere auf markiert; 
+           kopfzeilen text CAT einschub;
+           kopf zeilen INCR 1 
+   FI; 
+   kopfzeilentext CAT code (kopfzeilen).
+ 
+muss noch getrennt werden: 
+ (pos (kz2,trennzeichen) > size x OR  pos (kz2,trennzeichen) = 0)
+                                  AND length (kz2) > size x. 
+
+kontrolliere pos: 
+  IF muss noch getrennt werden
+     THEN trenne kopfzeile
+  FI. 
+ 
+trenne kopfzeile: 
+  INT VAR i; 
+  FOR i FROM size x DOWNTO (size x DIV 2) REP
+  UNTIL (kz2 SUB i) = " " PER; 
+  kz2 := subtext (kz2,1,i) + trennzeichen + subtext (kz2,i+1).
+ 
+kontrolliere auf markiert: 
+  IF mark is on 
+    THEN kopfzeilen text CAT mark ein;
+         IF pos (einschub,mark aus) > 0 AND pos (einschub,mark ein) = 0
+           THEN mark is on := FALSE 
+         FI 
+    ELSE IF pos (einschub,mark ein) > 0 
+           THEN IF pos (einschub,mark aus) = 0 
+                  THEN einschub CAT mark aus; 
+                       mark is on := TRUE 
+                FI
+         FI 
+  FI. 
+ 
+END PROC gen kopfzeilen; 
+ 
+PROC zeige kopfzeilen:
+ INT VAR i; 
+ FOR i FROM 1 UPTO kopfzeilen REP 
+  cursor (begin x,begin y + i - 1); 
+  rand;
+  out (niltext);
+  out (center (subtext (kopfzeilen text,pre code + 1,post code - 1) 
+               ," ",size x));
+  rand
+ PER. 
+ 
+ post code: 
+  pos (kopfzeilen text,code (i)). 
+ 
+ pre code: 
+  pos (kopfzeilen text,code (i - 1)). 
+ 
+END PROC zeige kopfzeilen; 
+ 
+PROC  bild aufbauen: 
+  zeige kopfzeilen;
+  virtc := 1; 
+  realc := 1; 
+  bild (1);
+  realcursor setzen 
+END PROC bild aufbauen; 
+ 
+PROC kreuze an (BOOL CONST viele): 
+  auswahlende := FALSE; 
+  REP zeichen lesen; 
+      zeichen interpretieren 
+  UNTIL auswahlende 
+  PER. 
+ 
+zeichen lesen: 
+  TEXT VAR zeichen; 
+  inchar (zeichen, zeichenstring). 
+ 
+zeichen interpretieren: 
+  SELECT pos (zeichenstring, zeichen) OF 
+    CASE hop   : hoppen (viele) 
+    CASE esc   : esc kommandos (viele) 
+    CASE obe   : nach oben 
+    CASE unt   : nach unten 
+    CASE ank   : ankreuzen (viele,FALSE); evtl aufhoeren 
+    CASE ank 1 : ankreuzen (viele,TRUE ); evtl aufhoeren 
+    CASE aus   : auskreuzen 
+    CASE aus 1 : auskreuzen       
+    CASE fra   : info (viele) 
+    CASE ins   : eintrag einfuegen; 
+                 IF string <> ""
+                    THEN evtl aufhoeren 
+                 FI
+  END SELECT. 
+ 
+evtl aufhoeren: 
+  IF NOT viele 
+     THEN LEAVE kreuze an 
+  FI 
+END PROC kreuze an; 
+ 
+PROC hoppen (BOOL CONST viele): 
+  zweites zeichen lesen; 
+  zeichen interpretieren. 
+ 
+zweites zeichen lesen: 
+  TEXT VAR zz; 
+  getchar (zz). 
+ 
+zeichen interpretieren: 
+  SELECT pos (oben unten rubout o return x , zz) OF 
+    CASE 0   : out (""7"") 
+    CASE 1   : hop nach oben 
+    CASE 2   : hop nach unten 
+    CASE 3,4 : alles loeschen  
+    CASE 5   : bild nach oben 
+    CASE 6   : IF viele THEN rest ankreuzen ELSE out (""7"") FI 
+  END SELECT.  
+  
+bild nach oben: 
+  realc := 1; 
+  bild (virtc); 
+  realcursor setzen. 
+ 
+rest ankreuzen: 
+  INT VAR i; 
+  FOR i FROM 1 UPTO anzahl REP 
+    IF nr (i) = 0 
+       THEN string CAT textstr (i) 
+    FI 
+  PER; 
+  bild aktualisieren;  
+  realcursor setzen.  
+ 
+alles loeschen: 
+  string := ""; 
+  bild aktualisieren; 
+  realcursor setzen. 
+ 
+hop nach oben: 
+  IF   ganz oben 
+       THEN out (""7"") 
+  ELIF oben auf der seite 
+       THEN raufblaettern 
+       ELSE top of page 
+  FI. 
+ 
+ganz oben: 
+  virtc = 1. 
+ 
+oben auf der seite: 
+  realc = 1. 
+ 
+raufblaettern: 
+  virtc DECR (max eintraege + 1); 
+  virtc := max (virtc, 1); 
+  bild (virtc); 
+  realcursor setzen. 
+ 
+top of page: 
+  loesche marke; 
+  virtc DECR (realc - 1); 
+  realc := 1; 
+  realcursor setzen. 
+ 
+hop nach unten: 
+  IF   ganz unten 
+       THEN out (""7"") 
+  ELIF unten auf der seite 
+       THEN runterblaettern 
+       ELSE bottom of page 
+  FI. 
+ 
+ganz unten: 
+  virtc = anzahl. 
+ 
+unten auf der seite: 
+  realc > maxeintraege . 
+ 
+runterblaettern: 
+  INT VAR alter virtc :: virtc; 
+  virtc INCR (max eintraege + 1); 
+  virtc := min (virtc, anzahl); 
+  realc := virtc - alter virtc; 
+  bild (alter virtc + 1); 
+  realcursor setzen. 
+ 
+bottom of page: 
+  loesche marke; 
+  alter virtc := virtc; 
+  virtc INCR (max eintraege + 1 - realc); 
+  virtc := min (anzahl, virtc); 
+  realc INCR (virtc - alter virtc); 
+  realcursor setzen 
+END PROC hoppen; 
+ 
+PROC esc kommandos (BOOL CONST viele): 
+  TEXT VAR zz; 
+  getchar (zz);  
+  SELECT pos(q eins neun a return x rubout o s, zz) OF 
+    CASE 0   : out (""7"") 
+    CASE 1   : auswahlende := TRUE 
+    CASE 2   : zeige anfang 
+    CASE 3   : zeige ende 
+    CASE 4   : abbruch := TRUE; auswahlende := TRUE 
+    CASE 5,6 : IF viele 
+                  THEN ankreuzen bis ende 
+                  ELSE out (""7"") 
+               FI 
+    CASE 7,8 : IF viele 
+                  THEN loeschen bis ende 
+                  ELSE out (""7"") 
+               FI 
+    CASE 9   : liste nach nummern ordnen 
+  END SELECT. 
+  
+liste nach nummern ordnen : 
+   THESAURUS VAR dummy thesaurus :: empty thesaurus; 
+   TEXT VAR nam,dummy string :: ""; 
+   cursor (begin x,begin y + screen ende + kopfzeilen + minzeilen - 1);
+   rand;
+   out (center(invers("Bitte warten !"),"-",size x)); 
+   rand;
+   i := 0; 
+   WHILE string <> "" REP 
+       i INCR 1; 
+       nam := subtext (string,1,3); 
+       string := subtext (string,5); 
+       insert (dummy thesaurus, eintrag [int (nam)]); 
+       dummy string CAT textstr (i) 
+   PER; 
+   anzahl := 0; 
+   string := dummy string; 
+   gesamt liste := dummy thesaurus + gesamt liste; 
+   FOR i FROM 1 UPTO highest entry (gesamt liste) REP 
+      IF name (gesamt liste,i) <> "" 
+         THEN anzahl INCR 1; 
+              eintrag [anzahl] := name (gesamt liste,i) 
+      FI 
+   PER; 
+   bild aufbauen. 
+ 
+loeschen bis ende: 
+  INT VAR j; 
+  FOR j FROM virtc UPTO anzahl REP 
+    INT VAR posi :: nr (j); 
+    IF posi <> 0 
+       THEN rausschmeissen 
+    FI 
+  PER; 
+  bild aktualisieren; 
+  realcursor setzen. 
+ 
+rausschmeissen: 
+  string := subtext (string,1, 4*posi-4) + subtext (string,4*posi+1). 
+ 
+ankreuzen bis ende: 
+  INT VAR i; 
+  FOR i FROM virtc UPTO anzahl REP 
+    IF nr (i) = 0 
+       THEN string CAT textstr (i) 
+    FI 
+  PER; 
+  bild aktualisieren;  
+  realcursor setzen.  
+ 
+zeige anfang:  
+  IF virtc = 1 
+     THEN out (""7"") 
+     ELIF virtc = realc 
+     THEN loesche marke; 
+          virtc := 1; 
+          realc := 1; 
+          realcursor setzen 
+     ELSE virtc := 1; 
+          realc := 1; 
+          bild (1); 
+          realcursor setzen 
+  FI. 
+ 
+zeige ende: 
+  IF   virtc = anzahl 
+       THEN out (""7"") 
+  ELIF ende auf screen 
+       THEN loesche marke;  
+            realc INCR (anzahl - virtc);  
+            virtc := anzahl; 
+            realcursor setzen 
+       ELSE virtc := anzahl;        
+          realc := max eintraege + 1;                                
+          bild (anzahl - maxeintraege); 
+          realcursor setzen 
+  FI. 
+  
+ende auf screen: 
+  (realc + anzahl - virtc) < maxeintraege + 1. 
+ 
+screen ende:
+  min (realc + anzahl - virtc - 1,max eintraege).
+
+END PROC esc kommandos; 
+ 
+PROC ankreuzen (BOOL CONST viele,xo): 
+  INT VAR pl :: nr (virtc); 
+  IF pl <> 0 
+     THEN out (""7""); 
+          cursor setzen; 
+          LEAVE ankreuzen 
+  FI; 
+  string CAT textstr (virtc); 
+  IF viele 
+     THEN cursor setzen 
+  FI. 
+ 
+ cursor setzen: 
+  IF xo 
+   THEN realcursor setzen 
+   ELSE IF virtc < anzahl 
+         THEN nach unten 
+        FI; 
+        IF virtc = anzahl 
+         THEN realcursor setzen 
+        FI 
+  FI 
+END PROC ankreuzen; 
+ 
+PROC auskreuzen : 
+  INT VAR posi :: nr (virtc); 
+  IF posi = 0 
+     THEN out (""7""); LEAVE auskreuzen 
+  FI; 
+  rausschmeissen; 
+  loesche marke; 
+  bild aktualisieren; 
+  realcursor setzen. 
+ 
+rausschmeissen: 
+  string := subtext (string,1, 4*posi-4) + subtext (string,4*posi+1)  
+END PROC auskreuzen; 
+ 
+PROC eintrag einfuegen : 
+  IF anzahl = max entries 
+     THEN out (""7""); 
+          LEAVE eintrag einfuegen 
+  FI; 
+  mache platz frei; 
+  trage ein; 
+  baue richtiges bild auf. 
+ 
+mache platz frei: 
+  INT VAR i; 
+  FOR i FROM anzahl DOWNTO virtc REP 
+     eintrag [i+1] := eintrag [i] 
+  PER; 
+  eintrag [virtc] := """"; 
+  ruecke kreuze einen weiter; 
+  anzahl INCR 1; 
+  string CAT textstr (virtc); 
+  baue richtiges bild auf. 
+ 
+trage ein: 
+  TEXT VAR exit char;
+  realcursor setzen;
+  out (marke (virtc,TRUE));
+  out ("""");
+  push (""11""); 
+  editget (ein,max text length,size x - 7,"","",exit char);
+  IF (ein SUB length (ein)) = """"
+     THEN ein := subtext (ein,1,length (ein) - 1) 
+  FI; 
+  IF ein = "" 
+     THEN auskreuzen; 
+          setze eintraege zurueck 
+     ELSE realcursor setzen;
+          out (6 * ""2"" + text ("""" + ein + """",size x - 7))
+  FI.            
+ 
+ein: 
+  eintrag [virtc]. 
+ 
+setze eintraege zurueck: 
+  FOR i FROM virtc UPTO anzahl-1 REP 
+      eintrag [i] := eintrag [i+1]; 
+      change (string,textstr (i+1),textstr (i)) 
+  PER; 
+  anzahl DECR 1. 
+ 
+ruecke kreuze einen weiter: 
+  FOR i FROM anzahl DOWNTO virtc REP 
+      change (string,textstr (i),textstr (i+1)) 
+  PER. 
+ 
+baue richtiges bild auf: 
+   bild (virtc - (realc - 1)); 
+   realcursor setzen 
+END PROC eintrag einfuegen; 
+ 
+PROC bild aktualisieren: 
+  INT VAR ob, un, i; 
+  ob := virtc - (realc - 1); 
+  un := min (ob + max eintraege, anzahl); 
+  FOR i FROM ob UPTO un REP 
+     cursor (begin x,kopfzeilen + begin y + i - ob + 1);
+     rand;
+     out (marke (i, FALSE))
+  PER 
+END PROC bild aktualisieren; 
+ 
+PROC nach oben: 
+  IF noch nicht oben   (* virtuell *) 
+     THEN gehe nach oben 
+     ELSE out (""7"") 
+  FI. 
+ 
+noch nicht oben: 
+  virtc > 1. 
+ 
+gehe nach oben: 
+  IF realc = 1 
+     THEN scroll down 
+     ELSE cursor up 
+  FI. 
+ 
+scroll down: 
+  virtc DECR 1; 
+  bild (virtc); 
+  realcursor setzen. 
+ 
+cursor up: 
+  loesche marke; 
+  virtc DECR 1; 
+  realc DECR 1; 
+  realcursor setzen 
+END PROC nach oben; 
+ 
+PROC nach unten: 
+  IF noch nicht unten  (* virtuell *)  
+     THEN gehe nach unten 
+     ELSE out (""7"") 
+  FI. 
+ 
+noch nicht unten: 
+  virtc < anzahl. 
+ 
+gehe nach unten: 
+  IF realc > maxeintraege 
+     THEN scroll up 
+     ELSE cursor down 
+  FI. 
+ 
+scroll up: 
+  virtc INCR 1; 
+  bild (virtc - maxeintraege); 
+  realcursor setzen. 
+ 
+cursor down: 
+  loesche marke; 
+  virtc INCR 1; 
+  realc INCR 1; 
+  realcursor setzen 
+END PROC nach unten; 
+ 
+PROC loesche marke: 
+  cursor (begin x,kopf zeilen + realc + begin y); 
+  rand;
+  out (marke (virtc, FALSE)) 
+END PROC loesche marke; 
+ 
+TEXT PROC textstr (INT CONST nr): 
+  text (nr,3) + "!" 
+END PROC textstr; 
+ 
+INT PROC nr (INT CONST zeiger): 
+  IF pos (string, textstr (zeiger)) = 0 
+     THEN 0 
+     ELSE (pos (string,textstr (zeiger)) DIV 4) + 1 
+  FI  
+END PROC nr; 
+ 
+PROC rand: 
+ IF raender 
+   THEN out ("|") 
+ FI 
+END PROC rand; 
+ 
+PROC info (BOOL CONST mehrere moeglich): 
+   IF NOT initialized (init tools info) 
+      THEN initialisiere tools info 
+   FI; 
+   modify (tools info); 
+   IF mehrere moeglich 
+      THEN head line (tools info," INFO : Auswahl mehrerer Dateien "); 
+      ELSE head line (tools info," INFO : Auswahl einer Datei "); 
+   FI; 
+   to line (tools info,1); 
+   col (tools info,1);
+   IF raender 
+     THEN open editor (groesster editor + 1,tools info,FALSE, 
+                                     begin x,begin y,size x + 2,size y) 
+     ELSE open editor (groesster editor + 1,tools info,FALSE, 
+                                     begin x,begin y,size x,size y)
+   FI;
+   edit (groesster editor,"q19",PROC (TEXT CONST) std kommando interpreter); 
+   zeige kopfzeilen;
+   bild (virtc - (realc - 1));
+   realcursor setzen
+END PROC info;  
+ 
+(******************** Herausgereichte, abgeleitete Prozeduren ***********) 
+ 
+THESAURUS PROC some (THESAURUS CONST t,TEXT CONST kopf zeile, 
+                     INT CONST start x,start y,x size,y size): 
+  einzelne (t,TRUE,kopf zeile,start x,start y,x size,y size) 
+END PROC some; 
+
+THESAURUS PROC some (THESAURUS CONST t,
+                     INT CONST start x,start y,x size,y size): 
+  some  (t,invers (std text 2 + std help),start x,start y,x size,y size) 
+END PROC some; 
+ 
+THESAURUS PROC some (THESAURUS CONST t,TEXT CONST kopf zeile, 
+                     INT CONST start y,ende y): 
+   einzelne (t,TRUE,kopf zeile,1,start y,79,ende y - start y + 1)
+END PROC some; 
+ 
+THESAURUS PROC some (THESAURUS CONST t,INT CONST start y,ende y): 
+   some (t,invers(stdtext 2 + std help),1,start y,79,ende y - start y + 1)
+END PROC some; 
+
+THESAURUS PROC some (THESAURUS CONST t,TEXT CONST kopf zeile): 
+   some (t,kopf zeile,1,bildschirm) 
+END PROC some; 
+ 
+THESAURUS PROC some (THESAURUS CONST t): 
+  some (t,invers(stdtext 2 + std help),1,bildschirm) 
+END PROC some; 
+  
+THESAURUS PROC some: 
+  some (all,invers(stdtext 2 + std help),1,bildschirm) 
+END PROC some; 
+ 
+THESAURUS PROC some (TEXT CONST te): 
+  some (ALL te) 
+END PROC some; 
+ 
+THESAURUS PROC some (TASK CONST quelle): 
+  some (ALL quelle) 
+END PROC some; 
+ 
+THESAURUS OP SOME (THESAURUS CONST th): 
+  some (th) 
+END OP SOME; 
+ 
+THESAURUS OP SOME (TASK CONST ta): 
+  some (ALL ta) 
+END OP SOME; 
+ 
+THESAURUS OP SOME (TEXT CONST te): 
+  some (ALL te) 
+END OP SOME; 
+ 
+TEXT PROC one (THESAURUS CONST t,TEXT CONST kopf zeile, 
+                     INT CONST start x,start y,x size,y size): 
+  name(einzelne (t,FALSE,kopf zeile,start x,start y,x size,y size),1) 
+END PROC one; 
+
+TEXT PROC one (THESAURUS CONST t,
+               INT CONST start x,start y,x size,y size): 
+  one (t,invers (std text 1 + std help),start x,start y,x size,y size) 
+END PROC one; 
+
+TEXT PROC one (THESAURUS CONST t, TEXT CONST t1, 
+               INT CONST start y,ende y): 
+  name (einzelne (t,FALSE, t1,1,start y,79,ende y - start y + 1), 1) 
+END PROC one; 
+ 
+TEXT PROC one (THESAURUS CONST t, 
+               INT CONST start y,ende y): 
+  one (t,invers (std text 1+ std help),1,start y,79,ende y - start y + 1) 
+END PROC one; 
+
+TEXT PROC one (THESAURUS CONST t,TEXT CONST kopf zeile): 
+   one (t,kopf zeile,1,bildschirm) 
+END PROC one;
+
+TEXT PROC one (THESAURUS CONST t): 
+  one (t,invers(stdtext 1 + std help),1,bildschirm) 
+END PROC one; 
+  
+TEXT PROC one (TASK CONST quelle): 
+  one (ALL quelle) 
+END PROC one; 
+ 
+TEXT PROC one: 
+  one (all) 
+END PROC one; 
+ 
+TEXT PROC one (TEXT CONST te): 
+  one (ALL te) 
+END PROC one; 
+   
+PROC edit one :
+  TEXT CONST datei :: one (all,invers(stdtext 1 + "zum Editieren") 
+                               + trennzeichen + stdhelp,
+                               1,bildschirm); 
+  IF datei <> "" CAND (NOT exists (datei) 
+                       COR type (old (datei)) = filetype) 
+     THEN IF groesster editor > 0 
+              THEN ueberschrift neu; 
+                   bild neu
+          FI;
+          edit (datei) 
+  FI  
+END PROC edit one; 
+ 
+PROC edit some:
+  THESAURUS CONST tt :: some (all,invers(stdtext 2 + "zum Editieren") 
+                                  + trennzeichen + stdhelp, 
+                                  1,bildschirm); INT VAR i; 
+  FOR i FROM 1 UPTO highest entry (tt) REP 
+    TEXT VAR datei :: name (tt,i); 
+    IF datei <> "" CAND (NOT exists (datei) 
+                         COR type (old (datei)) = filetype) 
+       THEN IF groesster editor > 0 
+              THEN ueberschrift neu; 
+                   bild neu                   
+            FI; 
+            edit (datei) 
+    FI 
+ PER 
+END PROC edit some; 
+
+PROC reorganize (THESAURUS CONST t): 
+  page; 
+  do (PROC (TEXT CONST) do reorganize,t) 
+END PROC reorganize; 
+ 
+PROC do reorganize (TEXT CONST name): 
+ IF type (old(name)) = file type 
+  THEN put ("Datei " + center (invers("""" + name + """")," ",30) 
+                     + " wird reorganisiert :"); 
+       FILE VAR file :: sequential file (modify,name);
+       IF segments (file) = 1
+         THEN put (lines (file))
+         ELSE reorganize (name) 
+       FI
+  ELSE put ("      " + center (invers("""" + name + """")," ",30) 
+                     + " ist keine Datei.") 
+ FI; 
+ line 
+END PROC do reorganize ; 
+ 
+PROC initialisiere tools info : 
+   tools info ds := nilspace; 
+   tools info := sequential file (output, tools info ds); 
+   putline (tools info,""15"   Mit den angekreuzten Namen wird die gewaehlte Operation ausgefuehrt     "14"");
+      line (tools info); 
+   putline (tools info,"        "15"   Positionierungen: "14" "); 
+      line (tools info); 
+   putline (tools info,"              Oben         : zum vorausgehenden Namen");
+   putline (tools info,"              Unten        : zum folgenden Namen    ");
+   putline (tools info,"              HOP Oben     : zum ersten  Namen der (vorigen) Seite");
+   putline (tools info,"              HOP Unten    : zum letzten Namen der (vorigen) Seite");
+   putline (tools info,"              HOP RETURN   : aktuelle Zeile wird erste Zeile");
+   putline (tools info,"              ESC 1        : zum ersten  Namen der Liste");
+   putline (tools info,"              ESC 9        : zum letzten Namen der Liste");
+   putline (tools info,"              ESC s        : Liste nach Nummern ordnen");
+      line (tools info); 
+   putline (tools info,"        "15"   Auswahl treffen: "14" "); 
+      line (tools info); 
+   putline (tools info,"              ( Folgende Befehle sind nur bei einer )");
+   putline (tools info,"              ( Auswahl von mehreren Namen Möglich. )");
+      line (tools info); 
+   putline (tools info,"              RETURN bzw. x: diesen Namen ankreuzen     ");
+   putline (tools info,"              RUBOUT bzw. o: Kreuz vor dem Namen loeschen");
+   putline (tools info,"              HOP x        : alle Namen ankreuzen      ");
+   putline (tools info,"              HOP o        : alle Kreuze loeschen     ");
+   putline (tools info,"              ESC x        : alle folgenden Namen ankreuzen");
+   putline (tools info,"              ESC o        : alle folgenden Kreuze loeschen");
+   putline (tools info,"              RUBIN        : einen neuen Namen eintragen");
+      line (tools info); 
+   putline (tools info,"              ( Nur dieser Befehl kann benutzt werden , wenn )");
+   putline (tools info,"              ( die Auswahl eines ! Namens möglich ist.      )");
+      line (tools info); 
+   putline (tools info,"              RETURN bzw. x: diesen Namen auswaehlen");
+      line (tools info); 
+   putline (tools info,"         "15"  Auswahl verlassen: "14""); 
+      line (tools info); 
+   putline (tools info,"                ESC q        : Auswaehlen beenden     ");
+   putline (tools info,"                ESC a        : Auswahl abbrechen (ohne Kreuze !)");
+      line (tools info); 
+   putline (tools info,""15"             Zum Verlassen des Infos bitte 'ESC q' tippen!                 "14"");
+END PROC initialisiere tools info; 
+ 
+END PACKET mpg some;
+
+(****************** DATEI MONITOR ********************************) 
+
+PACKET mpg dm DEFINES dm:                (* Klaus Bovermann   *)  
+                                         (* Andreas Dieckmann *) 
+                                         (* Thomas Clermont   *) 
+                                         (* Version 2.1       *) 
+                                         (* EUMEL   1.7.5     *) 
+                                         (* Datum   06.05.87  *) 
+LET mark ein            = ""15"",
+    mark aus            = ""14"",
+    trennzeichen        = ""222"",
+    type                = "#type (""micron"")#",
+    dummy name pos      = 18,
+    disk zeichenfolge   = "alnfiqushcvd", 
+    mana zeichenfolge   = "al   qush v"; 
+ 
+TASK CONST std manager :: task ("PUBLIC"); 
+TASK VAR manager; 
+ 
+BOOL VAR archive ist meins :: archiv angemeldet,
+         disk ,
+         diskette im schacht :: FALSE; 
+
+TEXT VAR aktueller archivename,
+         manager name, 
+         t1;
+
+PROC dm: 
+  TEXT VAR zeichen, alte lernsequenz :: lernsequenz auf taste ("k");
+  REP  aktion 
+  UNTIL zeichen = "q" PER; 
+  lernsequenz auf taste legen ("k",alte lernsequenz).
+  
+aktion: 
+  manager := std manager; 
+  vormonitor; 
+  IF zeichen <> "q" AND managername <> "" 
+     THEN hauptmonitor 
+  FI. 
+  
+zeige vormonitor: 
+      managername := name (manager); 
+      page; 
+      write(27 * " "); write(mark ein); 
+      write("V O R M O N I T O R "); write(mark aus); 
+      line(4); 
+      zeile ("t","Task einstellen, mit der  kommuniziert werden soll"); 
+      zeile ("p","Es soll mit 'PUBLIC'      kommuniziert werden"); 
+      zeile ("v","Es soll mit der Vatertask kommuniziert werden"); 
+      zeile ("a","Es soll mit dem Archiv    kommuniziert werden"); 
+      zeile ("q","Programm beenden").
+
+vormonitor:
+  IF NOT eingabe von erlaubtem zeichen ("tvapq")
+    THEN zeige vormonitor
+  FI; 
+  line; 
+  write ("Bitte Eingabe : "); 
+  inchar (zeichen, "tvapq"); 
+  out (zeichen); line;
+  IF pos ("a",zeichen) = 0 CAND manager = archive 
+    THEN automatische freigabe des archives 
+  FI; 
+  ausfuehren der vorwahl. 
+  
+ausfuehren der vorwahl: 
+  IF pos ("tvap", zeichen) <> 0 
+     THEN neue task einstellen  
+  FI. 
+  
+neue task einstellen: 
+  managername := ""; 
+  IF   zeichen = "a" THEN managername := "ARCHIVE" 
+  ELIF zeichen = "p" THEN managername := "PUBLIC" 
+  ELIF zeichen = "v" THEN managername := name (father) 
+                     ELSE namen holen 
+  FI; 
+  TEXT VAR mess; 
+  BOOL VAR ok :: managername = ""        COR 
+                 managername = "PUBLIC"  COR 
+                 task ist kommunikativ (managername, mess); 
+  IF NOT ok  
+     THEN cursor (1,20); putline (""7""15"FEHLER: " + mess + ""14""); 
+          pause; 
+          managername := ""; 
+  FI; 
+  IF   managername = ""        THEN manager := std manager 
+  ELIF managername = "ARCHIVE" THEN manager := archive 
+                               ELSE manager := task (managername) 
+  FI. 
+  
+namen holen: 
+  REP
+   cursor (1,14); 
+   put ("Neue Task:"); 
+   editget (managername); line; 
+   IF managername = name (myself)
+    THEN putline ("Mit der eigenen Task kann nicht kommuniziert werden.")
+   FI;
+  UNTIL managername <> name (myself) PER;
+   lernsequenz auf taste legen ("k",managername).
+
+END PROC dm;  
+                        
+BOOL PROC task ist kommunikativ (TEXT CONST taskname, TEXT VAR message): 
+  disable stop; 
+  TASK VAR t :: task (taskname); 
+  IF is error 
+     THEN message := errormessage; 
+          clear error; 
+          enable stop; 
+          FALSE 
+     ELSE task behandlung 
+  FI. 
+  
+  task behandlung: 
+    IF taskname <> "ARCHIVE" 
+       THEN task kommunikation 
+       ELSE archive behandlung 
+    FI. 
+  
+  task kommunikation: 
+    IF status (t) <> 2 
+       THEN message := "Task ist nicht im Wartezustand"; 
+            enable stop; 
+            FALSE 
+       ELSE versuchen zuzugreifen 
+    FI. 
+  
+  versuchen zuzugreifen: 
+    INT CONST listcode :: 15; 
+    DATASPACE VAR dummy :: nilspace; 
+    call (listcode, "", dummy, t); 
+    forget (dummy); 
+    IF is error  
+       THEN message := errormessage; 
+            clear error; 
+            enable stop; 
+            FALSE 
+       ELSE message := ""; 
+            enable stop; 
+            TRUE 
+    FI. 
+  
+  archive behandlung: 
+    IF status (archive) <> 2 
+       THEN message := "ARCHIVE ist nicht im Wartezustand"; 
+            LEAVE archive behandlung WITH FALSE
+    FI; 
+    archive (""); 
+    IF is error 
+       THEN message := errormessage; 
+            clear error; 
+            enable stop; 
+            FALSE  
+       ELSE enable stop; 
+            archive ist meins := TRUE; 
+            diskette im schacht := FALSE;
+            message := ""; 
+            TRUE 
+    FI 
+END PROC task ist kommunikativ; 
+ 
+PROC hauptmonitor:  
+  disk := (manager = archive); 
+  TEXT VAR zeichenfolge; 
+  IF disk 
+     THEN zeichenfolge := disk zeichenfolge 
+     ELSE zeichenfolge := mana zeichenfolge 
+  FI; 
+  TEXT VAR   taste; 
+  INT VAR    stelle; 
+  diskette im schacht   := FALSE; 
+  IF disk 
+     THEN reservieren des archives 
+  FI; 
+  disable stop;
+  REP 
+    IF NOT eingabe von erlaubtem zeichen (zeichenfolge)
+      THEN zeige menue 
+    FI; 
+    line;  
+    write ("Bitte Eingabe : "); 
+    inchar (taste,zeichenfolge);
+    out (taste + "   Bitte warten..."); 
+    stelle := pos (disk zeichenfolge, taste); (*!! ACHTUNG !!*) 
+    IF         stelle > 6
+       AND NOT diskette im schacht 
+       AND     disk
+     THEN line; 
+          putline (" Erst Diskette einlegen !");pause (100) 
+     ELIF taste <> " " 
+     THEN menue auswerten (stelle)
+    FI; 
+    IF is error 
+      THEN IF disk 
+             THEN melde archiveerror (errormessage) 
+             ELSE melde error (errormessage)
+           FI;
+           clear error 
+    FI 
+   UNTIL taste = "q" PER; 
+   IF archiv angemeldet
+      THEN automatische freigabe des archives 
+   FI.  
+ 
+  zeige menue: 
+    page; 
+    write(24 * " "); write(mark ein); 
+    write("D A T E I M O N I T O R "); write(mark aus); 
+    line(3); 
+    zeile ("a","Auflisten aller Dateien in dieser Task"); 
+    zeile ("l","Loeschen    von Dateien in dieser Task"); 
+    line(2); 
+    write( 15 * " "); 
+    IF disk 
+       THEN write("Archiv: ")  
+       ELSE write("Task  : ") 
+    FI;  
+    IF disk 
+       THEN IF diskette im schacht 
+             THEN IF length(aktueller archivename) > 40  
+                   THEN write ("'" + subtext (aktueller archivename,1,40) + " ...")
+                   ELSE write (invers(""""+ aktueller archivename + """"))
+                  FI  
+             FI
+       ELSE write (invers("""" + managername + """")) 
+    FI; 
+    line(2);  
+    TEXT VAR zielname 1, zielname 2, zielname 3; 
+    IF disk 
+       THEN zielname 1 := "des Archivs"; 
+            zielname 2 := "zum Archiv"; 
+            zielname 3 := "vom Archiv" 
+       ELSE zielname 1 := "in  " + managername; 
+            zielname 2 := "zu  " + managername; 
+            zielname 3 := "von " + managername 
+    FI; 
+    zeile ("u","Uebersicht ueber alle Dateien " + zielname 1); 
+    zeile ("s","Senden von Dateien            " + zielname 2); 
+    zeile ("h","Holen von Dateien             " + zielname 3); 
+    IF disk 
+       THEN zeile ("c","'Checken' von Dateien         " + zielname 1) 
+    FI; 
+    zeile ("v","Vernichten von Dateien        " + zielname 1); 
+    IF disk THEN 
+       zeile ("d","Drucken einer Liste der Dateien des Archivs"); 
+       zeile ("f","Formatieren einer Diskette"); 
+       zeile ("i","Initialisieren/vollstaendiges Loeschen des Archivs"); 
+       zeile ("n","Neue Diskette anmelden"); 
+    FI;  
+    line(1); 
+    zeile ("q","Zurueck zum Vormonitor").
+
+END PROC hauptmonitor;  
+ 
+PROC menue auswerten (INT CONST stelle):
+    enable stop;
+    SELECT stelle OF  
+       CASE  1 : auflisten der taskdateien 
+       CASE  2 : loeschen von dateien in der task 
+       CASE  3 : neue diskette anmelden 
+       CASE  4 : formatieren einer diskette 
+       CASE  5 : initialisieren des archives 
+       CASE  6 : (* nichts *) 
+       CASE  7 : auflisten der archivedateinamen 
+       CASE  8 : schreiben von dateien aufs archive 
+       CASE  9 : holen von dateien vom archive 
+       CASE 10 : checken von dateien auf dem archive 
+       CASE 11 : loeschen von dateien auf dem archive 
+       CASE 12 : ausdruck archivelisting 
+    END SELECT 
+END PROC menue auswerten;
+
+BOOL PROC eingabe von erlaubtem zeichen (TEXT CONST erlaubte zeichen):
+   TEXT VAR char in; 
+   char in := getcharety;
+   IF pos (erlaubte zeichen,char in) > 0 AND char in <> " "
+     THEN push (char in);TRUE 
+     ELSE FALSE
+   FI. 
+END PROC eingabe von erlaubtem zeichen; 
+ 
+PROC zeile (TEXT CONST t,tt): 
+  putline (8*" " + ""15"" + t + " "14"" + " ... " + tt) 
+END PROC zeile; 
+ 
+PROC formatieren einer diskette: 
+   page; 
+   putline ("Formatieren einer Diskette."); 
+   putline ("==========================="); 
+   putline (""15"Achtung: Alle Disketten-Informationen werden gelöscht!"14""); 
+   line; 
+   putline ("Dies sind die moeglichen Formate:"); 
+   zeile ("o","... Ohne Format-Angabe"); 
+   zeile ("0","... Standard-Format"); 
+   zeile ("1","... 40 Spur -  360 KB"); 
+   zeile ("2","... 80 Spur -  720 KB"); 
+   zeile ("3","... IBM Std - 1200 KB"); 
+   zeile ("q","... Es wird nicht formatiert."); 
+   TEXT VAR art; 
+   put ("Ihre Wahl:"); 
+   inchar (art, "o01234q"); 
+   IF art = "q" 
+      THEN LEAVE formatieren einer diskette 
+   FI; 
+   out (art); line; 
+   put ("zukünftiger Name des Archives :"); 
+   editget (aktueller archivename);line; 
+   archive (aktueller archivename); 
+   diskette im schacht := TRUE;
+   disable stop; 
+   IF art = "o" THEN format (archive) 
+                ELSE format (int (art), archive) 
+   FI; 
+   IF is error 
+      THEN diskette im schacht := FALSE
+      ELSE aktueller archivename := archiv name
+   FI
+END PROC formatieren einer diskette; 
+ 
+PROC auflisten der taskdateien: 
+   DATASPACE VAR dummy ds :: nilspace; 
+   FILE VAR f :: sequential file (output,dummy ds); 
+   list (f); 
+   headline (f,"Liste der eigenen Task"); 
+   modify (f); 
+   to line (f,1); 
+   show (f); 
+   forget (dummy ds) 
+END PROC auflisten der taskdateien; 
+ 
+PROC loeschen von dateien in der task: 
+  t1 := invers ("Loeschen von Dateien ") + "  Info mit <?>" + trennzeichen + 
+        "Bitte alle zu loeschenden Dateien ankreuzen" + trennzeichen + 
+        invers ("(Ankreuzen mit <RETURN> )"); 
+  forget (some (all,t1)) 
+END PROC loeschen von dateien in der task; 
+ 
+PROC reservieren des archives: 
+   TEXT VAR meldung; 
+   page; 
+   cursor(1,1); write("Bitte warten..."); 
+   line (2); 
+   versuche archive zu reservieren (meldung); 
+   IF meldung <> "" 
+      THEN page; 
+           line(10); 
+           write (""15"" + meldung + " "14""); 
+           weitermachen; 
+           diskette im schacht := FALSE;
+           archive ist meins := FALSE;  
+           LEAVE reservieren des archives 
+   FI; 
+   archive anmelden (aktueller archive name, meldung); 
+   IF meldung <> "" 
+    THEN melde archiveerror (meldung)
+   FI. 
+  
+END PROC reservieren des archives;  
+   
+PROC versuche archive zu reservieren (TEXT VAR fehlermeldung): 
+    fehlermeldung := ""; 
+    IF archive ist meins 
+       THEN LEAVE versuche archive zu reservieren 
+    FI; 
+    disable stop;  
+    archive (""); 
+    IF is error  
+       THEN fehlermeldung := errormessage; 
+            archive ist meins := FALSE;
+            clear error; 
+            enable stop; 
+       ELSE archive ist meins := TRUE;  
+            fehlermeldung := "";  
+            enable stop 
+    FI 
+END PROC versuche archive zu reservieren; 
+ 
+PROC archive anmelden (TEXT VAR archivename, fehlermeldung): 
+  page; 
+  line(3); 
+  fehlermeldung := ""; 
+  IF NOT archive ist meins 
+     THEN archivename   := "";  
+          diskette im schacht := FALSE;
+          fehlermeldung := "nicht reserviert"; 
+          LEAVE archive anmelden  
+  FI; 
+  IF yes ("Haben Sie die Diskette eingelegt und das Laufwerk geschlossen") 
+     THEN line; 
+          write ("Bitte warten..."); 
+          archive name := archiv name;
+          IF archiv error <> ""
+           THEN fehlermeldung := archiv error;
+                diskette im schacht := FALSE
+           ELSE diskette im schacht := TRUE
+          FI
+     ELSE diskette im schacht := FALSE; 
+          archivename := ""
+  FI 
+END PROC archive anmelden;
+ 
+PROC verlange reservierung des archives: 
+   page;
+   line(7); 
+   write (""15"Sie muessen unbedingt erst das Archiv reservieren, "14""); 
+   line(2);  
+   write (""15"sonst kann ich nicht darauf zugreifen! "14""); 
+   line(2);  
+   weitermachen 
+END PROC verlange reservierung des archives;  
+  
+PROC auflisten der archivedateinamen: 
+  forget ("Dateiliste", quiet); 
+  ueberpruefe reservierung; 
+  liste dateien des archivs auf; 
+  liste ausgeben; 
+  forget ("Dateiliste", quiet). 
+  
+  ueberpruefe reservierung: 
+    IF disk AND diskette im schacht 
+            AND NOT archive ist meins 
+       THEN verlange reservierung des archives;  
+            LEAVE auflisten der archivedateinamen 
+    FI. 
+ 
+  liste dateien des archivs auf: 
+    FILE VAR f :: sequential file (output,"Dateiliste"); 
+    disable stop; 
+    list(f,manager); 
+    IF is error 
+       THEN LEAVE auflisten der archivedateinamen; 
+       ELSE enable stop 
+    FI. 
+  
+  liste ausgeben: 
+    show (f) 
+END PROC auflisten der archivedateinamen;  
+ 
+PROC checken von dateien auf dem archive:  
+   ueberpruefe reservierung; 
+   lasse dateien auswaehlen und checke.  
+  
+   ueberpruefe reservierung: 
+     IF disk AND diskette im schacht 
+             AND NOT archive ist meins 
+        THEN verlange reservierung des archives; 
+             LEAVE checken von dateien auf dem archive 
+     FI. 
+  
+   lasse dateien auswaehlen und checke: 
+     t1 := invers ("'Checken' von Dateien  (auf dem Archiv) ") 
+           + trennzeichen + "Bitte alle zu 'checkenden' Dateien ankreuzen"; 
+     disable stop; 
+     check (some (ALL manager, t1), manager); 
+     weitermachen; 
+     IF is error 
+        THEN LEAVE checken von dateien auf dem archive 
+        ELSE enable stop; 
+     FI 
+END PROC checken von dateien auf dem archive;  
+  
+PROC schreiben von dateien aufs archive: 
+   ueberpruefe reservierung; 
+   lasse dateien auswaehlen und schreibe aufs archive. 
+    
+ueberpruefe reservierung: 
+  IF disk AND diskette im schacht 
+          AND NOT archive ist meins 
+     THEN verlange reservierung des archives; 
+          LEAVE schreiben von dateien aufs archive 
+  FI. 
+ 
+lasse dateien auswaehlen und schreibe aufs archive: 
+  t1 := invers ("Schreiben von Dateien ") + " Info mit <?>" + trennzeichen + 
+        "Bitte alle zu schreibenden Dateien ankreuzen." + trennzeichen + 
+        invers ("(Ankreuzen mit <RETURN> )"); 
+  THESAURUS VAR angekreuzte :: some (ALL myself, t1); 
+  disable stop;
+  zuerst loeschen; 
+  INT VAR zaehler; 
+  TEXT VAR dname; 
+  page; 
+  FOR zaehler FROM 1 UPTO highest entry (angekreuzte) REP 
+      IF is error 
+         THEN LEAVE schreiben von dateien aufs archive 
+      FI;  
+      dname := name (angekreuzte, zaehler); 
+      IF dname <> "" 
+         THEN putline (managername + " <--- """ + dname + """"); 
+              save (dname, manager) 
+      FI; 
+  PER.
+ 
+  zuerst loeschen:  
+    IF disk CAND (not empty (angekreuzte)) 
+       THEN out (center(invers("Bitte Warten"),"-",80)); 
+            THESAURUS CONST zu loe :: angekreuzte / ALL manager;  
+            IF not empty (zu loe) AND NOT is error
+               THEN page; 
+                    putline ("Zuerst Dateien auf der Diskette loeschen?"); 
+                    erase (zu loe, manager) 
+            FI 
+    FI  
+END PROC schreiben von dateien aufs archive; 
+  
+BOOL PROC not empty (THESAURUS CONST t): 
+  INT VAR i; 
+  FOR i FROM 1 UPTO highest entry (t) REP 
+    IF name (t,i) <> "" 
+       THEN LEAVE not empty WITH TRUE 
+    FI 
+  PER; 
+  FALSE 
+END PROC not empty; 
+ 
+PROC holen von dateien vom archive: 
+   ueberpruefe reservierung; 
+   lasse dateien auswaehlen und hole vom archive. 
+    
+ueberpruefe reservierung: 
+  IF disk AND diskette im schacht 
+          AND NOT archive ist meins 
+     THEN verlange reservierung des archives; 
+          LEAVE holen von dateien vom archive 
+  FI. 
+ 
+lasse dateien auswaehlen und hole vom archive: 
+  t1 := invers ("Holen von Dateien ") + "  Info mit <?>" + 
+        trennzeichen + 
+        "Bitte alle zu holenden Dateien ankreuzen."; 
+  THESAURUS VAR angekreuzte :: some (ALL manager,t1); 
+  INT VAR zaehler; 
+  TEXT VAR dname; 
+  page; 
+  FOR zaehler FROM 1 UPTO highest entry (angekreuzte) REP 
+      dname := name (angekreuzte, zaehler); 
+      disable stop; 
+      IF dname <> "" 
+         THEN putline (managername + " --> """ + dname + """"); 
+              fetch (dname, manager) 
+      FI; 
+      IF is error 
+         THEN LEAVE holen von dateien vom archive 
+         ELSE enable stop  
+      FI   
+  PER 
+END PROC holen von dateien vom archive; 
+ 
+PROC loeschen von dateien auf dem archive: 
+   ueberpruefe reservierung; 
+   lasse dateien auswaehlen und loesche. 
+    
+ ueberpruefe reservierung: 
+   IF disk AND diskette im schacht 
+           AND NOT archive ist meins 
+      THEN verlange reservierung des archives; 
+           LEAVE loeschen von dateien auf dem archive 
+   FI. 
+ 
+lasse dateien auswaehlen und loesche: 
+  t1 := invers ("Vernichten (Loeschen) von Dateien") + " Info mit <?>" + 
+        trennzeichen + "Bitte alle zu loeschenden Dateien ankreuzen."; 
+  disable stop; 
+  erase (some (ALL manager, t1), manager); 
+  IF is error 
+     THEN LEAVE loeschen von dateien auf dem archive 
+     ELSE enable stop; 
+  FI 
+END PROC loeschen von dateien auf dem archive; 
+ 
+PROC initialisieren des archives: 
+     TEXT VAR neuer archivename; 
+     page; 
+     line(2); 
+     write(center (""15"Vollstaendiges Loeschen des Archivs "14"")); 
+     line(2); 
+     IF archive ist meins AND diskette im schacht
+        THEN write("Eingestellter Archivname: " + 
+             invers ("""" + aktueller archivename + """")); 
+             line(2); 
+             IF yes ("Moechten Sie einen anderen Namen fuer das Archiv") 
+                THEN line(2); 
+                     stelle frage nach neuem namen 
+                ELSE neuer archivename := aktueller archivename 
+             FI 
+        ELSE stelle frage nach neuem namen  
+     FI;  
+     fuehre initialisierung durch. 
+  
+     stelle frage nach neuem namen: 
+       write("Bitte den Namen fuer das Archiv (maximal 30 Buchstaben):"); 
+       line; 
+       getline(neuer archivename); 
+       neuer archivename := compress(neuer archivename); 
+       IF   length (neuer archivename) > 40 
+            THEN line(2); 
+                 write ("Der neue Archivname ist zu lang!"); 
+                 weitermachen; 
+                 LEAVE initialisieren des archives 
+       FI. 
+  
+     fuehre initialisierung durch: 
+       disable stop; 
+       aktueller archivename := neuer archivename; 
+       archive (neuer archivename); 
+       IF is error 
+          THEN diskette im schacht := FALSE;
+               archive ist meins := FALSE;
+               LEAVE initialisieren des archives 
+          ELSE clear(archive); 
+               IF is error 
+                  THEN diskette im schacht := FALSE;
+                       LEAVE initialisieren des archives 
+                  ELSE aktueller archivename := archiv name;
+                       diskette im schacht := archiv error = ""
+               FI
+       FI 
+END PROC initialisieren des archives; 
+   
+PROC ausdruck archivelisting: 
+   ueberpruefe reservierung; 
+   print archive listing; 
+   weitermachen. 
+  
+ueberpruefe reservierung: 
+    IF disk AND diskette im schacht 
+            AND NOT archive ist meins 
+       THEN verlange reservierung des archives;  
+            LEAVE ausdruck archivelisting 
+    FI. 
+   
+print archive listing: 
+  FILE VAR listfile := sequential file (output , "PLA");
+  INT  VAR i;
+  TEXT CONST head :: 70 * "=",
+             end  :: 70 * "_";
+  TEXT VAR   record;
+  disable stop;
+  list (listfile, archive);
+  IF is error 
+    THEN diskette im schacht := FALSE;
+         LEAVE ausdruck archivelisting
+  FI;
+  print head;
+  erase dummy names;
+  print bottom;
+  print and erase listing.
+
+print head :
+  modify (listfile);
+  to line (listfile, 1);
+  FOR i FROM 1 UPTO 6 REP
+    insert record (listfile)
+  PER;
+  to line (listfile, 1);
+  write record (listfile, type); down (listfile);
+  write record (listfile, head); down (listfile);
+  write record (listfile, "ARCHIVNAME: "+headline (listfile) + "  " +
+                time of day  +"  " + date ); down (listfile);
+  write record (listfile, head); down (listfile);
+  write record (listfile, " "); down (listfile);
+  write record (listfile, "Date      Store  Contents").
+
+erase dummy names :
+  to line (listfile, 6);
+  WHILE NOT eof (listfile) REP
+    read record (listfile, record);
+    IF (record SUB dummy name pos) = "-"
+      THEN delete record (listfile)
+      ELSE down (listfile) 
+    FI 
+  PER.
+
+print bottom :
+   output (listfile);
+   putline (listfile, end).
+
+print and erase listing :
+  modify (listfile);
+  edit (listfile);
+  line (3);
+  IF yes ("Archivlisting drucken")
+    THEN print ("PLA")
+  FI;
+  forget ("PLA", quiet).
+ 
+END PROC ausdruck archivelisting;  
+ 
+PROC neue diskette anmelden: 
+   ueberpruefe reservierung; 
+   melde neue diskette an. 
+  
+   ueberpruefe reservierung: 
+     IF NOT archive ist meins 
+       THEN reservieren des archives;  
+             LEAVE neue diskette anmelden 
+     FI.  
+ 
+   melde neue diskette an: 
+     TEXT VAR meldung;  
+     page; 
+     cursor(1,1); write("Bitte warten..."); 
+     line (2); 
+     archive anmelden (aktueller archive name,meldung); 
+     IF meldung <> "" 
+       THEN melde archiveerror (meldung) 
+     FI. 
+  
+END PROC neue diskette anmelden;  
+ 
+PROC automatische freigabe des archives: 
+   archive ist meins := FALSE;  
+   diskette im schacht := FALSE; 
+   command dialogue (FALSE); 
+   release(archive); 
+   command dialogue (TRUE) 
+END PROC automatische freigabe des archives;  
+  
+PROC melde archiveerror (TEXT CONST meldung): 
+   line(2); 
+   IF   meldung = "nicht reserviert" 
+        THEN verlange reservierung des archives; 
+   ELIF meldung = "keine diskette" 
+        THEN write (""15"Ich mache die Reservierung rueckgaengig! "14""); 
+             neu reservieren 
+   ELIF pos (meldung,"inkonsistent") > 0 
+        THEN write(""15"Diskette ist nicht formatiert / initialisiert "14""); 
+             neu reservieren; 
+   ELIF pos(meldung,"Lesen unmoeglich") > 0 
+           COR pos(meldung, "Schreiben unmoeglich") > 0 
+        THEN write(""15"Die Diskette ist falsch eingelegt "14"");line (2); 
+             write(""15"oder das Laufwerk ist nicht geschlossen "14"");line (2); 
+             write(""15"oder die Diskette ist nicht formatiert !"14""); 
+             neu reservieren; 
+   ELIF pos (meldung, "Archiv heisst") > 0 AND pos(meldung, "?????") > 0 
+        THEN write(""15"Diskette nicht lesbar ! (Name: '?????') "14"");line(2); 
+             write(""15"Moeglicherweise ist die Diskette defekt ! "14"");  
+             neu reservieren; 
+   ELIF pos(meldung, "Archiv heisst") > 0 
+        THEN write (invers(meldung)); 
+             line(2); 
+             write (""15"Diskette wurde mit anderem Namen angemeldet!"14"");line(2); 
+             write("Bitte neu reservieren!"); 
+             weitermachen 
+   ELSE write(invers(meldung)); 
+        neu reservieren 
+   FI 
+END PROC melde archiveerror; 
+ 
+PROC neu reservieren: 
+  line (2); 
+  write ("Bitte den Fehler beseitigen und das Archiv neu reservieren !"); 
+  weitermachen; 
+  diskette im schacht := FALSE
+END PROC neu reservieren; 
+ 
+PROC weitermachen: 
+  line (2);
+  write("Zum Weitermachen bitte irgendeine Taste tippen!"); 
+  pause  
+END PROC weitermachen; 
+
+PROC melde error (TEXT CONST meldung): 
+  page; 
+  line(10); 
+  write (invers(meldung)); 
+  weitermachen 
+END PROC melde error 
+  
+END PACKET mpg dm; 
+ 
+(**************************** TOOLS  *******************************)
+
+PACKET mpg tools DEFINES put,
+                         th,
+                         gen :
+ 
+
+lernsequenz auf taste legen ("E", ""27""2""27"p"27"qedit ("27"g)"13""); 
+
+PROC put (BOOL CONST b) :
+  IF b THEN put ("TRUE") ELSE put ("FALSE")  FI
+END PROC put;
+
+PROC th (THESAURUS CONST thes) :
+  THESAURUS VAR help :: SOME thes;help := empty thesaurus
+END PROC th;
+
+(************************ Task - Generierung *******************************)
+
+(* Zum Generieren einer TASK ist folgendes zu beachten:
+
+a) Es muss ein Archiv zur Verfuegung stehen, das einen beliebigen Namen hat.
+b) Auf diesem Archiv muss es eine Datei namens <"gen." + taskname> geben.
+c) Diese Datei muss folgendermassen aufgebaut sein:
+   In jeder Zeile steht genau ein Name einer fuer diese TASK wichtigen Datei.
+   Die ersten Namen sind Namen von zu insertierenden Dateien.
+   Es folgt "gen." + taskname.
+   Alle folgenden Dateinamen werden vom Archiv geholt und bleiben in der
+   TASK erhalten. *)
+
+BOOL VAR archive access :: FALSE;
+
+PROC hole (TEXT CONST dateiname):
+  IF exists (dateiname) 
+     THEN display ("***")
+     ELSE IF NOT archive access
+            THEN archiv;    (* geaendert BV 10.07.86 *)
+                 archive access := TRUE
+          FI;
+          display ("-->");
+          from (dateiname)
+  FI;
+  display (dateiname + ""13""10"")
+END PROC hole;
+
+PROC ins (TEXT CONST dateiname):
+  line; 
+  out (77 * "=" + ""13""10"");
+  out (dateiname + " wird insertiert"13""10"");
+  insert (dateiname);
+  forget (dateiname, quiet)
+END PROC ins;
+
+LET anzahl dateien = 50;
+
+ROW anzahl dateien TEXT VAR datei;
+
+INT VAR anzahl zu insertierender,
+        gesamtzahl;
+
+PROC gen:
+  TEXT CONST taskname :: name (myself),
+             gendateiname :: "gen." + taskname;
+  TEXT VAR   record;
+  BOOL VAR   zu insertieren :: TRUE;
+
+  archive access := FALSE;
+  anzahl zu insertierender := 0;
+  gesamtzahl               := 0;
+  page;
+  putline ("GENERIERUNG VON " + taskname);
+  putline ((16 + length (taskname)) * "=");
+  hole (gendateiname);
+
+  FILE VAR gendatei := sequential file (input, gendateiname);
+  WHILE NOT eof (gendatei) AND gesamtzahl < anzahl dateien REP
+     getline (gendatei, record);
+     record := compress (record);
+     IF record = gendateiname
+        THEN zu insertieren := FALSE
+     FI;
+     IF zu insertieren
+        THEN anzahl zu insertierender INCR 1
+     FI;
+     gesamtzahl INCR 1;
+     hole (record);
+     datei [gesamtzahl] := record
+  PER;
+  forget (gendateiname, quiet);
+  IF archive access
+    THEN release;
+         line (2);
+         put ("Bitte entfernen Sie Ihre Diskette aus dem Laufwerk!"); 
+         line
+  FI;
+  INT VAR i;
+  FOR i FROM 1 UPTO anzahl zu insertierender REP
+      ins (datei [i])
+  PER;
+  IF yes ("global manager")
+     THEN do ("global manager")
+  FI.
+END PROC gen
+ 
+END PACKET mpg tools;
+ 
+(********************* MPG TARGET HANDLING *******************) 
+ 
+PACKET target handling DEFINES TARGET, 
+                       initialize target, 
+                       complete target, 
+                       delete in target, 
+                       select target, 
+                       actual target name, 
+                       actual target set, 
+                       target names: 
+ 
+ 
+TYPE TARGET = STRUCT (INT ind, THESAURUS target name, target set); 
+ 
+LET no target = 0; 
+ 
+PROC initialize target (TARGET VAR tar): 
+  tar.target set  := empty thesaurus; 
+  tar.target name := empty thesaurus; 
+  tar.ind         := no target 
+END PROC initialize target; 
+ 
+PROC complete target (TARGET VAR tar, TEXT CONST nam, set): 
+  IF NOT (tar.target name CONTAINS nam) 
+     THEN insert (tar.target name, nam); 
+          insert (tar.target set , set) 
+     ELSE errorstop ("Bezeichner bereits vorhanden") 
+  FI 
+END PROC complete target; 
+ 
+PROC delete in target (TARGET VAR tar, TEXT CONST nam): 
+  INT CONST ind :: link (tar.target name, nam); 
+  delete (tar.target name, ind); 
+  delete (tar.target set , ind); 
+  tar.ind := no target 
+END PROC delete in target; 
+ 
+PROC select target (TARGET VAR tar, TEXT CONST nam, TEXT VAR set): 
+  INT VAR ind :: link (tar.target name, nam); 
+  IF ind <> 0 
+     THEN set     := name (tar.target set , ind); 
+          tar.ind := ind 
+     ELSE set     := "" 
+  FI 
+END PROC select target; 
+ 
+TEXT PROC actual target name (TARGET CONST tar): 
+  IF tar.ind = no target 
+     THEN "" 
+     ELSE name (tar.target name, tar.ind) 
+  FI 
+END PROC actual target name; 
+ 
+TEXT PROC actual target set (TARGET CONST tar): 
+  IF tar.ind = no target 
+     THEN "" 
+     ELSE name (tar.target set, tar.ind) 
+  FI 
+END PROC actual target set; 
+ 
+THESAURUS PROC target names (TARGET CONST tar): 
+  tar.target name 
+END PROC target names 
+ 
+END PACKET target handling;
+
+(*********************** MPG PRINT CMD ***********************)
+
+PACKET mpg print cmd DEFINES print, select printer, 
+                             install printers, 
+                             list printers,
+                             printer, printers: 
+ 
+ 
+TARGET VAR printer list; 
+ 
+LET std printer name = "PRINTER", 
+    titel            = "PRINTER AUSWAHL"; 
+ 
+LET trenner = "\#"; 
+ 
+TARGET PROC printers: 
+   printer list
+END PROC printers;
+
+PROC install printers (FILE VAR f): 
+  initialize target (printer list); 
+  TEXT VAR nam, set; 
+  TEXT VAR std nam :: "", std set :: ""; 
+  WHILE NOT eof (f) REP 
+    TEXT VAR zeile; 
+    getline (f, zeile); 
+    IF zeile <> "" 
+       THEN INT CONST po :: pos (zeile, trenner); 
+            nam := subtext (zeile, 1, po - 1); 
+            set := subtext (zeile, po + 1); 
+            complete target (printer list, nam, set); 
+            IF int (nam) = station (myself) 
+               THEN std nam := nam; 
+                    std set := set 
+            FI 
+    FI
+  PER; 
+  select target (printer list, std nam, std set); 
+  IF std set <> "" 
+     THEN fonttable (std set) 
+  FI 
+END PROC install printers; 
+ 
+PROC select printer: 
+  TEXT VAR font; 
+  select target (printer list, 
+     one (target names (printer list), titel,1,24), font); 
+  IF font <> "" 
+     THEN fonttable (font) 
+  FI 
+END PROC select printer; 
+ 
+PROC list printers: 
+  th (target names (printer list)) 
+END PROC list printers; 
+ 
+PROC print : 
+  print (last param) 
+END PROC print; 
+ 
+PROC print (TEXT CONST file) : 
+  save (file, printer) 
+END PROC print; 
+ 
+PROC print (THESAURUS CONST thes) : 
+  save (thes, printer) 
+END PROC print; 
+ 
+TASK PROC printer: 
+  INT VAR stat :: int (actual target name (printer list)); 
+  IF stat = 0 
+     THEN niltask 
+     ELSE stat/std printer name 
+  FI 
+END PROC printer 
+ 
+END PACKET mpg print cmd;
+ 
+(************************ EDIT MONITOR *************************)
+
+PACKET edit monitor DEFINES  edit monitor,    (* Lutz Prechelt      *)
+                             F,               (* Carsten Weinholz   *) 
+                             table:           (* Thomas Clermont    *) 
+                                              (* EUMEL 1.8          *)
+                                              (* Version 4.4.1      *)
+                                              (* Multimonitor       *)
+                                              (* Alphaeditor        *)
+                                              (* 06.07.1987         *)
+ 
+LET   command handling line  = 18,  (* muss > max file + 1 und < 23 sein *)
+      max file               = 15,  (* max. 20 *)
+      file type              = 1003,
+      min lines per segment  = 24,  (* darunter wird reorganisiert *)
+      integer is allowed     =  3,
+      no command             = 4711,
+      gib kommando 1         = "Gib Edit-Monitor ",
+      gib kommando 2         = " Kommando :";
+ 
+TEXT CONST command list ::"quitmonitor:1.0edit:2.1run:3.1insert:4.1" + 
+                          "forget:5.1rename:6.2copy:7.2fetch:8.1"      + 
+                          "save:9.1close:10.1fileinfo:11.0reorganize:12.1";
+ 
+LET EDITTABLE = ROW max file STRUCT (THESAURUS line table, 
+                                     TEXT      name, 
+                                     FILE      file      );
+ 
+LET nil code = 0, 
+    edit code= 1, 
+    do code  = 2;
+
+INT  VAR command index, number of params, command indices,
+         aufruftiefe :: 0,zeile;
+ 
+TEXT VAR param 1, param 2, old command :: "", command line :: "";
+BOOL VAR short command, info :: FALSE,verlasse monitor :: FALSE;
+INITFLAG VAR this monitor;
+ 
+EDITTABLE VAR etb;
+ 
+PROC edit monitor :
+  TEXT VAR ch, old lernsequenz :: lernsequenz auf taste ("Q");
+  INT  VAR i, previous heap size :: heap size;
+  disable stop;
+  initialize;
+  get new table;
+  REP
+    prepare screen;
+    perhaps reorganize and get command;
+    execute command;
+    collect heap garbage if necessary
+  UNTIL verlasse monitor PER;
+  lernsequenz auf taste legen ("Q",old lernsequenz);
+  close all files if not nested.
+
+initialize :
+  lernsequenz auf taste legen ("Q",""1""8""1""12"quitmonitor"13"");
+  verlasse monitor := FALSE;
+  aufruftiefe INCR 1;
+  IF aufruftiefe > max file
+     THEN aufruftiefe DECR 1; 
+          errorstop ("Editmonitor overflow: Bereits " + text (max file ) + "Monitore geoeffnet") 
+     ELSE IF NOT initialized (this monitor) 
+             THEN FOR i FROM 1 UPTO max file REP 
+                      etb [i].line table := empty thesaurus; 
+                      etb [i].name := ""
+                  PER
+          FI; 
+          FOR i FROM 1 UPTO max file REP 
+            etb [i].name := name (etb [aufruftiefe].line table,i) 
+          PER
+  FI.
+
+prepare screen :
+  calc command handling line; 
+  put file info.
+ 
+calc command handling line: 
+  out (""10""); (* down *)
+  INT VAR dummy, y; 
+  get cursor (dummy, y); 
+  FOR dummy FROM 1 UPTO y-22 REP
+     out (""10"") 
+  PER; 
+  zeile := max (command handling line, min (y + 1, 22)). 
+ 
+perhaps reorganize and get command :
+  BOOL VAR anything reorganized :: FALSE, 
+           was error :: FALSE ;
+  IF is error
+   THEN command line := old command;
+        out (""3""); (* up *)
+        put error; clear error; was error := TRUE
+   ELSE command line := "" 
+  FI;
+  out (        "      ");
+  out (gib kommando);
+  out (""13""10"      ");
+  IF NOT was error THEN perhaps reorganize  FI;
+  IF anything reorganized
+  THEN command index := no command;
+       LEAVE perhaps reorganize and get command
+  FI;
+  editget (command line, "", "fk", ch);
+  IF ch = ""27"k"
+  THEN out (""13""5"");
+       command line := old command;
+       out ("      ");
+       editget (command line, "", "f", ch) 
+  FI;
+  line;
+  old command := command line;
+  command index := cmd index (command line);
+  param position (LENGTH command line + 7);
+  IF (command index > 0 AND command index <= max file) 
+                        AND command indices > 0
+  THEN short command := TRUE
+  ELSE short command := FALSE;
+       analyze command (command list, command line, integer is allowed,
+                        command index, number of params,param 1, param 2)
+  FI.
+
+perhaps reorganize :
+  BOOL VAR interrupt;
+  ch := getcharety;
+  IF ch <> "" 
+   THEN push (ch); LEAVE perhaps reorganize 
+  FI;
+  ch := incharety (50);
+  IF ch <> "" 
+   THEN type (ch); LEAVE perhaps reorganize 
+  FI;
+  FOR i FROM 1 UPTO max file REP
+    reorganize (etb [i].name, anything reorganized, interrupt, i);
+  UNTIL interrupt OR anything reorganized  PER.
+
+close all files if not nested :
+  aufruftiefe DECR 1;
+  command index := 0; (* Um die verschachtelten Aufrufe zu schuetzen *)
+  verlasse monitor := aufruftiefe = 0;
+  IF aufruftiefe > 0 
+     THEN FOR i FROM 1 UPTO max file REP 
+            etb [i].name := name (etb [aufruftiefe].line table,i)
+          PER; 
+     ELSE param 1      := "";
+          param 2      := "";
+          command line := "";
+          old command  := ""
+   FI.
+
+collect heap garbage if necessary :
+  IF heap size > previous heap size + 4
+  THEN collect heap garbage;
+       previous heap size := heap size
+  FI
+ENDPROC edit monitor;
+
+PROC put file info: 
+  INT VAR i;
+    out (""1""); (* home *) 
+  FOR i FROM 1 UPTO max file WHILE NOT is incharety REP
+    out (text (i, 2));
+    out (" : ");
+    IF info 
+     THEN show file info
+    FI;
+    IF etb [i].name <> "" 
+     THEN out ("""" + etb [i].name + """")
+    FI;
+    out (""5""10""13"")
+  PER;
+  out(""5"");
+  cursor (1, zeile).
+ 
+show file info :
+  (* Falls fileinfo an, werden vor den Dateinamen bei FILEs die Anzahl von
+     Zeilen , Segmenten und Speicher angezeigt.                         *)
+  IF exists (etb [i].name) 
+     THEN IF type (old (etb [i].name)) = file type 
+           THEN out (text (lines (etb [i].file), 5));
+                out (" ");
+                out (text (segments (etb [i].file), 4));
+                out (" ")
+           ELSE out ( 11 * "=")
+          FI; 
+          out (text (storage (old (etb [i].name)),5))
+     ELIF etb [i].name <> ""
+     THEN out ( 16 * "=") 
+  FI;
+  out ("  ").
+
+END PROC put file info; 
+ 
+PROC execute command :
+  enable stop;
+  IF command index = no command THEN LEAVE execute command  FI;
+  IF short command  THEN do edit monitor command (command index) 
+                    ELSE case selection  FI.
+
+case selection :
+  SELECT command index OF
+    CASE 1 : (* quit *)  verlasse monitor := TRUE
+    CASE 2 : edit (name from list (param 1))
+    CASE 3 : run (name from list (param 1))
+    CASE 4 : insert (name from list (param 1))
+    CASE 5 : forget (name from list (param 1)); close (int (param1))
+    CASE 6 : rename (name from list (param 1) , name from list (param 2))
+    CASE 7 : copy (name from list (param 1), name from list (param 2))
+    CASE 8 : fetch (name from list (param 1))
+    CASE 9 : save (name from list (param 1))
+    CASE 10: close (int (param 1))
+    CASE 11: info := NOT info
+    CASE 12: reorganize (name from list (param 1))
+    OTHERWISE do (command line) 
+  END SELECT 
+END PROC execute command;
+
+PROC close (INT CONST n) :
+  IF (n > 0  AND n <= max file)  CAND  etb [n].name <> ""
+  THEN IF exists (etb [n].name) CAND type (old (etb [n].name)) = file type
+          THEN close (etb [n].file) 
+       FI;
+       INT VAR id;
+       delete (etb [aufruftiefe].line table,etb [n].name,id); 
+       etb [n].name := ""
+  FI
+END PROC close;
+
+TEXT OP F (INT  CONST nr) :
+     IF nr > 0 AND nr <= max file
+      THEN etb [nr].name
+      ELSE out (""7""); "" 
+     FI
+END OP F;
+
+OP F (INT CONST nr, TEXT CONST datei) :
+    IF nr > 0 AND nr <= max file
+     THEN etb [nr].name := datei;
+          insert (etb [aufruftiefe].line table,datei);
+          IF exists (datei) CAND type (old (datei)) = file type
+           THEN etb [nr].file := sequential file(modify, datei) 
+          FI
+     ELSE out (""7"") 
+    FI
+END OP F;
+
+PROC get new table: 
+ table (some (all + etb [aufruftiefe].line table + vorgaenger)). 
+ 
+ vorgaenger: 
+  IF aufruftiefe = 1 
+   THEN empty thesaurus 
+   ELSE etb [aufruftiefe - 1].line table
+  FI
+END PROC get new table; 
+ 
+THESAURUS PROC table :
+  THESAURUS VAR result :: emptythesaurus;
+  INT VAR i;
+  FOR i FROM 1 UPTO max file REP
+    IF exists (etb [i].name) AND NOT (result CONTAINS etb [i].name)
+     THEN insert (result, etb [i].name) 
+    FI
+  PER;
+  result
+END PROC table;
+
+PROC table (THESAURUS CONST new) :
+  INT VAR i, nr :: 1, dummy;
+  TEXT VAR t;
+  etb [aufruftiefe].line table := empty thesaurus; 
+  FOR i FROM 1 UPTO max file REP
+    etb [i].name := ""
+  PER;
+  FOR i FROM 1 UPTO highest entry (new) REP
+    get (new, t, dummy);
+    IF t <> ""
+     THEN nr F t;nr INCR 1
+    FI
+  UNTIL nr > max file  PER
+END PROC table;
+
+PROC do edit monitor command (INT CONST file nr) :
+  enable stop;
+  IF command indices = 1 
+     THEN try to edit or to execute
+     ELSE try alpha editor 
+  FI.
+
+try to edit or to execute:
+  SELECT prepare edit (file nr) OF
+    CASE edit code: last param (etb [file nr].name);
+                    edit   (etb [file nr].file);
+                    page
+    CASE do code  : do (etb[file nr].name)
+  END SELECT. 
+ 
+try alpha editor: 
+  IF command indices <= 10 
+     THEN open sub editors; 
+          IF groesster editor > 0 
+             THEN edit (1); 
+                  WHILE groesster editor > 0 REP
+                        quit
+                  PER;
+                  page
+          FI
+     ELSE errorstop ("Maximal 10 Parallel-Editoren") 
+  FI. 
+ 
+open sub editors: 
+  TEXT VAR num, edit cmd :: ""; 
+  INT VAR ye :: 1, sub :: file nr, pass;
+  WHILE groesster editor > 0 REP
+        quit
+  PER;
+  FOR pass FROM 1 UPTO 2 REP 
+     IF pass = 2
+        THEN command line := edit cmd
+     FI;
+     scan (command line);
+     next symbol (num);                 (* skip ersten index *)
+     REP
+        INT VAR op code := prepare edit (sub);
+        IF pass = 1
+           THEN SELECT op code OF
+                  CASE nil code : command indices DECR 1
+                  CASE editcode : edit cmd CAT (num + " ")
+                  CASE do code  : edit cmd CAT (num + " ");
+                                  command indices DECR 1 
+                END SELECT
+           ELSE SELECT op code OF
+                  CASE edit code: neuer editor
+                  CASE do   code: do (etb [sub].name); 
+                                  IF groesster editor > 0 
+                                     THEN bild zeigen;     
+                                          ueberschrift zeigen 
+                                  FI 
+                END SELECT
+        FI; 
+        next symbol (num);
+        sub := int (num)
+     UNTIL num = "" PER;
+     sub := file nr;
+  PER.
+
+  neuer editor: 
+    open editor (groesster editor+1,etb [sub].file, TRUE, 1,ye,79,25-ye); 
+    ye INCR (24 DIV command indices)
+
+END PROC do edit monitor command;
+
+INT PROC prepare edit (INT CONST file nr): 
+  IF file nr > 0 AND file nr <= max file
+     THEN IF etb [file nr].name = "" 
+             THEN get file name and open;
+                  IF etb [file nr].name <> "" 
+                     THEN IF exists (etb [file nr].name) 
+                             THEN IF type (old (etb [file nr].name)) = file type
+                                   THEN edit code
+                                   ELSE nil code
+                                  FI 
+                             ELSE do code
+                          FI
+                     ELSE nil code
+                  FI
+          ELIF NOT exists (etb [file nr].name)  
+             THEN do code
+          ELIF type (old (etb [file nr].name)) <> file type
+             THEN nil code
+             ELSE modify (etb [file nr].file);
+                  edit code
+          FI 
+     ELSE errorstop ("Undefinierter Index [1;15]");nil code
+  FI.
+  
+get file name and open :
+  cursor (4, file nr);
+  out (""5"? ");
+  editget (etb [file nr].name);
+  IF etb [file nr].name <> "" 
+     THEN file nr F etb [file nr].name; 
+          IF NOT exists (etb [file nr].name)
+             THEN out (""13""10"");
+                  IF no (5 * ""2"" +"Datei neu einrichten")
+                     THEN LEAVE prepare edit WITH nil code
+                     ELSE kopple file an
+                  FI
+           ELIF type (old (etb [file nr].name)) = file type
+             THEN kopple file an
+          FI
+   FI. 
+ 
+ kopple file an: 
+   etb [file nr].file := sequential file (output, etb [file nr].name). 
+ 
+END PROC prepare edit; 
+ 
+(***************** Hilfsprozeduren *********************************)
+
+BOOL PROC is incharety :
+  TEXT VAR ch :: getcharety; 
+  IF ch = "" 
+   THEN FALSE
+   ELSE push (ch); 
+        TRUE 
+  FI
+END PROC is incharety;
+
+TEXT PROC name from list (TEXT CONST name):
+  INT  VAR i :: int (name);
+  IF (i > 0  AND  i <= max file)
+   THEN etb [i].name
+   ELSE name
+  FI.
+END PROC name from list;
+ 
+PROC reorganize (TEXT CONST datei, BOOL VAR reorganization processed,
+                                            interrupted, 
+                                   INT CONST file nummer): 
+  (* Reorganisiert nur , falls :
+     1. Datei ein FILE ist
+     2. FILE mindestens "min lines to reorganize" Zeilen hat
+     3. FILE nicht im Schnitt "min lines per segment" Zeilen pro Segment hat
+     4. kein Tastendruck erfolgt
+   *)
+  DATASPACE VAR ds;
+  FILE VAR in, out;
+  TEXT VAR t;
+  INT VAR actual line,i,x,y;
+  get cursor (x,y);
+  interrupted := FALSE;
+  IF NOT exists (datei) COR type (old (datei)) <> file type
+   THEN LEAVE reorganize 
+  FI;
+  in := sequential file (modify, datei);
+  actual line := line no (in); 
+  input (in);
+  IF (lines (in) < 120 CAND segments (in) < 6) COR 
+     lines (in) DIV segments (in) >= min lines per segment
+   THEN modify (in);
+        to line (in,actual line); 
+        LEAVE reorganize
+  FI;
+  disable stop;
+  ds := nilspace;
+  out := sequential file (output, ds);
+  IF info 
+     THEN FOR i FROM 1 UPTO lines (in) REP
+              cursor (4, file nummer); 
+              put (i);
+              getline (in, t);
+              putline (out, t);
+              IF is error COR is incharety THEN interrupt  FI
+          PER 
+     ELSE FOR i FROM 1 UPTO lines (in) REP
+              getline (in, t);
+              putline (out, t);
+              IF is error COR is incharety THEN interrupt  FI
+          PER
+  FI; 
+  copy attributes (in,out);
+  modify (out);
+  to line (out,actual line);
+  forget (datei, quiet);
+  copy (ds, datei);
+  forget (ds);
+  reorganization processed := TRUE.
+
+interrupt :
+  cursor (4, lines (in)); 
+  forget (ds);
+  interrupted := TRUE;
+  cursor (x,y);
+  enable stop;
+  LEAVE reorganize.
+
+END PROC reorganize;
+
+INT PROC cmd index (TEXT CONST command line): 
+    INT VAR type, result :: 0; 
+    TEXT VAR num;
+    command indices := 0; 
+    scan (command line); 
+    REP 
+       next symbol (num, type); 
+       IF type = 3                     (* Ziffernfolge *) 
+          THEN IF command indices = 0 
+                  THEN result := int (num) 
+               FI; 
+               command indices INCR 1 
+       ELIF type <> 7 
+          THEN command indices := 0 
+       FI 
+    UNTIL type = 7 OR command indices = 0 PER; 
+    result 
+END PROC cmd index;
+
+TEXT PROC gib kommando: 
+  gib kommando 1 + text (aufruftiefe) + gib kommando 2 
+END PROC gib kommando; 
+ 
+END PACKET edit monitor; 
+ 
+(******************************** MANAGER ******************************)
+ 
+PACKET mpg global manager DEFINES monitor, 
+                                  break, 
+                                  end global manager, 
+                                  begin, 
+                                  begin password,
+                                  manager message,
+                                  manager question,
+                                  free manager,
+                                  std manager,
+                                  mpg manager,
+                                  free global manager,
+                                  global manager :
+
+
+LET ack              = 0,
+    nak              = 1,
+    error nak        = 2,
+    message ack      = 3,
+    question ack     = 4,
+    second phase ack = 5,
+    false code       = 6,
+
+    begin code       = 4,
+    password code    = 9,
+    fetch code       = 11,
+    save code        = 12,
+    exists code      = 13,
+    erase code       = 14,
+    list code        = 15,
+    all code         = 17,
+
+    killer code      = 24, 
+
+    continue code    = 100,
+ 
+    error pre        = ""7""13""10""5"Fehler : ",
+    cr lf            = ""13""10"";
+
+ 
+DATASPACE VAR ds := nilspace;
+ 
+BOUND STRUCT (TEXT fnam, write pass, read pass) VAR msg;
+BOUND TEXT VAR reply msg;
+ 
+TASK VAR order task, last order task;
+ 
+FILE VAR list file;
+INT VAR reply, order, last order, phase no;
+TEXT VAR error message buffer :: "",
+         record,
+         fnam,
+         create son password :: "",
+         save write password,
+         save read password,
+         save file fnam;
+ 
+TEXT VAR std begin proc :: "checkoff;endglobalmanager(TRUE);" +
+                           "warnings off;sysout("""");sysin("""");" +
+                           "monitor";
+BOOL VAR is global manager, is break manager;
+
+PROC mpg manager (PROC (DATASPACE VAR, INT CONST, INT CONST, TASK CONST)
+                  manager) :
+  IF online
+    THEN TEXT VAR dummy;
+         put ("Task-Passwort  :");
+         getsecretline (dummy);
+         IF dummy <> "" THEN taskpassword (dummy) FI;
+         put ("Beginn-Passwort:");
+         getsecretline (dummy);
+         IF dummy <> "" THEN begin password (dummy) FI
+  FI;
+  is break manager  := FALSE;
+  global manager (PROC (DATASPACE VAR, INT CONST, INT CONST, TASK CONST)
+                  manager)
+END PROC mpg manager;
+
+PROC global manager :
+  mpg manager (PROC (DATASPACE VAR, INT CONST, INT CONST, TASK CONST)
+               std manager)
+END PROC global manager;
+
+PROC global manager (PROC (DATASPACE VAR, INT CONST, INT CONST,
+                     TASK CONST) manager) :
+   is global manager := TRUE; 
+   internal manager (PROC (DATASPACE VAR,INT CONST,INT CONST, 
+                     TASK CONST) manager) 
+END PROC global manager; 
+ 
+PROC internal manager (PROC (DATASPACE VAR, INT CONST, INT CONST,
+                       TASK CONST) manager) :
+  old break;
+  set autonom;
+  disable stop;
+  command dialogue (FALSE);
+  last order task := niltask;
+  remember heap size;
+  REP
+    wait (ds, order, order task);
+    IF   order <> second phase ack
+      THEN prepare first phase;
+           manager (ds, order, phase no, order task)
+    ELIF order task = last order task
+      THEN prepare second phase;
+           manager (ds, order, phase no, order task)
+      ELSE send nak  FI;
+    send error if necessary;
+    collect heap garbage if necessary
+  UNTIL (NOT is global manager) AND (NOT is break manager)
+  PER;
+  command dialogue (TRUE);
+  reset autonom.
+
+send error if necessary :
+  IF is error
+    THEN forget (ds);
+         ds := nilspace;
+         reply msg := ds;
+         CONCR (reply msg) := error message;
+         clear error;
+         send (order task, error nak, ds)
+  FI .
+ 
+remember heap size :
+  INT VAR old heap size := heap size .
+
+collect heap garbage if necessary :
+  IF heap size > old heap size + 2
+    THEN collect heap garbage;
+         old heap size := heap size
+  FI .
+
+prepare first phase :
+  phase no := 1;
+  last order := order;
+  last order task := order task.
+
+prepare second phase :
+  phase no INCR 1;
+  order := last order.
+
+send nak :
+  forget (ds);
+  ds := nilspace;
+  send (order task, nak, ds)
+END PROC internal manager;
+
+PROC free global manager :
+  mpg manager (PROC (DATASPACE VAR, INT CONST, INT CONST, TASK CONST)
+               free manager)
+END PROC free global manager;
+
+PROC std manager (DATASPACE VAR ds, INT CONST order, phase, 
+                  TASK CONST order task) :
+  IF (order = begin code AND task darf beginnen) COR
+                             task darf senden
+     THEN free manager (ds, order, phase, order task)
+     ELSE errorstop ("Kein Zugriffsrecht auf Task """ + name (myself) + """")
+  FI.
+
+  task darf beginnen:
+    (task ist systemtask OR task ist sohn) AND is global manager.
+
+  task darf senden:
+    task ist systemtask OR task ist sohn.
+
+  task ist systemtask:
+    ordertask < supervisor OR ordertask = supervisor.
+
+  task ist sohn:
+    order task < myself
+END PROC std manager;
+
+PROC free manager (DATASPACE VAR ds, INT CONST order, phase,
+                   TASK CONST order task) :
+  enable stop;
+  IF   order > continue code   AND
+       order task = supervisor THEN y maintenance
+  ELIF order = begin code AND is global manager
+    THEN y begin
+    ELSE file manager order
+  FI .
+
+file manager order :
+  get message text if there is one;
+  SELECT order OF
+    CASE fetch code       : y fetch
+    CASE save code        : y save
+    CASE exists code      : y exists 
+    CASE erase code       : y erase
+    CASE list code        : y list
+    CASE all code         : y all
+    CASE killer code      : y killer
+    OTHERWISE errorstop ("Falscher Auftrag fuer Task """ + name (myself) + """")
+  ENDSELECT .
+ 
+get message text if there is one :
+  IF order >= fetch code AND order <= erase code AND phase = 1 (* 28.6.'86 *)
+    THEN msg := ds;
+         fnam := msg.fnam
+  FI .
+ 
+y begin :
+  BOUND STRUCT (TEXT tname, tpass, TASK task, PROCA start proc) VAR sv msg := ds;
+  IF create son password = sv msg.tpass AND create son password <> "-"
+    THEN create son task
+  ELIF sv msg.tpass = ""
+    THEN ask for password
+  ELSE   errorstop ("Passwort falsch")
+  FI .
+
+create son task :
+  begin (ds, PROC std begin, reply);
+  send (order task, reply, ds) .
+
+ask for password :
+  send (order task, password code, ds) .
+
+y fetch :
+  IF read permission (fnam, msg.read pass) COR order task < supervisor
+    THEN forget (ds);
+         ds := old (fnam);
+         send (order task, ack, ds)
+    ELSE errorstop ("Passwort falsch")
+  FI .
+ 
+y erase :
+  msg := ds;
+  fnam := msg.fnam;
+  IF NOT exists (fnam)
+    THEN manager message ("""" + fnam + """ existiert nicht", order task)
+  ELIF phase no = 1
+    THEN manager question ("""" + fnam + """ loeschen", order task)
+  ELIF write permission (fnam, msg.write pass) COR order task < supervisor
+    THEN forget (fnam, quiet);
+         send (order task, ack, ds)
+    ELSE errorstop ("Passwort falsch")  FI .
+ 
+y save :
+  IF phase no = 1
+    THEN ysave pre
+    ELSE y save post  FI.
+
+y save pre :
+  IF write permission (fnam, msg.write pass) COR order task < supervisor
+    THEN save file fnam := fnam;
+         save write password  := msg.write pass;
+         save read password   := msg.read pass;
+         IF exists (fnam)
+           THEN manager question (""""+fnam+""" ueberschreiben", order task)
+           ELSE send (order task, second phase ack, ds)
+         FI;
+    ELSE errorstop ("Passwort falsch")
+  FI .
+ 
+y save post :
+  forget (save file fnam, quiet);
+  copy (ds, save file fnam);
+  enter password (save file fnam,
+                  save write password, save read password);
+  forget (ds);
+  ds := nilspace;
+  send (order task, ack, ds);
+  cover tracks of save passwords.
+
+cover tracks of save passwords :
+  replace (save write password, 1, LENGTH save write password * " ");
+  replace (save read  password, 1, LENGTH save read  password * " ") .
+
+y exists :
+  IF exists (fnam)
+    THEN send (order task, ack, ds)
+    ELSE send (order task, false code, ds)
+  FI.
+
+y list :
+  forget (ds);
+  ds := nilspace;
+  list file := sequential file (output, ds);
+  list (list file);
+  send (order task, ack, ds) .
+ 
+y all :
+  BOUND THESAURUS VAR all fnams := ds;
+  all fnams := all;
+  send (order task, ack, ds) .
+ 
+y maintenance :
+  TEXT VAR  param 1, param 2;
+  INT  VAR  c index, nr of params;
+  TEXT CONST c list :: "break:1.0end:2.0monitor:3.0stdbeginproc:4.1";
+  disable stop;
+  call (supervisor, order, ds, reply);
+  forget (ds);
+  IF reply = ack
+    THEN IF is break manager
+           THEN end global manager (TRUE);
+                LEAVE y maintenance
+         FI;
+         put error message if there is one;
+         REP 
+           command dialogue (TRUE);
+           get command ("Gib " + name (myself) + "-Kommando :");
+           analyze command (c list,0,c index,nr of params,param 1,param 2);
+           SELECT c index OF
+             CASE 1    : old break
+             CASE 2, 3 : is global manager := FALSE;
+                         is break manager  := FALSE;
+                         LEAVE y maintenance
+             CASE 4    : std begin proc := param 1
+             OTHERWISE do command
+           END SELECT
+         UNTIL NOT on line PER;
+         command dialogue (FALSE);
+         old break;
+         set autonom;
+         save error message if there is one
+  FI;
+  enable stop .
+
+put error message if there is one :
+  IF error message buffer <> ""
+    THEN out (error pre);
+         out (error message buffer);
+         out (cr lf);
+         error message buffer := ""
+  FI.
+
+save error message if there is one :
+  IF is error
+    THEN error message buffer := error message;
+         clear error
+  FI.
+
+y killer :
+  FILE VAR f :: sequential file (input, ds);
+  WHILE NOT eof (f) REP
+    getline (f, record);
+    IF exists (record) THEN forget (record, quiet)  FI
+  PER;
+  send (order task, ack, ds).
+ENDPROC free manager;
+ 
+PROC manager question (TEXT CONST question) :
+  forget (ds);
+  ds := nilspace;
+  reply msg := ds;
+  reply msg := question;
+  send (order task, question ack, ds)
+END PROC manager question;
+
+PROC manager question (TEXT CONST question, TASK CONST receiver) :
+  forget (ds);
+  ds := nilspace;
+  reply msg := ds;
+  reply msg := question;
+  send (receiver, question ack, ds)
+END PROC manager question;
+
+PROC manager message (TEXT CONST message) :
+  forget (ds);
+  ds := nilspace;
+  reply msg := ds;
+  reply msg := message;
+  send (order task, message ack, ds)
+END PROC manager message;
+
+PROC manager message (TEXT CONST message, TASK CONST receiver) :
+  forget (ds);
+  ds := nilspace;
+  reply msg := ds;
+  reply msg := message;
+  send (receiver, message ack, ds)
+END PROC manager message;
+
+PROC std begin :
+  do (std begin proc)
+ENDPROC std begin;
+
+PROC begin (TEXT CONST task name) :
+  TASK VAR sohn;
+  begin (task name, PROC monitor, sohn)
+END PROC begin;
+
+PROC begin password (TEXT CONST password) :
+  cover tracks of old create son password;
+  create son password := password;
+  display (""3""13""5"");
+  cover tracks.
+
+cover tracks of old create son password:
+  replace (create son password,1,LENGTH create son password * " ")
+END PROC begin password;
+
+PROC end global manager (BOOL CONST ende) :
+  is global manager := NOT ende;
+  is break manager  := NOT ende
+ENDPROC end global manager;
+
+PROC old break :
+  eumel must advertise;
+  supervisor call (6)
+END PROC old break;
+
+PROC break :
+  IF is global manager 
+    THEN old break; LEAVE break
+  FI;
+  is break manager  := TRUE;
+  is global manager := FALSE; 
+  internal manager (PROC (DATASPACE VAR, INT CONST, INT CONST, TASK CONST) 
+                    std manager)
+END PROC break;
+
+PROC supervisor call (INT CONST nr) :
+  DATASPACE VAR sv space :: nilspace;
+  INT VAR answer;
+  call (supervisor, nr, sv space, answer);
+  IF answer = error nak
+    THEN BOUND TEXT VAR err msg :: sv space;
+         forget (sv space); errorstop (err msg)
+  FI;
+  forget (sv space)
+END PROC supervisor call;
+
+ 
+ 
+LET cmd list =
+ 
+"edit:1.01end:3.0run:4.01runagain:6.0insert:7.01forget:9.01rename:11.2copy:12.2
+list:13.0storageinfo:14.0taskinfo:15.0fetch:16.1save:17.01saveall:19.0";
+ 
+ 
+INT VAR cmd index , params , previous heap size ;
+TEXT VAR param1, param2 ;
+ 
+ 
+PROC monitor :
+  disable stop ;
+  previous heap size := heap size ;
+  REP 
+    command dialogue (TRUE); 
+    sysin (""); 
+    sysout (""); 
+    cry if not enough storage; 
+    get command ("gib kommando :"); 
+    analyze command (cmd list, 4, cmd index, params, param1, param2);
+    execute command ;
+    collect heap garbage if necessary
+  PER .
+ 
+collect heap garbage if necessary :
+  IF heap size > previous heap size + 4
+    THEN collect heap garbage ;
+         previous heap size := heap size
+  FI.
+
+cry if not enough storage : 
+  INT VAR size, used; 
+  storage (size, used); 
+  IF used > size 
+    THEN out (""7"Speicher Engpass! Dateien loeschen!"13""10"") 
+  FI. 
+ENDPROC monitor ;
+
+PROC execute command :
+  enable stop ;
+  SELECT cmd index OF
+    CASE 1 : edit
+    CASE 2 : edit (param1)
+    CASE 3 : end
+    CASE 4 : run
+    CASE 5 : run (param1)
+    CASE 6 : run again
+    CASE 7 : insert
+    CASE 8 : insert (param1)
+    CASE 9 : forget
+    CASE 10: forget (param1)
+    CASE 11: rename (param1, param2)
+    CASE 12: copy (param1, param2)
+    CASE 13: list
+    CASE 14: storage info
+    CASE 15: task info
+    CASE 16: fetch (param1)
+    CASE 17: save
+    CASE 18: save (param1)
+    CASE 19: save all 
+    OTHERWISE do command
+  ENDSELECT .
+ 
+ENDPROC  execute command ;
+
+END PACKET mpg global manager
+

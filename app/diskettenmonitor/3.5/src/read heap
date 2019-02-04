@@ -1,0 +1,107 @@
+DATASPACE VARd:=nilspace; forget(d); 
+BOUND TEXT VAR t; 
+INT CONST c := channel; 
+LET a = 31; 
+INT VAR block, anfang, ende, weiter; 
+disablestop; 
+exec; 
+forget(d); 
+break (quiet); 
+continue (c); 
+ 
+PROC blockin : 
+  block INCR 1; 
+  INT VAR error; 
+  replace (t, anfang, subtext (t, weiter)); 
+  blockin (d, 3, 0, block, error); 
+  IF error <> 0 THEN 
+    errorstop ("Fehlercode "+text (error)+" auf Block "+text(block)) 
+  FI; 
+END PROC blockin; 
+ 
+PROC exec : 
+enable stop; 
+TEXT VAR zeile := "datei"; 
+editget (zeile); 
+IF exists (zeile) THEN forget (zeile) FI; 
+FILE VAR f := sequential file (output, new (zeile)); 
+forget (d); d := nilspace; 
+t := d; 
+t := ""; 
+REP 
+  t CAT ""255""; 
+  anfang := LENGTH t; 
+UNTIL dspages (d) = 2 PER; 
+REP 
+  ende := LENGTH t; 
+  t CAT ""255""; 
+UNTIL dspages (d) > 2 PER; 
+weiter := LENGTH t; 
+t := subtext (t, 1, ende); 
+t CAT subtext (t, anfang); 
+put (anfang); put (ende); put (weiter); put (LENGTH t); 
+put (weiter - anfang); put (LENGTH t - ende); line; 
+continue (a); 
+control (5, 0, 0, block); 
+block := -1; 
+blockin; 
+block := 406; 
+blockin; (* 407 lesen (ans ende) *) 
+replace (t, LENGTH t DIV 2, 12352); 
+INT VAR p := LENGTH t - 1, o; 
+(* 
+INT VAR p := pos (t, ""255"", weiter), o; 
+IF p <> 0 THEN p := pos (t, ""0"", ""254"", p); 
+FI; 
+*) 
+zeile := ""; 
+REP 
+  naechsten block verarbeiten; 
+  blockin; 
+  p DECR weiter; 
+  p INCR anfang; 
+UNTIL block > 1170 PER; 
+errorstop ("kein ende gefunden") . 
+ 
+naechsten block verarbeiten : 
+  REP 
+    IF p < anfang COR p MOD 2 = 0 THEN 
+      errorstop ("Fehler bei "+text(block)+", "+text (p - anfang)); 
+    FI; 
+    IF p > ende THEN LEAVE naechsten block verarbeiten FI; 
+    continue (c); 
+    put (block - 1); 
+    put (p -anfang); 
+    INT VAR l := t ISUB p DIV 2 + 1; 
+    put (l); 
+    IF l <= 0 THEN (* continue (c); 
+      put (block); put (p - anfang); put (l); *) LEAVE exec 
+    FI; 
+    put (""); 
+    continue (a); 
+    p INCR 2; 
+    IF p + l - 1 > LENGTH t THEN 
+      l INCR LENGTH zeile; 
+      zeile CAT subtext (t, p); 
+      l DECR LENGTH zeile; 
+      replace (t, LENGTH t DIV 2, l); 
+      p := LENGTH t - 1; 
+    ELSE 
+      o := LENGTH zeile; 
+      zeile CAT subtext (t, p, p + l - 1); 
+      p INCR l; 
+      l INCR o; 
+      IF LENGTH zeile <> l THEN 
+        errorstop ("Laengenfehler bei "+text(block)+", "+text (p - anfang) 
+                  +", "+text(LENGTH zeile)); 
+      FI; 
+      WHILE (zeile SUB l) = ""255"" REP l DECR 1 PER; 
+      zeile := subtext (zeile, 1, l); 
+      putline (f, zeile); 
+      zeile := ""; 
+    FI; 
+  PER . 
+ 
+END PROC exec; 
+
+

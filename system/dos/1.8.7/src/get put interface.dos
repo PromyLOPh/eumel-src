@@ -1,0 +1,368 @@
+PACKET dos get put DEFINES                   (* Copyright (C) 1986, 87 *)
+                                             (* Frank Klapper          *)
+                                             (* 11.12.87               *)
+  log modus,
+
+  open   dos disk,
+  close  dos disk,
+  access dos disk,
+
+  open  fetch dos file,
+  close fetch dos file,
+  cat  next fetch dos cluster,
+  read next fetch dos cluster,
+  was last fetch cluster,
+
+  open save dos file,
+  write next save dos cluster,
+  close save dos file,
+
+  erase dos file,
+
+  all dosfiles,
+  all dossubdirs,
+  dosfile exists,
+  dos list,
+
+  clear dos disk,
+  format dos disk:
+
+BOOL VAR log flag := FALSE;
+
+PROC log modus (BOOL CONST status):
+  log flag := status
+
+END PROC log modus;
+
+(*-------------------------------------------------------------------------*)
+
+LET max cluster size = 8192,   (* 8192 * 8 = 64 KB *)
+    reals per sector = 64;
+
+LET CLUSTER = BOUND STRUCT (ALIGN dummy, 
+                            ROW max cluster size REAL cluster row); 
+ 
+CLUSTER VAR cluster;
+DATASPACE VAR cluster ds;
+INITFLAG VAR cluster ds used := FALSE;
+
+TEXT VAR convert buffer;
+INT  VAR convert buffer length;
+
+PROC init cluster handle:
+  IF initialized (cluster ds used)
+    THEN forget (cluster ds)
+  FI;
+  cluster ds            := nilspace;
+  cluster               := cluster ds;
+  convert buffer        := "";
+  convert buffer length := 0.
+
+END PROC init cluster handle;
+
+PROC cat cluster text (REAL CONST cluster no, TEXT VAR destination, INT CONST to):
+  read disk cluster (cluster ds, 2, cluster no);
+  init convert buffer;
+  INT VAR i;
+  FOR i FROM 1 UPTO sectors per cluster * reals per sector REP
+    replace (convert buffer, i, cluster.cluster row [i])
+  PER;
+  destination CAT subtext (convert buffer, 1, to).
+
+init convert buffer:
+  IF convert buffer length < cluster size
+    THEN convert buffer CAT (cluster size - convert buffer length) * "*";
+         convert buffer length := cluster size
+  FI.
+
+END PROC cat cluster text;
+
+PROC write text to cluster (REAL CONST cluster no, TEXT CONST string):
+  IF LENGTH string < cluster size
+    THEN execute write text (text (string, cluster size))
+    ELSE execute write text (string)
+  FI;
+  write disk cluster (cluster ds, 2, cluster no).
+
+END PROC write text to cluster;
+
+PROC execute write text (TEXT CONST string):
+  INT VAR i;
+  FOR i FROM 1 UPTO sectors per cluster * reals per sector REP
+    cluster.cluster row [i] := string RSUB i
+  PER.
+
+END PROC execute write text;
+
+(*-------------------------------------------------------------------------*)
+
+BOOL VAR disk open := FALSE;
+TEXT VAR act path;
+
+REAL VAR last access time;
+
+PROC open dos disk (TEXT CONST path):
+  IF log flag THEN dump ("open dos disk", path) FI;
+  enable stop;
+  close work;
+  init cluster handle;
+  act path  := path;
+  disk open := TRUE
+
+END PROC open dos disk;
+
+PROC close dos disk:
+  IF log flag THEN dump ("close dos disk", "") FI;
+  enable stop;
+  disk open := FALSE;
+  close work;
+  init cluster handle;               (* Datenraumespeicher freigeben *)
+  clear fat ds;
+  init dir ds.
+
+END PROC close dos disk;
+
+PROC access dos disk:
+  enable stop;
+  IF NOT disk open
+    THEN error stop ("DOS-Arbeit nicht eröffnet")
+  FI;
+  IF work closed COR (last access more than 5 seconds ago CAND disk changed)
+    THEN open eu disk;          (* hier wird der RERUN Check initialisiert *)
+         open dos disk;
+         read fat;
+         open dir (act path);
+         last access time := clock (1);
+         open work
+  FI.
+
+last access more than 5 seconds ago:
+  abs (clock (1) - last access time) > 5.0.
+
+disk changed:
+  IF hd version
+    THEN FALSE
+    ELSE last access time := clock (1);
+         NOT first fat block ok
+  FI.
+
+END PROC access dos disk;
+
+(*-------------------------------------------------------------------------*)
+
+REAL VAR next fetch cluster,
+         fetch rest;                (* in Bytes *)
+
+PROC open fetch dos file (TEXT CONST file name):
+  IF log flag THEN dump ("open fetch dos file", file name) FI;
+  enable stop;
+  access dos disk;
+  file info (file name, next fetch cluster, fetch rest).
+
+END PROC open fetch dos file;
+
+BOOL PROC was last fetch cluster:
+  IF log flag THEN dump ("was last fetch cluster", "") FI;
+  is last fat chain entry (next fetch cluster) OR fetch rest <= 0.0.
+
+END PROC was last fetch cluster;
+
+PROC cat next fetch dos cluster (TEXT VAR buffer):
+  IF log flag THEN dump ("cat next fetch dos cluster", "") FI;
+  enable stop;
+  IF was last fetch cluster
+    THEN error stop ("fetch nach Dateiende")
+  FI;
+  IF fetch rest < real (cluster size)
+    THEN cat cluster text (next fetch cluster, buffer, int (fetch rest));
+         fetch rest := 0.0
+    ELSE cat cluster text (next fetch cluster, buffer, cluster size);
+         fetch rest DECR real (cluster size)
+  FI;
+  last access time := clock (1);
+  next fetch cluster := fat entry (next fetch cluster).
+
+END PROC cat next fetch dos cluster;
+
+PROC read next fetch dos cluster (DATASPACE VAR read ds, INT VAR start page):
+  IF log flag THEN dump ("read next fetch dos cluster", start page) FI;
+  enable stop;
+  IF was last fetch cluster
+    THEN error stop ("fetch nach Dateiende")
+  FI;
+  read disk cluster (read ds, start page, next fetch cluster);
+  last access time := clock (1);
+  start page INCR sectors per cluster;
+  next fetch cluster := fat entry (next fetch cluster);
+  IF fetch rest < real (cluster size)
+    THEN fetch rest := 0.0
+    ELSE fetch rest DECR real (cluster size)
+  FI.
+
+END PROC read next fetch dos cluster;
+
+PROC close fetch dos file:
+  IF log flag THEN dump ("close fetch dos file", "") FI;
+
+END PROC close fetch dos file;
+
+(*-------------------------------------------------------------------------*)
+
+TEXT VAR save name;
+REAL VAR first save cluster,
+         last save cluster,
+         save size;
+
+PROC open save dos file (TEXT CONST file name):
+  IF log flag THEN dump ("open save dos file", file name) FI;
+  enable stop;
+  access dos disk;
+  IF file exists (file name) OR subdir exists (file name)
+    THEN error stop ("die Datei """ + file name + """ gibt es schon")
+  FI;
+  save name := file name;
+  first save cluster := -1.0;
+  save size := 0.0.
+
+END PROC open save dos file;
+
+PROC write next save dos cluster (TEXT CONST buffer):
+  IF log flag THEN dump ("write next save dos cluster", "") FI;
+  enable stop;
+  REAL CONST save cluster := available fat entry;
+  write text to cluster (save cluster, buffer);
+  last access time := clock (1);
+  save size INCR real (LENGTH buffer);
+  IF first save cluster < 2.0
+    THEN first save cluster := save cluster
+    ELSE fat entry (last save cluster, save cluster)
+  FI;
+  fat entry (save cluster, last fat chain entry);
+  last save cluster := save cluster.
+
+END PROC write next save dos cluster;
+
+PROC write next save dos cluster (DATASPACE CONST save ds, INT VAR start page):
+  IF log flag THEN dump ("write next save dos cluster", start page) FI;
+  enable stop;
+  REAL CONST save cluster := available fat entry;
+  write disk cluster (save ds, start page, save cluster);
+  last access time := clock (1);
+  start page INCR sectors per cluster;
+  save size INCR real (cluster size);
+  IF first save cluster < 2.0
+    THEN first save cluster := save cluster
+    ELSE fat entry (last save cluster, save cluster)
+  FI;
+  fat entry (save cluster, last fat chain entry);
+  last save cluster := save cluster.
+
+END PROC write next save dos cluster;
+
+PROC close save dos file:
+  IF log flag THEN dump ("close save dos file", "") FI;
+  enable stop;
+  IF first save cluster < 2.0
+    THEN LEAVE close save dos file
+  FI;
+  fat entry (last save cluster, last fat chain entry);
+  write fat;
+  insert dir entry (save name, first save cluster, save size);
+  last access time := clock (1).
+
+END PROC close save dos file;
+
+(*-------------------------------------------------------------------------*)
+
+PROC erase dos file (TEXT CONST file name):
+  IF log flag THEN dump ("erase dos file", file name) FI;
+  enable stop;
+  access dos disk;
+  REAL VAR first cluster, size;
+  file info (file name, first cluster, size);
+  delete dir entry (file name);
+  erase fat chain (first cluster);
+  write fat;
+  last access time := clock (1).
+
+END PROC erase dos file;
+
+(*-------------------------------------------------------------------------*)
+
+THESAURUS PROC all dosfiles:
+  IF log flag THEN dump ("all dosfile", "") FI;
+  enable stop;
+  access dos disk;
+  all files.
+
+END PROC all dosfiles;
+
+THESAURUS PROC all dossubdirs:
+  IF log flag THEN dump ("all subdirs", "") FI;
+  enable stop;
+  access dos disk;
+  all subdirs.
+
+END PROC all dossubdirs;
+
+BOOL PROC dos file exists (TEXT CONST file name):
+  IF log flag THEN dump ("dos file exists", file name) FI;
+  enable stop;
+  access dos disk;
+  file exists (file name).
+
+END PROC dos file exists;
+
+PROC dos list (DATASPACE VAR list ds):
+  IF log flag THEN dump ("dos list", "") FI;
+  enable stop;
+  access dos disk;
+  dir list (list ds).
+
+END PROC dos list;
+
+(*-------------------------------------------------------------------------*)
+
+PROC clear dos disk:
+  IF log flag THEN dump ("clear dos disk", "") FI;
+  enable stop;
+  IF hd version
+    THEN error stop ("nicht implementiert")
+    ELSE access dos disk;
+         format dir;
+         format fat;
+         last access time := clock (1)
+  FI.
+
+END PROC clear dos disk;
+
+PROC format dos disk (INT CONST format code):
+
+  IF log flag THEN dump ("format dos disk (" + text (format code) + ")", "") FI;
+  enable stop;
+  IF NOT disk open
+    THEN error stop ("DOS-Arbeit nicht eröffnet")
+  FI;
+  IF hd version
+    THEN error stop ("nicht implementiert")
+    ELSE do format
+  FI.
+
+do format:
+  IF bpb exists (format code)
+    THEN close work;
+         format archive (format code);
+         open eu disk;
+         write bpb (format code);
+         open dos disk;
+         format dir;       (* enthält 'open dir' *)
+         format fat;       (* enthält 'read fat' *)
+         open work
+    ELSE error stop ("Format unzulässig")
+  FI;
+  last access time := clock (1).
+
+END PROC format dos disk;
+
+END PACKET dos get put;
+

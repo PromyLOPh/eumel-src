@@ -1,0 +1,2122 @@
+(* ------------------- VERSION 35     02.06.86 ------------------- *)
+PACKET file handling DEFINES     (* Autoren: J.Liedtke, D.Martinek *)
+       (***********) 
+ 
+       FILE,
+       :=,
+       sequential file,
+       reorganize,
+       input,
+       output,
+       modify,
+       close,
+       putline,
+       getline,
+       put,
+       get,
+       write ,
+       line,
+       reset,
+       down,
+       up,
+       downety,
+       uppety,
+       pattern found,
+       to first record,
+       to line,
+       to eof,
+       insert record,
+       delete record,
+       read record,
+       write record,
+       is first record,
+       eof,
+       line no,
+       FRANGE,
+       set range,
+       reset range ,
+       remove,
+       clear removed,
+       reinsert,
+       max line length,
+       edit info,
+       line type ,
+       copy attributes ,
+       headline,
+       put tabs,
+       get tabs,
+       col,
+       word,
+       at,
+       removed lines,
+       exec,
+       pos ,
+       len ,
+       subtext ,
+       change ,
+       lines ,
+       segments ,
+       mark ,
+       mark line no ,
+       mark col ,
+       set marked range ,
+       split line ,
+       concatenate line ,
+       prefix ,
+       sort ,
+       lexsort :
+
+
+(**********************************************************************)
+(*                                                                    *)
+(*  Terminologie:                                                     *)
+(*                                                                    *)
+(*                                                                    *)
+(*     ATOMROW       Menge aller Atome eines FILEs.                   *)
+(*                   Die einzelnen Atome haben zwar eine Position     *)
+(*                   im Row, aber in dieser Betrachtung keine         *)
+(*                   logische Reihenfolge.                            *)
+(*                                                                    *)
+(*     ATOM          Basiselement, kann eine Zeile der Datei und die  *)
+(*                   zugehoerige Verwaltungsinformation aufnehmen     *)
+(*                                                                    *)
+(*     CHAIN         Zyklisch geschlossene Kette von Segmenten.       *)
+(*                                                                    *)
+(*     SEGMENT       Teilbereich des Atomrows, enthaelt 1 oder mehr   *)
+(*                   zusammenhaengende Atoms.                         *)
+(*                   Jedes Segment hat ein Vorgaenger- und ein        *)
+(*                   Nachfolgersegment.                               *)
+(*                   Jedes Segment enthaelt einen logisch zumsammen-  *)
+(*                   haengenden Teile einer Sequence.                 *)
+(*                                                                    *)
+(*     SEQUENCE      Logische Folge von Lines.                        *)
+(*                   Jede Sequence ist Teil einer Chain oder besteht  *)
+(*                   vollstaendig daraus:                             *)
+(*                                                                    *)
+(*                        SEG1--SEG2--SEG3--SEG4--SEG5                *)
+(*                          :----sequence----:                        *)
+(*                                                                    *)
+(*                   Die 'Reihenfolge' ebenso wie die 'Anzahl' der    *)
+(*                   Lines ist eine wesentliche Eigenschaft einer     *)
+(*                   Sequence.                                        *)
+(*                                                                    *)
+(*     LINE          Ein Atom als Element ein Sequence betrachtet.    *)
+(*                                                                    *)
+(*                                                                    *)
+(**********************************************************************)
+(*                                                                    *)
+(* Eigenschaften:                                                     *)
+(*                                                                    *)
+(*     Folgende Mengen bilden eine Zerlegung (im math. Sinn) einer    *)
+(*     gesamten Datei:                                                *)
+(*                        used segment chain                          *)
+(*                        scratch segment chain                       *)
+(*                        free segment chain                          *)
+(*                        unused tail                                 *)
+(*                                                                    *)
+(*     Fuer jedes X aus (used, scratch, free) gelten:                 *)
+(*                                                                    *)
+(*     'X sequence' ist echte Teilmenge von 'X segment chain'.        *)
+(*                                                                    *)
+(*                       (Daraus folgt, es gibt keine leere 'chain'.) *)
+(*                                                                    *)
+(*     'X segment chain' ist zyklisch gekettet.                       *)
+(*                                                                    *)
+(*     Alle Atome von 'X segment chain' haben definierten Inhalt.     *)
+(*                                                                    *)
+(**********************************************************************)
+ 
+ 
+LET file size    = 4075 ,
+    nil          = 0 ,
+ 
+    free root    = 1 ,
+    scratch root = 2 ,
+    used root    = 3 ,
+    first unused = 4 ;
+ 
+ 
+LET SEQUENCE = STRUCT (INT index, segment begin, segment end,
+                       INT line no, lines),
+    SEGMENT  = STRUCT (INT succ, pred, end),
+    ATOM     = STRUCT (SEGMENT seg, INT type, TEXT line),
+    ATOMROW  = ROW filesize ATOM,
+ 
+    LIST     = STRUCT (SEQUENCE used, INT prefix lines, postfix lines,
+                       SEQUENCE scratch, free, INT unused tail,
+                       INT mode, col, limit, edit info, mark line, mark col,
+                       ATOMROW atoms);
+ 
+TYPE FILE = BOUND LIST ;
+ 
+TYPE FRANGE = STRUCT (INT pre, post, BOOL pre was split, post was split);
+
+
+OP := (FRANGE VAR left, FRANGE CONST right):
+  CONCR (left) := CONCR (right)
+ENDOP := ;
+
+
+OP := (FILE VAR left, FILE CONST right):
+  EXTERNAL 260
+END OP :=;
+
+
+PROC becomes (INT VAR a, b) :
+  INTERNAL 260  ;
+  a := b
+END PROC becomes;
+ 
+ 
+PROC initialize (FILE VAR f) :
+ 
+   f.used     := SEQUENCE : (used root, used root, used root, 1, 0);
+   f.prefix lines  := 0;
+   f.postfix lines := 0;
+   f.free     := SEQUENCE : (free root, free root, free root, 1, 0);
+   f.scratch  := SEQUENCE : (scratch root, scratch root, scratch root, 1, 0);
+   f.unused tail := first unused;
+
+   f.limit := 77;
+   f.edit info := 0;
+   f.col := 1 ;
+   f.mark line := 0 ;
+   f.mark col := 0 ;
+
+   INT VAR i;
+   FOR i FROM 1 UPTO 3 REP
+     root (i).seg  := SEGMENT : (i, i, i);
+     root (i).line := ""
+   PER;
+   put tabs (f, "") .
+ 
+root : f.atoms .
+ 
+END PROC initialize;
+ 
+ 
+(**********************************************************************)
+(*                                                                    *)
+(*        Segment Handler         (SEGMENTs & CHAINs)                 *)
+(*                                                                    *)
+(**********************************************************************)
+
+INT PROC segs (SEQUENCE CONST s, ATOMROW CONST atom) :
+
+  INT VAR number of segments := 0 ,
+  actual segment := s.segment begin ;
+  REP
+    number of segments INCR 1 ;
+    actual segment := atom (actual segment).seg.succ
+  UNTIL actual segment = s.segment begin PER ;
+  number of segments .
+
+ENDPROC segs ;
+
+ 
+PROC next segment (SEQUENCE VAR s, ATOMROW CONST atom) :
+ 
+  disable stop;
+  s.line no INCR (s.segment end - s.index + 1);
+  INT CONST new segment index := actual segment.succ;
+  s.segment begin := new segment index;
+  s.segment end   := new segment.end;
+  s.index         := new segment index .
+
+actual segment :  atom (s.segment begin).seg .
+new segment :     atom (new segment index).seg .
+ 
+END PROC next segment;
+ 
+ 
+PROC previous segment (SEQUENCE VAR s, ATOMROW CONST atom) :
+
+  disable stop;
+  s.line no DECR (s.index - s.segment begin + 1);
+  INT CONST new segment index := actual segment.pred;
+  s.segment begin := new segment index;
+  s.segment end   := new segment.end;
+  s.index         := s.segment end .
+ 
+actual segment :  atom (s.segment begin).seg .
+new segment :     atom (new segment index).seg .
+ 
+END PROC previous segment;
+ 
+ 
+PROC split segment (SEQUENCE VAR s, ATOMROW VAR atom) :
+
+  disable stop;
+  IF not at segment top
+    THEN split segment at actual position
+  FI .
+
+split segment at actual position :
+  INT CONST pred index   := s.segment begin,
+            actual index := s.index,
+            succ index   := pred.succ;
+
+  actual.pred  := pred index;
+  actual.succ  := succ index;
+  actual.end   := s.segment end;
+ 
+  pred.succ    := actual index;
+  pred.end     := actual index - 1;
+ 
+  succ.pred    := actual index;
+ 
+  s.segment begin := actual index .
+ 
+not at segment top : s.index > s.segment begin .
+
+pred   : atom (pred index).seg .
+ 
+actual : atom (actual index).seg .
+ 
+succ   : atom (succ index).seg .
+ 
+END PROC split segment;
+ 
+
+PROC join segments (ATOMROW VAR atom,
+                    INT CONST first index, INT VAR second index) :
+ 
+  disable stop;
+  IF first seg.end + 1 = second index
+    THEN attach second to first segment
+    ELSE link first to second segment
+  FI .
+ 
+attach second to first segment :
+  first seg.end  := second seg.end;
+  INT VAR successor of second := second seg.succ;
+  IF successor of second = second index
+    THEN first seg.succ := first index
+    ELSE join segments (atom, first index, successor of second)
+  FI;
+  second index := first index .
+ 
+link first to second segment :
+  first seg.succ  := second index;
+  second seg.pred := first index .
+ 
+first seg :  atom (first index).seg .
+second seg : atom (second index).seg .
+ 
+END PROC join segments;
+ 
+ 
+PROC delete segments (SEQUENCE VAR from, ATOMROW VAR atom,
+                      INT CONST first index, last index, lines) :
+ 
+  determine surrounding segments and new atom index;
+  join surrounding segments;
+  update sequence descriptor .
+ 
+determine surrounding segments and new atom index :
+  INT VAR pred index   := first seg.pred,
+          actual index := last seg.succ;
+  from.index := actual index .
+ 
+join surrounding segments :
+  join segments (atom, pred index, actual index) .
+ 
+update sequence descriptor :
+  from.segment begin := actual index;
+  from.segment end := actual seg.end;
+  from.lines DECR lines .
+ 
+actual seg :  atom (actual index).seg .
+first seg :   atom (first index).seg .
+last seg :    atom (last index).seg .
+ 
+END PROC delete segments;
+ 
+ 
+PROC insert segments (SEQUENCE VAR into, ATOMROW VAR atom,
+                      INT CONST first index, last index, lines) :
+ 
+  join into sequence and new segments;
+  update sequence descriptor .
+ 
+join into sequence and new segments :
+  INT VAR actual index := into.index,
+          pred index   := actual seg.pred;
+  join segments (atom, last index, actual index);
+  actual index := first index;
+  join segments (atom, pred index, actual index) .
+ 
+update sequence descriptor :
+  into.index := first index;
+  into.segment begin := actual index;
+  into.segment end := actual seg.end;
+  into.lines INCR lines .
+ 
+actual seg :  atom (actual index).seg .
+ 
+END PROC insert segments;
+ 
+ 
+PROC next atom (SEQUENCE VAR s, ATOMROW CONST atom) :
+ 
+  IF s.line no <= s.lines
+    THEN to next atom
+    ELSE errorstop ("'down' nach Dateiende")
+  FI .
+ 
+to next atom :
+  disable stop;
+  IF s.index = s.segment end
+    THEN next segment (s, atom)
+    ELSE s.index INCR 1;
+         s.line no INCR 1
+  FI
+ 
+END PROC next atom;
+ 
+ 
+PROC next atoms (SEQUENCE VAR s, ATOMROW CONST atom, INT CONST times) :
+ 
+  INT CONST destination line := min (s.line no + times, s.lines + 1);
+  jump upto destination segment;
+  position within destination segment .
+ 
+jump upto destination segment :
+  WHILE s.line no + length of actual segments tail < destination line REP
+    next segment (s, atom);
+  PER .
+ 
+position within destination segment :
+  disable stop;
+  s.index INCR (destination line - s.line no);
+  s.line no := destination line .
+ 
+length of actual segments tail :   s.segment end - s.index .
+ 
+END PROC next atoms;
+ 
+ 
+PROC previous atom (SEQUENCE VAR s, ATOMROW CONST atom) :
+ 
+  IF s.line no > 1
+    THEN to previous atom
+    ELSE errorstop ("'up' am Dateianfang")
+  FI .
+ 
+to previous atom :
+  disable stop;
+  IF s.index = s.segment begin
+    THEN previous segment (s, atom)
+    ELSE s.index DECR 1;
+         s.line no DECR 1
+  FI
+ 
+END PROC previous atom;
+ 
+ 
+PROC previous atoms (SEQUENCE VAR s, ATOMROW CONST atom, INT CONST times) :
+ 
+  INT CONST destination line := max (1, s.line no - times);
+  jump back to destination segment;
+  position within destination segment .
+ 
+jump back to destination segment :
+  WHILE s.line no - length of actual segments head > destination line REP
+    previous segment (s, atom);
+  PER .
+ 
+position within destination segment :
+  disable stop;
+  s.index DECR (s.line no - destination line);
+  s.line no := destination line .
+ 
+length of actual segments head :   s.index - s.segment begin .
+ 
+END PROC previous atoms;
+
+
+TEXT VAR pre, pat, pattern0;
+INT VAR last search line ;
+
+PROC search down (SEQUENCE VAR s, ATOMROW CONST atom, TEXT CONST pattern,
+                  INT CONST max lines, INT VAR column) :
+
+  INT CONST start col := column ,
+            start line := s.lineno ;
+  last search line := min (s.lines, s.lineno + max lines) ;
+  pre:= somefix (pattern) ;
+  pattern0 := pattern ** 0 ;
+  down in atoms (s, atom, pre, column); 
+  IF NOT (last search succeeded CAND like pattern)
+    THEN try again
+  FI; 
+  last search succeeded := TRUE ;
+  column := matchpos (0) . 
+ 
+try again: 
+  WHILE s.line no < last search line
+    REP next atom (s, atom) ;
+        column := 1 ; 
+        down in atoms (s, atom, pre, column); 
+        IF last search succeeded CAND like pattern
+          THEN LEAVE try again
+        FI
+    PER; 
+    column := 1 + LENGTH record; 
+    last search succeeded := FALSE ;
+    LEAVE search down. 
+
+like pattern :
+  correct position ;
+  pat := any (column-1) ;
+  pat CAT any ;
+  pat CAT pattern0 ;
+  pat CAT any ;
+  record LIKE pat .
+
+correct position :
+  IF s.lineno = start line
+    THEN column := start col
+    ELSE column := 1
+  FI .
+
+record : atom (s.index).line .
+
+ENDPROC search down ;
+
+PROC down in atoms (SEQUENCE VAR s, ATOMROW CONST atom, TEXT CONST pattern,
+                    INT VAR column) :
+ 
+  last search succeeded := FALSE ;
+  search forwards in actual line ;
+  IF NOT found AND s.line no < last search line
+    THEN search in following lines
+  FI ;
+  IF found
+    THEN last search succeeded := TRUE
+    ELSE set column behind last char
+  FI .
+
+set column behind last char :
+  column := LENGTH atom (s.index).line + 1 .
+
+search forwards in actual line :
+  IF pattern <> ""
+    THEN column := pos (atom (s.index).line, pattern, column)
+  ELIF column > LENGTH atom (s.index).line
+    THEN column := 0
+  FI .
+
+search in following lines :
+  next atom (s, atom) ;
+  IF pattern = ""
+    THEN column := 1 ;
+         LEAVE search in following lines
+  FI ;
+  REP
+    search forwards through segment ;
+    update file position forwards ;
+    IF found OR s.line no = last search line
+      THEN LEAVE search in following lines
+      ELSE next segment (s, atom)
+    FI
+  PER .
+
+search forwards through segment :
+  INT VAR search index := s.index ,
+  last index := min (s.segment end, s.index+(last search line-s.line no));
+  REP
+    column := pos (atom (search index).line, pattern) ;
+    IF found OR search index = last index
+      THEN LEAVE search forwards through segment
+    FI ;
+    search index INCR 1
+  PER .
+
+update file position forwards :
+  disable stop ;
+  s.line no INCR (search index - s.index) ;
+  s.index := search index ;
+  enable stop .
+
+found :  column > 0 .
+
+ENDPROC down in atoms ;
+
+TEXT PROC prefix (TEXT CONST pattern) : 
+ 
+  INT VAR invalid char pos := pos (pattern, ""0"", ""31"", 1) ; 
+  SELECT invalid char pos OF  
+    CASE 0    : pattern 
+    CASE 1    : ""                                              
+    OTHERWISE : subtext (pattern, 1, invalid char pos - 1) 
+  ENDSELECT . 
+ 
+ENDPROC prefix ; 
+
+PROC search up (SEQUENCE VAR s, ATOMROW CONST atom, TEXT CONST pattern,
+                INT CONST max lines, INT VAR column) :
+
+     last search line := max (1, s.lineno - max lines) ;
+     pre:= prefix (pattern);
+     pattern0 := pattern ** 0;
+     remember start point ;
+     up in atoms (s, atom, pre, column); 
+     IF   NOT (last search succeeded CAND last pattern in line found)
+     THEN try again 
+     FI; 
+     last search succeeded := TRUE ;
+     column := matchpos (0) . 
+ 
+  try again: 
+     WHILE s.lineno > last search line OR column > 1
+     REP   previous atom (s, atom); 
+           column := LENGTH record ;
+           up in atoms (s, atom, pre, column); 
+           IF last search succeeded CAND last pattern in line found
+             THEN LEAVE try again
+           FI 
+     PER; 
+     column := 1; 
+     last search succeeded := FALSE ;
+     LEAVE search up. 
+
+  remember start point :
+     INT VAR c:= column, r:= s.lineno;.
+
+  last pattern in line found :
+    column := 2 ;
+    WHILE like pattern CAND right of start REP
+      column := matchpos (0) +1
+    PER ;
+    column DECR 1 ;
+    like pattern CAND right of start .
+
+  like pattern :
+     pat := any (column-1) ;
+     pat CAT any ;
+     pat CAT pattern0 ;
+     pat CAT any ;
+     record LIKE pat .
+
+  right of start : (r > s.lineno COR c >= matchpos(0)) .
+  record         : atom (s.index).line .
+
+ENDPROC search up ;
+
+PROC up in atoms (SEQUENCE VAR s, ATOMROW CONST atom, TEXT CONST pattern,
+                  INT VAR column) :
+
+  last search succeeded := FALSE ;
+  search backwards in actual line ;
+  IF NOT found AND s.line no > last search line
+    THEN search in preceeding lines
+  FI ;
+  IF found
+    THEN last search succeeded := TRUE
+    ELSE column := 1
+  FI .
+
+search backwards in actual line :
+  IF pattern = ""
+    THEN LEAVE search backwards in actual line
+  FI ;
+  INT VAR last pos , new pos := 0 ;
+  REP
+    last pos := new pos ;
+    new pos := pos (atom (s.index).line, pattern, last pos+1) ;
+  UNTIL new pos = 0 OR new pos > column PER ;
+  column := last pos .
+
+search in preceeding lines :
+  previous atom (s, atom) ;
+  IF pattern = ""
+    THEN column := LENGTH atom (s.index).line + 1 ;
+         last search succeeded := TRUE ;
+         LEAVE search in preceeding lines
+  FI ;
+  REP
+    search backwards through segment ;
+    update file position backwards ;
+    IF found OR s.line no = last search line
+      THEN LEAVE search in preceeding lines
+      ELSE previous segment (s, atom)
+    FI
+  PER .
+
+search backwards through segment :
+  INT VAR search index := s.index ,
+  last index := max (s.segment begin, s.index-(s.line no-last search line));
+  REP
+    new pos := 0 ;
+    REP
+      column := new pos ;
+      new pos := pos (atom (search index).line, pattern, column+1) ;
+    UNTIL new pos = 0 PER ;
+    IF found OR search index = last index
+      THEN LEAVE search backwards through segment
+    FI ;
+    search index DECR 1
+  PER .
+
+update file position backwards :
+  disable stop ;
+  s.line no DECR (s.index - search index) ;
+  s.index := search index ;
+  enable stop .
+
+found :  column > 0 .
+
+ENDPROC up in atoms ;
+
+BOOL VAR last search succeeded ;
+
+BOOL PROC pattern found :
+  last search succeeded
+ENDPROC pattern found ;
+
+
+
+PROC delete atom (SEQUENCE VAR used, free, ATOMROW VAR atom) :
+ 
+  disable stop;
+  IF used.line no <= used.lines
+    THEN delete actual atom
+    ELSE errorstop ("'delete' am Dateiende")
+  FI .
+ 
+delete actual atom :
+  position behind actual free segment;
+  split segment (used, atom);
+  INT VAR actual index := used.index;
+  cut off tail of actual used segment;
+  delete segments (used, atom, actual index, actual index, 1);
+  insert segments (free, atom, actual index, actual index, 1) .
+ 
+position behind actual free segment :
+  IF free.line no <= free.lines
+    THEN next segment (free, atom)
+  FI .
+ 
+cut off tail of actual used segment :
+  IF actual index <> used.segment end
+    THEN used.index INCR 1;
+         split segment (used, atom);
+         used.index DECR 1 
+  FI .
+ 
+END PROC delete atom;
+ 
+ 
+PROC insert atom (SEQUENCE VAR used, free,INT VAR unused, ATOMROW VAR atom) :
+ 
+  disable stop;
+  split segment (used, atom);
+  IF free.lines > 0
+    THEN insert new atom from free sequence
+  ELIF unused <= file size
+    THEN insert new atom from unused tail
+  ELSE   errorstop ("FILE-Ueberlauf")
+  FI .
+ 
+insert new atom from free sequence :
+  get a free segments head;
+  make this atom to actual segment;
+  transfer from free to used chain .
+ 
+get a free segments head :
+  IF actual free segment is root segment
+    THEN previous segment (free, atom)
+  FI;
+  position to actual segments head .
+ 
+position to actual segments head :
+  INT VAR actual index := free.segment begin;
+  free.line no DECR (free.index - actual index);
+  free.index := actual index .
+ 
+make this atom to actual segment :
+  IF free.segment end > actual index
+    THEN free.index INCR 1;
+         split segment (free, atom);
+         free.index DECR 1
+  FI .
+ 
+transfer from free to used chain :
+  delete segments (free, atom, actual index, actual index, 1);
+  insert segments (used, atom, actual index, actual index, 1);
+  atom (actual index).line := "" .
+ 
+insert new atom from unused tail :
+  actual index := unused;
+  atom (actual index).seg := 
+                      SEGMENT:(actual index, actual index, actual index);
+  atom (actual index).line := "";
+  insert segments (used, atom, actual index, actual index, 1);
+  unused INCR 1 .
+ 
+actual free segment is root segment :    free.segment begin = free root .
+ 
+END PROC insert atom;
+ 
+ 
+PROC insert next (SEQUENCE VAR used, free, INT VAR unused, ATOMROW VAR atom,
+                  TEXT CONST record) :
+ 
+  IF used.line no > used.lines
+    THEN insert atom (used, free, unused, atom)
+  ELIF actual position before unused nonempty atomrow part
+    THEN forward and insert atom by simple extension of used atomrow part
+    ELSE next atom (used, atom);
+         insert atom (used, free, unused, atom)
+  FI;
+  atom (used.index).line := record .
+ 
+forward and insert atom by simple extension of used atomrow part :
+  used.line no INCR 1;
+  used.lines INCR 1;
+  used.index INCR 1;
+  used.segment end INCR 1;
+  atom (used.segment begin).seg.end INCR 1;
+  unused INCR 1 .
+ 
+actual position before unused nonempty atomrow part :
+  used.index = unused - 1 AND unused part not empty .
+ 
+unused part not empty :  unused <= file size .
+ 
+END PROC insert next;
+ 
+ 
+PROC transfer subsequence (SEQUENCE VAR source, dest, 
+                           ATOMROW VAR atom, INT CONST size) :
+ 
+  IF size > 0
+    THEN INT VAR subsequence size := min (size, source.line no);
+         mark begin of source part;
+         mark end of source part;
+         split destination sequence;
+         transfer part
+  FI .
+ 
+mark begin of source part :
+  previous atoms (source, atom, subsequence size - 1);
+  split segment (source, atom);
+  INT CONST first := source.segment begin .
+ 
+mark end of source part :
+  next atoms (source, atom, subsequence size - 1);
+  INT CONST last := source.segment begin;
+  next atom (source, atom);
+  split segment (source, atom) .
+ 
+split destination sequence :
+  split segment (dest, atom) .
+ 
+transfer part :
+  disable stop;
+  delete segments (source, atom, first, last, subsequence size);
+  source.line no DECR subsequence size;
+  insert segments (dest, atom, first, last, subsequence size);
+  next atoms (dest, atom, subsequence size - 1) .
+ 
+END PROC transfer subsequence;
+ 
+
+
+(********************************************************************)
+(*****                                                          *****)
+(*****                  FILE handler                            *****)
+(*****                                                          *****)
+(********************************************************************)
+
+
+ 
+LET file type    = 1003 ,
+    file type 16 = 1002 ,
+
+    closed       = 0,
+    inp          = 1,
+    outp         = 2,
+    mod          = 3,
+    end          = 4,
+
+    max limit    = 16000,
+    super limit  = 16001;
+
+ 
+TYPE TRANSPUTDIRECTION = INT;
+ 
+ 
+TRANSPUTDIRECTION PROC input :
+  TRANSPUTDIRECTION : (inp)
+END PROC input;
+ 
+ 
+TRANSPUTDIRECTION PROC output :
+  TRANSPUTDIRECTION : (outp)
+END PROC output;
+ 
+ 
+TRANSPUTDIRECTION PROC modify :
+  TRANSPUTDIRECTION : (mod)
+END PROC modify;
+ 
+ 
+FILE VAR result file;
+ 
+ 
+FILE PROC sequential file (TRANSPUTDIRECTION CONST mode,
+                            DATASPACE CONST ds) :
+  IF   type (ds) = file type
+  THEN result := ds
+  ELIF type (ds) < 0
+  THEN result := ds; type (ds, file type); initialize (result file)
+  ELSE enable stop; errorstop ("Datenraum hat falschen Typ")
+  FI;
+  reset (result file, mode);
+  result file .
+ 
+result : CONCR (result file) .
+
+END PROC sequential file;
+
+
+FILE PROC sequential file (TRANSPUTDIRECTION CONST mode, TEXT CONST name) :
+
+  IF   exists (name)
+  THEN get dataspace if file
+  ELIF CONCR (mode) <> inp
+  THEN get new file space
+  ELSE errorstop (""""+name+""" gibt es nicht") ; enable stop
+  FI;
+  update status if necessary;
+  reset (result file, mode);
+  result file .
+
+get dataspace if file :
+  IF type (old (name)) = file type 16
+    THEN reorganize (name)
+  FI ;
+  result := old (name, file type) ;
+  IF is 170 file
+    THEN result.col := 1 ;
+         result.mark line := 0 ;
+         result.mark col  := 0
+  FI .
+
+is 170 file : result.mark col < 0 .
+
+get new file space :
+  result := new (name);
+  IF   NOT is error
+  THEN type (old (name), file type); initialize (result file)
+  FI .
+
+update status if necessary :
+  IF   CONCR (mode) <> inp
+  THEN status (name, ""); headline (result file, name)
+  FI .
+ 
+result : CONCR (result file) .
+ 
+END PROC sequential file;
+ 
+ 
+PROC reset (FILE VAR f) :
+
+  IF f.mode = end
+    THEN reset (f, input)
+    ELSE reset (f, TRANSPUTDIRECTION:(f.mode))
+  FI .
+
+ENDPROC reset ;
+
+PROC reset (FILE VAR f, TRANSPUTDIRECTION CONST mode) :
+
+  IF f.mode <> mod OR new mode <> mod
+    THEN f.mode := new mode ;
+         initialize file index 
+  FI .
+
+initialize file index :
+  IF new mode = outp
+    THEN to line without check (f, f.used.lines);
+         col := super limit
+    ELSE to line without check (f, 1);
+         col := 1 ;
+         IF new mode = inp AND file is empty
+           THEN f.mode := end
+         FI
+  FI .
+ 
+file is empty : f.used.lines = 0 .
+ 
+new mode  : CONCR (mode) .
+
+col :   CONCR (CONCR (f)).col .
+ 
+END PROC reset;
+ 
+ 
+PROC input (FILE VAR f) :
+ 
+  reset (f, input) .
+ 
+END PROC input;
+ 
+ 
+PROC output (FILE VAR f) :
+ 
+  reset (f, output)
+ 
+END PROC output;
+ 
+ 
+PROC modify (FILE VAR f) :
+ 
+  reset (f, modify)
+
+END PROC modify;
+ 
+ 
+PROC close (FILE VAR f) :
+ 
+  f.mode := closed .
+
+END PROC close;
+ 
+ 
+PROC check mode (FILE CONST f, INT CONST mode) :
+ 
+  IF f.mode = mode
+    THEN LEAVE check mode
+    ELIF f.mode = closed
+    THEN errorstop ("Datei zu!")
+    ELIF f.mode = mod
+    THEN errorstop ("unzulaessiger Zugriff auf modify-FILE")
+    ELIF mode = mod
+    THEN errorstop ("Zugriff nur auf modify-FILE zulaessig")
+    ELIF f.mode = end
+    THEN errorstop ("Leseversuch nach Dateiende")
+    ELIF mode = inp
+    THEN errorstop ("Leseversuch auf output-FILE")
+    ELIF mode = outp
+    THEN errorstop ("Schreibversuch auf input-FILE")
+  FI .
+ 
+END PROC check mode;
+ 
+ 
+PROC to line without check (FILE VAR f, INT CONST destination line) :
+ 
+  INT CONST distance := destination line - f.used.line no;
+  IF   distance > 0
+    THEN next atoms (f.used, f.atoms, distance)
+  ELIF distance < 0
+    THEN previous atoms (f.used, f.atoms, - distance)
+  FI .
+ 
+END PROC to line without check;
+ 
+ 
+PROC to line (FILE VAR f, INT CONST destination line) :
+ 
+  check mode (f, mod);
+  to line without check (f, destination line)
+ 
+END PROC to line;
+ 
+ 
+PROC to first record (FILE VAR f) :
+ 
+  to line (f, 1)
+ 
+END PROC to first record;
+ 
+ 
+PROC to eof (FILE VAR f) :
+ 
+  to line (f, f.used.lines + 1) .
+ 
+END PROC to eof;
+ 
+ 
+PROC putline (FILE VAR f, TEXT CONST word) :
+ 
+  write (f, word);
+  col := super limit .
+ 
+col : CONCR (CONCR (f)).col .
+ 
+END PROC putline;
+ 
+ 
+PROC delete record (FILE VAR f) :
+ 
+  check mode (f, mod);
+  delete atom (f.used, f.free, f.atoms) .
+ 
+END PROC delete record;
+ 
+ 
+PROC insert record (FILE VAR f) :
+ 
+  check mode (f, mod);
+  insert atom (f.used, f.free, f.unused tail, f.atoms) .
+ 
+END PROC insert record;
+ 
+ 
+PROC down (FILE VAR f) :
+ 
+  check mode (f, mod);
+  next atom (f.used, f.atoms) .
+ 
+END PROC down ;
+ 
+PROC up (FILE VAR f) :
+ 
+  check mode (f, mod);
+  previous atom (f.used, f.atoms) .
+ 
+END PROC up ;
+
+PROC down (FILE VAR f, INT CONST n) :
+
+  to line (f, lineno (f) + n)
+
+ENDPROC down ;
+
+PROC up (FILE VAR f, INT CONST n) :
+
+  to line (f, lineno (f) - n)
+
+ENDPROC up ;
+
+ 
+PROC write record (FILE VAR f, TEXT CONST record) :
+ 
+  check mode (f, mod);
+  IF   not at eof
+    THEN f.atoms (f.used.index).line := record
+    ELSE errorstop ("'write' nach Dateiende")
+  FI .
+ 
+not at eof :  f.used.line no <= f.used.lines .
+ 
+END PROC write record;
+ 
+ 
+PROC read record (FILE CONST f, TEXT VAR record) :
+ 
+  check mode (f, mod);
+  record := f.atoms (f.used.index).line .
+ 
+END PROC read record;
+ 
+ 
+PROC line (FILE VAR f) :
+ 
+  IF   mode = end
+    THEN errorstop ("Leseversuch nach Dateiende")
+    ELIF mode = inp
+    THEN next atom (f.used, f.atoms); col := 1; check eof
+    ELIF mode = outp
+    THEN IF col <= max limit
+           THEN col := super limit
+           ELSE append empty line
+         FI
+  FI .
+ 
+append empty line :
+  insert next (f.used, f.free, f.unused tail, f.atoms, "") .
+ 
+col : CONCR (CONCR (f)).col .
+ 
+mode : CONCR (CONCR (f)).mode .
+ 
+check eof :
+  IF eof (f) THEN mode := end FI .
+ 
+END PROC line;
+ 
+ 
+PROC line (FILE VAR f, INT CONST lines) :
+ 
+  INT VAR i; FOR i FROM 1 UPTO lines REP line (f) PER
+ 
+END PROC line;
+ 
+
+PROC getline (FILE VAR f, TEXT VAR text) :
+
+  check mode (f, inp);
+  text := subtext (record, f.col);
+  IF f.used.line no >= f.used.lines
+    THEN f.mode := end ;
+         set end of file
+    ELSE to next line ;
+         f.col := 1
+  FI .
+
+to next line :
+  next atom (f.used, f.atoms) .
+
+set end of file :
+  f.col := LENGTH record + 1 .
+
+record : f.atoms (f.used.index).line .
+
+END PROC getline;
+ 
+ 
+BOOL PROC is first record (FILE CONST f) :
+ 
+  check mode (f, mod);
+  f.used.line no = 1 .
+ 
+END PROC is first record;
+ 
+ 
+BOOL PROC eof (FILE CONST f) :
+ 
+  IF   line no < lines THEN FALSE
+  ELIF line no = lines THEN col > LENGTH record
+  ELSE                      TRUE
+  FI .
+
+line no :  f.used.line no .
+lines   :  f.used.lines .
+col     :  f.col .
+record  :  f.atoms (f.used.index).line .
+ 
+END PROC eof;
+ 
+ 
+INT PROC line no (FILE CONST f) :
+ 
+  f.used.line no .
+ 
+END PROC line no;
+
+
+PROC line type (FILE VAR f, INT CONST t) :
+
+  f.atoms (f.used.index).type := t .
+
+ENDPROC line type ;
+
+INT PROC line type (FILE CONST f) :
+
+  f.atoms (f.used.index).type .
+
+ENDPROC line type ;
+ 
+ 
+PROC put (FILE VAR f, TEXT CONST word) :
+ 
+  check mode (f, outp);
+  IF col + LENGTH word > f.limit
+    THEN append new line
+    ELSE record CAT word
+  FI;
+  record CAT " ";
+  col := LENGTH record + 1 .
+ 
+append new line :
+  insert next (f.used, f.free, f.unused tail, f.atoms, word) .
+ 
+record : f.atoms (f.used.index).line .
+col :    f.col .
+ 
+END PROC put;
+
+ 
+PROC put (FILE VAR f, INT CONST value) :
+ 
+  put (f, text (value))
+ 
+END PROC put;
+ 
+ 
+PROC put (FILE VAR f, REAL CONST real) :
+ 
+  put (f, text (real))
+ 
+END PROC put;
+ 
+ 
+PROC write (FILE VAR f, TEXT CONST word) :
+ 
+  check mode (f, outp);
+  IF col + LENGTH word - 1 > f.limit
+    THEN append new line
+    ELSE record CAT word
+  FI;
+  col := LENGTH record + 1 .
+ 
+append new line :
+  insert next (f.used, f.free, f.unused tail, f.atoms, word) .
+ 
+record : f.atoms (f.used.index).line .
+col    : f.col .
+ 
+END PROC write;
+ 
+ 
+PROC get (FILE VAR f, TEXT VAR word, TEXT CONST separator) :
+ 
+  check mode (f, inp);
+  skip separators;
+  IF word found
+    THEN get word
+    ELSE try to find word in next line
+  FI .
+ 
+skip separators :
+  INT CONST separator length := LENGTH separator;
+  WHILE is separator REP col INCR separator length PER .
+
+is separator : 
+  subtext (record, col, col + separator length - 1) = separator .
+ 
+word found : col <= LENGTH record .
+ 
+get word :
+  INT VAR end of word := pos (record, separator, col) - 1;
+  IF separator found
+    THEN get text upto separator
+    ELSE get rest of record
+  FI .
+ 
+separator found : end of word >= 0 .
+ 
+get text upto separator :
+  word := subtext (record, col, end of word);
+  col := end of word + separator length + 1;
+  IF col > LENGTH record THEN line (f) FI .
+ 
+get rest of record :
+  word := subtext (record, col); line (f) .
+ 
+record : f.atoms (f.used.index).line .
+col    : f.col .
+ 
+try to find word in next line :
+  line (f); IF eof (f) THEN word := "" ELSE get (f, word, separator) FI .
+ 
+END PROC get;
+ 
+ 
+PROC get (FILE VAR f, TEXT VAR word, INT CONST max length) :
+ 
+  check mode (f, inp);
+  IF word is only a part of record
+    THEN get text of certain length
+    ELSE get rest of record
+  FI .
+ 
+word is only a part of record :
+  col <= LENGTH record - max length .
+ 
+get text of certain length :
+  word := text (record, max length, col);
+  col INCR max length .
+
+get rest of record :
+  word := subtext (record, col); line (f) .
+ 
+record : f.atoms (f.used.index).line .
+col    : f.col .
+ 
+END PROC get;
+ 
+ 
+PROC get (FILE VAR f, TEXT VAR word) :
+ 
+  get (f, word, " ")
+ 
+END PROC get;
+ 
+ 
+TEXT VAR number word;
+ 
+ 
+PROC get (FILE VAR f, INT VAR number) :
+ 
+  get (f, number word);
+  number := int (number word)
+ 
+END PROC get;
+ 
+ 
+PROC get (FILE VAR f, REAL VAR number) :
+ 
+  get (f, number word);
+  number := real (number word)
+ 
+END PROC get;
+ 
+ 
+TEXT VAR split record ;
+INT VAR indentation ;
+
+PROC split line (FILE VAR f, INT CONST split col) :
+
+  split line (f, split col, TRUE)
+
+ENDPROC split line ;
+
+PROC split line (FILE VAR f, INT CONST split col, BOOL CONST note indentation ) :
+
+  IF note indentation 
+    THEN get indentation 
+    ELSE indentation := 0
+  FI ;
+  get split record ;
+  insert split record and indentation ;
+  cut off old record .
+
+get indentation :
+  indentation := pos (actual record,""33"",""254"",1) - 1 ;
+  IF indentation < 0 OR indentation >= split col
+    THEN indentation := split col - 1
+  FI .
+
+get split record :
+  split record := subtext (actual record, split col, max limit) .
+
+insert split record and indentation :
+  down (f) ;
+  insert record (f) ;
+  INT VAR i ;
+  FOR i FROM 1 UPTO indentation REP
+    actual record CAT " "
+  PER ; 
+  actual record CAT split record ;
+  up (f) .
+
+cut off old record :
+  actual record := subtext (actual record, 1, split col-1) .
+
+actual record : f.atoms (f.used.index).line .
+
+ENDPROC split line ;
+
+PROC concatenate line (FILE VAR f, BOOL CONST delete blanks) :
+
+  down (f) ;
+  split record := actual record ;
+  IF delete blanks
+    THEN delete leading blanks
+  FI ;
+  delete record (f) ;
+  up (f) ;
+  actual record CAT split record .
+
+delete leading blanks :
+  INT CONST non blank col := pos (split record, ""33"", ""254"", 1) ;
+  IF non blank col > 0
+    THEN split record := subtext (split record, non blank col)
+  FI .
+
+actual record :  f.atoms (f.used.index).line .
+
+ENDPROC concatenate line ;
+
+PROC concatenate line (FILE VAR f) :
+  concatenate line (f, TRUE)
+ENDPROC concatenate line ;
+
+PROC reorganize :
+ 
+  reorganize (last param)
+ 
+END PROC reorganize;
+ 
+ 
+TEXT VAR file record ;
+
+PROC reorganize (TEXT CONST file name) :
+ 
+  enable stop ;
+  FILE VAR input file, output file;
+  DATASPACE VAR scratch space;
+  INT CONST type of dataspace := type (old (file name)) ;
+  INT VAR counter;
+ 
+  last param (file name);
+  IF type of dataspace = file type
+    THEN reorganize new to new
+  ELIF type of dataspace = file type 16
+    THEN reorganize old to new
+    ELSE errorstop ("Datenraum hat falschen Typ")
+  FI;
+  replace file space by scratch space .
+ 
+reorganize new to new :
+  input  file := sequential file (input, file name);
+  disable stop ;
+  scratch space := nilspace ;
+  output file := sequential file (output, scratch space);
+  copy attributes (input file, output file) ;
+
+  FOR counter FROM 1 UPTO 9999
+  WHILE NOT eof (input file) REP
+    cout (counter);
+    getline (input file, file record);
+    putline (output file, file record);
+    check for interrupt
+  PER .
+ 
+reorganize old to new :
+  LET OLDRECORD = STRUCT (INT succ, pred, x, y, TEXT record);
+  LET OLDFILE = BOUND ROW 4075 OLDRECORD;
+  LET dateianker = 2, freianker = 1;
+  INT VAR index := dateianker;
+ 
+  OLDFILE VAR old file := old (file name);
+  disable stop;
+  scratch space := nilspace;
+  output file := sequential file (output, scratch space);
+  get old attributes ;
+ 
+  say ("Datei wird in 1.7-Format gewandelt: ") ;
+
+  FOR counter FROM 1 UPTO 9999
+  WHILE NOT end of old file REP
+    cout (counter);
+    index := next record;
+    file record := record of old file ;
+    IF pos (file record, ""128"", ""250"", 1) > 0
+      THEN change special chars
+    FI ;
+    putline (output file, file record);
+    check for interrupt
+  PER .
+ 
+get old attributes :
+  get old headline ;
+  get old limit and tabs .
+
+get old headline :
+  headline (output file, old file (dateianker).record) .
+
+get old limit and tabs :
+  file record := old file (freianker).record ;
+  max line length (output file, int (subtext (file record, 11, 15))) ;
+  put tabs (output file, subtext (file record, 16)) .
+
+change special chars :
+  change all (file record, ""193"", ""214"") (* Ae *) ;
+  change all (file record, ""207"", ""215"") (* Oe *) ;
+  change all (file record, ""213"", ""216"") (* Ue *) ;
+  change all (file record, ""225"", ""217"") (* ae *) ;
+  change all (file record, ""239"", ""218"") (* oe *) ;
+  change all (file record, ""245"", ""219"") (* ue *) ;
+  change all (file record, ""235"", ""220"") (* k  *) ;
+  change all (file record, ""173"", ""221"") (* -  *) ;
+  change all (file record, ""163"", ""222"") (* fis   *) ;
+  change all (file record, ""160"", ""223"") (* blank *) ;
+  change all (file record, ""194"", ""251"") (* eszet *) .
+
+end of old file :      next record = dateianker .
+
+next record :          old file (index).succ .
+ 
+record of old file :   old file (index).record .
+ 
+check for interrupt :
+  INT VAR size, used ;
+  storage (size, used) ;
+  IF used > size
+    THEN errorstop ("Speicherengpass")
+  FI ;
+  IF is error
+    THEN forget (scratch space) ; LEAVE reorganize
+  FI .
+ 
+replace file space by scratch space :
+  headline (output file, file name);
+  forget (file name, quiet) ;
+  type (scratch space, file type);
+  copy (scratch space, file name);
+  forget (scratch space) .
+
+END PROC reorganize;
+
+
+PROC set range (FILE VAR f, INT CONST start line, start col,
+                FRANGE VAR old range) :
+
+  check mode (f, mod);
+  IF valid restriction parameters
+    THEN prepare last line ;
+         prepare first line ;
+         save old range ;
+         set new range
+    ELSE errorstop ("FRANGE ungueltig")
+  FI .
+
+valid restriction parameters :
+  start line > 0 AND start col > 0 AND start before or at actual point .
+
+start before or at actual point :
+  start line < line no (f)  OR
+  start line = line no (f) AND start col <= col (f) .
+
+prepare last line :
+  INT VAR last line ;
+  IF col (f) > 1
+    THEN split line (f, col(f), FALSE)
+  FI .
+
+prepare first line :
+  IF start col > 1
+    THEN split start line ;
+  FI .
+
+split start line :
+  INT VAR old line no := line no (f) ;
+  to line (f, start line) ;
+  split line (f, start col, FALSE) ;
+  to line (f, old line no + 1) .
+
+save old range :
+  old range.pre := f.prefix lines ;
+  old range.post:= f.postfix lines .
+
+set new range :
+  get pre lines ;
+  get post lines ;
+  disable stop ;
+  f.prefix lines INCR pre lines ;
+  f.postfix lines INCR post lines ;
+  f.used.lines DECR (post lines + pre lines) ;
+  f.used.line no DECR pre lines .
+
+get pre lines :
+  INT VAR pre lines ;
+  IF start col = 1
+    THEN old range.pre was split := FALSE ;
+         pre lines := start line - 1
+    ELSE old range.pre was split := TRUE ;
+         pre lines := start line
+  FI .
+
+get post lines :
+  INT VAR post lines ;
+  IF col (f) = 1
+    THEN old range.post was split := FALSE ;
+         post lines := lines (f) - line no (f) + 1
+    ELSE old range.post was split := TRUE ;
+         post lines := lines (f) - line no (f)
+  FI .
+
+END PROC set range;
+
+
+PROC set range (FILE VAR f, FRANGE VAR new range) :
+
+  check mode (f, mod);
+  INT CONST pre add  := prefix - new range.pre,
+            post add := postfix - new range.post;
+  IF pre add < 0 OR post add < 0
+    THEN errorstop ("FRANGE ungueltig")
+    ELSE set new range;
+         undo splitting if necessary ;
+         make range var invalid
+  FI .
+ 
+set new range :
+  disable stop;
+  prefix DECR pre add;
+  postfix DECR post add;
+  used.line no INCR pre add;
+  used.lines INCR (pre add + post add) .
+
+undo splitting if necessary :
+  IF new range.pre was split
+    THEN concatenate first line
+  FI ;
+  IF new range.post was split
+    THEN concatenate last line
+  FI .
+
+concatenate first line :
+  INT VAR old line := line no (f) ;
+  to line (f, pre add) ;
+  concatenate line (f, FALSE) ;
+  to line (f, old line - 1) .
+
+concatenate last line :
+  old line := line no (f) ;
+  to line (f, lines (f) - post add) ;
+  concatenate line (f, FALSE) ;
+  to line (f, old line) .
+
+make range var invalid :
+  new range.pre := maxint .
+ 
+used :    f.used .
+prefix :  f.prefix lines .
+postfix : f.postfix lines .
+ 
+END PROC set range;
+ 
+PROC reset range (FILE VAR f) :
+
+  FRANGE VAR complete ;
+  complete.pre := 0 ;
+  complete.post:= 0 ;
+  complete.pre was split := FALSE ;
+  complete.post was split:= FALSE ;
+  set range (f, complete)
+
+ENDPROC reset range ;
+
+PROC remove (FILE VAR f, INT CONST size) :
+ 
+  check mode (f, mod);
+  transfer subsequence (f.used, f.scratch, f.atoms, size) .
+ 
+END PROC remove;
+ 
+ 
+PROC clear removed (FILE VAR f) :
+ 
+  check mode (f, mod);
+  transfer subsequence (f.scratch, f.free, f.atoms, f.scratch.lines) .
+ 
+END PROC clear removed;
+ 
+ 
+PROC reinsert (FILE VAR f) :
+ 
+  check mode (f, mod);
+  transfer subsequence (f.scratch, f.used, f.atoms, f.scratch.lines) .
+ 
+END PROC reinsert;
+
+
+PROC copy attributes (FILE CONST source file, FILE VAR dest file) :
+
+  dest.limit                     := source.limit ;
+  dest.atoms (free root).line    := source.atoms (free root).line ;
+  dest.atoms (scratch root).line := source.atoms (scratch root).line ;
+  dest.edit info                 := source.edit info .
+
+dest   : CONCR (CONCR (dest file)) .
+source : CONCR (CONCR (source file)) .
+
+ENDPROC copy attributes ;
+ 
+ 
+INT PROC max line length (FILE CONST f) :
+ 
+  f.limit .
+ 
+END PROC max line length;
+ 
+ 
+PROC max line length (FILE VAR f, INT CONST new limit) :
+ 
+  IF new limit > 0 AND new limit <= max limit
+    THEN f.limit := new limit
+  FI .
+ 
+END PROC max line length;
+ 
+ 
+TEXT PROC headline (FILE CONST f) :
+ 
+  f.atoms (free root).line .
+
+END PROC headline;
+ 
+ 
+PROC headline (FILE VAR f, TEXT CONST head) :
+ 
+  f.atoms (free root).line := head .
+ 
+END PROC headline;
+ 
+ 
+PROC get tabs (FILE CONST f, TEXT VAR tabs) :
+ 
+  tabs := f.atoms (scratch root).line .
+ 
+END PROC get tabs;
+ 
+ 
+PROC put tabs (FILE VAR f, TEXT CONST tabs) :
+ 
+  f.atoms (scratch root).line := tabs .
+ 
+END PROC put tabs;
+
+ 
+INT PROC edit info (FILE CONST f) :
+ 
+  f.edit info .
+ 
+END PROC edit info;
+ 
+ 
+PROC edit info (FILE VAR f, INT CONST info) : 
+ 
+  f.edit info := info .
+ 
+END PROC edit info;
+ 
+ 
+INT PROC lines (FILE CONST f) :
+ 
+  f.used.lines .
+ 
+END PROC lines;
+ 
+ 
+INT PROC removed lines (FILE CONST f) :
+ 
+  f.scratch.lines .
+ 
+END PROC removed lines;
+
+
+INT PROC segments (FILE CONST f) :
+
+  segs(f.used,f.atoms) + segs(f.scratch,f.atoms) + segs(f.free,f.atoms) - 2 .
+
+ENDPROC segments ;
+
+
+INT PROC col (FILE CONST f) :
+
+  f.col
+
+ENDPROC col ;
+
+PROC col (FILE VAR f, INT CONST new column) :
+
+  IF new column > 0
+    THEN f.col := new column
+  FI
+
+ENDPROC col ;
+
+TEXT PROC word (FILE CONST f) :
+
+  word (f, " ")
+
+ENDPROC word ;
+
+TEXT PROC word (FILE CONST f, TEXT CONST delimiter) :
+
+  INT VAR del pos := pos (f, delimiter, col (f)) ;
+  IF del pos = 0
+    THEN del pos := len (f) + 1
+  FI ;
+  subtext (f, col (f), del pos - 1)
+
+ENDPROC word ;
+
+TEXT PROC word (FILE CONST f, INT CONST max length) :
+
+  subtext (f, col (f), col (f) + max length - 1)
+
+ENDPROC word ;
+
+BOOL PROC at (FILE CONST f, TEXT CONST word) :
+
+  pat := any (column-1) ;
+  pat CAT word ;
+  pat CAT any ;
+  record LIKE pat .
+
+column : f.col .
+record : f.atoms (f.used.index).line .
+
+ENDPROC at ;
+
+ 
+PROC exec (PROC (TEXT VAR, TEXT CONST) proc, FILE VAR f, TEXT CONST t) :
+ 
+  proc (record, t) .
+ 
+record : f.atoms (f.used.index).line .
+ 
+END PROC exec;
+ 
+ 
+PROC exec (PROC (TEXT VAR, INT CONST) proc, FILE VAR f, INT CONST i) :
+ 
+  proc (record, i) .
+
+record : f.atoms (f.used.index).line .
+ 
+END PROC exec;
+ 
+INT PROC pos (FILE CONST f, TEXT CONST pattern, INT CONST i) :
+ 
+  pos (record, pattern, i) .
+ 
+record : f.atoms (f.used.index).line .
+ 
+END PROC pos ;
+
+PROC down (FILE VAR f, TEXT CONST pattern) :
+
+  down (f, pattern, file size)
+
+ENDPROC down ;
+
+PROC down (FILE VAR f, TEXT CONST pattern, INT CONST max line) :
+
+  check mode (f,mod) ;
+  INT VAR pattern pos := f.col + 1 ;
+  search down (f.used, f.atoms, pattern, max line, pattern pos) ;
+  f.col := pattern pos
+
+ENDPROC down ;
+
+PROC downety (FILE VAR f, TEXT CONST pattern) :
+ 
+  downety (f, pattern, file size)
+
+ENDPROC downety ;
+
+PROC downety (FILE VAR f, TEXT CONST pattern, INT CONST max line) :
+
+  check mode (f,mod) ;
+  INT VAR pattern pos := f.col ;
+  search down (f.used, f.atoms, pattern, max line, pattern pos) ;
+  f.col := pattern pos
+
+ENDPROC downety ;
+
+PROC up (FILE VAR f, TEXT CONST pattern) :
+
+  up (f, pattern, file size)
+
+ENDPROC up ;
+
+PROC up (FILE VAR f, TEXT CONST pattern, INT CONST max line) :
+
+  check mode (f,mod) ;
+  INT VAR pattern pos := f.col - 1 ;
+  search up (f.used, f.atoms, pattern, max line, pattern pos) ;
+  f.col := pattern pos
+
+ENDPROC up ;
+
+PROC uppety (FILE VAR f, TEXT CONST pattern) :
+
+  uppety (f, pattern, file size)
+
+ENDPROC uppety ;
+
+PROC uppety (FILE VAR f, TEXT CONST pattern, INT CONST max line) :
+
+  check mode (f,mod) ;
+  INT VAR pattern pos := f.col ;
+  search up (f.used, f.atoms, pattern, max line, pattern pos) ;
+  f.col := pattern pos
+
+ENDPROC uppety ;
+
+
+INT PROC len (FILE CONST f) :
+
+  length (record) .
+
+record : f.atoms (f.used.index).line .
+
+ENDPROC len ;
+
+TEXT PROC subtext (FILE CONST f, INT CONST from, to) :
+
+  subtext (record, from, to) .
+
+record : f.atoms (f.used.index).line .
+
+ENDPROC subtext ;
+
+PROC change (FILE VAR f, INT CONST from, to, TEXT CONST new) :
+
+  check mode (f, mod) ;
+  change (record, from, to, new) .
+
+record : f.atoms (f.used.index).line .
+
+ENDPROC change ;
+
+ 
+BOOL PROC mark (FILE CONST f) :
+
+  f.mark line > 0
+
+ENDPROC mark ;
+
+PROC mark (FILE VAR f, INT CONST line no, col) :
+
+  IF line no > 0
+    THEN f.mark line := line no + f.prefix lines ;
+         f.mark col  := col
+    ELSE f.mark line := 0 ;
+         f.mark col  := 0
+  FI 
+
+ENDPROC mark ;
+
+INT PROC mark line no (FILE CONST f) :
+
+  IF f.mark line = 0
+    THEN 0
+    ELSE max (1, f.mark line - f.prefix lines)
+  FI
+
+ENDPROC mark line no ;
+
+INT PROC mark col (FILE CONST f) :
+
+  IF f.mark line = 0
+    THEN 0
+  ELIF f.mark line <= f.prefix lines
+    THEN 1
+  ELSE f.mark col
+  FI
+
+ENDPROC mark col ;
+
+PROC set marked range (FILE VAR f, FRANGE VAR old range) :
+
+  IF mark (f)
+    THEN set range (f, mark line no (f), mark col (f), old range)
+    ELSE old range := previous range of file
+  FI .
+
+previous range of file :
+  FRANGE : (f.prefix lines, f.postfix lines, FALSE, FALSE) .
+
+ENDPROC set marked range ;
+
+
+(*****************************************************************)
+
+                                                  (* Autor: P.Heyderhoff *) 
+                                                  (* Stand: 11.10.83     *) 
+ 
+BOUND LIST VAR datei; 
+INT  VAR sortierstelle, sortanker;
+BOOL VAR ascii sort;
+TEXT VAR median, tausch , links, rechts;
+ 
+PROC sort (TEXT CONST dateiname) : 
+     sort (dateiname, 1)
+END PROC sort; 
+ 
+PROC sort (TEXT CONST dateiname, INT CONST sortieranfang) : 
+     ascii sort := TRUE ;
+     sortierstelle := sortieranfang; sortiere (dateiname)
+END PROC sort; 
+ 
+PROC lex sort (TEXT CONST dateiname) :
+     lex sort (dateiname, 1)
+ENDPROC lex sort ;
+
+PROC lex sort (TEXT CONST dateiname, INT CONST sortieranfang) :
+     ascii sort := FALSE ;
+     sortierstelle := sortieranfang; sortiere (dateiname)
+ENDPROC lex sort ;
+
+PROC sortiere (TEXT CONST dateiname) :
+
+  reorganize file if necessary ;
+  sort file .
+
+reorganize file if necessary :
+  FILE VAR f := sequential file (modify, dateiname) ;
+  IF segments (f) > 1
+    THEN reorganize (dateiname)
+  FI .
+
+sort file :
+  f := sequential file (modify, dateiname) ;
+  INT CONST sortende := lines (f) + 3 ;
+  sortanker := 1 + 3 ;
+  datei := old (dateiname) ;
+  quicksort(sortanker, sortende) .
+
+END PROC sortiere; 
+ 
+PROC quicksort ( INT CONST anfang, ende ) : 
+     IF   anfang < ende 
+     THEN INT VAR p,q; 
+          spalte    (anfang, ende, p, q); 
+          quicksort (anfang, q); 
+          quicksort (p, ende)    FI 
+END PROC quicksort; 
+ 
+PROC spalte (INT CONST anfang, ende, INT VAR p, q): 
+     fange an der seite an und waehle den median; 
+     ruecke p und q so dicht wie moeglich zusammen; 
+     hole ggf median in die mitte . 
+ 
+   fange an der seite an und waehle den median : 
+     p := anfang; q := ende ; 
+     INT CONST m :: (p + q) DIV 2 ; 
+     median := subtext(datei m, sortierstelle) . 
+ 
+   ruecke p und q so dicht wie moeglich zusammen : 
+     REP schiebe p und q so weit wie moeglich auf bzw ab; 
+         IF p < q THEN vertausche die beiden FI 
+     UNTIL p > q END REP . 
+ 
+   vertausche die beiden : 
+     tausch := datei p; datei p := datei q; datei q := tausch; 
+     p INCR 1; q DECR 1 . 
+ 
+   schiebe p und q so weit wie moeglich auf bzw ab : 
+     WHILE p kann groesser werden REP p INCR 1 END REP; 
+     WHILE q kann kleiner  werden REP q DECR 1 END REP . 
+ 
+   p kann groesser werden : 
+     IF p <= ende 
+       THEN links := subtext (datei p, sortierstelle) ;
+            IF ascii sort
+              THEN median >= links
+              ELSE median LEXGREATEREQUAL links
+            FI
+       ELSE FALSE 
+     FI . 
+ 
+   q kann kleiner werden : 
+     IF q >= anfang 
+       THEN rechts := subtext(datei q, sortierstelle) ;
+            IF ascii sort
+              THEN rechts >= median 
+              ELSE rechts LEXGREATEREQUAL median
+            FI
+       ELSE FALSE 
+     FI . 
+ 
+   hole ggf median in die mitte : 
+     IF   m < q THEN vertausche m und q 
+     ELIF m > p THEN vertausche m und p FI . 
+ 
+   vertausche m und q : 
+     tausch := datei m; datei m := datei q; datei q := tausch; q DECR 1 . 
+ 
+   vertausche m und p : 
+     tausch := datei m; datei m := datei p; datei p := tausch; p INCR 1 . 
+ 
+   datei m :  datei.atoms (m).line . 
+   datei p :  datei.atoms (p).line . 
+   datei q :  datei.atoms (q).line . 
+ 
+END PROC spalte; 
+
+END PACKET file handling;
+

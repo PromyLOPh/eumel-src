@@ -1,0 +1,164 @@
+PACKET port server:                                   (* Autor : R. Ruland *)
+                                                      (* Stand : 21.03.86  *)
+ 
+INT  VAR port station;
+TEXT VAR port := "PRINTER";
+ 
+put ("gib Name des Zielspools : "); editget (port); line;
+put ("gib Stationsnummer des Zielspools : "); get (port station);
+ 
+server channel (15);
+spool duty ("Verwalter fuer Task """ + port +
+                                    """ auf Station " + text (port station));
+ 
+LET max counter      = 10 ,
+    time slice       = 300 ,
+ 
+    ack              = 0 ,
+    fetch code       = 11 ,
+    param fetch code = 21 ,
+    file save code   = 22 , 
+    file type        = 1003 ,
+
+    begin char       = ""0"",
+    end char         = ""1"";
+ 
+
+INT VAR reply, old heap size;
+TEXT VAR file name, write pass, read pass, sendername, buffer;
+FILE VAR file;
+
+DATASPACE VAR ds, file ds, send ds;
+ 
+BOUND STRUCT (TEXT file name, write pass, read pass, sendername, INT station) VAR msg;
+BOUND TEXT VAR error msg ;
+ 
+spool manager (PROC save file);
+ 
+PROC save file :
+
+  disable stop ;
+  command dialogue (FALSE);
+  ds := nilspace; file ds := nilspace; send ds := nil space;
+  old heap size := heap size;
+ 
+  REP 
+    execute save file;
+ 
+    IF is error THEN save error (error message) FI;
+ 
+    IF heap size > old heap size + 4
+      THEN collect heap garbage ;
+           old heap size := heap size
+    FI;
+ 
+  PER 
+ 
+ENDPROC save file;
+
+ 
+PROC execute save file :
+
+enable stop;
+forget (file ds) ; file ds := nilspace;
+call (father, fetch code, file ds, reply);
+IF reply <> ack
+   THEN error msg := ds; errorstop (error msg);
+   ELSE save file ds
+FI;
+ 
+. save file ds :
+    IF type (file ds) = file type 
+       THEN get file params;
+            insert file params;
+            call station (port station, port, file save code, file ds);
+       ELSE errorstop ("Datenraum hat falschen Typ")
+    FI; 
+ 
+. get file params :
+    forget (ds); ds := nilspace;
+    call (father, param fetch code, ds, reply);
+    IF reply <> ack
+       THEN error msg := ds; errorstop (error msg);
+       ELSE msg := ds;
+            file name  := msg. file name;
+            write pass := msg. write pass;
+            read pass  := msg. read pass;
+            sendername := msg. sender name;
+    FI;
+ 
+. insert file params :
+    buffer := "";
+    in headline (filename);
+    in headline (write pass);
+    in headline (read pass);
+    in headline (sendername);
+    file := sequential file (input, file ds) ;
+    headline (file, buffer);
+ 
+END PROC execute save file;
+ 
+ 
+PROC call station (INT CONST order task station, TEXT CONST order task name,
+                   INT CONST order code, DATASPACE VAR order ds) :
+ 
+     INT VAR counter := 0;
+     TASK VAR order task;
+     disable stop;
+     REP order task := order task station // order task name;
+         IF is error CAND pos (error message, "antwortet nicht") > 0
+            THEN clear error;
+                 counter := min (max counter, counter + 1);
+                 pause (counter * time slice);
+            ELSE enable stop;
+                 forget (send ds); send ds := order ds;
+                 call (order task, order code, send ds, reply);
+                 disable stop;
+                 IF reply = ack 
+                    THEN forget (order ds); order ds := send ds;
+                         forget (send ds);
+                         LEAVE call station
+                    ELSE error msg := send ds;
+                         errorstop (error msg);
+                 FI;
+         FI;
+     PER;
+ 
+END PROC call station;
+ 
+ 
+TASK OP // (INT CONST station, TEXT CONST name) :
+ 
+    enable stop;
+    station / name
+ 
+END OP //;
+ 
+ 
+PROC in headline (TEXT CONST information) :
+    IF pos (information, begin char) <> 0 
+         OR pos (information, end char) <> 0 
+       THEN errorstop ("Name darf nicht Code 0 oder Code 1 enthalten") FI;
+    buffer CAT begin char;
+    buffer CAT information;
+    buffer CAT end char;
+END PROC in headline;
+ 
+ 
+PROC save error (TEXT CONST message) :
+     clear error;
+     file name CAT ".";
+     file name CAT sender name;
+     file name CAT ".ERROR";
+     file := sequential file (output, file name);
+     putline (file, " ");
+     putline (file, "Uebertragung nicht korrekt beendet ");
+     putline (file, " ");
+     put (file, "ERROR :"); put (file, message);
+     save (file name, public);
+     clear error;
+     forget(file name, quiet);
+END PROC save error;
+ 
+ENDPACKET port server;
+

@@ -1,0 +1,216 @@
+PACKET eudas manager                         (* Autor: Thomas Berlage *)
+                                             (* Stand: 20.01.88       *)
+  DEFINES
+
+  eudas manager,
+  setze partner,
+  abhaengige task,
+  end partner :
+
+
+LET
+  code dateien        = 190,
+  code felder         = 191,
+  code positioniere   = 192,
+  code satz           = 193,
+  end myself code     = 197,
+  set controlled code = 198,
+  ask partner code    = 200;
+
+LET
+  ack   = 0;
+
+LET
+  COM = STRUCT (INT int info,
+                BOOL bool info,
+                TEXT text info,
+                SATZ satz info);
+
+BOUND COM VAR p;
+
+ROW 4 TEXT VAR partner vater;
+  partner vater (1) := "";
+  partner vater (2) := "";
+  partner vater (3) := "";
+  partner vater (4) := "";
+
+TEXT VAR puffer;
+
+LET
+  kein partner =
+    "Kein Partner";
+
+
+PROC setze partner (INT CONST nr, TEXT CONST name des vaters) :
+
+  partner vater (nr) := name des vaters
+
+END PROC setze partner;
+
+PROC eudas manager (DATASPACE VAR ds, INT CONST order, phase,
+                    TASK CONST order task) :
+
+  enable stop;
+  SELECT order OF
+  CASE code dateien      : code dateien ausfuehren
+  CASE code felder       : code felder ausfuehren
+  CASE code positioniere : code positioniere ausfuehren
+  CASE code satz         : code satz ausfuehren
+  OTHERWISE andere codes
+  END SELECT .
+
+andere codes :
+  IF order > ask partner code AND order < ask partner code + 4 THEN
+    ask partner code ausfuehren
+  ELSE
+    menue manager (ds, order, phase, order task)
+  END IF .
+
+code dateien ausfuehren :
+  p := ds;
+  p. int info := dateiversion;
+  dateinamen anlegen;
+  send (order task, ack, ds) .
+
+dateinamen anlegen :
+  satz initialisieren (p. satz info);
+  FOR i FROM 1 UPTO anzahl dateien REP
+    feld aendern (p. satz info, i, eudas dateiname (i))
+  END REP .
+
+code felder ausfuehren :
+  p := ds;
+  feldinfo anlegen;
+  feldnamen anlegen;
+  send (order task, ack, ds) .
+
+feldinfo anlegen :
+  INT VAR i;
+  TEXT VAR rep := "  ";
+  p. text info := "";
+  FOR i FROM 1 UPTO anzahl felder REP
+    replace (rep, 1, feldinfo (i));
+    p. text info CAT rep
+  END REP .
+
+feldnamen anlegen :
+  satz initialisieren (p. satz info, anzahl felder);
+  FOR i FROM 1 UPTO anzahl felder REP
+    feldnamen lesen (i, puffer);
+    feld aendern (p. satz info, i, puffer)
+  END REP .
+
+code positioniere ausfuehren :
+  p := ds;
+  positionieren;
+  ergebnis ablegen;
+  send (order task, ack, ds) .
+
+positionieren :
+  IF p. bool info THEN
+    relativ positionieren
+  ELSE
+    auf satz (p. int info)
+  END IF .
+
+relativ positionieren :
+  IF p. int info > 0 THEN
+    weiter (p. int info)
+  ELIF p. int info < 0 THEN
+    zurueck (- p. int info)
+  END IF .
+
+ergebnis ablegen :
+  p. int info := satznummer;
+  p. bool info := dateiende .
+
+code satz ausfuehren :
+  p := ds;
+  p. int info := satzkombination;
+  p. bool info := satz ausgewaehlt;
+  satz aufbauen;
+  send (order task, ack, ds) .
+
+satz aufbauen :
+  satz initialisieren (p. satz info, anzahl felder);
+  FOR i FROM 1 UPTO anzahl felder REP
+    feld lesen (i, puffer);
+    feld aendern (p. satz info, i, puffer)
+  END REP .
+
+ask partner code ausfuehren :
+  INT VAR p nr := order - ask partner code;
+  forget (ds); ds := nilspace;
+  BOUND TASK VAR c task := ds;
+  CONCR (c task) := partner mit einrichten (p nr, task index);
+  send (order task, ack, ds) .
+
+task index :
+  FOR i FROM 2 UPTO 4 REP
+    IF partner task (i) = order task THEN
+      LEAVE task index WITH i
+    END IF
+  END REP;
+  errorstop (kein partner);
+  1 .
+
+END PROC eudas manager;
+
+TASK PROC abhaengige task (INT CONST p nr) :
+
+  partner mit einrichten (p nr, 1)
+
+END PROC abhaengige task;
+
+TASK PROC partner mit einrichten (INT CONST p nr, p von) :
+
+  enable stop;
+  IF NOT exists (partner task (p nr)) THEN
+    partner einrichten
+  END IF;
+  partner task (p nr) .
+
+partner einrichten :
+  TEXT CONST neuer name := name (myself) + "-p" + text (p nr - 1);
+  begin (neuer name, partner vater (p nr));
+  partner task (p nr, task (neuer name));
+  abhaengig setzen .
+
+abhaengig setzen :
+  DATASPACE VAR send ds := nilspace;
+  BOUND STRUCT (INT von, TASK pt) VAR m := send ds;
+  m. von := p von;
+  m. pt := partner task (p von);
+  INT VAR i, reply;
+  FOR i FROM 1 UPTO 5 REP
+    pingpong (partner task (p nr), set controlled code, send ds, reply);
+    IF reply = -2 THEN pause (5) END IF
+  UNTIL reply <> -2 END REP;
+  forget (send ds) .
+
+END PROC partner mit einrichten;
+
+PROC end partner (INT CONST p nr) :
+
+  IF exists (partner task (p nr)) THEN
+    end code senden
+  END IF .
+
+end code senden :
+  DATASPACE VAR send ds := nilspace;
+  INT VAR i, reply;
+  FOR i FROM 1 UPTO 10 REP
+    send (partner task (p nr), end myself code, send ds, reply);
+    IF reply = ack THEN
+      LEAVE end code senden
+    END IF;
+    pause (3)
+  END REP;
+  forget (send ds);
+  errorstop ("END nicht angenommen") .
+
+END PROC end partner;
+
+
+END PACKET eudas manager;
+

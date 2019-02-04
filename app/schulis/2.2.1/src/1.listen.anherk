@@ -1,0 +1,124 @@
+PACKET anherklistenDEFINES anherklispezielleteile:#LET dnrschueler=2,
+fnrsufamnames=3,fnrsurufnames=4,fnrsugebdatums=5,fnrsustatuss=6,
+fnrsuskennlschule=14,fnrsuklasselschule=15,fnrsunamenszusatzs=21,dnrschulen=
+120,fnrschkennung=121,fnrschname=122,fnrschstrnr=124,fnrschplzort=125,
+ixsustatschulkenn=253,#LET mnrbearbeitetwirdschule=103,mnrlistewirdgedruckt=
+58;TEXT VAR bearbeitetwirdschule:="",listewirdgedruckt:="",startwert:="";LET 
+niltext="",blank=" ",mittestrich="-",null=0,komma=",",ueberschriftenzeilen=1,
+spalte2breite=8,spalte3breite=27,anzspaltentrenner=2,spaltentrenner=":",
+ausgkopflaenge=3,ausgfeldlaenge=1,AUSGFELD =ROW ausgfeldlaengeTEXT ,AUSGKOPF 
+=ROW ausgkopflaengeTEXT ,anherklieingangsmaske="ms liste anherk eingang",
+anherklianfpos=2;INT VAR druckzeilenzahl,druckzeilenzahlseite1,
+druckzeilenzahlfolgeseiten,spalte1breite,eingabestatus;TEXT VAR #
+anherkliueberschrift,#schuelername,schuelerrufname,schuelernamenszus,
+schuelergebdat,schulkuerzel,letzteklasse,vordruck,vordruckueberarbeitet;TEXT 
+VAR druckstrich;AUSGFELD VAR ausgfelddruck;AUSGKOPF VAR ausgkopfdruck;BOOL 
+VAR jgst5,neueherkschule;FILE VAR textanschr;PROC anherklispezielleteile(INT 
+CONST nr):SELECT nrOF CASE 1:anherklidialogvorbereitenCASE 2:
+anherklieingabenrichtigCASE 3:anherklilistenvorbereitenCASE 4:
+anherklidruckvorbereitenCASE 5:anherkliseitedruckenENDSELECT .END PROC 
+anherklispezielleteile;PROC anherklidialogvorbereiten:setzeanfangswerte(
+anherklieingangsmaske,anherklianfpos).END PROC anherklidialogvorbereiten;
+PROC anherklieingabenrichtig:LET fnrjgst5=2,fnrjgst11=3;standardpruefe(5,
+fnrjgst5,fnrjgst11,null,niltext,eingabestatus);IF eingabestatus<>0THEN infeld
+(eingabestatus);setzeeingabetest(FALSE )ELSE jgst5:=(standardmaskenfeld(
+fnrjgst11)=niltext);setzeausgabedrucker(TRUE );setzeeingabetest(TRUE )FI .
+END PROC anherklieingabenrichtig;PROC anherklilistenvorbereiten:BOOL VAR b:=
+FALSE ;IF jgst5THEN startwert:="n05"ELSE startwert:="n11"FI ;meldungstext(
+mnrbearbeitetwirdschule,bearbeitetwirdschule);meldungstext(
+mnrlistewirdgedruckt,listewirdgedruckt);inittupel(dnrschueler);
+parsenooffields(21);setzeidentiwert("");putwert(fnrsustatuss,startwert);
+putwert(fnrsuskennlschule," ");objektlistestarten(ixsustatschulkenn,"",#
+fnrsustatuss#dnrschueler+1,TRUE ,b);setzebestandende(b)END PROC 
+anherklilistenvorbereiten;PROC anherklidruckvorbereiten:LET vordr1=
+"vordruck fuer anschreiben an herkunftsschulen fuer jgst 5",vordr2=
+"vordruck fuer anschreiben an herkunftsschulen fuer jgst 11",vordrueberarb=
+"vordruck ueberarbeitet",manager="anschreiben server";neueherkschule:=TRUE ;
+druckvorbereiten;festenanschreibentextholen;variablenfuerdrucksetzen;
+inittupel(dnrschueler);putwert(fnrsustatuss,startwert);putwert(
+fnrsuskennlschule," ");lesenvorbereitendruck(PROC (INT CONST ,BOOL PROC ,INT 
+VAR )scanforward,BOOL PROC multistopsim);initdruckkopf;initspalten;
+initausgabekopfdruck.festenanschreibentextholen:IF jgst5THEN vordruck:=vordr1
+ELSE vordruck:=vordr2FI ;vordruckueberarbeitet:=vordrueberarb;forget(vordruck
+,quiet);forget(vordruckueberarbeitet,quiet);fetch(vordruck,/manager);
+briefalternative(vordruck,vordruckueberarbeitet).variablenfuerdrucksetzen:
+druckstrich:=druckbreite*mittestrich;spalte1breite:=druckbreite-
+anzspaltentrenner-spalte2breite-spalte3breite;druckzeilenzahlseite1:=
+drucklaenge(ueberschriftenzeilen)-ausgkopflaenge;druckzeilenzahlfolgeseiten:=
+drucklaenge-ausgkopflaenge.END PROC anherklidruckvorbereiten;PROC 
+initausgabekopfdruck:LET name="Name",geb="Geburts-",dat="datum",letzte=
+"letzte:",klasse="Klasse:",bedingung="Bed. 2. Fremdsprache",erfuellt=
+"erfüllt für";hilfsfeldervorbelegen;spaltenweise(niltext);spaltenweise(geb);
+IF jgst5THEN spaltenweise(letzte)ELSE spaltenweise(letzte+bedingung)FI ;
+ausgkopfdruck(1):=zeile;spaltenweise(name);spaltenweise(dat);IF jgst5THEN 
+spaltenweise(klasse)ELSE spaltenweise(klasse+erfuellt)FI ;ausgkopfdruck(2):=
+zeile;ausgkopfdruck(3):=druckstrich.hilfsfeldervorbelegen:setzespaltentrenner
+(spaltentrenner);setzespaltenbreite(spalte1breite);setzespaltenbreite(
+spalte2breite);setzespaltenbreite(spalte3breite).END PROC 
+initausgabekopfdruck;BOOL PROC multistopsim:BOOL VAR b;IF jgst5THEN b:=wert(
+fnrsustatuss)="n05"ELSE b:=wert(fnrsustatuss)="n11"FI ;setzebestandende(NOT b
+);bENDPROC multistopsim;PROC anherkliseitedrucken:anherkliueberschriftdrucken
+;seitedrucken(PROC (INT VAR )schuelerdatendrucken,druckzeilenzahl,
+ausgfeldlaenge,PROC bestandendesimulierenbeischulwechsel,BOOL PROC 
+multistopsim);IF neueherkschuleTHEN simuliertesendezuruecknehmen;
+neuelistevorbereitenELSE seitenwechselFI .simuliertesendezuruecknehmen:
+setzebestandende(FALSE ).neuelistevorbereiten:meldelistewirdgedruckt;
+drucknachbereiten;druckvorbereiten;initdruckkopf.meldelistewirdgedruckt:
+standardmeldung(listewirdgedruckt,"").END PROC anherkliseitedrucken;PROC 
+anherkliueberschriftdrucken:LET anzleerzeilen=3,markiert="#";INT VAR i;IF 
+neueherkschuleTHEN zwischenmeldung;druckzeilenzahl:=druckzeilenzahlseite1;
+druckkopfschreiben;anschreibenschreibenELSE druckzeilenzahl:=
+druckzeilenzahlfolgeseitenFI ;FOR iFROM 1UPTO ausgkopflaengeREPEAT 
+druckzeileschreiben(ausgkopfdruck(i))END REPEAT .zwischenmeldung:
+standardmeldung(bearbeitetwirdschule,wert(fnrsuskennlschule)+markiert).
+anschreibenschreiben:#ROW 3TEXT VAR herkschuldaten,merker;##dbwertemerken;#
+adresseherkschuleholen;adresseherkschuleschreiben;festentextschreiben;
+unterschriftschreiben;#dbwertezurueckholen.#.#dbwertemerken:FOR iFROM 1UPTO 3
+REP merker(i):=dbwert(i)PER .#adresseherkschuleholen:putwert(fnrschkennung,
+wert(fnrsuskennlschule));search(dnrschulen,TRUE );IF NOT gefundenTHEN 
+inittupel(dnrschulen)FI .gefunden:dbstatus=ok.adresseherkschuleschreiben:LET 
+an="An",zeilenzahladresse=7;ausgfelddruck(1):=text(an,druckbreite);
+druckzeileschreiben(ausgfelddruck(1));drucke(text(wert(fnrschname),
+druckbreite));drucke(text(wert(fnrschstrnr),druckbreite));drucke(text(wert(
+fnrschplzort),druckbreite));#FOR iFROM 1UPTO 3REP ausgfelddruck(1):=text(
+herkschuldaten(i),druckbreite);druckzeileschreiben(ausgfelddruck(1))PER ;#
+FOR iFROM 1UPTO anzleerzeilenREP ausgfelddruck(1):=text(niltext,druckbreite);
+druckzeileschreiben(ausgfelddruck(1))PER ;druckzeilenzahl:=druckzeilenzahl-
+zeilenzahladresse.festentextschreiben:textanschr:=sequentialfile(input,
+vordruckueberarbeitet);WHILE NOT eof(textanschr)REP getline(textanschr,
+ausgfelddruck(1));druckzeileschreiben(ausgfelddruck(1));druckzeilenzahlDECR 1
+PER ;FOR iFROM 1UPTO anzleerzeilenREP ausgfelddruck(1):=text(niltext,
+druckbreite);druckzeileschreiben(ausgfelddruck(1));druckzeilenzahlDECR 1PER .
+unterschriftschreiben:LET schluessel="Schulleiter",klammer1="(",klammer2=")",
+anzblank=5;TEXT VAR schulleiter;schulleiter:=schulkenndatum("Schulleiter");
+ausgfelddruck(1):=text(varanzblank*blank+klammer1+schulleiter+klammer2,
+druckbreite);druckzeileschreiben(ausgfelddruck(1));druckzeilenzahlDECR 1;
+ausgfelddruck(1):=text(anzblank*blank+schluessel,druckbreite);
+druckzeileschreiben(ausgfelddruck(1));druckzeilenzahlDECR 1;FOR iFROM 1UPTO 
+anzleerzeilenREP ausgfelddruck(1):=text(niltext,druckbreite);
+druckzeileschreiben(ausgfelddruck(1));druckzeilenzahlDECR 1PER .varanzblank:
+anzblank-((length(schulleiter)+2-length(schluessel))DIV 2).#
+dbwertezurueckholen:FOR iFROM 1UPTO 3REP dbwert(merker(i),i)PER .#END PROC 
+anherkliueberschriftdrucken;PROC drucke(TEXT CONST drucktext):ausgfelddruck(1
+):=drucktext;druckzeileschreiben(ausgfelddruck(1))ENDPROC drucke;PROC 
+schuelerdatendrucken(INT VAR zeilenzaehler):schuelerdatenholen;
+schuelerdatenaufbereiten;zeilenzaehlerINCR ausgfeldlaenge;
+schuelerdatenindruckdatei.END PROC schuelerdatendrucken;PROC 
+schuelerdatenholen:schuelername:=wert(fnrsufamnames);schuelerrufname:=wert(
+fnrsurufnames);schuelernamenszus:=wert(fnrsunamenszusatzs);schuelergebdat:=
+wert(fnrsugebdatums);schulkuerzel:=wert(fnrsuskennlschule);letzteklasse:=wert
+(fnrsuklasselschule).END PROC schuelerdatenholen;PROC 
+schuelerdatenaufbereiten:LET restjgst5="  :",restjgst11="  :    _________";
+schreibenamegebdatletzteklasse.schreibenamegebdatletzteklasse:spaltenweise(
+schuelernameaufber);spaltenweise(schuelergebdat);IF jgst5THEN spaltenweise(
+blank+letzteklasseaufber+restjgst5)ELSE spaltenweise(blank+letzteklasseaufber
++restjgst11)FI ;ausgfelddruck(1):=zeile.schuelernameaufber:schuelername+komma
++blank+schuelerrufname+blank+schuelernamenszus.letzteklasseaufber:IF 
+letzteklasse=niltextTHEN 3*blankELSE ((3-length(letzteklasse))*blank)+
+letzteklasseFI .END PROC schuelerdatenaufbereiten;PROC 
+schuelerdatenindruckdatei:druckzeileschreiben(ausgfelddruck(1)).END PROC 
+schuelerdatenindruckdatei;PROC bestandendesimulierenbeischulwechsel:IF 
+bestandendeTHEN neueherkschule:=FALSE ELSE neueherkschule:=schulkuerzel<>wert
+(fnrsuskennlschule);IF neueherkschuleTHEN setzebestandende(TRUE )FI ;FI .END 
+PROC bestandendesimulierenbeischulwechsel;END PACKET anherklisten;
+

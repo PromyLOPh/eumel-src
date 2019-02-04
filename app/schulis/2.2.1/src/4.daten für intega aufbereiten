@@ -1,0 +1,462 @@
+PACKET datenfuerintegaaufbereitenDEFINES integastdvproc,integaarchiv,
+integaabfrage,integaaufbereitenoderabfrage,integaentfernen,integaposhalt,
+integaloescheundreturn,integadatenzeigen,integadatendrucken,
+schulisintegatransfer:LET raumkenndaten="c02 raeume",schulkenndaten=
+"c02 schulkenndaten",schulhj="Schulhalbjahr",schulj="Schuljahr",schulname=
+"Schulname",schulort="Schulort",schulstr="Schulstraße",eingmaske=
+"ms eing integaeingabedatei",fldakthj=2,fldfix1=3,fldfix2=4,fldinteganame=5,
+meldg0=69,meldg1=340,meldg2=323,meldg3=324,meldg4=331,meldg5=332,meldg6=333,
+meldg7=334,meldg8=335,meldg9=336,meldg10=337,meldg11=338,meldg13=343,meldg14=
+345,meldg15=346,meldg16=347,meldg17=348,meldg18=349,meldg19=350,meldg20=351,
+meldg21=381,meldg22=56,meldg23=58,meldungbearbwird=352,meldungserverfehler=
+376,meldungkeinstdplan=366,meldungkeinesugruppen=334,meldungzuvielesugruppen=
+356,meldungkeinelv=326,meldungzuvielelv=358,meldungbasisinkon=378,
+meldungstdplauswvorber=384,zeilenende="",erstestde=1,maxstden=66,vormstden=6,
+nachmstden=6,stdenprotag=12,vorm=6,nachm=5,unttage=6,eumelgrenzemaxzeilen=
+4000,ausgparam="#",trenner="�";LET filemodus="file ibm",leererunbestwunsch=
+"         ",dateikennung=".DP",dos="DOS",kennpar="P",kennsugrup="S",kennraum=
+"R",kennkoppl="K",kennfach="F",listenname=
+"Liste der Dateien auf der Diskette:";DATASPACE VAR dszeitw,dslverf,dskverf;
+FILE VAR f,g,z,k,l;INT VAR p,i,j,h,fstat,zz:=0,ruecksprung:=1,maxvs:=0,maxns
+:=0,vs:=vormstden,ns:=nachmstden,nulltestd:=0,vm:=vorm,objvm,nm:=nachm,objnm,
+ut:=unttage,objut,jahrende;TEXT VAR sgrdaten:="",sgridaten:="",klgr:=trenner,
+klgrdaten:="",rgrdaten:=trenner,letztepar:="",par:="",objektverf:="",
+lehrerdaten,bearbkopplungen,kartenart,zeitwuensche:=trenner,
+schulverfuegbarkeit:="",dateiname:="SCHULIS.DP",schuldaten:="",zeile:="",
+aktschj:="0",aktschhj:="0",geplschj:="0",geplschhj:="0",schj,schhj,record:=""
+,t1:="",t2:="",zeitdaten:="";BOOL VAR datenfehler,fehler,mindeinraum,
+archivfehler,falschesugrupgefunden:=FALSE ,abbruchwegen4000zeilen:=FALSE ;
+THESAURUS VAR thes;TEXT VAR t:="",leererbestwunsch:=
+"                                                                      "+
+"                                                              ",bestwunsch,
+unbestwunsch;PROC integaposhalt(INT CONST rueck):infeld(fldakthj);return(
+rueck)END PROC integaposhalt;PROC loeschemeldung:INT VAR ankreuzung:=1;FOR i
+FROM fldakthjUPTO fldfix2REP IF standardmaskenfeld(i)<>""THEN ankreuzung:=
+ankreuzung*(2*i-1)FI PER ;standardstartproc(eingmaske);infeld(fldakthj);FOR i
+FROM fldakthjUPTO fldfix2REP IF ankreuzungMOD (2*i-1)=0THEN 
+standardmaskenfeld("x",i)FI PER ;standardmaskenfeld(text(dateiname,pos(
+dateiname,".")-1),fldinteganame);standardfelderausgeben;infeld(fldakthj);END 
+PROC loeschemeldung;PROC archivanmelden:archivfehler:=FALSE ;commanddialogue(
+FALSE );disablestop;dateiname:=standardmaskenfeld(fldinteganame)+".DP";IF 
+standardmaskenfeld(fldinteganame)=""THEN fehlermeldungnamefalschELIF 
+falschercode(dateiname)THEN fehlermeldungnamefalschFI ;reserve(filemodus,/dos
+);IF iserrorTHEN archivfehler:=TRUE ;abbruchnachfehler(1);LEAVE 
+archivanmeldenFI ;enablestop.fehlermeldungnamefalsch:archivfehler:=TRUE ;
+return(ruecksprung);infeld(fldinteganame);standardmeldung(meldg2,subtext(
+dateiname,i,i)+"#"+dateiname+"#");LEAVE archivanmelden.END PROC 
+archivanmelden;PROC integaarchiv(INT CONST wahl):SELECT wahlOF CASE 1:
+archivinitialisierenCASE 2:archivanmelden;IF archivfehlerTHEN LEAVE 
+integaarchivFI ;archivlistenCASE 3:archivbeschreibenCASE 4:
+archivueberschreibenEND SELECT .archivinitialisieren:standardmeldung(meldg0,
+" ");disablestop;clear(/dos);IF iserrorTHEN abbruchnachfehler(2);LEAVE 
+integaarchivFI ;enablestop;loeschemeldung;return(2).archivlisten:
+standardmeldung(meldg0," ");disablestop;g:=sequentialfile(output,listenname);
+thes:=ALL /dos;IF iserrorTHEN abbruchnachfehler(1);LEAVE integaarchivFI ;
+thesaurusaufbereiten;enablestop;zeigedatei(listenname,"vr").
+thesaurusaufbereiten:t:=" ";i:=0;REP get(thes,t,i);putline(g,t)UNTIL t=""PER 
+.archivbeschreiben:standardmeldung(meldg0," ");disablestop;IF exists(
+dateiname,/dos)THEN IF iserrorTHEN abbruchnachfehler(2);LEAVE integaarchiv
+ELSE abfragedateiueberschreibenFI ELSE save(dateiname,/dos);IF iserrorTHEN 
+abbruchnachfehler(2);LEAVE integaarchivFI ;enablestop;commanddialogue(TRUE );
+loeschemeldung;return(2);FI .abfragedateiueberschreiben:infeld(1);
+standardmeldung(meldg19,dateiname+"#");standardnproc.archivueberschreiben:
+standardmeldung(meldg0," ");disablestop;commanddialogue(FALSE );erase(
+dateiname,/dos);IF iserrorTHEN abbruchnachfehler(3);LEAVE integaarchivFI ;
+save(dateiname,/dos);IF iserrorTHEN abbruchnachfehler(3);LEAVE integaarchiv
+FI ;enablestop;commanddialogue(TRUE );loeschemeldung;return(3).END PROC 
+integaarchiv;PROC integaloescheundreturn(BOOL CONST b):IF bTHEN forget(
+listenname,quiet);FI ;loeschemeldung;return(2)END PROC integaloescheundreturn
+;PROC abbruchnachfehler(INT CONST schritte):standardmeldung(meldg13,
+"Fehler: "+errormessage+" !#");clearerror;infeld(fldakthj);return(schritte);
+release(/dos);commanddialogue(TRUE );enablestopEND PROC abbruchnachfehler;
+PROC integaabfrage(INT CONST wahl):SELECT wahlOF CASE 1:archivanmelden;IF 
+archivfehlerTHEN LEAVE integaabfrageFI ;standardmeldung(meldg16,"")CASE 2:
+archivanmelden;IF archivfehlerTHEN LEAVE integaabfrageFI ;standardmeldung(
+meldg17,"")CASE 3:fragevorbereiten;standardmeldung(meldg18,dateiname+"#"+text
+(t2,8)+"#")END SELECT ;infeld(1);standardnproc.fragevorbereiten:dateiname:=
+standardmaskenfeld(fldinteganame)+".DP";IF standardmaskenfeld(fldinteganame)=
+""THEN fehlermeldungnamefalschELIF falschercode(dateiname)THEN 
+fehlermeldungnamefalschFI ;IF exists(dateiname)THEN beginlist;REP 
+getlistentry(t1,t2);UNTIL t1=dateinameCOR t1=""PER ;ELSE return(1);infeld(
+fldinteganame);standardmeldung(meldg20,dateiname+"#");LEAVE integaabfrageFI .
+fehlermeldungnamefalsch:return(1);infeld(fldinteganame);standardmeldung(
+meldg2,subtext(dateiname,i,i)+"#"+dateiname+"#");LEAVE integaabfrage.END 
+PROC integaabfrage;PROC integadatenzeigen:standardmeldung(meldg0," ");
+dateiname:=standardmaskenfeld(fldinteganame)+".DP";IF standardmaskenfeld(
+fldinteganame)=""THEN fehlermeldungnamefalschELIF falschercode(dateiname)
+THEN fehlermeldungnamefalschFI ;IF exists(dateiname)THEN zeigedatenELSE 
+return(1);infeld(fldinteganame);standardmeldung(meldg20,dateiname+"#");LEAVE 
+integadatenzeigenFI .fehlermeldungnamefalsch:return(1);infeld(fldinteganame);
+standardmeldung(meldg2,subtext(dateiname,i,i)+"#"+dateiname+"#");LEAVE 
+integadatenzeigen.zeigedaten:zeigedatei(dateiname,"vr").END PROC 
+integadatenzeigen;PROC integadatendrucken:dateiname:=standardmaskenfeld(
+fldinteganame)+".DP";IF exists(dateiname)THEN standardmeldung(meldg23,"");
+print(dateiname)ELSE infeld(fldinteganame);standardmeldung(meldg20,dateiname+
+"#");FI ;return(1).END PROC integadatendrucken;PROC integaentfernen:infeld(
+fldinteganame);dateiname:=standardmaskenfeld(fldinteganame)+".DP";forget(
+dateiname,quiet);infeld(fldakthj);return(2);END PROC integaentfernen;PROC 
+integastdvproc:standardstartproc(eingmaske);standardmaskenfeld("SCHULIS",
+fldinteganame);standardfelderausgeben;infeld(fldakthj);standardnprocEND PROC 
+integastdvproc;PROC integaaufbereitenoderabfrage:beginlist;REP getlistentry(
+t1,t2);IF pos(t1,dateikennung)>0THEN standardmeldung(meldg18,t1+"#"+text(t2,8
+)+"#");infeld(fldinteganame);standardnproc;ruecksprung:=2;LEAVE 
+integaaufbereitenoderabfrageFI ;UNTIL t1=""PER ;ruecksprung:=1;
+schulisintegatransferEND PROC integaaufbereitenoderabfrage;PROC 
+schulisintegatransfer:falschesugrupgefunden:=FALSE ;standardmeldung(meldg0,
+" ");forget(t1,quiet);init;pruefeeingmaske;stelledateinamefest;
+stellehalbjahrfest;pruefobintegabezda;holestundenplandaten;melde("A");
+schreibeschulname;stellezeitvarfest;berechneschulverfuegbarkeit;melde("BA");
+schreibefragenkatalog;melde("BB");schreibegewichtungen;melde("BC");
+schreibezeitraster1;melde("BD");schreibezeitraster2;pruefdateigroesse;
+holeallezeitwuensche;melde("C");schreibelehrerdaten;pruefdateigroesse;melde(
+"D und F");schreibeklassen;pruefdateigroesse;melde("G");schreiberaumgruppen;
+pruefdateigroesse;melde("H");schreibeuvdaten;pruefdateigroesse;melde("I");
+schreibeschulverfgbkt;pruefdateigroesse;melde("J");schreibelehrerverfgbkt;
+pruefdateigroesse;melde("K");schreiberaumverfgbkt;pruefdateigroesse;melde("L"
+);schreibeklassenverfgbkt;pruefdateigroesse;melde("M");schreibefachverfgbkt;
+pruefdateigroesse;melde("N");schreibevorbelegungen;pruefdateigroesse;
+gibfertigmeldungaus.pruefdateigroesse:IF zz>eumelgrenzemaxzeilenTHEN 
+standardmeldung(meldg14,"");return(ruecksprung);LEAVE schulisintegatransfer
+FI .init:dszeitw:=nilspace;dslverf:=nilspace;dskverf:=nilspace;z:=
+sequentialfile(modify,dszeitw);l:=sequentialfile(modify,dslverf);k:=
+sequentialfile(modify,dskverf);insertrecord(z);insertrecord(l);insertrecord(k
+);zz:=0.pruefeeingmaske:IF standardmaskenfeld(fldfix1)<>""CAND 
+standardmaskenfeld(fldfix2)<>""THEN return(ruecksprung);standardmeldung(
+meldg22,"");infeld(fldfix1);LEAVE schulisintegatransferFI ;dateiname:=
+standardmaskenfeld(fldinteganame)+".DP";IF standardmaskenfeld(fldinteganame)=
+""THEN i:=0;fehlermeldungnamefalschELIF falschercode(dateiname)THEN 
+fehlermeldungnamefalschFI .fehlermeldungnamefalsch:return(ruecksprung);infeld
+(fldinteganame);standardmeldung(meldg2,subtext(dateiname,i,i)+"#"+dateiname+
+"#");LEAVE schulisintegatransfer.pruefobintegabezda:sgridaten:="";letztepar:=
+"";inittupel(dnraktschuelergruppen);datenfehler:=FALSE ;dbleer(
+dnraktschuelergruppen);IF fehlerTHEN fehlerkeineschuelergruppenFI ;
+statleseschleife(dnraktschuelergruppen,schj,schhj,dnraktschuelergruppen+1,
+dnraktschuelergruppen+2,PROC sgridatenholen);IF datenfehlerTHEN 
+fehlermeldungintegaELSE sgridatenCAT trennerFI .fehlerkeineschuelergruppen:
+return(ruecksprung);standardmeldung(meldg7,"");LEAVE schulisintegatransfer.
+fehlermeldungintega:return(ruecksprung);standardmeldung(meldg4,"");LEAVE 
+schulisintegatransfer.stelledateinamefest:f:=sequentialfile(output,dateiname)
+.stellehalbjahrfest:holeschuldaten;aktschhj:=holedatum(schuldaten,trenner+
+schulhj+trenner);aktschj:=holedatum(schuldaten,trenner+schulj+trenner);IF 
+aktschhj="1"THEN geplschhj:="2";geplschj:=aktschjELSE geplschhj:="1";geplschj
+:=subtext(aktschj,3);jahrende:=int(geplschj)+1;geplschjCAT subtext("0"+text(
+jahrende),LENGTH ("0"+text(jahrende))-1)FI ;IF standardmaskenfeld(fldakthj)<>
+""THEN schj:=aktschj;schhj:=aktschhjELSE schj:=geplschj;schhj:=geplschhjFI .
+holeschuldaten:dbleer(dnrschluessel);IF fehlerTHEN fehlerkeineschuldatenFI ;
+schuldaten:=trenner;inittupel(dnrschluessel);statleseschleife(dnrschluessel,
+schulkenndaten,"",dnrschluessel+1,dnrschluessel+2,PROC schulkennung).
+fehlerkeineschuldaten:return(ruecksprung);standardmeldung(meldg8,"");LEAVE 
+schulisintegatransfer.holestundenplandaten:standardmeldung(
+meldungstdplauswvorber,"");stundenplanhalbjahrsetzen(schhj,schj);
+stundenplanbasisundstundenplanholen(fstat);IF fstat<>0CAND fstat<>8THEN 
+meldungausgeben(fstat);return(ruecksprung);LEAVE schulisintegatransferFI .
+stellezeitvarfest:holezeitdaten;IF zeitdaten=trennerTHEN LEAVE 
+stellezeitvarfestELSE stelleunttagefestFI .holezeitdaten:zeitdaten:=trenner;
+dbleer(dnrzeitraster);IF fehlerTHEN fehlerkeinezeitdatenFI ;inittupel(
+dnrzeitraster);statleseschleife(dnrzeitraster,schj,schhj,dnrzeitraster+1,
+dnrzeitraster+2,PROC zeitrasterdaten).fehlerkeinezeitdaten:return(ruecksprung
+);standardmeldung(meldg9,"");LEAVE schulisintegatransfer.stelleunttagefest:
+INT VAR akttagv:=0,akttagn:=0;vm:=0;nm:=0;ut:=0;FOR iFROM 1UPTO unttageREP vs
+:=0;ns:=0;nulltestd:=(i-1)*stdenprotag;IF pos(zeitdaten,trenner+text(
+nulltestd+1)+trenner)>0THEN utINCR 1;stellestdenfestELSE LEAVE 
+stelleunttagefestFI PER .stellestdenfest:FOR jFROM 1UPTO stdenprotagREP IF 
+pos(zeitdaten,trenner+text(nulltestd+j)+trenner)>0THEN holedrittesdatum(
+zeitdaten,trenner+text(nulltestd+j)+trenner);zaehlevunstden;IF akttagv<>i
+CAND t1="v"THEN vmINCR 1;akttagv:=iFI ;IF akttagn<>iCAND t1="n"THEN nmINCR 1;
+akttagn:=iFI ;ELSE LEAVE stellestdenfestFI ;PER ;IF maxvs<vsTHEN maxvs:=vsFI 
+;IF maxns<nsTHEN maxns:=nsFI .zaehlevunstden:IF t1="v"THEN vsINCR 1ELIF t1=
+"n"THEN nsINCR 1FI .schreibeschulname:zeile:="";zeileCAT holedatum(schuldaten
+,trenner+schulname+trenner);zeileCAT "  "+holedatum(schuldaten,trenner+
+schulort+trenner);zeileCAT "  "+holedatum(schuldaten,trenner+schulstr+trenner
+);zeile:=text(zeile,70);zeileCAT "A ";zeileCAT zeilenende;putlinezz(f,zeile);
+zeile:=schhj+". Hj.";zeileCAT " "+text(schj,2)+"/"+subtext(schj,3);zeile:=
+text(zeile,70);zeileCAT "A ";zeileCAT zeilenende;putlinezz(f,zeile).
+berechneschulverfuegbarkeit:schulverfuegbarkeit:="";FOR iFROM 1UPTO unttage
+REP FOR jFROM 1UPTO stdenprotagREP IF pos(zeitdaten,trenner+text((i-1)*
+stdenprotag+j)+trenner)>0THEN holedrittesdatum(zeitdaten,trenner+text((i-1)*
+stdenprotag+j)+trenner);IF t1="x"THEN schulverfuegbarkeitCAT "1"ELSE 
+schulverfuegbarkeitCAT " "FI ELSE schulverfuegbarkeitCAT " "FI PER PER ;
+schulverfuegbarkeit:=text(schulverfuegbarkeit,maxstden).schreibeschulverfgbkt
+:putlinezz(f,"    "+schulverfuegbarkeit+"I"+zeilenende).schreibefragenkatalog
+:vs:=maxvs;ns:=maxns;zeile:="";zeileCAT "FRAGEN   ";zeileCAT " N N N 0";IF vs
+<10THEN zeileCAT " "+text(vs)ELSE zeileCAT text(vs)FI ;zeileCAT 
+" 0 312 3100 0  ";zeileCAT text(ut);zeileCAT 
+"253146                             BA";zeileCAT zeilenende;putlinezz(f,zeile
+).schreibegewichtungen:zeile:="";zeileCAT "GEWICHT  ";zeileCAT 
+" 2 2 2 2 2 2 2 2 2 2 2 0";zeileCAT "                                     ";
+zeileCAT "BB";zeileCAT zeilenende;putlinezz(f,zeile).schreibezeitraster1:IF 
+zeitdaten=""THEN LEAVE schreibezeitraster1FI ;zeile:="";zeileCAT "RASTERR";
+zeileCAT " 1 1";IF vs<10THEN zeileCAT " "+text(vs)ELSE zeileCAT text(vs)FI ;
+zeileCAT "                                                         ";zeile
+CAT "BC";zeileCAT zeilenende;putlinezz(f,zeile);zeile:="";zeileCAT "RASTERR";
+zeileCAT " 2 1";IF vs<11THEN zeileCAT " "+text(vs-1)ELSE zeileCAT text(vs-1)
+FI ;zeileCAT "                                                         ";
+zeileCAT "BC";zeileCAT zeilenende;putlinezz(f,zeile);zeile:="";zeileCAT 
+"RASTERB";IF vs<6THEN zeileCAT " 2 1 3                  ";ELIF vs<8THEN zeile
+CAT " 2 1 3 5                ";ELIF vs<10THEN zeileCAT 
+" 2 1 3 5 7              ";ELIF vs<12THEN zeileCAT " 2 1 3 5 7 9            "
+;ELSE zeileCAT " 2 1 3 5 7 911          ";FI ;zeileCAT 
+"                                       ";zeileCAT "BC";zeileCAT zeilenende;
+putlinezz(f,zeile).schreibezeitraster2:IF zeitdaten=""THEN LEAVE 
+schreibezeitraster2FI ;FOR iFROM 1UPTO 12REP hole2daten(zeitdaten,trenner+
+text(i)+trenner);IF t1<>""COR t1<>" "THEN IF i<10THEN 
+zeitrasterzeilenerstellen(" "+text(i),t1,t2);ELSE zeitrasterzeilenerstellen(
+text(i),t1,t2);FI ;FI ;PER .holeallezeitwuensche:dbleer(dnrzeitwuensche);IF 
+NOT fehlerTHEN inittupel(dnrzeitwuensche);statleseschleife(dnrzeitwuensche,
+schj,schhj,dnrzeitwuensche+1,dnrzeitwuensche+2,PROC zeitw)FI .
+schreibelehrerdaten:inittupel(dnrlehrer);fehler:=FALSE ;dbleer(dnrlehrer);IF 
+fehlerTHEN fehlerkeinelehrerFI ;fehler:=FALSE ;statleseschleife(dnrlehrer,"",
+"",dnrlehrer+1,dnrlehrer+2,PROC lehrer);IF fehlerTHEN return(ruecksprung);
+standardmeldung(meldg3,"");LEAVE schulisintegatransferFI .fehlerkeinelehrer:
+return(ruecksprung);standardmeldung(meldg10,"");LEAVE schulisintegatransfer.
+schreibeklassen:sgrdaten:="";klgrdaten:="";inittupel(dnraktschuelergruppen);
+statleseschleife(dnraktschuelergruppen,schj,schhj,dnraktschuelergruppen+1,
+dnraktschuelergruppen+2,PROC sgrdatenholen);dbleer(dnrklassengruppen);IF NOT 
+fehlerTHEN inittupel(dnrklassengruppen);statleseschleife(dnrklassengruppen,""
+,"",dnrklassengruppen+1,dnrklassengruppen+2,PROC klgrdatenholen);FI ;IF 
+sgrdaten<>""THEN schreibeklstELSE fehlermeldungaktschgrfehlenFI ;IF klgrdaten
+<>""THEN schreibeklgrFI .fehlermeldungaktschgrfehlen:return(ruecksprung);
+standardmeldung(meldg5,"");LEAVE schulisintegatransfer.schreibeklst:p:=1;
+WHILE pos(sgrdaten,trenner,p+1)>0REP spput(subtext(sgrdaten,p+1,pos(sgrdaten,
+trenner,p+1)-1));p:=pos(sgrdaten,trenner,p+1)PER ;spput(subtext(sgrdaten,p+1)
+).schreibeklgr:p:=1;WHILE pos(klgrdaten,trenner,p+1)>0REP spiput(subtext(
+klgrdaten,p+1,pos(klgrdaten,trenner,p+1)-1));IF falschesugrupgefundenTHEN 
+fehlerunbekanntesugrupgefundenFI ;putlinezz(f,text(t1,64)+"  "+text(ut)+text(
+vm)+text(nm)+" F"+zeilenende);p:=pos(klgrdaten,trenner,p+1)PER ;spiput(
+subtext(klgrdaten,p+1));IF falschesugrupgefundenTHEN 
+fehlerunbekanntesugrupgefundenFI ;putlinezz(f,text(t1,64)+"  "+text(ut)+text(
+vm)+text(nm)+" F"+zeilenende).schreiberaumgruppen:schreibergrkarten;
+schreiberkarten.schreibergrkarten:dbleer(dnrraumgruppen);IF NOT fehlerTHEN 
+zeile:="";inittupel(dnrraumgruppen);statleseschleife(dnrraumgruppen,"","",
+dnrraumgruppen+1,dnrraumgruppen+2,PROC raumgr)FI .schreiberkarten:mindeinraum
+:=FALSE ;fehler:=FALSE ;zeile:="";inittupel(dnrschluessel);statleseschleife(
+dnrschluessel,raumkenndaten,"",dnrschluessel+1,dnrschluessel+2,PROC raum);IF 
+NOT mindeinraumTHEN return(ruecksprung);standardmeldung(meldg6,"");LEAVE 
+schulisintegatransferELIF zeile<>""THEN erstellrestraeumeFI .
+erstellrestraeume:putlinezz(f,"REST"+text(zeile,64)+"  G"+zeilenende);IF 
+length(zeile)>64THEN zeile:=subtext(zeile,65);h:=length(zeile)DIV 64;FOR i
+FROM 1UPTO hREP schreibekartePER ;IF length(zeile)MOD 64>0THEN 
+schreibrestkarteFI FI .schreibekarte:putlinezz(f,"    "+subtext(zeile,(i-1)*
+64+1,i*64)+"  G"+zeilenende).schreibrestkarte:putlinezz(f,"    "+text(subtext
+(zeile,h*64+1),64)+"  G"+zeilenende).schreibeuvdaten:dbleer(
+dnrlehrveranstaltungen);IF fehlerTHEN fehlerkeineuvFI ;inittupel(
+dnrlehrveranstaltungen);statleseschleife(dnrlehrveranstaltungen,schj,schhj,
+dnrlehrveranstaltungen+1,dnrlehrveranstaltungen+2,PROC lvschreiben);IF 
+falschesugrupgefundenTHEN fehlerunbekanntesugrupgefundenFI .fehlerkeineuv:
+return(ruecksprung);standardmeldung(meldg11,"");LEAVE schulisintegatransfer.
+fehlerunbekanntesugrupgefunden:return(ruecksprung);standardmeldung(meldg21,
+par+ausgparam+letztepar+ausgparam);LEAVE schulisintegatransfer.
+schreibelehrerverfgbkt:toline(l,1);col(l,1);WHILE NOT eof(l)REP readrecord(l,
+record);putlinezz(f,record);down(l)PER .schreiberaumverfgbkt:dbleer(
+dnrzeitwuensche);IF NOT fehlerTHEN schreibverfkarten(trenner+kennraum+trenner
+)FI .schreibeklassenverfgbkt:toline(k,1);col(k,1);WHILE NOT eof(k)REP 
+readrecord(k,record);putlinezz(f,record);down(k)PER .schreibefachverfgbkt:
+dbleer(dnrzeitwuensche);IF NOT fehlerTHEN schreibverfkarten(trenner+kennfach+
+trenner)FI .schreibevorbelegungen:IF standardmaskenfeld(fldfix2)<>""THEN 
+dbleer(dnrzeitwuensche);IF NOT fehlerTHEN schreibverfkarten(trenner+kennkoppl
++trenner)FI ELIF standardmaskenfeld(fldfix1)<>""THEN kartenart:="N";
+uebertragdatendesstundenplansFI .gibfertigmeldungaus:forget(dszeitw);forget(
+dslverf);forget(dskverf);standardmeldung(meldg15,dateiname+"#"+text(zz)+"#");
+return(ruecksprung).END PROC schulisintegatransfer;PROC 
+uebertragdatendesstundenplans:TEXT VAR kopplungenderzeit:="",aktkopplung;INT 
+VAR aktpos;bearbkopplungen:="";FOR iFROM erstestdeUPTO maxstdenREP 
+standardmeldung(meldungbearbwird,integatagstd(i)+ausgparam);kopplungenderzeit
+:=datenderzeit(i,kennkoppl);aktpos:=1;WHILE aktpos<length(kopplungenderzeit)
+REP aktkopplung:=subtext(kopplungenderzeit,aktpos,aktpos+7);IF 
+nichtbearbeitet(aktkopplung)THEN schreibvorbelegung(aktkopplung,allezeitenvon
+(kennkoppl,aktkopplung))FI ;aktposINCR 8PER ;pruefdateigroessePER .
+pruefdateigroesse:IF zz>eumelgrenzemaxzeilenTHEN standardmeldung(meldg14,"");
+return(ruecksprung);LEAVE uebertragdatendesstundenplansFI .END PROC 
+uebertragdatendesstundenplans;PROC schreibvorbelegung(TEXT CONST kopplung,
+allezeiten):INT VAR suchpos:=1,aktpos:=0;TEXT VAR kartenanfang:=text(kopplung
+,8),karte:="";kartenanfangCAT " ";WHILE pos(allezeiten,"1",suchpos)<>0REP 
+aktpos:=pos(allezeiten,"1",suchpos);IF aktpos>0THEN karteCAT integatagstd(
+aktpos);suchpos:=aktpos+1FI ;IF length(karte)=40THEN schreibkarte;
+kartenanfang:="         ";karte:=""FI PER ;IF length(karte)<>40THEN 
+schreibkarteFI .schreibkarte:objektverf:=kartenanfang+text(karte,61)+
+kartenart+zeilenende;putlinezz(f,objektverf).END PROC schreibvorbelegung;
+BOOL PROC nichtbearbeitet(TEXT CONST kopplung):INT VAR aktpos,suchab:=1;
+WHILE pos(bearbkopplungen,kopplung,suchab)<>0REP aktpos:=pos(bearbkopplungen,
+kopplung,suchab);IF aktposMOD 8=1THEN LEAVE nichtbearbeitetWITH FALSE ELSE 
+suchab:=aktpos+1FI ;PER ;bearbkopplungenCAT kopplung;TRUE END PROC 
+nichtbearbeitet;PROC meldungausgeben(INT VAR fstat):IF fstat=2THEN 
+standardmeldung(meldungserverfehler,"");ELIF fstat=3THEN standardmeldung(
+meldungkeinstdplan,"");ELIF fstat=4THEN standardmeldung(meldungkeinesugruppen
+,"");ELIF fstat=5THEN standardmeldung(meldungzuvielesugruppen,"")ELIF fstat=6
+THEN standardmeldung(meldungkeinelv,"")ELIF fstat=7THEN standardmeldung(
+meldungzuvielelv,"")ELIF fstat=9THEN standardmeldung(meldungbasisinkon,"");
+FI END PROC meldungausgeben;PROC schreibverfkarten(TEXT CONST kennung):TEXT 
+VAR objekt:="";toline(z,1);col(z,1);REP col(z,col(z)+1);downety(z,kennung)
+UNTIL eof(z)COR (col(z)=142)PER ;IF kennung=trenner+kennraum+trennerTHEN 
+kartenart:="K"ELIF kennung=trenner+kennfach+trennerTHEN kartenart:="M"ELSE 
+kartenart:="N"FI ;IF NOT eof(z)CAND (kartenart<>"N")THEN REP readrecord(z,
+record);IF pos(record,kennung)<>142THEN LEAVE schreibverfkartenFI ;bestwunsch
+:=subtext(record,10,141);objekt:=holedatum(record,kennung);
+uebertragbestwunschinverfkarte(objektverf);objektverf:=text(objekt,4)+
+objektverf+kartenart+zeilenende;putlinezz(f,objektverf);down(z)PER ELIF NOT 
+eof(z)THEN REP readrecord(z,record);IF pos(record,kennung)<>142THEN LEAVE 
+schreibverfkartenFI ;bestwunsch:=subtext(record,10,141);IF bestwunsch<>
+leererbestwunschTHEN objekt:=holedatum(record,kennung);
+uebertragbestwunschinvorbelegung(objekt)FI ;down(z)PER FI .END PROC 
+schreibverfkarten;PROC uebertragbestwunschinvorbelegung(TEXT CONST kopplung):
+INT VAR suchpos:=1,aktpos:=0;TEXT VAR kartenanfang:=text(kopplung,8),karte:=
+"";kartenanfangCAT " ";WHILE pos(bestwunsch,"+3",suchpos)<>0REP aktpos:=pos(
+bestwunsch,"+3",suchpos);IF aktpos>0THEN karteCAT integatagstd((aktpos+1)DIV 
+2);suchpos:=aktpos+1FI ;IF length(karte)=40THEN schreibkarte;kartenanfang:=
+"         ";karte:=""FI PER ;IF karte<>""THEN schreibkarteFI .schreibkarte:
+objektverf:=kartenanfang+text(karte,61)+kartenart+zeilenende;putlinezz(f,
+objektverf).END PROC uebertragbestwunschinvorbelegung;TEXT PROC integatagstd(
+INT CONST intzeit):TEXT VAR std:="";INT VAR stdnr:=intzeit;std:=text((stdnr-1
+)MOD 12+1,2);SELECT (stdnr-1)DIV 12OF CASE 0:"MO"+stdCASE 1:"DI"+stdCASE 2:
+"MI"+stdCASE 3:"DO"+stdCASE 4:"FR"+stdCASE 5:"SA"+stdOTHERWISE "    "END 
+SELECT END PROC integatagstd;BOOL PROC falschercode(TEXT CONST t):INT VAR 
+zeichencode;FOR iFROM 1UPTO LENGTH t-3REP zeichencode:=code(tSUB i);IF NOT ((
+zeichencode>=48AND zeichencode<=57)OR (zeichencode>=65AND zeichencode<=90)OR 
+(zeichencode>=97AND zeichencode<=122))THEN LEAVE falschercodeWITH TRUE FI 
+PER ;FALSE END PROC falschercode;PROC zeitrasterzeilenerstellen(TEXT CONST 
+std,zeitanfang,zeitende):zeile:="";zeileCAT "ZEIT   ";zeileCAT std;zeileCAT 
+subtext(zeitanfang,LENGTH zeitanfang-3)+subtext(zeitende,LENGTH zeitende-3);
+zeileCAT "                                                     ";zeile:=text(
+zeile,70);zeileCAT "BB";zeileCAT zeilenende;putlinezz(f,zeile)END PROC 
+zeitrasterzeilenerstellen;PROC schulkennung(BOOL VAR b):IF wert(dnrschluessel
++1)>schulkenndatenCOR dbstatus<>0THEN b:=TRUE ELSE schuldatenCAT wert(
+dnrschluessel+2)+trenner;schuldatenCAT wert(dnrschluessel+3)+trenner;FI END 
+PROC schulkennung;PROC zeitrasterdaten(BOOL VAR b):IF wert(dnrzeitraster+1)<>
+schjCOR wert(dnrzeitraster+2)<>schhjCOR dbstatus<>0THEN b:=TRUE ELSE 
+zeitdatenCAT wert(dnrzeitraster+3)+trenner;zeitdatenCAT " "+wert(
+dnrzeitraster+5)+trenner;zeitdatenCAT " "+wert(dnrzeitraster+6)+trenner;
+zeitdatenCAT wert(dnrzeitraster+4)+trenner;FI END PROC zeitrasterdaten;PROC 
+raumgr(BOOL VAR b):IF dbstatus<>0THEN b:=TRUE ELSE schreibkarte;schreibraeume
+FI .schreibkarte:t2:=wert(dnrraumgruppen+2);putlinezz(f,text(wert(
+dnrraumgruppen+1),4)+text(t2,maxstden)+"G"+zeilenende).schreibraeume:FOR i
+FROM 1UPTO (LENGTH t2)DIV 4REP rgrdatenCAT compress(subtext(t2,i*4-3,i*4))+
+trennerPER .END PROC raumgr;PROC raum(BOOL VAR b):IF wert(dnrschluessel+1)>
+raumkenndatenCOR dbstatus<>0THEN b:=TRUE ELSE mindeinraum:=TRUE ;IF pos(
+rgrdaten,trenner+wert(dnrschluessel+2)+trenner)<1THEN schreibrestraeumeFI ;
+FI .schreibrestraeume:zeileCAT text(wert(dnrschluessel+2),4).END PROC raum;
+PROC lvschreiben(BOOL VAR b):IF wert(dnrlehrveranstaltungen+1)<>schjCOR wert(
+dnrlehrveranstaltungen+2)<>schhjCOR dbstatus<>0THEN b:=TRUE ELSE schreibkarte
+FI .schreibkarte:zeile:="";zeileCAT text(wert(dnrlehrveranstaltungen+5),8)+
+text(wert(dnrlehrveranstaltungen+4),2)+"  "+text(wert(dnrlehrveranstaltungen+
+6),4)+subtext(" "+wert(dnrlehrveranstaltungen+7),length(" "+wert(
+dnrlehrveranstaltungen+7))-1)+"         ";FOR iFROM 8UPTO 11REP IF wert(
+dnrlehrveranstaltungen+i)=""CAND i=8THEN pruefrestlklgrELIF wert(
+dnrlehrveranstaltungen+i)=""CAND i<>8THEN zeileCAT "    "ELIF 
+istschuelergruppeTHEN zeileCAT text(substituiere,4)ELIF istklassengruppeTHEN 
+zeileCAT text(wert(dnrlehrveranstaltungen+i),4)ELIF istklassenstufeTHEN zeile
+CAT text(formatjgst(wert(dnrlehrveranstaltungen+i)),4)ELSE 
+falschesugrupgefunden:=TRUE ;par:=formatjgst(wert(dnrlehrveranstaltungen+3))+
+wert(dnrlehrveranstaltungen+4);letztepar:=wert(dnrlehrveranstaltungen+i);b:=
+TRUE ;LEAVE lvschreibenFI PER ;zeileCAT "         "+text(wert(
+dnrlehrveranstaltungen+12),4)+text(wert(dnrlehrveranstaltungen+13),4)+
+"          "+"H"+zeilenende;putlinezz(f,zeile).pruefrestlklgr:IF wert(
+dnrlehrveranstaltungen+9)=""CAND wert(dnrlehrveranstaltungen+10)=""CAND wert(
+dnrlehrveranstaltungen+11)=""THEN zeileCAT text(formatjgst(wert(
+dnrlehrveranstaltungen+3)),4)ELSE zeileCAT "    "FI .istschuelergruppe:pos(
+sgridaten,trenner+formatjgst(wert(dnrlehrveranstaltungen+3))+text(wert(
+dnrlehrveranstaltungen+i),4)+trenner)>0.istklassengruppe:pos(klgr,trenner+
+wert(dnrlehrveranstaltungen+i)+trenner)>0.istklassenstufe:intwert(
+dnrlehrveranstaltungen+i)>4CAND intwert(dnrlehrveranstaltungen+i)<14.
+substituiere:subst(text(jgst+wert(dnrlehrveranstaltungen+i),6)).jgst:
+formatjgst(wert(dnrlehrveranstaltungen+3)).END PROC lvschreiben;TEXT PROC 
+holedatum(TEXT VAR variable,TEXT CONST suchwort):IF pos(variable,suchwort)>0
+THEN subtext(variable,nachsuchwort,endezeichen)ELSE ""FI .nachsuchwort:pos(
+variable,suchwort)+LENGTH suchwort.endezeichen:pos(variable,trenner,
+nachsuchwort)-1.END PROC holedatum;PROC hole2daten(TEXT VAR variable,TEXT 
+CONST suchwort):IF pos(variable,suchwort)>0THEN t1:=subtext(variable,
+nachsuchwort,endezeichen);t2:=subtext(variable,endezeichen+2,
+naechstesendezeichen-1);ELSE t1:="";t2:=""FI .nachsuchwort:pos(variable,
+suchwort)+LENGTH suchwort.endezeichen:pos(variable,trenner,nachsuchwort)-1.
+naechstesendezeichen:pos(variable,trenner,endezeichen+2).END PROC hole2daten;
+PROC holedrittesdatum(TEXT VAR variable,TEXT CONST suchwort):INT VAR p:=pos(
+variable,suchwort),i;FOR iFROM 1UPTO 3REP p:=pos(variable,trenner,p+1);PER ;
+t1:=subtext(variable,p+1,pos(variable,trenner,p+1)-1)END PROC 
+holedrittesdatum;PROC spput(TEXT CONST t):TEXT VAR hohlstd:="0 ",
+weiterekarten:="",zeile:="",alleschgr,aktschgr;BOOL VAR jgstausgabe:=TRUE ;
+INT VAR anzschgrprozeile:=0;zeile:=text(t,4);alleschgr:=subtext(t,5);
+weiterekarten:="";FOR iFROM 1UPTO (length(t)-4)DIV 4REP objut:=ut;objvm:=vm;
+objnm:=nm;aktschgr:=subtext(alleschgr,(i-1)*4+1,i*4);suchezeitwunsch;
+schreibeintragPER ;IF anzschgrprozeileMOD 15<>0THEN eintragausgebenFI ;
+schreibschgrmitunbestwunsch.suchezeitwunsch:suchezeitw(trenner+kennsugrup+
+trenner+aktschgr+trenner);IF unbestwunsch<>""CAND unbestwunsch<>
+leererunbestwunschTHEN uebertragunbestwunschinkarte;IF objut<>utCOR objvm<>vm
+COR objnm<>nmTHEN weiterekartenCAT "    ";weiterekartenCAT aktschgr;
+weiterekartenCAT hohlstd;weiterekartenCAT text(objut);weiterekartenCAT text(
+objvm);weiterekartenCAT text(objnm)FI FI ;IF bestwunsch<>""CAND bestwunsch<>
+leererbestwunschTHEN uebertragbestwunschinverfkarte(objektverf);objektverf:=
+aktschgr+objektverf+"L"+zeilenende;putds(k,objektverf)FI .schreibeintrag:IF 
+keinwunschgefundenTHEN zeileCAT aktschgr;anzschgrprozeileINCR 1;IF 
+anzschgrprozeile=15THEN putlinezz(f,zeile+hohlstd+text(ut)+text(vm)+text(nm)+
+" D"+zeilenende);anzschgrprozeile:=0;jgstausgabe:=FALSE ;zeile:="    "FI FI .
+keinwunschgefunden:bestwunsch=""COR (objut=utCAND objvm=vmCAND objnm=nm).
+eintragausgeben:putlinezz(f,text(zeile,64)+hohlstd+text(ut)+text(vm)+text(nm)
++" D"+zeilenende);jgstausgabe:=FALSE .schreibschgrmitunbestwunsch:IF 
+weiterekarten<>""THEN FOR jFROM 1UPTO length(weiterekarten)DIV 13REP aktschgr
+:=subtext(weiterekarten,(j-1)*13+1,j*13);IF jgstausgabeTHEN putlinezz(f,zeile
++subtext(aktschgr,5,8)+
+"                                                        "+subtext(aktschgr,9
+)+" D"+zeilenende);jgstausgabe:=FALSE ELSE putlinezz(f,text(aktschgr,8)+
+"                                                        "+subtext(aktschgr,9
+)+" D"+zeilenende)FI ;PER ;FI .END PROC spput;PROC spiput(TEXT CONST t):t1:=
+text(t,4);FOR iFROM 1UPTO ((LENGTH t)-4)DIV 6REP IF subtext(t,i*6+1,i*6+4)=
+"    "THEN t1CAT subtext(t,i*6-1,i*6+2)ELSE t1CAT subst(subtext(t,i*6-1,i*6+4
+));IF falschesugrupgefundenTHEN par:=text(t,4);LEAVE spiputFI ;FI ;PER .END 
+PROC spiput;TEXT PROC subst(TEXT CONST t):IF pos(sgridaten,trenner+t+trenner)
+>0THEN subtext(sgridaten,pos(sgridaten,trenner+t+trenner)+8,pos(sgridaten,
+trenner+t+trenner)+11)ELSE letztepar:=t;falschesugrupgefunden:=TRUE ;""FI 
+END PROC subst;PROC lehrer(BOOL VAR b):lehrerdaten:="";objut:=ut;objvm:=vm;
+objnm:=nm;IF dbstatus<>0THEN b:=TRUE ELSE lehrerdatenCAT text(wert(dnrlehrer+
+2),20);par:=wert(dnrlehrer+1);lehrerdatenCAT text(wert(dnrlehrer+1),4)+
+"         ";lehrerdatenCAT subtext(" "+wert(dnrlehrer+7),length(" "+wert(
+dnrlehrer+7))-1);suchezeitw(trenner+kennpar+trenner+par+trenner);IF 
+bestwunsch<>""CAND bestwunsch<>leererbestwunschTHEN schreibverfuegkarteFI ;
+schreiblehrerkarteFI .schreibverfuegkarte:uebertragbestwunschinverfkarte(
+objektverf);objektverf:=text(par,4)+objektverf+"J"+zeilenende;putds(l,
+objektverf).schreiblehrerkarte:IF unbestwunsch<>""CAND unbestwunsch<>
+leererunbestwunschTHEN uebertragunbestwunschinkarteFI ;putlinezz(f,
+lehrerdaten+"   "+text(objut)+text(objvm)+text(objnm)+
+"                             C"+zeilenende).END PROC lehrer;PROC suchezeitw(
+TEXT CONST kennung):toline(z,1);col(z,1);downety(z,kennung);IF eof(z)THEN 
+bestwunsch:="";unbestwunsch:=""ELSE readrecord(z,record);unbestwunsch:=text(
+record,9);bestwunsch:=subtext(record,10,141)FI ;END PROC suchezeitw;PROC 
+zeitw(BOOL VAR b):IF wert(dnrzeitwuensche+1)<>schjCOR wert(dnrzeitwuensche+2)
+<>schhjCOR dbstatus<>0THEN b:=TRUE ELSE zeitwuensche:="";zeitwuenscheCAT wert
+(dnrzeitwuensche+6);zeitwuenscheCAT wert(dnrzeitwuensche+5);zeitwuenscheCAT 
+trenner;zeitwuenscheCAT wert(dnrzeitwuensche+3);zeitwuenscheCAT trenner;IF 
+wert(dnrzeitwuensche+3)=kennsugrupTHEN zeitwuenscheCAT holedatum(sgridaten,
+trenner+text(wert(dnrzeitwuensche+4),6)+trenner);ELSE zeitwuenscheCAT wert(
+dnrzeitwuensche+4);FI ;zeitwuenscheCAT trenner;putds(z,zeitwuensche)FI END 
+PROC zeitw;PROC uebertragbestwunschinverfkarte(TEXT VAR verf):INT VAR suchpos
+:=1,aktpos:=0;verf:=schulverfuegbarkeit;WHILE pos(bestwunsch,"-3",suchpos)<>0
+REP aktpos:=pos(bestwunsch,"-3",suchpos);IF aktpos>0THEN replace(verf,(aktpos
++1)DIV 2,"1");suchpos:=aktpos+1FI PER END PROC uebertragbestwunschinverfkarte
+;PROC uebertragunbestwunschinkarte:INT VAR tageswunsch:=0;IF (unbestwunsch
+SUB 3)="3"THEN tageswunsch:=int(unbestwunschSUB 1);objutDECR tageswunsch;
+objvmDECR tageswunsch;objnmDECR tageswunsch-1FI ;IF (unbestwunschSUB 6)="3"
+THEN objvmDECR int(unbestwunschSUB 4)FI ;IF (unbestwunschSUB 9)="3"THEN objnm
+DECR int(unbestwunschSUB 7)FI ;END PROC uebertragunbestwunschinkarte;PROC 
+sgrdatenholen(BOOL VAR b):IF wert(dnraktschuelergruppen+1)<>schjCOR wert(
+dnraktschuelergruppen+2)<>schhjCOR dbstatus<>0THEN b:=TRUE ELSE IF wert(
+dnraktschuelergruppen+3)<>letzteparTHEN zeile:=formatjgst(wert(
+dnraktschuelergruppen+3));sgrdatenCAT trenner+text(zeile,4);letztepar:=wert(
+dnraktschuelergruppen+3)FI ;sgrdatenCAT text(wert(dnraktschuelergruppen+7),4)
+FI ;END PROC sgrdatenholen;PROC klgrdatenholen(BOOL VAR b):IF dbstatus<>0
+THEN b:=TRUE ELSE klgrdatenCAT trenner+text(wert(dnrklassengruppen+1),4);klgr
+CAT wert(dnrklassengruppen+1)+trenner;klgrdatenCAT wert(dnrklassengruppen+2)
+FI END PROC klgrdatenholen;PROC sgridatenholen(BOOL VAR b):IF wert(
+dnraktschuelergruppen+1)<>schjCOR wert(dnraktschuelergruppen+2)<>schhjCOR 
+dbstatus<>0THEN b:=TRUE ELSE sgridatenCAT trenner+jgstaufber(wert(
+dnraktschuelergruppen+3));sgridatenCAT text(wert(dnraktschuelergruppen+4),4)+
+trenner;sgridatenCAT text(wert(dnraktschuelergruppen+7),4);IF wert(
+dnraktschuelergruppen+7)=""THEN datenfehler:=TRUE FI FI ;END PROC 
+sgridatenholen;PROC putds(FILE VAR file,TEXT CONST t):writerecord(file,t);
+down(file);insertrecord(file)END PROC putds;PROC dbleer(INT CONST dateinr):
+fehler:=FALSE ;IF records(dateinr)<1.0THEN fehler:=TRUE FI END PROC dbleer;
+PROC melde(TEXT CONST meldungsergaenzung):standardmeldung(meldg1,
+meldungsergaenzung+"#")END PROC melde;PROC putlinezz(FILE VAR f,TEXT CONST t)
+:putline(f,t);IF zz>2999THEN abbruchwegen4000zeilen:=TRUE ELSE zzINCR 1FI 
+END PROC putlinezz;TEXT PROC formatjgst(TEXT CONST jgst):IF int(jgst)=0THEN 
+LEAVE formatjgstWITH "00"ELIF int(jgst)<10THEN LEAVE formatjgstWITH 
+jgstaufber(jgst)FI ;jgstEND PROC formatjgst;END PACKET 
+datenfuerintegaaufbereiten;
+

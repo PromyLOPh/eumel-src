@@ -1,0 +1,382 @@
+PACKET stundenplanimdialogerstellenundaendernDEFINES stupidstart,
+stupidbearbeitendesstundenplans,stupidspeicherndieserzeitenfuerkopplung,
+stupidspeichernderraeumeundzeitenderlv,stupidkopierenderraumangabe,
+stupidnichtaendernweitermitkopplung,
+stupidnichtaendernweitermitnaechsterkopplung,stupidstoerendelvlisten,
+stupidraumbelegunglisten,stupidlistedrucken:LET maskeeingang=
+"ms erf stuplan im dialog 0";LET maskebearb1="ms erf stuplan im dialog 1";
+LET maskebearb2="ms erf stuplan im dialog 2";LET fnrkopplungbs0=2,
+fnrakthalbjahr=3,fnrmitzeitwuenschen=4,fnrkopplungbs1=2,fnrwstdmaxbs1=3,
+felderbistabbeginn=2,fnrersteseingabefeldbs1=4,felderproeintragbs1=2,
+fnrletztesfeldbs1=135,fnrlehrveranstaltbs2=2,fnrwstdbs2=3,fnrparaphebs2=4,
+fnrklassengruppenbeginn=5,fnrraumwunsch=9,felderbistabbeginnbs2=10,
+fnrersterraumbs2=12,fnrletztesfeldbs2=142,felderproeintragbs2=2;INT VAR 
+fnrersteseingabefeldbs2;INT VAR ifnr;LET meldnrbittewarten=69,
+meldnrdatenwurdengespeichert=302,meldnrdatenwurdennichtgespeichert=303,
+meldnrungueltigekopplung=325,meldnrkeinelv=326,meldnrkeinesugruppen=334,
+meldnrzuvielesugruppen=356,meldnrdatenaufbereitet=357,meldnrzuvielelv=358,
+meldnrungueltigerraum=359,meldnrzuordnungwegensperrungunmoegl=368,
+meldnrzuvielezuordnungen=369,meldnrraumschonbelegt=370,
+meldnrstundenplanserverfehlt=376,meldnrbasisalt=377,meldnrbasisinkons=378,
+meldnrkeinestoerendenlv=371;FILE VAR ausgabeliste;LET liste1=
+"störende Lehrveranstaltungen",liste2="Raumbelegungen";TEXT VAR zeigdatei;
+LET raumgruppendatei="Datei mit Raumgruppen";FILE VAR datraumgruppen;LET 
+wunschraumdatei="Datei mit Raumwünschen";FILE VAR datraumwunsch;LET 
+zwdateiname="Datei mit Zeitwünschen";FILE VAR zwdatei;LET laengelv=8,
+laengefachkenn=6,laengekopplung=8,laengeparaphe=4,laengeraum=4,laengewstd=2,
+laengesugruppe=6,laengeklagruppe=4,laengenfaktor=2;LET erstestd=1,letztestd=
+66;LET kennzlehrergesperrt="L",kennzzeitgesperrt="X",kennzraumgesperrt="R",
+kennzschuelergesperrt="S",kennzzeitrastersperrung="x",kennzlehrerwunsch="l",
+kennzraumevtlgesperrt="r",kennzverplant="x",kennzkeinfreierwunschraum="x",
+kennzraumungeprueft="-";LET kennungkopplung="K",kennungparaphe="P",kennunglv=
+"L",kennungraum="R",kennungwunschraum="RW",kennungersatzraum="RE";LET 
+stundeverplant="1",stundefrei="0",stundefehlerhaft="$";LET textschulj=
+"Schuljahr",texthalbj="Schulhalbjahr";LET raumkenndaten="c02 raeume";LET 
+posraeumeinrgzeile=5;LET raumplatzhalter="    ",lehrerplatzhalter="    ",
+blankzeichen=" ",trennstrich="/",vorschlagzeichen="*",textueberschriftanhang=
+" für Halbjahr ",textueberschriftbs2="Raumzuordnung in Kopplung ";LET zwbezug
+="P";LET minusdrei="-3";INT VAR fstatusstuplan;INT VAR i;INT VAR 
+maxwochenstunden;TEXT VAR aktschulj:="",akthalbj:="",gewschulj,gewhalbj,
+behandeltesschulj:="",behandelteshalbj:="";TEXT VAR kopplung,ankreuzung,
+eintrag,lv,paraphe,raum,raumhinweis,raumzeile,raumgruppenzeile,zwdateizeile,
+raumbelegliste,raumsetzliste,alleraeume:="",paraphenmitzeitwuenschen:="",
+sugruppen;INT VAR anzahlraeume,posraum;INT VAR wstdderlv;TEXT VAR 
+kopplungszeiten,schuelerschnittzeiten,zeitrasterleiste:="",
+halbjderzeitrasterleiste:="",zeitwunschleiste,halbjderzeitwuensche:="",
+lvliste,paraphenliste;INT VAR ilv,anzahllv;TEXT VAR suchlv,suchraum,
+suchparaphe;TEXT VAR ueberschrift,ueberschriftbs1:="";BOOL VAR 
+mitzeitwuenschen,meldungzufehlergezeigt;TEXT VAR wertfeld2:="",wertfeld3:="",
+wertfeld4:="";PROC stupidstart:standardstartproc(maskeeingang);
+wertedeseingangsbildschirmsholen;infeld(fnrkopplungbs0);
+standardfelderausgeben;infeld(fnrkopplungbs0);standardnprocEND PROC 
+stupidstart;PROC stupidbearbeitendesstundenplans:
+schulhalbjahrbestimmenundstundenplanholen;IF fstatusstuplan<>0THEN 
+stundenplanfehlerbehandeln;return(1)ELSE suchekopplung;IF 
+keinegueltigekopplungTHEN standardmeldung(meldnrungueltigekopplung,"");return
+(1)ELSE wertedeseingangsbildschirmsmerken;standardstartproc(maskebearb1);
+kopplungzeigen;standardnprocFI FI .schulhalbjahrbestimmenundstundenplanholen:
+IF akthalbj=""THEN akthalbj:=schulkenndatum(texthalbj);aktschulj:=
+schulkenndatum(textschulj);FI ;gewhalbj:=akthalbj;gewschulj:=aktschulj;IF 
+standardmaskenfeld(fnrakthalbjahr)=""THEN geplanteshjundsjberechnen(gewhalbj,
+gewschulj)FI ;mitzeitwuenschen:=standardmaskenfeld(fnrmitzeitwuenschen)<>"";
+IF mitzeitwuenschenTHEN IF paraphenmitzeitwuenschen=""COR gewhalbj<>
+halbjderzeitwuenscheTHEN halbjderzeitwuensche:=gewhalbj;standardmeldung(
+meldnrbittewarten,"");dateimitzeitwuenschenzusammenstellenFI FI ;IF NOT (
+gewhalbj=behandelteshalbjAND gewschulj=behandeltesschulj)THEN 
+behandelteshalbj:=gewhalbj;behandeltesschulj:=gewschulj;
+stundenplanhalbjahrsetzen(gewhalbj,gewschulj);standardmeldung(
+meldnrdatenaufbereitet,"");stundenplanbasisundstundenplanholen(fstatusstuplan
+);IF fstatusstuplan=0THEN stundenplanreorganisierenundsichern(fstatusstuplan)
+ELIF fstatusstuplan=8THEN standardmeldung(meldnrbasisalt,"");
+stundenplanreorganisierenundsichern(fstatusstuplan)ELSE 
+stundenplanbasisundstundenplanerstellen(fstatusstuplan);IF fstatusstuplan=0
+THEN stundenplanbasissichern(fstatusstuplan);stundenplansichern(
+fstatusstuplan)FI FI FI .stundenplanfehlerbehandeln:IF fstatusstuplan=2THEN 
+standardmeldung(meldnrstundenplanserverfehlt,"")ELIF fstatusstuplan=4THEN 
+standardmeldung(meldnrkeinesugruppen,"")ELIF fstatusstuplan=5THEN 
+standardmeldung(meldnrzuvielesugruppen,"")ELIF fstatusstuplan=6THEN 
+standardmeldung(meldnrkeinelv,"")ELIF fstatusstuplan=7THEN standardmeldung(
+meldnrzuvielelv,"")ELIF fstatusstuplan=8THEN standardmeldung(meldnrbasisalt,
+"")ELIF fstatusstuplan=9THEN standardmeldung(meldnrbasisinkons,"")FI .
+suchekopplung:kopplung:=standardmaskenfeld(fnrkopplungbs0);putwert(fnrlvsj,
+gewschulj);putwert(fnrlvhj,gewhalbj);putwert(fnrlvkopplung,kopplung);search(
+ixlvsjhjkopp,FALSE ).END PROC stupidbearbeitendesstundenplans;BOOL PROC 
+keinegueltigekopplung:dbstatus<>0OR wert(fnrlvhj)<>gewhalbjOR wert(fnrlvsj)<>
+gewschuljEND PROC keinegueltigekopplung;PROC 
+dateimitzeitwuenschenzusammenstellen:forget(zwdateiname,quiet);zwdatei:=
+sequentialfile(output,zwdateiname);paraphenmitzeitwuenschen:="";inittupel(
+dnrzeitwuensche);putwert(fnrzwbezug,zwbezug);statleseschleife(dnrzeitwuensche
+,gewschulj,gewhalbj,fnrzwsj,fnrzwhj,PROC zeitwunschlesen)END PROC 
+dateimitzeitwuenschenzusammenstellen;PROC zeitwunschlesen(BOOL VAR b):IF 
+dbstatus<>0OR wert(fnrzwsj)<>gewschuljOR wert(fnrzwhj)<>gewhalbjOR wert(
+fnrzwbezug)>zwbezugTHEN b:=TRUE ELSE paraphenmitzeitwuenschenCAT text(wert(
+fnrzwbezugsobjekt),laengeparaphe);zwdateizeile:=wert(fnrzwbestimmtewuensche);
+putline(zwdatei,zwdateizeile)FI END PROC zeitwunschlesen;PROC kopplungzeigen:
+ueberschriftzeilezusammensetzen;standardkopfmaskeaktualisieren(ueberschrift);
+standardmeldung(meldnrbittewarten,"");datenbestimmenundausgeben;infeld(
+fnrersteseingabefeldbs1).ueberschriftzeilezusammensetzen:IF ueberschriftbs1=
+""THEN ueberschriftbs1:=text(vergleichsknoten)FI ;ueberschrift:=
+ueberschriftbs1;ueberschriftCAT textueberschriftanhang;ueberschriftCAT 
+gewhalbj;ueberschriftCAT blankzeichen;ueberschriftCAT subtext(gewschulj,1,2);
+ueberschriftCAT trennstrich;ueberschriftCAT subtext(gewschulj,3,4).
+datenbestimmenundausgeben:kopplung:=wert(fnrlvkopplung);
+maxwochenstundenbestimmen;zeitrasterleistefestlegen;kopplungszeitenfestlegen;
+lvlisteholen;paraphenlisteundwunschraumlisteholen;schuelerschnittzeitenholen;
+zeitwunschleistefestlegen;standardmaskenfeld(kopplung,fnrkopplungbs1);
+standardmaskenfeld(text(maxwochenstunden),fnrwstdmaxbs1);
+meldungzufehlergezeigt:=FALSE ;FOR iFROM erstestdUPTO letztestdREP 
+fuelleeintrag;standardmaskenfeld(ankreuzung,i*felderproeintragbs1+
+felderbistabbeginn);standardmaskenfeld(text(eintrag,3),i*felderproeintragbs1+
+felderbistabbeginn+1);PER ;IF meldungzufehlergezeigtTHEN infeld(2)ELSE infeld
+(1)FI ;standardfelderausgeben.maxwochenstundenbestimmen:maxwochenstunden:=0;
+putwert(fnrlvkopplung,kopplung);putintwert(fnrlvjgst,0);statleseschleife(
+ixlvsjhjkopp,gewschulj,gewhalbj,fnrlvsj,fnrlvhj,PROC maxwochenstdberechnen).
+fuelleeintrag:IF (kopplungszeitenSUB i)=stundeverplantTHEN ankreuzung:=
+kennzverplantELSE ankreuzung:=""FI ;eintrag:="";IF (zeitrasterleisteSUB i)=
+kennzzeitrastersperrungTHEN eintragCAT kennzzeitgesperrtELSE 
+weiterepruefungenzueintragFI .weiterepruefungenzueintrag:IF 
+istlehrerzurzeitverplantTHEN eintragCAT kennzlehrergesperrtELSE IF 
+mitzeitwuenschenCAND (zeitwunschleisteSUB i)=stundeverplantTHEN eintragCAT 
+kennzlehrerwunschFI FI ;IF (schuelerschnittzeitenSUB i)=stundeverplantTHEN 
+eintragCAT kennzschuelergesperrtELIF (schuelerschnittzeitenSUB i)=
+stundefehlerhaftCAND NOT meldungzufehlergezeigtTHEN standardmeldung(
+meldnrbasisinkons,"");meldungzufehlergezeigt:=TRUE FI ;IF eintrag=
+kennzlehrergesperrt+kennzschuelergesperrtTHEN eintragCAT kennzraumungeprueft
+ELSE raumhinweis:="";prueferaumbelegung;eintragCAT raumhinweisFI .
+kopplungszeitenfestlegen:kopplungszeiten:=allezeitenvon(kennungkopplung,
+kopplung).lvlisteholen:lvliste:=allelvmit(kennungkopplung,kopplung);anzahllv
+:=length(lvliste)DIV laengelv.schuelerschnittzeitenholen:
+schuelerschnittzeiten:=schuelergruppenschnittallezeiten(kennungkopplung,
+kopplung).paraphenlisteundwunschraumlisteholen:paraphenliste:="";
+raumgruppeninraumgruppendateiauslesen;forget(wunschraumdatei,quiet);
+datraumwunsch:=sequentialfile(output,wunschraumdatei);INT VAR lvpos:=1,iraum;
+FOR ilvFROM 1UPTO anzahllvREP lv:=subtext(lvliste,lvpos,lvpos+laengelv-1);
+paraphenlisteCAT datenzurlv(kennungparaphe,lv);raumzeile:="";raum:=datenzurlv
+(kennungwunschraum,lv);IF bezeichnungzulaessig(kennungraum,compress(raum))
+THEN raumzeileCAT raumELSE raumzeileCAT raeumederraumgruppeFI ;raum:=
+datenzurlv(kennungersatzraum,lv);IF bezeichnungzulaessig(kennungraum,compress
+(raum))THEN raumzeileCAT raumELSE raumzeileCAT raeumederraumgruppeFI ;putline
+(datraumwunsch,raumzeile);lvpos:=lvpos+laengelvPER .
+raumgruppeninraumgruppendateiauslesen:IF NOT exists(raumgruppendatei)THEN 
+datraumgruppen:=sequentialfile(output,raumgruppendatei);inittupel(
+dnrraumgruppen);statleseschleife(dnrraumgruppen,"","",fnrrgraumgrp,
+fnrrgraeume,PROC raumgruppeindateischreiben)FI .raeumederraumgruppe:
+datraumgruppen:=sequentialfile(modify,raumgruppendatei);toline(datraumgruppen
+,1);col(datraumgruppen,1);WHILE NOT eof(datraumgruppen)REP downety(
+datraumgruppen,raum);IF col(datraumgruppen)=1CAND NOT eof(datraumgruppen)
+THEN readrecord(datraumgruppen,raumgruppenzeile);LEAVE raeumederraumgruppe
+WITH subtext(raumgruppenzeile,posraeumeinrgzeile)ELSE col(datraumgruppen,col(
+datraumgruppen)+1)FI ;PER ;"".prueferaumbelegung:BOOL VAR vorlaeufiggesetzt;
+raumbelegliste:=datenderzeit(i,kennungraum);IF raumbelegliste<>""THEN 
+raumsetzliste:="";datraumwunsch:=sequentialfile(input,wunschraumdatei);ilv:=0
+;WHILE NOT eof(datraumwunsch)REP getline(datraumwunsch,raumzeile);ilv:=ilv+1;
+IF raumzeile<>""THEN anzahlraeume:=length(raumzeile)DIV laengeraum;
+vorlaeufiggesetzt:=FALSE ;posraum:=1;FOR iraumFROM 1UPTO anzahlraeumeREP raum
+:=subtext(raumzeile,posraum,posraum+laengeraum-1);prueferaum;posraum:=posraum
++laengeraumUNTIL vorlaeufiggesetztPER ;IF NOT vorlaeufiggesetztTHEN 
+raumhinweis:=kennzraumevtlgesperrtFI ;FI ;PER ;FI .prueferaum:IF suchpos(
+raumbelegliste,raum,laengeraum)>0THEN lv:=subtext(lvliste,(ilv-1)*laengelv+1,
+ilv*laengelv);planeintraglesen(i,kennungraum,raum,suchlv,suchraum,suchparaphe
+);IF suchlv<>lvTHEN IF iraum=anzahlraeumeTHEN raumhinweis:=kennzraumgesperrt;
+LEAVE prueferaumbelegungFI ELSE vorlaeufiggesetzt:=TRUE FI ELSE IF suchpos(
+raumsetzliste,raum,laengeraum)=0THEN raumsetzliste:=raum;vorlaeufiggesetzt:=
+TRUE FI FI .zeitwunschleistefestlegen:IF mitzeitwuenschenTHEN zwdatei:=
+sequentialfile(modify,zwdateiname);zeitwunschleiste:=letztestd*stundefrei;
+INT VAR fundpos,posparaphe:=1;WHILE posparaphe<length(paraphenliste)REP 
+suchparaphe:=subtext(paraphenliste,posparaphe,posparaphe+laengeparaphe-1);
+fundpos:=suchpos(paraphenmitzeitwuenschen,suchparaphe,laengeparaphe);IF 
+fundpos>0THEN zeitwuenschezerlegenFI ;posparapheINCR laengeparaphe;PER ;FI .
+zeitwuenschezerlegen:INT VAR izeile:=(fundpos+3)DIV laengeparaphe;toline(
+zwdatei,izeile);readrecord(zwdatei,zwdateizeile);fundpos:=pos(zwdateizeile,
+minusdrei,1);WHILE fundpos>0REP fundposINCR 1;replace(zeitwunschleiste,
+fundposDIV 2,stundeverplant);fundpos:=pos(zwdateizeile,minusdrei,fundpos)PER 
+.END PROC kopplungzeigen;PROC raumgruppeindateischreiben(BOOL VAR b):IF 
+dbstatus=0THEN putline(datraumgruppen,text(wert(fnrrgraumgrp),laengeraum)+
+wert(fnrrgraeume))ELSE b:=TRUE FI END PROC raumgruppeindateischreiben;PROC 
+maxwochenstdberechnen(BOOL VAR b):IF dbstatus=0CAND wert(fnrlvkopplung)=
+kopplungCAND wert(fnrlvsj)=gewschuljCAND wert(fnrlvhj)=gewhalbjTHEN 
+maxwochenstunden:=max(intwert(fnrlvwochenstd),maxwochenstunden)ELSE b:=TRUE 
+FI END PROC maxwochenstdberechnen;PROC zeitrasterleistefestlegen:IF gewhalbj
+<>halbjderzeitrasterleisteOR zeitrasterleiste=""THEN zeitrasterleiste:=
+letztestd*blankzeichen;inittupel(dnrzeitraster);statleseschleife(
+dnrzeitraster,gewschulj,gewhalbj,fnrzrsj,fnrzrhj,PROC 
+erstellezeitrasterleiste);halbjderzeitrasterleiste:=gewhalbj;FI END PROC 
+zeitrasterleistefestlegen;PROC erstellezeitrasterleiste(BOOL VAR b):IF wert(
+fnrzrsj)<>gewschuljCOR wert(fnrzrhj)<>gewhalbjCOR dbstatus<>0THEN b:=TRUE 
+ELSE IF wert(fnrzrkennungteil)=kennzzeitrastersperrungTHEN replace(
+zeitrasterleiste,intwert(fnrzrtagstunde),kennzzeitrastersperrung)FI FI END 
+PROC erstellezeitrasterleiste;BOOL PROC istlehrerzurzeitverplant:TEXT VAR 
+kopplungenderzeit:="";TEXT VAR lehrerderzeit:=datenderzeit(i,kennungparaphe);
+IF lehrerderzeit=""COR paraphenliste=lehrerplatzhalterTHEN LEAVE 
+istlehrerzurzeitverplantWITH FALSE FI ;INT VAR posparaphe:=1;INT VAR 
+poslehrer,poskopplung;WHILE posparaphe<=length(paraphenliste)REP paraphe:=
+subtext(paraphenliste,posparaphe,posparaphe+laengeparaphe-1);IF paraphe<>
+lehrerplatzhalterTHEN poslehrer:=suchpos(lehrerderzeit,paraphe,laengeparaphe)
+;IF poslehrer>0THEN IF kopplungenderzeit=""THEN kopplungenderzeit:=
+datenderzeit(i,kennungkopplung)FI ;poskopplung:=(poslehrer-1)*laengenfaktor+1
+;IF subtext(kopplungenderzeit,poskopplung,poskopplung+laengekopplung-1)<>text
+(kopplung,laengekopplung)THEN LEAVE istlehrerzurzeitverplantWITH TRUE FI FI ;
+FI ;posparaphe:=posparaphe+laengeparaphePER ;FALSE END PROC 
+istlehrerzurzeitverplant;PROC stupidstoerendelvlisten:TEXT VAR prueflv,
+pruefkopplung,pruefparaphe,lvderzeit,kopplungenderzeit,paraphenderzeit,
+vglkopplung,auszeile;INT VAR feldnr:=infeld;IF 
+sperrungderzeitdurchlehreroderschuelerTHEN erstelledateimitstoerendenlv;
+zeigedatei(zeigdatei,"");ELSE standardmeldung(meldnrkeinestoerendenlv,"");
+return(1)FI .sperrungderzeitdurchlehreroderschueler:pos(standardmaskenfeld(
+feldnr+1),kennzlehrergesperrt)>0OR pos(standardmaskenfeld(feldnr+1),
+kennzschuelergesperrt)>0.erstelledateimitstoerendenlv:i:=(feldnr-
+felderbistabbeginn)DIV felderproeintragbs1;zeigdatei:=liste1;forget(zeigdatei
+,quiet);ausgabeliste:=sequentialfile(output,zeigdatei);auszeile:="Kopplung ";
+auszeileCAT kopplung;auszeileCAT " am ";auszeileCAT tagstunde(i,FALSE );
+auszeileCAT ".Stunde verhindert durch:";putline(ausgabeliste,auszeile);line(
+ausgabeliste);auszeile:="Lehrveranst. (Kopplung) Lehrer Klassengruppen";
+putline(ausgabeliste,auszeile);lvderzeit:=datenderzeit(i,kennunglv);
+kopplungenderzeit:=datenderzeit(i,kennungkopplung);paraphenderzeit:=
+datenderzeit(i,kennungparaphe);INT VAR poslv:=1,poskopplung:=1,posparaphe:=1;
+vglkopplung:=text(kopplung,laengekopplung);WHILE poslv<=length(lvderzeit)REP 
+pruefkopplung:=subtext(kopplungenderzeit,poskopplung,poskopplung+
+laengekopplung-1);IF pruefkopplung<>vglkopplungTHEN pruefparaphe:=subtext(
+paraphenderzeit,posparaphe,posparaphe+laengeparaphe-1);prueflv:=subtext(
+lvderzeit,poslv,poslv+laengelv-1);IF suchpos(paraphenliste,pruefparaphe,
+laengeparaphe)>0CAND pruefparaphe<>lehrerplatzhalterTHEN vermerkelvELIF 
+gemeinsameschuelergruppen(kennungkopplung,kopplung,kennunglv,prueflv)THEN 
+vermerkelvFI ;FI ;poskopplung:=poskopplung+laengekopplung;poslv:=poslv+
+laengelv;posparaphe:=posparaphe+laengeparaphe;PER .vermerkelv:auszeile:=
+subtext(prueflv,1,2);auszeileCAT blankzeichen;auszeileCAT subtext(prueflv,3,4
+);auszeileCAT blankzeichen;auszeileCAT subtext(prueflv,5);auszeileCAT "   ";
+auszeileCAT pruefkopplung;auszeileCAT "   ";auszeileCAT pruefparaphe;auszeile
+CAT "   ";sugruppen:=beteiligteschuelergruppen(kennunglv,prueflv);INT VAR 
+possu:=1;WHILE possu<=length(sugruppen)REP auszeileCAT subtext(sugruppen,
+possu,possu+laengesugruppe-1);auszeileCAT blankzeichen;possu:=possu+
+laengesugruppePER ;putline(ausgabeliste,auszeile).END PROC 
+stupidstoerendelvlisten;PROC stupidraumbelegunglisten:TEXT VAR auszeile;INT 
+VAR feldnr:=infeld;erstelledateimitraumbelegung;zeigedatei(zeigdatei,"").
+erstelledateimitraumbelegung:i:=(feldnr-felderbistabbeginnbs2)DIV 
+felderproeintragbs2;zeigdatei:=liste2;forget(zeigdatei,quiet);ausgabeliste:=
+sequentialfile(output,zeigdatei);auszeile:=
+"Raumbelegung für Lehrveranstaltung ";auszeileCAT subtext(lv,1,2);auszeile
+CAT blankzeichen;auszeileCAT subtext(lv,3,4);auszeileCAT blankzeichen;
+auszeileCAT subtext(lv,5);auszeileCAT " am ";auszeileCAT tagstunde(i,FALSE );
+auszeileCAT ".Stunde:";putline(ausgabeliste,auszeile);line(ausgabeliste);
+putline(ausgabeliste,"freie Räume:");line(ausgabeliste);IF alleraeume=""THEN 
+alleraeumeholenFI ;posraum:=1;WHILE posraum<=length(alleraeume)REP raum:=
+subtext(alleraeume,posraum,posraum+laengeraum-1);planeintraglesen(i,
+kennungraum,raum,suchlv,suchraum,suchparaphe);IF suchraum=""THEN putline(
+ausgabeliste,raum)FI ;posraum:=posraum+laengeraumPER ;line(ausgabeliste);line
+(ausgabeliste);putline(ausgabeliste,"Belegung der Wunsch- und Ersatzräume:");
+datraumwunsch:=sequentialfile(modify,wunschraumdatei);toline(datraumwunsch,
+ilv);readrecord(datraumwunsch,raumzeile);posraum:=1;WHILE posraum<=length(
+raumzeile)REP raum:=subtext(raumzeile,posraum,posraum+laengeraum-1);
+planeintraglesen(i,kennungraum,raum,suchlv,suchraum,suchparaphe);IF suchraum
+<>""THEN auszeile:=raum;auszeileCAT " :  ";auszeileCAT subtext(suchlv,1,2);
+auszeileCAT blankzeichen;auszeileCAT subtext(suchlv,3,4);auszeileCAT 
+blankzeichen;auszeileCAT subtext(suchlv,5);putline(ausgabeliste,auszeile);FI 
+;posraum:=posraum+laengeraumPER .alleraeumeholen:inittupel(dnrschluessel);
+statleseschleife(dnrschluessel,raumkenndaten,"",fnrschlsachgebiet,
+fnrschlschluessel,PROC raeumeholen).END PROC stupidraumbelegunglisten;PROC 
+raeumeholen(BOOL VAR b):IF wert(fnrschlsachgebiet)>raumkenndatenCOR dbstatus
+<>0THEN b:=TRUE ELSE alleraeumeCAT text(wert(fnrschlschluessel),laengeraum)
+FI END PROC raeumeholen;PROC stupidspeicherndieserzeitenfuerkopplung:BOOL 
+VAR plausifehler:=FALSE ;INT VAR anzahlankreuzungen:=0;ifnr:=
+fnrersteseingabefeldbs1;REP IF standardmaskenfeld(ifnr)<>""THEN IF zeitbelegt
+OR lehrerbelegtOR schuelerbelegtTHEN plausifehler:=TRUE ;standardmeldung(
+meldnrzuordnungwegensperrungunmoegl,"");infeld(ifnr)FI ;anzahlankreuzungen
+INCR 1FI ;ifnrINCR felderproeintragbs1UNTIL (ifnr>fnrletztesfeldbs1)OR 
+plausifehlerPER ;IF plausifehlerTHEN return(1)ELIF anzahlankreuzungen>
+maxwochenstundenTHEN standardmeldung(meldnrzuvielezuordnungen,"");return(1)
+ELSE speichernderkopplung;standardmeldung(meldnrdatenwurdengespeichert,"");
+stundenplansichern(fstatusstuplan);IF anzahlankreuzungen=0THEN 
+stupidnichtaendernweitermitnaechsterkopplungELSE standardstartproc(
+maskebearb2);erstelvzurkopplungnocheinmallesen;ilv:=1;lvzeigen;standardnproc
+FI FI .zeitbelegt:pos(standardmaskenfeld(ifnr+1),kennzzeitgesperrt)>0.
+lehrerbelegt:pos(standardmaskenfeld(ifnr+1),kennzlehrergesperrt)>0.
+schuelerbelegt:pos(standardmaskenfeld(ifnr+1),kennzschuelergesperrt)>0.
+erstelvzurkopplungnocheinmallesen:putwert(fnrlvsj,gewschulj);putwert(fnrlvhj,
+gewhalbj);putwert(fnrlvkopplung,kopplung);search(ixlvsjhjkopp,FALSE ).
+speichernderkopplung:INT VAR poslv;ifnr:=fnrersteseingabefeldbs1;FOR iFROM 
+erstestdUPTO letztestdREP ankreuzung:=standardmaskenfeld(ifnr);IF (
+kopplungszeitenSUB i)=stundeverplantTHEN IF ankreuzung=""THEN 
+kopplungentfernenELSE kopplungueberschreibenFI ELSE IF ankreuzung<>""THEN 
+kopplungschreibenFI ;FI ;ifnr:=ifnr+felderproeintragbs1PER .kopplungschreiben
+:BOOL VAR ok;poslv:=1;WHILE poslv<=length(lvliste)REP lv:=subtext(lvliste,
+poslv,poslv+laengelv-1);planeintragvornehmen(i,lv,raumplatzhalter,ok);poslv:=
+poslv+laengelvPER ;replace(kopplungszeiten,i,stundeverplant).
+kopplungentfernen:poslv:=1;WHILE poslv<=length(lvliste)REP lv:=subtext(
+lvliste,poslv,poslv+laengelv-1);planeintragloeschen(i,lv,ok);poslv:=poslv+
+laengelvPER ;replace(kopplungszeiten,i,stundefrei).kopplungueberschreiben:
+poslv:=1;WHILE poslv<=length(lvliste)REP lv:=subtext(lvliste,poslv,poslv+
+laengelv-1);planeintraglesen(i,kennunglv,lv,suchlv,suchraum,suchparaphe);
+suchraum:=compress(suchraum);IF suchraum=""THEN suchraum:=raumplatzhalterFI ;
+planeintragvornehmen(i,lv,suchraum,ok);poslv:=poslv+laengelvPER .END PROC 
+stupidspeicherndieserzeitenfuerkopplung;PROC lvzeigen:
+ueberschriftzeilezusammensetzen;standardkopfmaskeaktualisieren(ueberschrift);
+datenbestimmenundausgeben.ueberschriftzeilezusammensetzen:ueberschrift:=
+textueberschriftbs2;ueberschriftCAT kopplung;ueberschriftCAT 
+textueberschriftanhang;ueberschriftCAT gewhalbj;ueberschriftCAT blankzeichen;
+ueberschriftCAT subtext(gewschulj,1,2);ueberschriftCAT trennstrich;
+ueberschriftCAT subtext(gewschulj,3,4).datenbestimmenundausgeben:
+werteauslvsatzholen;ifnr:=felderbistabbeginnbs2;fnrersteseingabefeldbs2:=0;
+FOR iFROM erstestdUPTO letztestdREP IF (kopplungszeitenSUB i)=stundeverplant
+THEN planeintraglesen(i,kennunglv,text(lv,laengelv),suchlv,suchraum,
+suchparaphe);IF compress(suchraum)<>""THEN standardmaskenfeld(blankzeichen,
+ifnr+1);standardmaskenfeld(compress(suchraum),ifnr+2)ELSE standardmaskenfeld(
+vorschlagzeichen,ifnr+1);standardmaskenfeld(compress(wunschraumvorschlag),
+ifnr+2)FI ;IF fnrersteseingabefeldbs2=0THEN fnrersteseingabefeldbs2:=ifnr+2
+FI ELSE standardmaskenfeld(blankzeichen,ifnr+1);standardmaskenfeld(
+raumplatzhalter,ifnr+2);feldschutz(ifnr+2)FI ;ifnr:=ifnr+felderproeintragbs2
+PER ;infeld(1);standardfelderausgeben;infeld(fnrersteseingabefeldbs2).
+werteauslvsatzholen:lv:=jgstzweistellig(intwert(fnrlvjgst))+text(wert(
+fnrlvfachkennung),laengefachkenn);wstdderlv:=intwert(fnrlvwochenstd);paraphe
+:=wert(fnrlvparaphe);standardmaskenfeld(text(lv,laengelv),
+fnrlehrveranstaltbs2);standardmaskenfeld(text(wstdderlv,laengewstd),
+fnrwstdbs2);standardmaskenfeld(text(paraphe,laengeparaphe),fnrparaphebs2);
+standardmaskenfeld(text(wert(fnrlvklgrp1),laengeklagruppe),
+fnrklassengruppenbeginn);standardmaskenfeld(text(wert(fnrlvklgrp2),
+laengeklagruppe),fnrklassengruppenbeginn+1);standardmaskenfeld(text(wert(
+fnrlvklgrp3),laengeklagruppe),fnrklassengruppenbeginn+2);standardmaskenfeld(
+text(wert(fnrlvklgrp4),laengeklagruppe),fnrklassengruppenbeginn+3);
+standardmaskenfeld(text(wert(fnrlvraumgrp1),laengeraum),fnrraumwunsch);
+standardmaskenfeld(text(wert(fnrlvraumgrp2),laengeraum),fnrraumwunsch+1).
+wunschraumvorschlag:datraumwunsch:=sequentialfile(modify,wunschraumdatei);
+toline(datraumwunsch,ilv);readrecord(datraumwunsch,raumzeile);raumbelegliste
+:=datenderzeit(i,kennungraum);posraum:=1;WHILE posraum<=length(raumzeile)REP 
+raum:=subtext(raumzeile,posraum,posraum+laengeraum-1);IF suchpos(
+raumbelegliste,raum,laengeraum)=0THEN LEAVE wunschraumvorschlagWITH raumFI ;
+posraum:=posraum+laengeraumPER ;kennzkeinfreierwunschraum.END PROC lvzeigen;
+PROC stupidspeichernderraeumeundzeitenderlv(BOOL CONST speichern):BOOL VAR 
+plausifehler,ok;IF speichernTHEN plausifehler:=FALSE ;
+plausipruefungfuerraeumezulv;IF plausifehlerTHEN return(1)ELSE 
+raeumezulvspeichern;standardmeldung(meldnrdatenwurdengespeichert,"");
+stundenplansichern(fstatusstuplan);naechstelvzurbearbeitungFI ELSE 
+standardmeldung(meldnrdatenwurdennichtgespeichert,"");
+naechstelvzurbearbeitungFI .plausipruefungfuerraeumezulv:INT VAR 
+anzahlankreuzungen:=0;ifnr:=fnrersterraumbs2;FOR iFROM erstestdUPTO letztestd
+REP IF (kopplungszeitenSUB i)=stundeverplantTHEN raum:=compress(
+standardmaskenfeld(ifnr));IF raum<>""THEN anzahlankreuzungen:=
+anzahlankreuzungen+1;IF raum<>kennzkeinfreierwunschraumTHEN IF NOT 
+bezeichnungzulaessig(kennungraum,raum)THEN standardmeldung(
+meldnrungueltigerraum,"");infeld(ifnr);plausifehler:=TRUE ELIF 
+raumdurchanderelvbelegtTHEN standardmeldung(meldnrraumschonbelegt,"");infeld(
+ifnr);plausifehler:=TRUE FI FI FI FI ;ifnr:=ifnr+felderproeintragbs2UNTIL 
+plausifehlerPER ;IF NOT plausifehlerTHEN IF anzahlankreuzungen>wstdderlvTHEN 
+standardmeldung(meldnrzuvielezuordnungen,"");infeld(fnrersteseingabefeldbs2);
+plausifehler:=TRUE FI FI .raumdurchanderelvbelegt:planeintraglesen(i,
+kennungraum,raum,suchlv,suchraum,suchparaphe);compress(suchraum)<>""AND 
+suchlv<>lv.raeumezulvspeichern:ifnr:=fnrersterraumbs2;FOR iFROM erstestdUPTO 
+letztestdREP IF (kopplungszeitenSUB i)=stundeverplantTHEN raum:=compress(
+standardmaskenfeld(ifnr));IF raum=""THEN planeintragloeschen(i,lv,ok);ELSE 
+IF raum=kennzkeinfreierwunschraumTHEN raum:=raumplatzhalterFI ;
+planeintragvornehmen(i,lv,raum,ok);FI FI ;ifnr:=ifnr+felderproeintragbs2PER .
+naechstelvzurbearbeitung:succ(ixlvsjhjkopp);IF dbstatus=0THEN IF 
+weiterelvzukopplungvorhandenTHEN ilv:=ilv+1;lvzeigen;return(1)ELSE 
+standardstartproc(maskebearb1);kopplungzeigen;return(2)FI ELSE enter(3)FI .
+weiterelvzukopplungvorhanden:wert(fnrlvkopplung)=kopplungAND wert(fnrlvhj)=
+gewhalbjAND wert(fnrlvsj)=gewschulj.END PROC 
+stupidspeichernderraeumeundzeitenderlv;PROC stupidkopierenderraumangabe:INT 
+VAR feldnr:=infeld;ifnr:=feldnr;WHILE ifnr<fnrletztesfeldbs2REP ifnrINCR 
+felderproeintragbs2;IF standardmaskenfeld(ifnr)<>raumplatzhalterTHEN 
+standardmaskenfeld(standardmaskenfeld(feldnr),ifnr)FI PER ;return(1)END PROC 
+stupidkopierenderraumangabe;PROC stupidnichtaendernweitermitkopplung:putwert(
+fnrlvkopplung,kopplung+blankzeichen);search(ixlvsjhjkopp,FALSE );IF 
+keinegueltigekopplungTHEN enter(3)ELSE standardstartproc(maskebearb1);
+kopplungzeigen;return(2)FI END PROC stupidnichtaendernweitermitkopplung;PROC 
+stupidnichtaendernweitermitnaechsterkopplung:putwert(fnrlvkopplung,kopplung+
+blankzeichen);search(ixlvsjhjkopp,FALSE );IF keinegueltigekopplungTHEN enter(
+2)ELSE kopplungzeigen;return(1)FI END PROC 
+stupidnichtaendernweitermitnaechsterkopplung;PROC stupidlistedrucken(BOOL 
+CONST drucken):IF druckenTHEN print(zeigdatei)FI ;forget(zeigdatei,quiet);
+return(2)END PROC stupidlistedrucken;INT PROC suchpos(TEXT CONST quelle,
+suchtext,INT CONST laenge):INT VAR findpos:=pos(quelle,suchtext);WHILE 
+findpos>0REP IF findposMOD laenge=1THEN LEAVE suchposWITH findposELSE findpos
+:=pos(quelle,suchtext,findpos+1);FI PER ;findposEND PROC suchpos;TEXT PROC 
+jgstzweistellig(INT CONST intjgst):IF intjgst=0THEN "00"ELIF intjgst>4AND 
+intjgst<10THEN "0"+text(intjgst)ELSE text(intjgst)FI END PROC jgstzweistellig
+;PROC wertedeseingangsbildschirmsmerken:wertfeld2:=standardmaskenfeld(
+fnrkopplungbs0);wertfeld3:=standardmaskenfeld(fnrakthalbjahr);wertfeld4:=
+standardmaskenfeld(fnrmitzeitwuenschen)END PROC 
+wertedeseingangsbildschirmsmerken;PROC wertedeseingangsbildschirmsholen:
+standardmaskenfeld(wertfeld2,fnrkopplungbs0);standardmaskenfeld(wertfeld3,
+fnrakthalbjahr);standardmaskenfeld(wertfeld4,fnrmitzeitwuenschen)END PROC 
+wertedeseingangsbildschirmsholen;END PACKET 
+stundenplanimdialogerstellenundaendern
+

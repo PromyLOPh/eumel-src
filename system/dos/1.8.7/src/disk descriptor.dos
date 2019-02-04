@@ -1,0 +1,339 @@
+PACKET dos disk DEFINES                       (* Copyright (C) 1986, 87 *)
+                                              (* Frank Klapper          *)
+  (* Referenz: 3-22 *)                        (* 11.09.87               *)
+
+  open dos disk,
+
+  sectors per cluster,
+  fat copies,
+  dir sectors,
+  media descriptor,
+  fat sectors,
+
+  begin of fat,
+  fat entrys,
+  begin of dir,
+  begin of cluster,
+  cluster size,
+
+  bpb exists,
+  write bpb,
+
+  eu block,
+
+  bpb dump modus:
+
+INITFLAG VAR bpb ds initialisiert := FALSE;
+DATASPACE VAR bpb ds;
+BOUND STRUCT (ALIGN dummy, ROW 512 INT daten) VAR bpb;
+
+BOOL VAR bpb dump flag := FALSE;
+
+REAL VAR begin of data area;
+INT  VAR sectors per track,
+         heads;
+
+IF exists ("shard interface")
+  THEN load shard interface table
+FI;
+
+TEXT CONST bpb type 254 :: ""00""00""00"" +
+                           ""69""85""77""69""76""66""80""66"" +
+                           ""00""02"" +
+                           ""01"" +
+                           ""01""00"" +
+                           ""02"" +
+                           ""64""00"" +
+                           ""64""01"" +
+                           ""254"" +
+                           ""01""00"" +
+                           ""08""00"" +
+                           ""01""00"" +
+                           ""00""00"",
+           bpb type 255 :: ""00""00""00"" +
+                           ""69""85""77""69""76""66""80""66"" +
+                           ""00""02"" +
+                           ""02"" +
+                           ""01""00"" +
+                           ""02"" +
+                           ""112""00"" +
+                           ""128""02"" +
+                           ""255"" +
+                           ""01""00"" +
+                           ""08""00"" +
+                           ""02""00"" +
+                           ""00""00"";
+
+PROC open dos disk:
+  enable stop;
+  bpb ds an bound koppeln;
+  bpb lesen;
+  IF bpb ungueltig
+    THEN versuche pseudo bpb zu verwenden
+  FI;
+  ueberpruefe bpb auf gueltigkeit;
+  globale variablen initialisieren;
+  IF bpb dump flag
+    THEN dump schreiben
+  FI.
+
+bpb ds an bound koppeln:
+  IF NOT initialized (bpb ds initialisiert)
+    THEN bpb ds := nilspace;
+         bpb := bpb ds
+  FI.
+
+bpb lesen:
+  INT VAR return;
+  check rerun;
+  read block (bpb ds, 2, 0, return);
+  IF return <> 0
+    THEN lesefehler (return)
+  FI.
+
+bpb ungueltig:
+  (* Byte 12 = Byte 13 = ... = Byte 23 <==> Word 6 = ... = Word 11 *)
+  INT VAR word no;
+  FOR word no FROM 6 UPTO 10 REP
+    IF bpb.daten [word no + 1] <> bpb.daten [word no + 2]
+      THEN LEAVE bpb ungueltig WITH FALSE
+    FI
+  PER;
+  TRUE.
+
+versuche pseudo bpb zu verwenden:
+  lies ersten fat sektor;
+  IF fat sektor gueltig und pseudo bpb vorhanden
+    THEN pseudo bpb laden
+    ELSE error stop ("Format unbekannt")
+  FI.
+
+lies ersten fat sektor:
+  (* da der bpb in diesem Fall ungültig, lese ich den fat sektor in den bpb
+     Datenraum                                                             *)
+  check rerun;
+  read block (bpb ds, 2, 1, return);
+  IF return <> 0
+    THEN lesefehler (return)
+  FI.
+
+fat sektor gueltig und pseudo bpb vorhanden:
+  TEXT VAR fat start := "1234";
+  replace (fat start, 1, bpb.daten [1]);
+  replace (fat start, 2, bpb.daten [2]);
+  (fat start SUB 2) = ""255"" CAND (fat start SUB 3) = ""255"" CAND
+  pseudo bpb vorhanden.
+
+pseudo bpb vorhanden:
+  pos (""254""255"", fat start SUB 1) > 0.
+
+pseudo bpb laden:
+  INT VAR i;
+  FOR i FROM 1 UPTO 15 REP
+    bpb.daten [i] := bpb puffer ISUB i
+  PER.
+
+bpb puffer:
+  IF pseudo bpb name = ""255""
+    THEN bpb type 255
+    ELSE bpb type 254
+  FI.
+
+pseudo bpb name:
+  fat start SUB 1.
+
+ueberpruefe bpb auf gueltigkeit:
+  IF bytes per sector <> 512
+    THEN error stop ("DOS Format nicht implementiert (unzulässige Sektorgröße)")
+  FI;
+  IF (fat sectors > 64)
+    THEN error stop ("ungültige DOS Disk (BPB)")
+  FI.
+
+globale variablen initialisieren:
+  sectors per track  := bpb byte (25) * 256 + bpb byte (24);
+  heads              := bpb byte (27) * 256 + bpb byte (26);
+  begin of data area := real (reserved sectors + fat copies * fat sectors + dir sectors).
+
+dump schreiben:
+  dump ("Sektoren pro Cluster", sectors per cluster);
+  dump ("Fat Kopien          ", fat copies);
+  dump ("Dir Sektoren        ", dir sectors);
+  dump ("Media Descriptor    ", media descriptor);
+  dump ("Sektoren pro Fat    ", fat sectors);
+  dump ("Fat Anfang (0)      ", begin of fat (0));
+  dump ("Fat Einträge        ", fat entrys);
+  dump ("Dir Anfang          ", begin of dir).
+
+END PROC open dos disk;
+
+PROC lesefehler (INT CONST fehler code):
+  error stop (fehlertext).
+
+fehlertext:
+  SELECT fehler code OF
+    CASE 1: "Diskettenlaufwerk nicht betriebsbereit"
+    CASE 2: "Lesefehler"
+    OTHERWISE "Lesefehler " + text (fehler code)
+  END SELECT.
+
+END PROC lesefehler;
+
+TEXT VAR konvertier puffer := "12";
+
+INT PROC bpb byte (INT CONST byte no):
+  replace (konvertier puffer, 1, bpb.daten [byte no DIV 2 + 1]);
+  code (konvertier puffer SUB puffer pos).
+
+puffer pos:
+  IF even byte no
+    THEN 1
+    ELSE 2
+  FI.
+
+even byte no:
+  (byte no MOD 2) = 0.
+
+END PROC bpb byte;
+
+INT PROC bytes per sector:
+  bpb byte (12) * 256 + bpb byte (11)
+
+END PROC bytes per sector;
+
+INT PROC sectors per cluster:
+  bpb byte (13)
+
+END PROC sectors per cluster;
+
+INT PROC reserved sectors:
+  bpb byte (15) * 256 + bpb byte (14)
+
+END PROC reserved sectors;
+
+INT PROC fat copies:
+  bpb byte (16)
+
+END PROC fat copies;
+
+INT PROC dir sectors:
+  dir entrys DIV dir entrys per sector.
+
+dir entrys:
+  bpb byte (18) * 256 + bpb byte (17).
+
+dir entrys per sector:
+  16.
+
+END PROC dir sectors;
+
+REAL PROC dos sectors:
+  real (bpb byte (20)) * 256.0 + real (bpb byte (19))
+
+END PROC dos sectors;
+
+INT PROC media descriptor:
+  bpb byte (21)
+
+END PROC media descriptor;
+
+INT PROC fat sectors:
+  bpb byte (23) * 256 + bpb byte (22)
+
+END PROC fat sectors;
+
+INT PROC begin of fat (INT CONST fat copy no):
+  (* 0 <= fat copy no <= fat copies - 1 *)
+  reserved sectors + fat copy no * fat sectors
+
+END PROC begin of fat;
+
+INT PROC fat entrys:
+  anzahl daten cluster + 2.
+
+anzahl daten cluster:
+  int ((dos sectors - tabellen sektoren) / real (sectors per cluster)).
+
+tabellen sektoren:
+  real (reserved sectors + fat copies * fat sectors + dir sectors).
+
+END PROC fat entrys;
+
+INT PROC begin of dir:
+  reserved sectors + fat copies * fat sectors.
+
+END PROC begin of dir;
+
+REAL PROC begin of cluster (REAL CONST cluster no):
+  begin of data area + (cluster no - 2.0) * real (sectors per cluster)
+
+END PROC begin of cluster;
+
+INT PROC cluster size:
+  512 * sectors per cluster
+
+END PROC cluster size;
+
+BOOL PROC bpb exists (INT CONST no):
+
+  exists ("bpb ds") AND no > 0 AND no < 4.
+
+END PROC bpb exists;
+
+PROC write bpb (INT CONST no):
+  INT VAR return;
+  write block (old ("bpb ds"), no + 1, 0, 0, return);
+  IF return <> 0
+    THEN error stop ("Schreibfehler")
+  FI.
+
+END PROC write bpb;
+
+(* Da DOS-Partitionen maximal 32 MByte groß sein können, können die Blocknummern
+   durch 16 BIT unsigned Integer dargestellt werden. Die Werte die die 'eublock'-
+   Prozeduren liefern sind als solche zu verstehen                          *)
+
+INT PROC eu block (INT CONST dos block no):
+  IF hd version
+    THEN dos block no
+    ELSE dos block no floppy format
+  FI.
+
+dos block no floppy format:
+  IF page format
+    THEN head * eu sectors per head + trac * eu sectors + sector
+    ELSE head * eu sectors + trac * abs (eu heads) * eu sectors + sector
+  FI.
+
+page format:
+  eu heads < 0.
+
+sector:
+  dos block no MOD sectors per track.
+
+trac:
+  (dos block no DIV sectors per track) DIV heads.
+
+head:
+  (dos block no DIV sectors per track) MOD heads.
+
+eu sectors per head:
+  eu sectors * eu tracks.
+
+eu sectors:
+  eu last sector - eu first sector + 1.
+
+END PROC eu block;
+
+INT PROC eu block (REAL CONST dos block no):
+  eublock (low word (dos block no)).
+
+END PROC eublock;
+
+PROC bpb dump modus (BOOL CONST status):
+  bpb dump flag := status
+
+END PROC bpb dump modus;
+
+END PACKET dos disk;
+

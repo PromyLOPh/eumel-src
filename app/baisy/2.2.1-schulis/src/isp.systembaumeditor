@@ -1,0 +1,72 @@
+PACKET systembaumeditorDEFINES startsystembaumeditor,aktuellensenamenlesen,
+baumausdatei,baumausdateizeigen,baumausdateiuebersetzen,
+systembaumreorganisieren,listederteilbaumdateien,listederteilbaeume,
+erwartereaktion,baumaendern,baumloeschen,eingangsbildschirmherstellen,
+internenbaumzeigen,internenbaumuebersetzen:LET z="Teilbaumliste",trenner=",",
+praefix="b.",standardanfang=2,maxfelder=10,reorg=0,dummy="dummy",baumdatei=1,
+teilbaeume=2,maskese1="mb baumdateibearbeitung",maskese2=
+"mb teilbaumbearbeitung",maxnamenlaenge=32,fehldat="Übersetzungsfehler:";;
+BOOL VAR fehler:=FALSE ;FILE VAR f;TEXT VAR namen:="";TEXT VAR dnam:="";;TAG 
+VAR aktuellemaske;INT VAR aktuelleposition;ROW 100TEXT VAR feld;INT VAR prog,
+teilbaumzahl;init(feld);PROC startsystembaumeditor(INT CONST kennung):
+werbinich;frageentwicklernachdemnamen;aktuellensenamenlesen.werbinich:TEXT 
+VAR maskenname;SELECT kennungOF CASE baumdatei:maskenname:=maskese1CASE 
+teilbaeume:maskenname:=maskese2END SELECT ;prog:=kennung.
+frageentwicklernachdemnamen:page;IF exists(dnam)THEN forget(dnam,quiet)FI ;
+IF exists(namen)THEN rename(namen,praefix+namen)FI ;aktuelleposition:=
+standardanfang;standardkopfmaskeausgeben(text(vergleichsknoten));initmaske(
+aktuellemaske,maskenname);show(aktuellemaske).END PROC startsystembaumeditor;
+PROC aktuellensenamenlesen:putget(aktuellemaske,feld,aktuelleposition);namen
+:=eingegebenenamen;loeschemeldung(aktuellemaske).END PROC 
+aktuellensenamenlesen;PROC baumausdatei:IF namen=""THEN melde(aktuellemaske,
+43);return(1)ELSE IF istree(namen)THEN meldeohneb;return(1)ELSE f:=
+sequentialfile(output,praefix+namen);close(f);baumausdateizeigenFI FI .
+meldeohneb:melde(aktuellemaske,44).END PROC baumausdatei;PROC 
+baumausdateizeigen:store(FALSE );page;TEXT VAR t:=praefix+namen;IF exists(t)
+THEN rename(t,namen)FI ;IF exists(fehldat)THEN forget(fehldat,quiet)FI ;
+editiere(namen,"ae",FALSE );store(TRUE )END PROC baumausdateizeigen;PROC 
+systembaumreorganisieren:FILE VAR f:=sequentialfile(output,dummy);close(f);
+dnam:=dummy;baumverarbeitung(dnam,reorg);eingangsbildschirmherstellen(1)END 
+PROC systembaumreorganisieren;PROC baumausdateiuebersetzen:translate(namen,
+fehler);rename(namen,praefix+namen);IF fehlerTHEN erwartereaktionELSE 
+eingangsbildschirmherstellen(2)FI END PROC baumausdateiuebersetzen;PROC 
+baumaendern:baumbearbeiten(1)END PROC baumaendern;PROC baumloeschen:
+baumbearbeiten(2)END PROC baumloeschen;PROC baumbearbeiten(INT CONST wie):
+TEXT VAR t:="";meldesuche;dnam:=subtext(namen,1,maxnamenlaenge);t:=
+bearbeitung(namen,wie);IF (t="")CAND teilbaumzahl=1THEN meldemisserfolg;
+return(1)ELSE loeschemeldung(aktuellemaske);IF loeschenundkeinfehlerTHEN 
+eingangsbildschirmherstellen(1);meldeloeschungELSE internenbaumzeigenFI FI .
+meldesuche:melde(aktuellemaske,24).meldemisserfolg:melde(aktuellemaske,25).
+meldeloeschung:melde(aktuellemaske,51).loeschenundkeinfehler:(wie=2)AND (t<>
+"").END PROC baumbearbeiten;PROC internenbaumzeigen:IF exists(fehldat)THEN 
+forget(fehldat,quiet)FI ;store(FALSE );page;editiere(dnam,"a",FALSE );store(
+TRUE )END PROC internenbaumzeigen;PROC internenbaumuebersetzen:store(FALSE );
+translate(dnam,fehler);store(TRUE );IF fehlerTHEN erwartereaktionELSE 
+eingangsbildschirmherstellen(2)FI END PROC internenbaumuebersetzen;PROC 
+listederteilbaeume:meldezusammenstellung;transactionlistederteilbaeume;
+zeigenderteilbaumliste.meldezusammenstellung:melde(aktuellemaske,7).END PROC 
+listederteilbaeume;PROC listederteilbaumdateien:melde(aktuellemaske,7);FILE 
+VAR f;f:=sequentialfile(output,z);line(f);beginlist;TEXT VAR s:="",t:=" ";
+REP getlistentry(s,t);IF istree(s)THEN put(f,t);put(f,s);line(f)FI UNTIL t=""
+PER ;close(f);sort(z);zeigenderteilbaumliste.END PROC listederteilbaumdateien
+;BOOL PROC istree(TEXT VAR t):INT VAR i;i:=pos(t,praefix);IF i>0THEN t:=3*" "
++subtext(t,i+2,length(t))FI ;i>0END PROC istree;PROC zeigenderteilbaumliste:
+page;editiere(z)END PROC zeigenderteilbaumliste;PROC erwartereaktion:store(
+FALSE );page;store(TRUE );IF fehlerTHEN editiere(fehldat,"a")FI ;END PROC 
+erwartereaktion;PROC transactionlistederteilbaeume:f:=sequentialfile(output,z
+);TEXT VAR dateiname:=z;baumverarbeitung(dateiname,1)END PROC 
+transactionlistederteilbaeume;PROC translate(TEXT CONST t,BOOL VAR b):TEXT 
+VAR dateiname:=t;baumverarbeitung(dateiname,2);b:=(dateiname<>t)END PROC 
+translate;TEXT PROC bearbeitung(TEXT CONST t,INT CONST wie):f:=sequentialfile
+(output,dnam);putline(f,t);TEXT VAR dateiname:=dnam;INT VAR methode:=2+wie;
+IF teilbaumzahl>1THEN methodeINCR 2FI ;baumverarbeitung(dateiname,methode);
+dateinameEND PROC bearbeitung;PROC eingangsbildschirmherstellen(INT CONST i):
+reorganizescreen;return(i);IF exists(dnam)THEN forget(dnam,quiet)FI ;
+standardkopfmaskeaktualisierenEND PROC eingangsbildschirmherstellen;TEXT 
+PROC eingegebenenamen:IF prog=baumdateiTHEN teilbaumzahl:=1;feld(
+standardanfang)ELSE teilbaumzahl:=0;INT VAR i;TEXT VAR t:="";FOR iFROM 
+standardanfangUPTO maxfelderREP IF feld(i)<>""THEN teilbaumzahlINCR 1;IF t<>
+""THEN tCAT trennerFI ;tCAT feld(i)FI PER ;tFI END PROC eingegebenenamen;
+PROC init(ROW 100TEXT VAR feld):INT VAR i;FOR iFROM 1UPTO 100REP feld(i):=""
+PER END PROC init;END PACKET systembaumeditor;
+

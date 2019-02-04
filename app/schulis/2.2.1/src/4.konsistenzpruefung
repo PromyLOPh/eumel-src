@@ -1,0 +1,274 @@
+PACKET konsistenzpruefungDEFINES konsistenzpruefungstarten,
+konsistenzpruefungprotokolldrucken:INT VAR fnrgeplhj:=2,fnrakthj:=3;LET 
+meldnrinbearbeitung=352,meldnrstundenplanwirdaufbereitet=357,meldnrbasisalt=
+377;LET anschreibenserver="anschreiben server";LET fehlerzeilendatei=
+"fehlerliste konsistenzpruefung";FILE VAR fehldat;LET protname=
+"Protokoll zur Konsistenzprüfung";FILE VAR prot;LET sachgebietraum=
+"c02 raeume",sachgebietaufsichtsorte="c02 aufsichtsorte";LET schuljahr=
+"Schuljahr",schulhalbjahr="Schulhalbjahr",schulname="Schulname",schulort=
+"Schulort";LET ueberschrift="Konsistenzprüfung zum Stundenplan",untertitel1=
+"Stundenplan zum Schuljahr ",texthalbjahr=". Halbjahr",untertitel2=
+"Prüfung am ",anfangstext="Folgende Inkonsistenzen wurden festgestellt: ";
+LET strich="-",schraegstrich="/",blank=" ",kennzhell="#",fall="Fall ",
+doppelpunkt=":",ersatzzeichen="#",awtrenner="#";LET jgst05="05",jgst13="13";
+LET kennzzeitrastersperrung="x",leerraum="    ";LET laengekennung=4,
+laengeraum=4,laengeklassengruppe=4,laengesugruppe=6,laengeparaphe=4,
+laengefach=2,laengekopplung=8,laengelv=8,laengeorte=4,laengeaufsichtszeit=3;
+LET kennungkopplung="K",kennungparaphe="P",kennunglv="L",kennungraum="R";LET 
+maxlehrer=255;LET erstestunde=1,letztestunde=66;LET bezugfach="f",
+bezugsugruppe="s",bezugparaphe="l",bezugraum="r",bezugkopplung="k",
+bezugtextfach="Fach",bezugtextsugruppe="Schülergruppe",bezugtextparaphe=
+"Paraphe",bezugtextraum="Raum",bezugtextkopplung="Kopplung";TEXT VAR aktsj:=
+"",akthj:="",gewsj,gewhj;TEXT VAR auszeile,zeile,suchfall;TEXT VAR 
+klassengruppe,raumgruppe,jgst,fach,paraphe,lv,raum,ort,aufsichtszeit,kopplung
+,neuekopplung,neueparaphe;TEXT VAR gueltigeschuelergruppen,
+gueltigeklassengruppen,gueltigeraumgruppen,gueltigeraeume,gueltigefaecher,
+gueltigeparaphen,gueltigelv,gueltigekopplungen,gueltigeaufsichtszeiten,
+gueltigeaufsichtsorte;TEXT VAR fehlerhafteklassengruppen,
+fehlerhafteraumgruppen,fehlerhaftelv;TEXT VAR zeitrasterleiste;INT VAR 
+ifehler,ilehrer;ROW maxlehrerINT VAR lehrersollstd;ROW maxlehrerINT VAR 
+lehreriststd;INT VAR posraum,poslv,posparaphe;INT VAR izeit;PROC 
+konsistenzpruefungstarten:INT VAR fnrfehler:=0;standardpruefe(5,fnrgeplhj,
+fnrakthj,0,"",fnrfehler);IF fnrfehler<>0THEN infeld(fnrfehler);return(1)ELSE 
+pruefungstartenFI .pruefungstarten:IF aktsj=""THEN aktsj:=schulkenndatum(
+schuljahr);akthj:=schulkenndatum(schulhalbjahr)FI ;gewsj:=aktsj;gewhj:=akthj;
+IF standardmaskenfeld(fnrgeplhj)<>""THEN geplanteshjundsjberechnen(gewhj,
+gewsj);FI ;protokollvorbereiten;ausgabekopfaufbereiten;
+pruefungklassengruppendurchfuehren;pruefungraumgruppendurchfuehren;
+pruefunglehrveranstaltungendurchfuehren;
+pruefunglehrerstundenzahlendurchfuehren;pruefungzeitwuenschedurchfuehren;
+pruefungstundenplandurchfuehren;pruefungaufsichtsplandurchfuehren;
+ausgabefussaufbereiten;zeigedatei(protname,"").protokollvorbereiten:forget(
+fehlerzeilendatei,quiet);fetch(fehlerzeilendatei,/anschreibenserver);fehldat
+:=sequentialfile(modify,fehlerzeilendatei);forget(protname,quiet);prot:=
+sequentialfile(output,protname);ifehler:=0.ausgabekopfaufbereiten:putline(
+prot,schulkenndatum(schulname));putline(prot,schulkenndatum(schulort));line(
+prot);putline(prot,20*blank+ueberschrift);putline(prot,20*blank+length(
+ueberschrift)*strich);line(prot);auszeile:=untertitel1;auszeileCAT subtext(
+gewsj,1,2);auszeileCAT schraegstrich;auszeileCAT subtext(gewsj,3,4);auszeile
+CAT ", ";auszeileCAT gewhj;auszeileCAT texthalbjahr;putline(prot,auszeile);
+auszeile:=untertitel2;auszeileCAT date;auszeileCAT blank;auszeileCAT 
+timeofday;putline(prot,auszeile);line(prot);line(prot);putline(prot,
+anfangstext);line(prot).ausgabefussaufbereiten:line(prot);IF ifehler=0THEN 
+putline(prot,20*blank+"keine")ELSE putline(prot,20*blank+20*strich)FI .END 
+PROC konsistenzpruefungstarten;PROC pruefungklassengruppendurchfuehren:
+standardmeldung(meldnrinbearbeitung,name(dnrklassengruppen)+kennzhell);
+holegueltigeschuelergruppen;gueltigeklassengruppen:="";
+fehlerhafteklassengruppen:="";inittupel(dnrklassengruppen);statleseschleife(
+dnrklassengruppen,"","",fnrkgklassengrp,fnrkgklassengrp,PROC 
+klassengruppelesenundpruefen)END PROC pruefungklassengruppendurchfuehren;
+PROC holegueltigeschuelergruppen:gueltigeschuelergruppen:="";inittupel(
+dnraktschuelergruppen);statleseschleife(dnraktschuelergruppen,gewsj,gewhj,
+fnrsgrpsj,fnrsgrphj,PROC schuelergruppelesen)END PROC 
+holegueltigeschuelergruppen;PROC schuelergruppelesen(BOOL VAR b):IF dbstatus
+<>0OR wert(fnrsgrpsj)<>gewsjOR wert(fnrsgrphj)<>gewhjTHEN b:=TRUE ELSE 
+gueltigeschuelergruppenCAT jgstzweistellig(intwert(fnrsgrpjgst));
+gueltigeschuelergruppenCAT text(wert(fnrsgrpkennung),laengekennung)FI END 
+PROC schuelergruppelesen;PROC klassengruppelesenundpruefen(BOOL VAR b):TEXT 
+VAR sugruppe,sugruppen;INT VAR possugruppe,laengesugruppen;IF dbstatus<>0
+THEN b:=TRUE ELSE klassengruppe:=wert(fnrkgklassengrp);gueltigeklassengruppen
+CAT text(klassengruppe,laengeklassengruppe);sugruppen:=wert(fnrkgschuelergrp)
+;laengesugruppen:=length(sugruppen);possugruppe:=1;WHILE possugruppe<
+laengesugruppenREP sugruppe:=subtext(sugruppen,possugruppe,possugruppe+
+laengesugruppe-1);IF suchpos(gueltigeschuelergruppen,sugruppe,laengesugruppe)
+=0AND sugruppeistnichtjgstTHEN fehlerprotokollieren(1,klassengruppe+awtrenner
++sugruppe+awtrenner);fehlerhafteklassengruppenCAT text(klassengruppe,
+laengeklassengruppe)FI ;possugruppeINCR laengesugruppePER ;FI .
+sugruppeistnichtjgst:subtext(sugruppe,3,6)<>"    ".END PROC 
+klassengruppelesenundpruefen;PROC pruefungraumgruppendurchfuehren:
+standardmeldung(meldnrinbearbeitung,name(dnrraumgruppen)+kennzhell);
+holegueltigeraeume;gueltigeraumgruppen:="";fehlerhafteraumgruppen:="";
+inittupel(dnrraumgruppen);statleseschleife(dnrraumgruppen,"","",fnrrgraumgrp,
+fnrrgraumgrp,PROC raumgruppelesenundpruefen)END PROC 
+pruefungraumgruppendurchfuehren;PROC holegueltigeraeume:gueltigeraeume:="";
+inittupel(dnrschluessel);statleseschleife(dnrschluessel,sachgebietraum,"",
+fnrschlsachgebiet,fnrschlschluessel,PROC raumlesen);END PROC 
+holegueltigeraeume;PROC raumlesen(BOOL VAR b):IF dbstatus<>0COR wert(
+fnrschlsachgebiet)>sachgebietraumTHEN b:=TRUE ELSE gueltigeraeumeCAT text(
+wert(fnrschlschluessel),laengeraum)FI END PROC raumlesen;PROC 
+raumgruppelesenundpruefen(BOOL VAR b):TEXT VAR alleraeume;INT VAR 
+laengeraeume;IF dbstatus<>0THEN b:=TRUE ELSE raumgruppe:=wert(fnrrgraumgrp);
+gueltigeraumgruppenCAT text(raumgruppe,laengeraum);alleraeume:=wert(
+fnrrgraeume);laengeraeume:=length(alleraeume);posraum:=1;WHILE posraum<
+laengeraeumeREP raum:=subtext(alleraeume,posraum,posraum+laengeraum-1);IF 
+suchpos(gueltigeraeume,raum,laengeraum)=0THEN fehlerprotokollieren(2,
+raumgruppe+awtrenner+raum+awtrenner);fehlerhafteraumgruppenCAT text(
+raumgruppe,laengeraum)FI ;posraumINCR laengeraumPER ;FI .END PROC 
+raumgruppelesenundpruefen;PROC pruefunglehrveranstaltungendurchfuehren:
+standardmeldung(meldnrinbearbeitung,name(dnrlehrveranstaltungen)+kennzhell);
+holegueltigeparaphen;holegueltigefaecher;gueltigelv:="";fehlerhaftelv:="";
+gueltigekopplungen:="";inittupel(dnrlehrveranstaltungen);statleseschleife(
+dnrlehrveranstaltungen,gewsj,gewhj,fnrlvsj,fnrlvhj,PROC lvlesenundpruefen)
+END PROC pruefunglehrveranstaltungendurchfuehren;PROC holegueltigeparaphen:
+gueltigeparaphen:="";ilehrer:=0;inittupel(dnrlehrer);statleseschleife(
+dnrlehrer,"","",fnrlparaphe,fnrlparaphe,PROC paraphelesen);END PROC 
+holegueltigeparaphen;PROC paraphelesen(BOOL VAR b):IF dbstatus<>0THEN b:=
+TRUE ELSE gueltigeparaphenCAT text(wert(fnrlparaphe),laengeparaphe);ilehrer
+INCR 1;lehrersollstd(ilehrer):=intwert(fnrlsollstd);lehreriststd(ilehrer):=0
+FI END PROC paraphelesen;PROC holegueltigefaecher:gueltigefaecher:="";
+inittupel(dnrfaecher);statleseschleife(dnrfaecher,"","",fnrffach,fnrffach,
+PROC fachlesen);END PROC holegueltigefaecher;PROC fachlesen(BOOL VAR b):IF 
+dbstatus<>0THEN b:=TRUE ELSE gueltigefaecherCAT text(wert(fnrffach),
+laengefach)FI END PROC fachlesen;PROC lvlesenundpruefen(BOOL VAR b):IF 
+dbstatus<>0OR wert(fnrlvhj)<>gewhjOR wert(fnrlvsj)<>gewsjTHEN b:=TRUE ELSE 
+lvdatenpruefenFI .lvdatenpruefen:jgst:=jgstzweistellig(intwert(fnrlvjgst));
+paraphe:=text(wert(fnrlvparaphe),laengeparaphe);fach:=subtext(wert(
+fnrlvfachkennung),1,2);lv:=jgst+wert(fnrlvfachkennung);gueltigelvCAT text(lv,
+laengelv);gueltigekopplungenCAT text(wert(fnrlvkopplung),laengekopplung);IF 
+suchpos(gueltigefaecher,fach,laengefach)=0THEN fehlerprotokollieren(3,lv+
+awtrenner+fach+awtrenner);fehlerhaftelvCAT text(lv,laengelv)FI ;posparaphe:=
+suchpos(gueltigeparaphen,paraphe,laengeparaphe);IF posparaphe=0THEN 
+fehlerprotokollieren(4,lv+awtrenner+paraphe+awtrenner);fehlerhaftelvCAT text(
+lv,laengelv)ELSE lehrerstundenaufsummierenFI ;INT VAR fnrklgrp;FOR fnrklgrp
+FROM fnrlvklgrp1UPTO fnrlvklgrp4REP klassengruppe:=wert(fnrklgrp);IF 
+klassengruppe<>""THEN IF suchpos(gueltigeschuelergruppen,jgst+klassengruppe,
+laengesugruppe)=0THEN IF intwert(fnrlvjgst)>0THEN IF jgst<>klassengruppeTHEN 
+pruefeobgueltigeklassengruppeFI ELIF klassengruppeistkeinejgstTHEN 
+pruefeobgueltigeklassengruppeFI FI ;FI ;PER ;INT VAR fnrraumgrp;FOR 
+fnrraumgrpFROM fnrlvraumgrp1UPTO fnrlvraumgrp2REP raum:=wert(fnrraumgrp);IF 
+raum<>""THEN raum:=text(raum,laengeraum);IF suchpos(gueltigeraeume,raum,
+laengeraum)=0THEN IF suchpos(gueltigeraumgruppen,raum,laengeraum)=0THEN 
+fehlerprotokollieren(7,lv+awtrenner+raum+awtrenner)ELIF suchpos(
+fehlerhafteraumgruppen,raum,laengeraum)>0THEN fehlerprotokollieren(8,lv+
+awtrenner+raum+awtrenner)FI FI ;FI ;PER ;.klassengruppeistkeinejgst:
+jgstaufber(klassengruppe)<jgst05OR jgstaufber(klassengruppe)>jgst13.
+pruefeobgueltigeklassengruppe:IF suchpos(gueltigeklassengruppen,klassengruppe
+,laengeklassengruppe)=0THEN fehlerprotokollieren(5,lv+awtrenner+klassengruppe
++awtrenner)ELIF suchpos(fehlerhafteklassengruppen,klassengruppe,
+laengeklassengruppe)>0THEN fehlerprotokollieren(6,lv+awtrenner+klassengruppe+
+awtrenner)FI .lehrerstundenaufsummieren:ilehrer:=((posparaphe-1)DIV 
+laengeparaphe)+1;lehreriststd(ilehrer):=lehreriststd(ilehrer)+intwert(
+fnrlvwochenstd).END PROC lvlesenundpruefen;PROC 
+pruefunglehrerstundenzahlendurchfuehren:standardmeldung(meldnrinbearbeitung,
+name(dnrlehrer)+kennzhell);ilehrer:=1;posparaphe:=1;WHILE posparaphe<length(
+gueltigeparaphen)REP IF lehreriststd(ilehrer)>lehrersollstd(ilehrer)THEN 
+fehlerprotokollieren(9,subtext(gueltigeparaphen,posparaphe,posparaphe+
+laengeparaphe-1)+awtrenner);FI ;ilehrerINCR 1;posparapheINCR laengeparaphe
+PER .END PROC pruefunglehrerstundenzahlendurchfuehren;PROC 
+pruefungzeitwuenschedurchfuehren:standardmeldung(meldnrinbearbeitung,name(
+dnrzeitwuensche)+kennzhell);inittupel(dnrzeitwuensche);statleseschleife(
+dnrzeitwuensche,gewsj,gewhj,fnrzwsj,fnrzwhj,PROC zeitwuenschelesenundpruefen)
+END PROC pruefungzeitwuenschedurchfuehren;PROC zeitwuenschelesenundpruefen(
+BOOL VAR b):IF dbstatus<>0OR wert(fnrzwhj)<>gewhjOR wert(fnrzwsj)<>gewsjTHEN 
+b:=TRUE ELSE zeitwunschpruefenFI .zeitwunschpruefen:INT VAR bezuglaenge:=0;
+TEXT VAR bezug,bezugsobjekt,bezugtext,bezugmenge;bezug:=wert(fnrzwbezug);IF 
+bezug=bezugfachTHEN bezuglaenge:=laengefach;bezugtext:=bezugtextfach;
+bezugmenge:=gueltigefaecherELIF bezug=bezugsugruppeTHEN bezuglaenge:=
+laengesugruppe;bezugtext:=bezugtextsugruppe;bezugmenge:=
+gueltigeschuelergruppenELIF bezug=bezugparapheTHEN bezuglaenge:=laengeparaphe
+;bezugtext:=bezugtextparaphe;bezugmenge:=gueltigeparaphenELIF bezug=bezugraum
+THEN bezuglaenge:=laengeraum;bezugtext:=bezugtextraum;bezugmenge:=
+gueltigeraeumeELIF bezug=bezugkopplungTHEN bezuglaenge:=laengekopplung;
+bezugtext:=bezugtextkopplung;bezugmenge:=gueltigekopplungenELSE LEAVE 
+zeitwunschpruefenFI ;bezugsobjekt:=text(wert(fnrzwbezugsobjekt),bezuglaenge);
+IF suchpos(bezugmenge,bezugsobjekt,bezuglaenge)=0THEN delete(dnrzeitwuensche)
+;fehlerprotokollieren(10,bezugsobjekt+awtrenner+bezugtext+awtrenner)FI END 
+PROC zeitwuenschelesenundpruefen;PROC pruefungstundenplandurchfuehren:INT 
+VAR fstatusstuplan;BOOL VAR ok;stundenplanhalbjahrsetzen(gewhj,gewsj);
+standardmeldung(meldnrstundenplanwirdaufbereitet,"");
+stundenplanbasisundstundenplanholen(fstatusstuplan);IF fstatusstuplan=8THEN 
+standardmeldung(meldnrbasisalt,"")FI ;IF fstatusstuplan=0OR fstatusstuplan=8
+THEN pruefestundenplan;stundenplanreorganisierenundsichern(fstatusstuplan)
+ELSE stundenplanfehlerbehandelnFI .stundenplanfehlerbehandeln:putline(prot,
+"*** Der Stundenplan wurde nicht geprüft. ***").pruefestundenplan:TEXT VAR 
+lvderzeit,paraphenderzeit,kopplungenderzeit,raeumederzeit;holezeitraster;
+standardmeldung(meldnrinbearbeitung,"Stundenplan"+kennzhell);FOR izeitFROM 
+erstestundeUPTO letztestundeREP lvderzeit:=datenderzeit(izeit,kennunglv);IF 
+lvderzeit<>""THEN pruefeallelvderzeitFI PER .pruefeallelvderzeit:IF (
+zeitrasterleisteSUB izeit)=kennzzeitrastersperrungTHEN poslv:=1;WHILE poslv<
+length(lvderzeit)REP lv:=subtext(lvderzeit,poslv,poslv+laengelv-1);
+planeintragloeschen(izeit,lv,ok);fehlerprotokollieren(18,tagstunde(izeit,
+TRUE )+awtrenner+lv+awtrenner);poslvINCR laengelvPER ELSE 
+weiterepruefungenzulvFI .weiterepruefungenzulv:paraphenderzeit:=datenderzeit(
+izeit,kennungparaphe);kopplungenderzeit:=datenderzeit(izeit,kennungkopplung);
+raeumederzeit:=datenderzeit(izeit,kennungraum);poslv:=1;WHILE poslv<length(
+lvderzeit)REP lv:=subtext(lvderzeit,poslv,poslv+laengelv-1);IF suchpos(
+gueltigelv,lv,laengelv)=0THEN planeintragloeschen(izeit,lv,ok);
+fehlerprotokollieren(11,paramlvzeit)ELIF suchpos(fehlerhaftelv,lv,laengelv)>0
+THEN fehlerprotokollieren(12,paramlvzeit)ELSE inhaltspruefungzueintragFI ;
+poslvINCR laengelvPER .inhaltspruefungzueintrag:posparaphe:=((poslv-1)DIV 2)+
+1;paraphe:=subtext(paraphenderzeit,posparaphe,posparaphe+laengeparaphe-1);
+neueparaphe:=datenzurlv(kennungparaphe,lv);IF neueparaphe<>parapheTHEN IF 
+suchpos(paraphenderzeit,neueparaphe,laengeparaphe)>0THEN fehlerprotokollieren
+(14,paramparaphenwechsel)ELSE fehlerprotokollieren(13,paramparaphenwechsel);
+posraum:=posparaphe;raum:=subtext(raeumederzeit,posraum,posraum+laengeraum-1)
+;IF raum<>leerraumTHEN IF suchpos(gueltigeraeume,raum,laengeraum)=0THEN raum
+:=leerraum;fehlerprotokollieren(15,paramlvzeit)FI ;FI ;planeintragvornehmen(
+izeit,lv,raum,ok);FI ELSE posraum:=posparaphe;raum:=subtext(raeumederzeit,
+posraum,posraum+laengeraum-1);IF raum<>leerraumTHEN IF suchpos(gueltigeraeume
+,raum,laengeraum)=0THEN raum:=leerraum;fehlerprotokollieren(15,paramlvzeit);
+planeintragvornehmen(izeit,lv,raum,ok);FI ;FI ;kopplung:=subtext(
+kopplungenderzeit,poslv,poslv+laengekopplung-1);neuekopplung:=datenzurlv(
+kennungkopplung,lv);IF neuekopplung<>kopplungTHEN fehlerprotokollieren(16,
+paramkopplungswechsel);planeintragvornehmen(izeit,lv,raum,ok);kopplung:=
+neuekopplungFI ;FI ;IF schuelergruppenschnittbeizeit(izeit,kennungkopplung,
+kopplung,"")THEN fehlerprotokollieren(17,paramlvzeit)FI .END PROC 
+pruefungstundenplandurchfuehren;TEXT PROC paramlvzeit:TEXT VAR param:=lv;
+paramCAT awtrenner;paramCAT tagstunde(izeit,TRUE );paramCAT awtrenner;param
+END PROC paramlvzeit;TEXT PROC paramparaphenwechsel:TEXT VAR param:=
+paramlvzeit;paramCAT paraphe;paramCAT awtrenner;paramCAT neueparaphe;param
+CAT awtrenner;paramEND PROC paramparaphenwechsel;TEXT PROC 
+paramkopplungswechsel:TEXT VAR param:=paramlvzeit;paramCAT kopplung;paramCAT 
+awtrenner;paramCAT neuekopplung;paramCAT awtrenner;paramEND PROC 
+paramkopplungswechsel;PROC holezeitraster:zeitrasterleiste:=letztestunde*
+blank;inittupel(dnrzeitraster);statleseschleife(dnrzeitraster,gewsj,gewhj,
+fnrzrsj,fnrzrhj,PROC erstellezeitrasterleiste);END PROC holezeitraster;PROC 
+erstellezeitrasterleiste(BOOL VAR b):IF wert(fnrzrsj)<>gewsjCOR wert(fnrzrhj)
+<>gewhjCOR dbstatus<>0THEN b:=TRUE ELSE IF wert(fnrzrkennungteil)=
+kennzzeitrastersperrungTHEN replace(zeitrasterleiste,intwert(fnrzrtagstunde),
+kennzzeitrastersperrung)FI FI END PROC erstellezeitrasterleiste;PROC 
+pruefungaufsichtsplandurchfuehren:standardmeldung(meldnrinbearbeitung,name(
+dnraufsichtsplan)+kennzhell);holegueltigeaufsichtsorte;
+holegueltigeaufsichtszeiten;inittupel(dnraufsichtsplan);statleseschleife(
+dnraufsichtsplan,gewsj,gewhj,fnrapsj,fnraphj,PROC aufsichtenlesenundpruefen)
+END PROC pruefungaufsichtsplandurchfuehren;PROC holegueltigeaufsichtsorte:
+gueltigeaufsichtsorte:="";inittupel(dnrschluessel);statleseschleife(
+dnrschluessel,sachgebietaufsichtsorte,"",fnrschlsachgebiet,fnrschlschluessel,
+PROC aufsichtsortlesen);END PROC holegueltigeaufsichtsorte;PROC 
+aufsichtsortlesen(BOOL VAR b):IF dbstatus<>0COR wert(fnrschlsachgebiet)>
+sachgebietaufsichtsorteTHEN b:=TRUE ELSE gueltigeaufsichtsorteCAT text(wert(
+fnrschlschluessel),laengeorte)FI END PROC aufsichtsortlesen;PROC 
+holegueltigeaufsichtszeiten:gueltigeaufsichtszeiten:="";inittupel(
+dnraufsichtszeiten);statleseschleife(dnraufsichtszeiten,gewsj,gewhj,fnrazsj,
+fnrazhj,PROC aufsichtszeitlesen)END PROC holegueltigeaufsichtszeiten;PROC 
+aufsichtszeitlesen(BOOL VAR b):IF dbstatus<>0OR wert(fnrazsj)<>gewsjOR wert(
+fnrazhj)<>gewhjTHEN b:=TRUE ELSE gueltigeaufsichtszeitenCAT text(wert(
+fnrazaufsichtszeit),laengeaufsichtszeit)FI END PROC aufsichtszeitlesen;PROC 
+aufsichtenlesenundpruefen(BOOL VAR b):IF dbstatus<>0OR wert(fnraphj)<>gewhj
+OR wert(fnrapsj)<>gewsjTHEN b:=TRUE ELSE aufsichtsplandatenpruefenFI .
+aufsichtsplandatenpruefen:aufsichtszeit:=text(wert(fnrapaufsichtszeit),
+laengeaufsichtszeit);IF suchpos(gueltigeaufsichtszeiten,aufsichtszeit,
+laengeaufsichtszeit)=0THEN delete(dnraufsichtsplan);fehlerprotokollieren(19,
+aufsichtszeit+awtrenner)ELSE ort:=text(wert(fnrapaufsichtsort),laengeorte);
+IF suchpos(gueltigeaufsichtsorte,ort,laengeorte)=0THEN fehlerprotokollieren(
+20,aufsichtszeit+awtrenner+ort+awtrenner)FI ;paraphe:=text(wert(fnrapparaphe)
+,laengeparaphe);IF suchpos(gueltigeparaphen,paraphe,laengeparaphe)=0THEN 
+fehlerprotokollieren(21,aufsichtszeit+awtrenner+ort+awtrenner)FI ;FI END 
+PROC aufsichtenlesenundpruefen;PROC konsistenzpruefungprotokolldrucken(BOOL 
+CONST drucken):IF druckenTHEN print(protname)FI ;forget(protname,quiet);enter
+(2)END PROC konsistenzpruefungprotokolldrucken;PROC fehlerprotokollieren(INT 
+CONST fallnr,TEXT CONST aktwerte):TEXT VAR aktuellerwert;INT VAR awpos,
+awendepos,epos;LET maxfehler=100;IF ifehler>maxfehlerTHEN LEAVE 
+fehlerprotokollierenELIF ifehler=maxfehlerTHEN putline(prot,
+"keine weitere Fehlerprotokollierung");ifehlerINCR 1;LEAVE 
+fehlerprotokollierenFI ;suchfall:=fall;suchfallCAT text(fallnr);suchfallCAT 
+doppelpunkt;toline(fehldat,1);col(fehldat,1);WHILE NOT eof(fehldat)REP 
+downety(fehldat,suchfall);readrecord(fehldat,zeile);IF pos(zeile,suchfall)=1
+THEN down(fehldat);behandlefallELSE col(fehldat,col(fehldat)+1)FI PER .
+behandlefall:ifehlerINCR 1;auszeile:=text(ifehler);auszeileCAT ") ";INT VAR 
+praefixlaenge:=length(auszeile);awpos:=1;WHILE NOT eof(fehldat)REP readrecord
+(fehldat,zeile);IF pos(zeile,fall)>0THEN line(prot);LEAVE behandlefallFI ;
+ersetzeevtlersatzzeichendurchaktuellewerte;auszeileCAT zeile;putline(prot,
+auszeile);down(fehldat);auszeile:=praefixlaenge*blankPER .
+ersetzeevtlersatzzeichendurchaktuellewerte:epos:=pos(zeile,ersatzzeichen);
+WHILE epos>0REP awendepos:=pos(aktwerte,awtrenner,awpos);aktuellerwert:=
+subtext(aktwerte,awpos,awendepos-1);awpos:=awendepos+1;change(zeile,
+ersatzzeichen,aktuellerwert);epos:=pos(zeile,ersatzzeichen,epos+length(
+aktuellerwert));PER .END PROC fehlerprotokollieren;INT PROC suchpos(TEXT 
+CONST quelle,suchtext,INT CONST laenge):INT VAR findpos:=pos(quelle,suchtext)
+;WHILE findpos>0REP IF findposMOD laenge=1THEN LEAVE suchposWITH findposELSE 
+findpos:=pos(quelle,suchtext,findpos+1);FI PER ;findposEND PROC suchpos;TEXT 
+PROC jgstzweistellig(INT CONST intjgst):IF intjgst=0THEN "00"ELIF intjgst>4
+AND intjgst<10THEN "0"+text(intjgst)ELSE text(intjgst)FI END PROC 
+jgstzweistellig;END PACKET konsistenzpruefung
+

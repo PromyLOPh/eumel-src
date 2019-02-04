@@ -1,0 +1,81 @@
+PACKET logbuchverwaltungDEFINES logbuchverwaltungstart,logbuchzeigen,
+logbuchdrucken,logbucheditordateidrucken,logbuchloeschen,
+logbuchzurueckzummenue:LET maskeeingang="ms logbuch verwaltung";LET 
+fnrzeilenaktuell=2,fnrzeilenmaximal=3,fnrzeilenkritisch=4,fnrauswahl1=5,
+fnrlogname1=6,fnrauswahl2=7,fnrlogname2=8,fnrauswahl3=9,fnrlogname3=10,
+fnrauskunftsfeld=11;LET meldnrfalscheauswahl=56,meldnrfehlerbeimloeschen=74,
+meldnrlogbuchwurdegelöscht=94,meldnrnochnichtgesichert=95,
+meldnrlogbuchwirdgedruckt=96;LET logbuchpraefix="logbuch.*";LET 
+zusätzlicherlaubtetasten="vr";LET laengelogname=45;INT VAR zeilenaktuell,
+zeilenmaximal,zeilenkritisch;THESAURUS VAR thes;INT VAR thesindex;LET 
+maxlogdateien=3;ROW maxlogdateienTEXT VAR logname;INT VAR ilogname,
+aktletzteslog;TEXT VAR dateinamezumzeigen;INT VAR ifnr,auswahl;INT VAR 
+replycode;LET ack=0,nak=1,dateinichtgesichertack=11,readloglimitsorder=202,
+logholenorder=301,gesichertvermerk=306,loeschenorder=307,logmanagername="LOG"
+;DATASPACE VAR ds;INT VAR reply;TASK VAR ordertask;BOUND TEXT VAR msgtext;
+LET letzteslogack=8;PROC logfetch:FILE VAR f;forget(ds);ds:=nilspace;auftrag(
+logholenorder,reply);f:=sequentialfile(input,ds);copy(ds,headline(f));forget(
+ds);WHILE reply<>letzteslogackREP warteauflogmanager;f:=sequentialfile(input,
+ds);copy(ds,headline(f));forget(ds);ds:=nilspace;send(ordertask,ack,ds);PER .
+warteauflogmanager:wait(ds,reply,ordertask);WHILE name(ordertask)<>
+logmanagernameREP forget(ds);wait(ds,reply,ordertask);PER .END PROC logfetch;
+PROC loggetloglimits(INT VAR anzzeilen,anzzeilenbenutzt,anzzeilenkritisch):
+LET LLIMITS =STRUCT (INT zeilen,zeilenbenutzt,zeilenkritisch);BOUND LLIMITS 
+VAR loggrenzenmsg;forget(ds);ds:=nilspace;loggrenzenmsg:=ds;auftrag(
+readloglimitsorder,reply);anzzeilen:=CONCR (loggrenzenmsg).zeilen;
+anzzeilenbenutzt:=CONCR (loggrenzenmsg).zeilenbenutzt;anzzeilenkritisch:=
+CONCR (loggrenzenmsg).zeilenkritisch;forget(ds)END PROC loggetloglimits;PROC 
+logsetsavedmark(TEXT CONST logbuchdateiname,INT VAR reply):forget(ds);ds:=
+nilspace;msgtext:=ds;msgtext:=logbuchdateiname;auftrag(gesichertvermerk,reply
+);forget(ds)END PROC logsetsavedmark;PROC logerasesavedlogs(TEXT CONST 
+logbuchdateiname,INT VAR reply):forget(ds);ds:=nilspace;msgtext:=ds;msgtext:=
+logbuchdateiname;auftrag(loeschenorder,reply);forget(ds)END PROC 
+logerasesavedlogs;PROC auftrag(INT CONST opcode,INT VAR reply):schickeauftrag
+;WHILE auftragnichtangenommenREPEAT pause(10);schickeauftragEND REPEAT .
+auftragnichtangenommen:reply=nak.schickeauftrag:call(/logmanagername,opcode,
+ds,reply).END PROC auftrag;PROC logbuchverwaltungstart:loggetloglimits(
+zeilenmaximal,zeilenaktuell,zeilenkritisch);vorhandenelogbuchdateienloeschen;
+FOR ilognameFROM 1UPTO maxlogdateienREP logname(ilogname):=""PER ;logfetch;
+thes:=allLIKE logbuchpraefix;thesindex:=0;ilogname:=0;get(thes,
+dateinamezumzeigen,thesindex);WHILE thesindex>0REP IF ilogname<maxlogdateien
+THEN ilognameINCR 1;logname(ilogname):=dateinamezumzeigen;aktletzteslog:=
+ilogname;FI ;get(thes,dateinamezumzeigen,thesindex);PER ;standardstartproc(
+maskeeingang);standardmaskenfeld(text(zeilenaktuell),fnrzeilenaktuell);
+standardmaskenfeld(text(zeilenmaximal),fnrzeilenmaximal);standardmaskenfeld(
+text(zeilenkritisch),fnrzeilenkritisch);logdateinamenaufbereitenundausgeben;
+infeld(fnrzeilenaktuell);standardfelderausgeben;infeld(fnrauskunftsfeld);
+standardnproc.logdateinamenaufbereitenundausgeben:ifnr:=fnrauswahl1;FOR 
+ilognameFROM 1UPTO maxlogdateienREP IF logname(ilogname)=""THEN feldschutz(
+ifnr);standardmaskenfeld("",ifnr);standardmaskenfeld(laengelogname*" ",ifnr+1
+);ELSE feldfrei(ifnr);standardmaskenfeld("",ifnr);standardmaskenfeld(
+nameaufber(ilogname),ifnr+1)FI ;ifnrINCR 2PER .END PROC 
+logbuchverwaltungstart;TEXT PROC nameaufber(INT CONST iname):TEXT VAR 
+ausgabename:="Logbuch vom ";ausgabenameCAT subtext(datname,9,22);ausgabename
+CAT " bis ";ausgabenameCAT subtext(datname,24,37);ausgabename.datname:logname
+(iname)END PROC nameaufber;PROC logbuchzeigen:auswahlbestimmen;IF auswahl=0
+THEN return(1)ELSE dateinamezumzeigen:=logname(auswahl);zeigedatei(
+dateinamezumzeigen,zusätzlicherlaubtetasten)FI END PROC logbuchzeigen;PROC 
+logbucheditordateidrucken:standardmeldung(meldnrlogbuchwirdgedruckt,"");print
+(dateinamezumzeigen);logsetsavedmark(dateinamezumzeigen,reply);return(1)END 
+PROC logbucheditordateidrucken;PROC logbuchdrucken:auswahlbestimmen;IF 
+auswahl=0THEN return(1)ELSE dateinamezumzeigen:=logname(auswahl);
+standardmeldung(meldnrlogbuchwirdgedruckt,"");print(dateinamezumzeigen);
+logsetsavedmark(dateinamezumzeigen,reply);return(1)FI END PROC logbuchdrucken
+;PROC logbuchloeschen:auswahlbestimmen;IF auswahl=0THEN return(1)ELSE 
+dateinamezumzeigen:=logname(auswahl);logerasesavedlogs(dateinamezumzeigen,
+reply);IF reply=ackTHEN standardmeldung(meldnrlogbuchwurdegelöscht,"");pause(
+10);enter(1)ELIF reply=dateinichtgesichertackTHEN standardmeldung(
+meldnrnochnichtgesichert,"");return(1)ELSE standardmeldung(
+meldnrfehlerbeimloeschen,"");return(1)FI FI END PROC logbuchloeschen;PROC 
+auswahlbestimmen:auswahl:=0;IF auswahl1THEN IF auswahl2OR auswahl3THEN 
+fehlermeldungELSE auswahl:=1FI ELIF auswahl2THEN IF auswahl3THEN 
+fehlermeldungELSE auswahl:=2FI ELIF auswahl3THEN auswahl:=3ELSE fehlermeldung
+FI .auswahl1:standardmaskenfeld(fnrauswahl1)<>"".auswahl2:standardmaskenfeld(
+fnrauswahl2)<>"".auswahl3:standardmaskenfeld(fnrauswahl3)<>"".fehlermeldung:
+standardmeldung(meldnrfalscheauswahl,"").END PROC auswahlbestimmen;PROC 
+logbuchzurueckzummenue:vorhandenelogbuchdateienloeschen;enter(2)END PROC 
+logbuchzurueckzummenue;PROC vorhandenelogbuchdateienloeschen:INT VAR kanal:=
+channel;commanddialogue(FALSE );break(quiet);forget(allLIKE logbuchpraefix);
+continue(kanal);commanddialogue(TRUE )END PROC 
+vorhandenelogbuchdateienloeschen;END PACKET logbuchverwaltung
+

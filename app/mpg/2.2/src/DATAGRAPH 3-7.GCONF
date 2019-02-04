@@ -1,0 +1,119 @@
+PLOTTER "DATAGRAPH",3,7,511,241,25.0,16.5; 
+ 
+COLORS "000999900029490000990751";
+ 
+LET csi = ""27"[?"; 
+ 
+PROC datagraph palette: 
+   INT VAR coln, rgb; 
+   REAL VAR anteil; 
+   FOR coln FROM 0 UPTO colors - 1 REP
+      rgb := color (coln);
+      IF rgb <> maxint
+         THEN out (csi + text (coln) + ";"); 
+              anteil := real (rgb DIV 100) / 9.0; 
+              out (text (int (7.0 * anteil + 0.5)) + ";"); 
+              anteil := real ((rgb MOD 100) DIV 10) / 9.0; 
+              out (text (int (7.0 * anteil + 0.5)) + ";"); 
+              anteil := real (rgb MOD 10) / 9.0; 
+              out (text (int (3.0 * anteil + 0.5)) + "m"); 
+      FI
+   PER 
+END PROC datagraph palette; 
+
+PROC prepare:
+    break(quiet);
+    REP 
+       disable stop;
+       continue (channel(plotter)); 
+       clear error;
+       enable stop; 
+       IF NOT online 
+          THEN pause (300)
+       FI
+    UNTIL online PER
+END PROC prepare;
+ 
+PROC clear: 
+   out (csi + "2D"); 
+   foreground (1)
+END PROC clear; 
+
+PROC initplot: 
+   out (csi + "1a"); 
+   out (csi + "0j");
+   out (csi + "3j"); 
+   out (csi + "4j") 
+END PROC initplot; 
+ 
+PROC endplot: 
+   pause; 
+   out (csi + "0a");
+   out (csi + "3;7;5;1m"); 
+   out (csi + "0;0;0;0m");
+   out (""27"[33m") 
+END PROC endplot;
+
+PROC home: 
+   move to (0,0); 
+END PROC home; 
+ 
+PROC moveto (INT CONST x,y): 
+   out (csi + "1;"+text(y)+";"+text(x)+"C") 
+END PROC moveto; 
+ 
+PROC drawto (INT CONST x,y): 
+   out (csi + "0V"); 
+   out (csi + "1V"); 
+   out (csi + "3;"+text(y)+";"+text(x)+"V") 
+END PROC drawto; 
+ 
+PROC setpixel (INT CONST x,y): 
+   out (""27"[?0;"+text(y)+";"+text(x)+"P") 
+END PROC setpixel;
+
+PROC foreground (INT VAR type): 
+   IF type >= 0 AND type <= 7
+      THEN out (csi + text (type) + ";f") 
+      ELSE type := 1;out (csi + "1;f")
+   FI
+END PROC foreground;
+
+PROC background (INT VAR type):
+   IF color (type) <> maxint
+      THEN set color (0,color (type))
+      ELSE type := 0;set color (0,000) 
+   FI;
+   set palette
+END PROC back ground; 
+ 
+PROC set palette: 
+   datagraph palette 
+END PROC set palette;
+
+PROC circle (INT CONST x,y,rad,from,to): 
+   move to (x, y);
+   IF from = 0 AND to = 360 
+      THEN out (csi + "0;" + text(y) + ";" + text (x) + ";" + 
+                text (y) + ";" + text (x+rad) + "K") 
+      ELSE out (csi + "2;" + text (y) + ";" + text (x+rad) +"C"); 
+           out (csi + "2;" + text (to-from) + "S") 
+   FI 
+END PROC circle; 
+ 
+PROC box (INT CONST x1,y1,x2,y2,pattern):                      
+   move to (x1, y1); 
+   out (csi + text (pattern + 3 * sign(pattern)) + ";" + 
+              text (y1) + ";" + text (x1) + ";" + 
+              text (y2) + ";" + text (x2) + "R") 
+END PROC box; 
+ 
+PROC fill (INT CONST x,y,pattern): 
+    move to (x,y); 
+    IF pattern > 6 OR pattern = 0
+       THEN out (csi + "0I") 
+       ELSE out (csi + text (pattern+3) + "I") 
+    FI 
+END PROC fill;
+
+

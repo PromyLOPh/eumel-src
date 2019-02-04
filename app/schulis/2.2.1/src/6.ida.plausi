@@ -1,0 +1,114 @@
+PACKET ispidaplausiDEFINES nameundtypok,selektionswerteok,zugriffsregelnok,
+meldefehlernameundtyp,nummerinrichtigengrenzen,nummernummerisch,checktyp:LET 
+filenamesel="Hilfsdatei.Selektion",filenamezug="Hilfsdatei.Zugriff",
+filenamedata="FORMDATA.",filenameform="FORMTEXT.";LET meldungalternative=56,
+meldungungueltigeangaben=204,meldungdgibtesschon=205,meldungfalschenummer=207
+,meldungnamezulang=216,meldungnichterstezeile=252,meldungkeingeschlindex=253,
+meldungkeinfeldname=254,meldungkeinanfuehrzeichen=255,meldungfalscherfeldtypn
+=256,meldungfalscherfeldtypw=257,meldungletzterkeinvgl=258,
+meldungfalschervergleich=259,meldungfalscheroperator=260,
+meldungfalscheverkettung=261;LET ntnummer=2,ntname=3,ntliste=4,nteinzel=5;
+LET vergleichtrenner="</>",namentrenner="<#>",zeilennrtrenner="<!>",
+anzahltrenner="<?>",gueltigeziffern="0123456789",anfuehrung="""",niltext="";
+LET namenlaenge=46,kleinstedruckausgabe=1,groesstedruckausgabe=100,tl=3;LET 
+anzzeilenregeln=16,anzzeilenselektionen=17;FILE VAR f;INT VAR 
+fehlermldnametyp:=0;INT VAR zeilennr;TEXT VAR zeile,pattern;BOOL PROC 
+nameundtypok(ROW 100TEXT CONST feld,INT VAR fnr):IF 
+nummerderdruckausgabegeaendertTHEN ausstiegbeifalschernummer;
+ausstiegfallsschonvorhandenFI ;ausstiegbeizulangemnamen;TRUE .
+nummerderdruckausgabegeaendert:getactivformular<>int(feld[ntnummer]).
+ausstiegbeifalschernummer:IF NOT nummerinrichtigengrenzen(feld[ntnummer])
+THEN fehlermldnametyp:=meldungfalschenummer;fnr:=ntnummer;LEAVE nameundtypok
+WITH FALSE FI .ausstiegfallsschonvorhanden:IF formexists(int(feld[ntnummer]))
+THEN fehlermldnametyp:=meldungdgibtesschon;fnr:=ntnummer;LEAVE nameundtypok
+WITH FALSE ELSE rename(filenamedata+text(getactivformular),filenamedata+feld[
+ntnummer]);rename(filenameform+text(getactivformular),filenameform+feld[
+ntnummer]);delform(getactivformular);openformular(int(feld[ntnummer]))FI .
+ausstiegbeizulangemnamen:IF length(feld[ntname])>namenlaengeTHEN 
+fehlermldnametyp:=meldungnamezulang;fnr:=ntname;LEAVE nameundtypokWITH FALSE 
+FI .END PROC nameundtypok;BOOL PROC nummerinrichtigengrenzen(TEXT CONST nr):
+nummernummerisch(nr)CAND int(nr)>=kleinstedruckausgabeCAND int(nr)<=
+groesstedruckausgabeEND PROC nummerinrichtigengrenzen;BOOL PROC 
+nummernummerisch(TEXT CONST nr):INT VAR lv;IF length(nr)=0#dr02.05.88#THEN 
+LEAVE nummernummerischWITH FALSE ELSE FOR lvFROM 1UPTO length(nr)REP IF pos(
+gueltigeziffern,nrSUB lv)=0THEN LEAVE nummernummerischWITH FALSE FI PER ;FI ;
+TRUE END PROC nummernummerisch;PROC meldefehlernameundtyp:meldeauffaellig(
+aktuellemaske,fehlermldnametyp);fehlermldnametyp:=0END PROC 
+meldefehlernameundtyp;BOOL PROC selektionswerteok(INT CONST dnr,INT VAR fehls
+,fehlz,fehlm):INT VAR lvf;TEXT VAR sfeldname,svergleichswert;BOOL VAR ok;f:=
+sequentialfile(modify,filenamesel);FOR lvfFROM 1UPTO anzattr(dnr)REP toline(f
+,lvf);readrecord(f,zeile);sfeldname:=subtext(zeile,1,pos(zeile,
+zeilennrtrenner)-1);svergleichswert:=subtext(zeile,pos(zeile,vergleichtrenner
+)+tl);IF svergleichswert<>niltextTHEN IF NOT vergleichswertokTHEN fehls:=lvf
+DIV anzzeilenselektionen+1;fehlz:=lvfMOD anzzeilenselektionen;LEAVE 
+selektionswerteokWITH FALSE FI FI PER ;TRUE .vergleichswertok:
+pruefeselektionswert(sfeldname,svergleichswert,ok,fehlm);ok.END PROC 
+selektionswerteok;PROC pruefeselektionswert(TEXT CONST vglname,vglwert,BOOL 
+VAR bool,INT VAR fehlm):LET bold=2,textstring=4,operator=5,scanende=7,
+gueltigeoperatoren="<$<=$<>$>$>=$=",gueltigeverkettung="$UND$ODER$";BOOL VAR 
+op:=FALSE ,vgl:=FALSE ,vkt:=TRUE ;INT VAR type:=0,typesich:=0;TEXT VAR symbol
+:="",twert:=compress(vglwert),tname:=compress(vglname);IF 
+keineanfuehrungszeichenTHEN fehlm:=meldungkeinanfuehrzeichen;ausstiegmitfalse
+ELSE pruefendervergleiche;IF typesich<>textstringTHEN fehlm:=
+meldungletzterkeinvgl;ausstiegmitfalseELSE bool:=TRUE FI FI .
+keineanfuehrungszeichen:pos(twert,anfuehrung)=0.pruefendervergleiche:scan(
+twert);WHILE type<>scanendeREP nextsymbol(symbol,type);SELECT typeOF CASE 
+bold:verkettungueberpruefenCASE textstring:textueberpruefenCASE operator:
+operatorueberpruefenCASE scanende:LEAVE pruefendervergleicheOTHERWISE :fehlm
+:=meldungungueltigeangaben;ausstiegmitfalseEND SELECT ;typesich:=typePER .
+operatorueberpruefen:IF opOR NOT vktOR (NOT opAND pos(gueltigeoperatoren,
+symbol)=0)THEN fehlm:=meldungfalscheroperator;ausstiegmitfalseELSE op:=TRUE ;
+FI .textueberpruefen:IF vglOR NOT opOR NOT checktyp(tname,symbol)THEN fehlm:=
+meldungfalschervergleich;ausstiegmitfalseELSE vgl:=TRUE ;vkt:=FALSE FI .
+verkettungueberpruefen:INT VAR posi:=pos(gueltigeverkettung,symbol);IF vktOR 
+NOT opOR NOT vglOR posi=0OR (posi<>0AND (((gueltigeverkettungSUB posi-1)<>"$"
+)OR ((gueltigeverkettungSUB posi+length(symbol))<>"$")))THEN fehlm:=
+meldungfalscheverkettung;ausstiegmitfalseELSE vkt:=TRUE ;op:=FALSE ;vgl:=
+FALSE FI .ausstiegmitfalse:bool:=FALSE ;LEAVE pruefeselektionswert.END PROC 
+pruefeselektionswert;BOOL PROC zugriffsregelnok(INT VAR fehlseite,fehlzeile,
+fehlmeld):f:=sequentialfile(modify,filenamezug);toline(f,1);pattern:=
+vergleichtrenner;readrecord(f,zeile);zeilennr:=1;IF pos(zeile,pattern)>0THEN 
+diesesistersteindexzeileCAND nurfelderausdiesemindexgewaehlt(fehlseite,
+fehlzeile,fehlmeld)ELSE down(f,pattern);IF patternfoundTHEN zeilennr:=lineno(
+f);readrecord(f,zeile);diesesistersteindexzeileCAND 
+nurfelderausdiesemindexgewaehlt(fehlseite,fehlzeile,fehlmeld)ELSE TRUE FI FI 
+.diesesistersteindexzeile:fehlseite:=zeilennrDIV anzzeilenregeln+1;fehlzeile
+:=zeilennrMOD anzzeilenregeln;fehlmeld:=meldungnichterstezeile;pos(zeile,
+anzahltrenner)<>0.END PROC zugriffsregelnok;BOOL PROC 
+nurfelderausdiesemindexgewaehlt(INT VAR fehls,fehlz,fehlm):INT VAR merker:=0,
+lv,anzfelder;TEXT VAR twert:="",tname:="";anzfelder:=int(subtext(zeile,pos(
+zeile,anzahltrenner)+tl,pos(zeile,namentrenner)-1));FOR lvFROM zeilennrUPTO 
+zeilennr+anzfelder-1REP toline(f,lv);readrecord(f,zeile);IF pos(zeile,pattern
+)>0THEN IF merker=1THEN fehls:=((lv-1)DIV anzzeilenregeln)+1;fehlz:=(lv-1)
+MOD anzzeilenregeln;fehlm:=meldungkeingeschlindex;LEAVE 
+nurfelderausdiesemindexgewaehltWITH FALSE ELSE vergleichswertpruefenFI ELSE 
+merker:=1;FI PER ;IF lines(f)=1OR lines(f)=lineno(f)THEN LEAVE 
+nurfelderausdiesemindexgewaehltWITH TRUE ELSE down(f);down(f,pattern)FI ;
+fehls:=lineno(f)DIV anzzeilenregeln+1;fehlz:=lineno(f)MOD anzzeilenregeln;
+fehlm:=meldungkeingeschlindex;NOT patternfound.vergleichswertpruefen:twert:=
+compress(subtext(zeile,pos(zeile,pattern)+tl));tname:=compress(subtext(zeile,
+pos(zeile,namentrenner)+tl,pos(zeile,zeilennrtrenner)-1));IF 
+ersteszeichenkeinanfuehrungszeichenTHEN stopbeifalschemnamen(FALSE );IF 
+eingabekeinfeldnameTHEN fehls:=lvDIV anzzeilenregeln+1;fehlz:=lvMOD 
+anzzeilenregeln;fehlm:=meldungkeinfeldname;LEAVE 
+nurfelderausdiesemindexgewaehltWITH FALSE ELSE feldtypueberpruefenFI ;
+stopbeifalschemnamen(TRUE );ELSE IF letzteszeichenkeinanfuehrungszeichenTHEN 
+fehls:=lvDIV anzzeilenregeln+1;fehlz:=lvMOD anzzeilenregeln;fehlm:=
+meldungkeinanfuehrzeichen;LEAVE nurfelderausdiesemindexgewaehltWITH FALSE 
+ELSE eingabemitfeldtypvergleichenFI ;FI .ersteszeichenkeinanfuehrungszeichen:
+(twertSUB 1)<>anfuehrung.eingabekeinfeldname:feldnr(twert)=0.
+feldtypueberpruefen:IF feldtyp(feldnr(twert))<>feldtyp(feldnr(tname))THEN 
+fehls:=lvDIV anzzeilenregeln+1;fehlz:=lvMOD anzzeilenregeln;fehlm:=
+meldungfalscherfeldtypn;LEAVE nurfelderausdiesemindexgewaehltWITH FALSE FI .
+letzteszeichenkeinanfuehrungszeichen:(twertSUB length(twert))<>anfuehrung.
+eingabemitfeldtypvergleichen:twert:=subtext(twert,2,length(twert)-1);IF NOT 
+checktyp(tname,twert)THEN fehls:=lvDIV anzzeilenregeln+1;fehlz:=lvMOD 
+anzzeilenregeln;fehlm:=meldungfalscherfeldtypw;LEAVE 
+nurfelderausdiesemindexgewaehltWITH FALSE FI .END PROC 
+nurfelderausdiesemindexgewaehlt;BOOL PROC checktyp(TEXT CONST fname,
+fvergleich):LET integer=73,realwert=82,datum=68;disablestop;SELECT feldtyp(
+feldnr(fname))OF CASE integer:INT VAR i:=int(fvergleich)CASE realwert:REAL 
+VAR r:=real(fvergleich)CASE datum:REAL VAR d:=date(fvergleich)END SELECT ;IF 
+iserrorCOR NOT lastconversionokTHEN clearerror;enablestop;LEAVE checktypWITH 
+FALSE FI ;enablestop;TRUE END PROC checktyp;END PACKET ispidaplausi;
+

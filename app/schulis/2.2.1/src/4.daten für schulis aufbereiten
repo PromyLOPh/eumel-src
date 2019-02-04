@@ -1,0 +1,184 @@
+PACKET integastundenplanuebernehmenDEFINES integastundenplanarchivlisten,
+integastundenplanstdvproc,integastundenplanuebernehmen,
+integastundenplandatenschreiben:LET integadatei="SCHULIS.PUN",filemodus=
+"file ibm",dos="DOS",anzstdenprotag=12,schulname="Schulname",schulort=
+"Schulort",schuljahr="Schuljahr",halbjahr="Schulhalbjahr",maskeeingang=
+"ms stdplan von intega uebernehmen",listenname=
+"Liste der Dateien auf der Diskette:",protokollname=
+"Stundenplan von INTEGA übernehmen",leerzeile=" ",ueberschrift=
+"   Fehlerprotokoll zur Übernahme des Stundenplans ",unterstrich=
+"   ------------------------------------------------------------------",
+fehler1kopf="1. Kopplung existiert in schulis nicht für:",fehler2kopf=
+"2. Lehrveranstaltung kann nicht identifiziert werden für:",fehler3kopf1=
+"3. Kopplung und Paraphe passen in schulis auf Lehrveranstaltung, aber",
+fehler3kopf2="   Fach stimmt nicht überein für:",fehler4kopf=
+"4. In INTEGA wurden Zeiten verplant, die in schulis gesperrt sind für:",
+fehlerspalten1=
+"            Kopplung Fach Lehrer Klassengruppen          Zeit  Raum",
+fehlerspalten2="   schulis  INTEGA ",fehlerspalten3=
+"   Lehrver. Kopplung Fach Lehrer Klassengruppen          Zeit  Raum",
+spalten3fueller="                                                         ",
+keinfehler="        Kein Fehler dieser Art aufgetreten!",tab1=
+"  +--------+--------+----+------+-----------------------+-----+----+",tab2=
+"           +--------+----+------+-----------------------+-----+----+",
+feldakthj=2,laengelvkopp=8,laengeindex=4,laengezeitraum=6,beginnkopp=1,
+endekopp=8,beginnfach=9,endefach=12,beginnlvfach=3,endelvfach=4,beginnpar=13,
+endepar=16,beginnklgr=19,endeklgr=42,beginnbelegg=43,fachergaenzung="  ",
+leereraumangabe="    ",leerelv="        ",pseudoraum="PSEU",ausgabeparam="#",
+frageraum="????",kennungkopplung="K",kennungparaphe="P",kennungzulzeit="ZZ",
+kennungmo="Mo ",kennungdi="Di ",kennungmi="Mi ",kennungdo="Do ",kennungfr=
+"Fr ",kennungsa="Sa ",meldungserverfehler=376,meldungkeinstdplan=366,
+meldungkeinesugruppen=334,meldungzuvielesugruppen=356,meldungkeinelv=326,
+meldungzuvielelv=358,meldungstdplanveraltet=377,meldungbasisinkon=378,
+meldwarten=69,melddatenaufber=357,melduebern=374,meldueberschr=372,
+meldaenderungenunvollstaendig=364,meldprotokollaufbereiten=373,
+meldstandderuebern=375,meldarchivfehler=343;FILE VAR g,protokoll,
+integastdplandatei;THESAURUS VAR thes;TEXT VAR gewsj,gewhj,t,integaeintrag,lv
+,leistekoppexistnicht,leistelvnichtident,leistelvfalschesfach,leisteunzzeit,
+integakopplung,integafach,integaparaphe,integabelegg,zeitraumeintrag,
+zeitderlv,raumderlv,stdplaneintrag;INT VAR fstat,i,posanf,posende,
+intzeitderlv;BOOL VAR archivfehler:=FALSE ,transferfehler:=FALSE ,eintragok;
+PROC archivanmelden(INT CONST ruecksprung):archivfehler:=FALSE ;
+commanddialogue(FALSE );disablestop;reserve(filemodus,/dos);IF iserrorTHEN 
+archivfehler:=TRUE ;abbruchnachfehler(ruecksprung);LEAVE archivanmeldenFI ;
+enablestopEND PROC archivanmelden;PROC integastundenplanarchivlisten:
+standardmeldung(meldwarten," ");archivanmelden(1);IF archivfehlerTHEN LEAVE 
+integastundenplanarchivlistenFI ;disablestop;forget(listenname,quiet);thes:=
+ALL (/dos);IF iserrorTHEN archivfehler:=TRUE ;abbruchnachfehler(1);ELSE 
+release(/dos);thesaurusaufbereiten;enablestop;zeigedatei(listenname,"vr")FI .
+thesaurusaufbereiten:g:=sequentialfile(output,listenname);t:=" ";i:=0;REP get
+(thes,t,i);putline(g,t)UNTIL t=""PER .END PROC integastundenplanarchivlisten;
+PROC integastundenplanstdvproc:standardstartproc(maskeeingang);IF 
+transferfehlerTHEN standardmeldung(meldaenderungenunvollstaendig,"")FI ;
+transferfehler:=FALSE ;infeld(2);standardnprocEND PROC 
+integastundenplanstdvproc;PROC integastundenplanuebernehmen:standardmeldung(
+meldwarten,"");gewsj:=schulkenndatum(schuljahr);gewhj:=schulkenndatum(
+halbjahr);IF standardmaskenfeld(feldakthj)=""THEN geplanteshjundsjberechnen(
+gewhj,gewsj)FI ;stundenplanhalbjahrsetzen(gewhj,gewsj);standardmeldung(
+melddatenaufber,"");stundenplanbasisundstundenplanholen(fstat);IF fstat<>0
+CAND fstat<>8THEN standardmeldung(melduebern,"")ELSE standardmeldung(
+meldueberschr,"")FI ;standardnproc.END PROC integastundenplanuebernehmen;
+PROC integastundenplandatenschreiben:TEXT VAR alteerstellungszeit:="";IF 
+fstat<>0CAND fstat<>8THEN standardmeldung(meldwarten,"");
+stundenplanbasisundstundenplanerstellen(fstat);IF fstat<>0THEN return(2);
+meldungausgeben(fstat);LEAVE integastundenplandatenschreibenELSE 
+stundenplanbasissichern(fstat);stundenplansichern(fstat);IF fstat<>0THEN 
+return(2);meldungausgeben(fstat);LEAVE integastundenplandatenschreibenFI ;FI 
+;FI ;alteerstellungszeit:=erstellungszeitderdatenraeume;stundenplanloeschen(
+fstat);stundenplanerstellen(alteerstellungszeit,fstat);datenvonarchivholen(2)
+;IF archivfehlerTHEN LEAVE integastundenplandatenschreibenFI ;
+dateninstdplanschreibenEND PROC integastundenplandatenschreiben;PROC 
+datenvonarchivholen(INT CONST ruecksprung):standardmeldung(meldwarten," ");
+archivanmelden(ruecksprung);IF archivfehlerTHEN LEAVE datenvonarchivholenFI ;
+disablestop;fetch(integadatei,/dos);IF iserrorTHEN archivfehler:=TRUE ;
+abbruchnachfehler(ruecksprung);ELSE release(/dos);enablestop;commanddialogue(
+TRUE );FI END PROC datenvonarchivholen;PROC dateninstdplanschreiben:INT VAR 
+zeilennr:=0;TEXT VAR anzzeilen;BOOL VAR lvnichtvermerkt:=TRUE ;
+fehlerprotvorbereiten;datenraumankoppeln;WHILE NOT eof(integastdplandatei)
+REP zeilennrINCR 1;getline(integastdplandatei,integaeintrag);standardmeldung(
+meldstandderuebern,anzzeilen+ausgabeparam+text(zeilennr)+ausgabeparam);
+stundenplaneintraegevornehmenPER ;IF leisteunzzeit<>""COR 
+leistekoppexistnicht<>""COR leistelvnichtident<>""COR leistelvfalschesfach<>
+""THEN sicherstdplan;standardmeldung(meldprotokollaufbereiten," ");forget(
+protokollname,quiet);protokoll:=sequentialfile(output,protokollname);
+fuelleprotokoll;infeld(1);standardfelderausgeben;infeld(2);zeigedatei(
+protokollname,"vr")ELSE sicherstdplan;infeld(1);standardfelderausgeben;infeld
+(2);return(2)FI .sicherstdplan:stundenplanreorganisierenundsichern(fstat);IF 
+fstat<>0THEN transferfehler:=TRUE FI .fehlerprotvorbereiten:leisteunzzeit:=""
+;leistekoppexistnicht:="";leistelvnichtident:="";leistelvfalschesfach:="".
+datenraumankoppeln:integastdplandatei:=sequentialfile(input,integadatei);
+anzzeilen:=text(lines(integastdplandatei)).stundenplaneintraegevornehmen:
+integakopplung:=text(integaeintrag,laengelvkopp);integafach:=subtext(
+integaeintrag,beginnfach,endefach);integaparaphe:=subtext(integaeintrag,
+beginnpar,endepar);integabelegg:=subtext(integaeintrag,beginnbelegg);t:=
+allelvmit(kennungkopplung,integakopplung);IF t=""THEN leistekoppexistnicht
+CAT text(zeilennr,laengeindex)ELSE IF lvmitgleicherparaphe(t)THEN pruefefach
+ELSE leistelvnichtidentCAT text(zeilennr,laengeindex)FI FI .pruefefach:IF 
+integafach<>subtext(lv,beginnlvfach,endelvfach)+fachergaenzungTHEN 
+leistelvfalschesfachCAT text(zeilennr,laengeindex);leistelvfalschesfachCAT 
+text(lv,laengelvkopp)ELSE tragstundeneinundpruefezeitenFI .
+tragstundeneinundpruefezeiten:stdplaneintrag:=lv+integakopplung+integaparaphe
+;posanf:=1;posende:=length(integabelegg);lvnichtvermerkt:=TRUE ;WHILE posanf<
+posendeREP zeitraumeintrag:=subtext(integabelegg,posanf,posanf+laengezeitraum
+-1);zeitderlv:=text(zeitraumeintrag,2);intzeitderlv:=int(zeitderlv);raumderlv
+:=compress(subtext(zeitraumeintrag,3));IF raumderlv=""COR raumderlv=
+pseudoraumCOR raumderlv=frageraumTHEN raumderlv:=leereraumangabeFI ;IF NOT 
+bezeichnungzulaessig(kennungzulzeit,zeitderlv)THEN IF lvnichtvermerktTHEN 
+leisteunzzeitCAT text(zeilennr,laengeindex);leisteunzzeitCAT text(lv,
+laengelvkopp);lvnichtvermerkt:=FALSE FI ELSE planeintragvornehmen(
+intzeitderlv,lv,raumderlv,eintragok);IF NOT eintragokTHEN transferfehler:=
+TRUE FI ;FI ;posanfINCR laengezeitraumPER .fuelleprotokoll:putline(protokoll,
+schulkenndatum(schulname));putline(protokoll,text(schulkenndatum(schulort),65
+)+date);putline(protokoll,leerzeile);putline(protokoll,ueberschrift+gewhj+
+". "+text(gewsj,2)+"/"+subtext(gewsj,3)+" von INTEGA");putline(protokoll,
+unterstrich);putline(protokoll,leerzeile);putline(protokoll,fehler1kopf);
+putline(protokoll,leerzeile);IF leistekoppexistnicht=""THEN putline(protokoll
+,keinfehler)ELSE putline(protokoll,fehlerspalten1);putline(protokoll,tab2);
+gibfalschekopplungenausFI ;putline(protokoll,leerzeile);putline(protokoll,
+fehler2kopf);putline(protokoll,leerzeile);IF leistelvnichtident=""THEN 
+putline(protokoll,keinfehler)ELSE putline(protokoll,fehlerspalten1);putline(
+protokoll,tab2);gibfalschelvausFI ;putline(protokoll,leerzeile);putline(
+protokoll,fehler3kopf1);putline(protokoll,fehler3kopf2);putline(protokoll,
+leerzeile);IF leistelvnichtident=""THEN putline(protokoll,keinfehler)ELSE 
+putline(protokoll,fehlerspalten2);putline(protokoll,fehlerspalten3);putline(
+protokoll,tab1);gibnichtidentlvausFI ;putline(protokoll,leerzeile);putline(
+protokoll,fehler4kopf);putline(protokoll,leerzeile);IF leisteunzzeit=""THEN 
+putline(protokoll,keinfehler)ELSE putline(protokoll,fehlerspalten3);putline(
+protokoll,tab1);gibfalschezeitenausFI .gibfalschezeitenaus:gibleisteaus(
+leisteunzzeit,FALSE ,FALSE ).gibfalschekopplungenaus:gibleisteaus(
+leistekoppexistnicht,TRUE ,TRUE ).gibfalschelvaus:gibleisteaus(
+leistelvnichtident,TRUE ,TRUE ).gibnichtidentlvaus:gibleisteaus(
+leistelvfalschesfach,FALSE ,TRUE ).END PROC dateninstdplanschreiben;PROC 
+gibleisteaus(TEXT CONST leiste,BOOL CONST ohnelv,allezeiten):INT VAR 
+posanfleiste,posendeleiste,posanflv,posanfbelegg,posendebelegg;BOOL VAR 
+erstezeilederlv:=TRUE ;posanfleiste:=1;posendeleiste:=length(leiste);modify(
+integastdplandatei);WHILE posanfleiste<posendeleisteREP col(
+integastdplandatei,1);toline(integastdplandatei,int(subtext(leiste,
+posanfleiste,posanfleiste+laengeindex-1)));readrecord(integastdplandatei,
+integaeintrag);integabelegg:=subtext(integaeintrag,beginnbelegg);IF ohnelv
+THEN lv:=leerelv;posanfleisteINCR laengeindexELSE posanflv:=posanfleiste+
+laengeindex;lv:=subtext(leiste,posanflv,posanflv+laengelvkopp-1);posanfleiste
+INCR laengeindex+laengelvkoppFI ;posanfbelegg:=1;posendebelegg:=length(
+integabelegg);zeitraumeintrag:=subtext(integabelegg,posanfbelegg,posanfbelegg
++laengezeitraum-1);zeitderlv:=text(zeitraumeintrag,2);intzeitderlv:=int(
+zeitderlv);raumderlv:=subtext(zeitraumeintrag,3);IF raumderlv=""COR raumderlv
+=pseudoraumCOR raumderlv=frageraumTHEN raumderlv:=leereraumangabeFI ;IF 
+allezeitenTHEN putline(protokoll,"   "+lv+" "+subtext(integaeintrag,
+beginnkopp,endekopp)+" "+subtext(integaeintrag,beginnfach,endefach)+" "+
+subtext(integaeintrag,beginnpar,endepar)+"   "+subtext(integaeintrag,
+beginnklgr,endeklgr)+gibtagstd(intzeitderlv)+" "+raumderlv);posanfbeleggINCR 
+laengezeitraum;WHILE posanfbelegg<posendebeleggREP zeitraumeintrag:=subtext(
+integabelegg,posanfbelegg,posanfbelegg+laengezeitraum-1);zeitderlv:=text(
+zeitraumeintrag,2);intzeitderlv:=int(zeitderlv);putline(protokoll,
+spalten3fueller+gibtagstd(intzeitderlv)+" "+raumderlv);posanfbeleggINCR 
+laengezeitraumPER ELSE erstezeilederlv:=TRUE ;WHILE posanfbelegg<
+posendebeleggREP zeitraumeintrag:=subtext(integabelegg,posanfbelegg,
+posanfbelegg+laengezeitraum-1);zeitderlv:=text(zeitraumeintrag,2);IF NOT 
+bezeichnungzulaessig(kennungzulzeit,zeitderlv)THEN intzeitderlv:=int(
+zeitderlv);IF erstezeilederlvTHEN putline(protokoll,"   "+lv+" "+subtext(
+integaeintrag,beginnkopp,endekopp)+" "+subtext(integaeintrag,beginnfach,
+endefach)+" "+subtext(integaeintrag,beginnpar,endepar)+"   "+subtext(
+integaeintrag,beginnklgr,endeklgr)+gibtagstd(intzeitderlv)+" "+raumderlv);
+erstezeilederlv:=FALSE ELSE putline(protokoll,spalten3fueller+gibtagstd(
+intzeitderlv)+" "+raumderlv);FI ;FI ;posanfbeleggINCR laengezeitraum;PER FI 
+PER .END PROC gibleisteaus;BOOL PROC lvmitgleicherparaphe(TEXT CONST 
+allelvderkopp):posanf:=1;posende:=length(allelvderkopp);WHILE posanf<posende
+REP lv:=subtext(allelvderkopp,posanf,posanf+laengelvkopp-1);IF datenzurlv(
+kennungparaphe,lv)=integaparapheTHEN LEAVE lvmitgleicherparapheWITH TRUE FI ;
+posanfINCR laengelvkoppPER ;FALSE .END PROC lvmitgleicherparaphe;PROC 
+abbruchnachfehler(INT CONST ruecksprung):return(ruecksprung);standardmeldung(
+meldarchivfehler,"Fehler: "+errormessage+" !#");clearerror;release(/dos);
+commanddialogue(TRUE );enablestopEND PROC abbruchnachfehler;PROC 
+meldungausgeben(INT VAR fstat):IF fstat=2THEN standardmeldung(
+meldungserverfehler,"");ELIF fstat=3THEN standardmeldung(meldungkeinstdplan,
+"");ELIF fstat=4THEN standardmeldung(meldungkeinesugruppen,"");ELIF fstat=5
+THEN standardmeldung(meldungzuvielesugruppen,"")ELIF fstat=6THEN 
+standardmeldung(meldungkeinelv,"")ELIF fstat=7THEN standardmeldung(
+meldungzuvielelv,"")ELIF fstat=9THEN standardmeldung(meldungbasisinkon,"");
+FI END PROC meldungausgeben;TEXT PROC gibtagstd(INT CONST index):INT VAR 
+intstd:=(index-1)MOD anzstdenprotag+1;TEXT VAR std:="0";IF intstd<10THEN std
+CAT text(intstd)ELSE std:=text(intstd)FI ;SELECT (index-1)DIV anzstdenprotag
+OF CASE 0:kennungmo+stdCASE 1:kennungdi+stdCASE 2:kennungmi+stdCASE 3:
+kennungdo+stdCASE 4:kennungfr+stdCASE 5:kennungsa+stdOTHERWISE stdEND SELECT 
+END PROC gibtagstd;END PACKET integastundenplanuebernehmen;
+

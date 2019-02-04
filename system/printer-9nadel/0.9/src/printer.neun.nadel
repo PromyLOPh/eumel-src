@@ -1,0 +1,1129 @@
+PACKET driver inst 9                         (* Autoren : mov/hjh     *) 
+                                             (* Stand   : 01.10.88    *) 
+ 
+       DEFINES druckerkanal, 
+               treiber einrichten: 
+ 
+ 
+LET up = ""3""13""5"", 
+ 
+    generator name = "printer.neun.nadel", 
+ 
+    description file name = "beschreibungen9", 
+    module file name = "module9"; 
+ 
+ 
+INT VAR pr channel, 
+        positioning,
+        quality,
+        sheet feeder, 
+        service option; 
+TEXT VAR fonttab name :: "", 
+         driver name :: ""; 
+TEXT VAR inp; 
+BOOL VAR was esc; 
+ 
+ 
+PROC druckerkanal (INT CONST channel) :
+ 
+  serverchannel (channel)
+ 
+END PROC druckerkanal; 
+ 
+INT PROC druckerkanal : pr channel END PROC druckerkanal; 
+ 
+ 
+PROC treiber einrichten:
+
+  treiber einrichten (0)
+END PROC treiber einrichten;
+
+PROC treiber einrichten (INT CONST service opt): 
+ 
+  ask for print channel; 
+  main menu; 
+  IF installed 
+    THEN generate printer spool 
+    ELSE inform about restart 
+  FI. 
+ 
+  ask for printchannel: 
+    inits; 
+    page; 
+    headline ("Druckerkanal - Einstellung"); 
+    cursor (1, 15); 
+    putline ("Hinweis: Die Druckerkanalnummer kann auch nachträglich mit"); 
+    putline ("         'druckerkanal (Kanalnummer)' in der Task """ + 
+             name (myself) + """"); 
+    putline ("         verändert werden."); 
+    REP 
+      cursor (1, 10);
+      put (""5"EUMEL-Kanalnummer des Druckerkanals:");
+      get (pr channel);
+      disable stop; 
+      druckerkanal (pr channel);
+      BOOL VAR no error :: NOT is error; 
+      IF is error 
+        THEN cursor (1, 7); 
+             put error;
+             putline ("Eingabe korrigiert wiederholen!") 
+      FI; 
+      clear error; 
+      enable stop 
+    UNTIL no error PER. 
+ 
+  inits: 
+    line; 
+    IF single task 
+      THEN errorstop ("Dieser Treiber arbeitet nur mit Multi-Tasking-EUMEL") 
+    FI; 
+    command dialogue (TRUE);
+    IF name (myself) <> "PRINTER" 
+      THEN putline ("Diese Task heißt nicht ""PRINTER"", sondern """ + 
+                    name (myself) + """ !"); 
+           IF yes ("Soll die Task in ""PRINTER"" umbenannt werden ?") 
+             THEN rename myself ("PRINTER") 
+           FI 
+    FI; 
+    INT VAR choice;
+    service option := service opt.
+ 
+  single task:  (pcb (9) AND 255) = 1.
+ 
+  main menu: 
+    BOOL VAR installed :: FALSE; 
+    REP 
+      show main menu; 
+      get choice; 
+      treat choice 
+    UNTIL was esc OR installed PER. 
+ 
+  show main menu: 
+    page; 
+    headline ("Hauptmenü 9-Nadel-Drucker"); 
+    putline (" 1. Brother");
+    putline (" 2. Citizen");
+    putline (" 3. C. Itoh");
+    putline (" 4. Epson");
+    putline (" 5. Fujitsu");
+    putline (" 6. IBM"); 
+    putline (" 7. Mannesmann - Tally");
+    putline (" 8. OKI");
+    putline (" 9. Schneider");
+    putline ("10. Star").
+
+  get choice: 
+    cursor (1,24); 
+    put ("CR: Eingabe        ESC: Installation abbrechen"); 
+    ask user (10).
+ 
+  treat choice: 
+    SELECT int (inp) OF 
+      CASE 1: brother menu 
+      CASE 2: citizen menu 
+      CASE 3: c itoh menu 
+      CASE 4: epson menu 
+      CASE 5: fujitsu menu 
+      CASE 6: ibm menu 
+      CASE 7: mannesmann menu 
+      CASE 8: oki menu 
+      CASE 9: schneider menu 
+      CASE 10: star menu 
+    END SELECT. 
+ 
+  
+  brother menu:. 
+
+  citizen menu: 
+    page; 
+    headline ("Citizen - Menü"); 
+    putline (" 1. 120-D"); 
+    cursor (1,24); 
+    put ("CR: Eingabe        ESC: Zurück zum Hauptmenü"); 
+    ask user (1); 
+    page; 
+    choice := int (inp);
+    IF was esc 
+      THEN was esc := FALSE 
+      ELSE headline ("");
+           putline ("Druckertyp:"); 
+           citi120d inst 
+    FI. 
+ 
+    citi120d inst: 
+      putline ("Citizen 120-D"); 
+      line; 
+      putline ("Die DIP-Schalter müssen so eingestellt sein:"); 
+      putline ("S1    S2    S3    S4    S5    S6    S7    S8");
+      putline ("egal  OFF   OFF   egal  egal  egal  egal  egal"); 
+      show control options (""); 
+      IF all right 
+        THEN get fonttable ("fonttab.7");
+             generate ("citi120d"); 
+             installed := TRUE 
+      FI.
+  
+  c itoh menu:
+    page; 
+    headline ("C. Itoh - Menü"); 
+    putline (" 1. C 310 CXP"); 
+    putline (" 2. C 315 CXP"); 
+    putline (" 3. CI-3500");
+    cursor (1,24); 
+    put ("CR: Eingabe        ESC: Zurück zum Hauptmenü"); 
+    ask user (3); 
+    page; 
+    choice := int (inp);
+    IF was esc 
+      THEN was esc := FALSE 
+      ELSE headline ("");
+           putline ("Druckertyp:"); 
+           IF choice = 3 
+             THEN ci3500 inst 
+             ELSE c310 inst 
+           FI 
+    FI. 
+ 
+    c310 inst: 
+      IF choice = 1 
+        THEN putline ("C. Itoh C 310 CXP") 
+        ELSE putline ("C. Itoh C 315 CXP") 
+      FI; 
+      putline ("Der Druckertreiber unterstützt auch den Farbdruck mit entsprechendem"); 
+      putline ("Farbband.");
+      line; 
+      putline ("Der Drucker muß so konfiguriert sein (Druckmenü des Druckers):"); 
+      putline ("- 00: Epson-Modus (02)"); 
+      putline ("- 22: nur Wagenrücklauf (01)");
+      show control options ("std speed, paperfeed"); 
+      show material options ("slow, fast, schacht1, schacht2");
+      show command options ("schacht1, schacht2,  schwarz, rot, blau, violett, gelb, orange, grün"); 
+      ask for positioning;
+      ask for paper feed; 
+      IF all right 
+        THEN get fonttable ("fonttab.7.cxp"); 
+             generate ("citohc310cxp"); 
+             adjust positioning;
+             adjust paper feed; 
+             IF choice = 2 THEN do ("papersize (34.544, 30.48)") FI; 
+             installed := TRUE 
+      FI. 
+  
+    ci3500 inst: 
+      putline ("C. Itoh CI-3500"); 
+      line; 
+      putline ("Der Drucker muß so konfiguriert sein (Druckmenü des Druckers):"); 
+      putline ("- 26: nur Wagenrücklauf (1)"); 
+      putline ("- 49: 17,1 Zeichen pro Zoll (17)");
+      show control options ("std speed"); 
+      show material options ("slow, fast"); 
+      ask for positioning; 
+      IF all right 
+        THEN get fonttable ("fonttab.10");
+             generate ("citohci3500"); 
+             adjust positioning; 
+             installed := TRUE 
+      FI.
+  
+  epson menu: 
+    page; 
+    headline ("Epson - Menü"); 
+    putline (" 1. MX 80 Typ III"); 
+    putline (" 2. MX 100 Typ III"); 
+    putline (" 3. LX 800"); 
+    putline (" 4. LX 1000"); 
+    putline (" 5. FX 85"); 
+    putline (" 6. FX 105"); 
+    putline (" 7. FX 800 oder FX 850"); 
+    putline (" 8. FX 1000 oder FX 1050"); 
+    cursor (1,24); 
+    put ("CR: Eingabe        ESC: Zurück zum Hauptmenü"); 
+    ask user (8); 
+    page; 
+    choice := int (inp);
+    IF was esc 
+      THEN was esc := FALSE 
+      ELSE headline ("");
+           putline ("Druckertyp:"); 
+           SELECT choice OF 
+             CASE 1, 2: mx80 inst
+             CASE 3, 4: lx800 inst
+             CASE 5, 6: fx85 inst
+             CASE 7, 8: fx800 inst 
+           END SELECT
+    FI. 
+ 
+    mx80 inst: 
+      IF choice = 1 
+        THEN putline ("Epson MX 80 Typ III") 
+        ELSE putline ("Epson MX 100 Typ III") 
+      FI; 
+      show control options ("std speed"); 
+      show material options ("slow, fast"); 
+      ask for positioning; 
+      IF all right 
+        THEN get fonttable ("fonttab.1");
+             generate ("mx"); 
+             adjust positioning; 
+             IF choice = 2 THEN do ("papersize (34.544, 30.48)") FI; 
+             installed := TRUE 
+      FI.
+ 
+    lx800 inst:
+      IF choice = 3 
+        THEN putline ("Epson LX 800") 
+        ELSE putline ("Epson LX 1000") 
+      FI; 
+      putline ("Die DIP-Schalter müssen so eingestellt sein:"); 
+      putline ("SW1-1 SW1-2 SW1-3 SW1-4 SW1-5 SW1-6 SW1-7 SW1-8   SW2-1 SW2-2 SW2-3 SW2-4"); 
+      putline ("egal  egal  egal  egal  egal  egal  egal  egal    egal  *)    OFF   OFF"); 
+      putline ("*) ON: Einzelblatteinzug, OFF: kein Einzug"); 
+      show control options ("std speed, std quality, std typeface"); 
+      show material options ("slow, fast, draft, nlq, roman, sansserif"); 
+      show command options ("draft, nlq, roman, sansserif"); 
+      ask for positioning; 
+      ask for quality; 
+      IF all right 
+        THEN get fonttable ("fonttab.20.lx"); 
+             generate ("lx800"); 
+             adjust positioning; 
+             adjust quality; 
+             IF choice = 4 THEN do ("papersize (34.544, 30.48)") FI; 
+             installed := TRUE 
+      FI. 
+ 
+    fx85 inst: 
+      IF choice = 5 
+        THEN putline ("Epson FX 85") 
+        ELSE putline ("Epson FX 105") 
+      FI; 
+      line; 
+      putline ("Die DIP-Schalter müssen so eingestellt sein:"); 
+      putline ("SW1-1 SW1-2 SW1-3 SW1-4 SW1-5 SW1-6 SW1-7 SW1-8   SW2-1 SW2-2 SW2-3 SW2-4"); 
+      putline ("egal  egal  egal  ON    egal  egal  egal  egal    egal  egal  OFF   OFF"); 
+      show control options ("std speed"); 
+      show material options ("slow, fast"); 
+      ask for positioning; 
+      IF all right 
+        THEN get fonttable ("fonttab.7"); 
+             generate ("fx85"); 
+             adjust positioning; 
+             IF choice = 6 THEN do ("papersize (34.544, 30.48)") FI; 
+             installed := TRUE 
+      FI.
+ 
+    fx800 inst: 
+      IF choice = 7 
+        THEN putline ("Epson FX 800 oder FX 850") 
+        ELSE putline ("Epson FX 1000 oder FX 1050") 
+      FI; 
+      line; 
+      putline ("Die DIP-Schalter müssen so eingestellt sein:"); 
+      putline ("SW1-1 SW1-2 SW1-3 SW1-4 SW1-5 SW1-6 SW1-7 SW1-8   SW2-1 SW2-2 SW2-3 SW2-4"); 
+      putline ("egal  egal  egal  ON    egal  egal  egal  egal    egal  *)    OFF   OFF"); 
+      putline ("*) ON: Einzelblatteinzug, OFF: kein Einzug"); 
+      show control options ("std quality, std typeface"); 
+      show material options ("draft, nlq, roman, sansserif"); 
+      show command options ("draft, nlq, roman, sansserif"); 
+      ask for quality; 
+      IF all right 
+        THEN get fonttable ("fonttab.20"); 
+             generate ("fx800"); 
+             adjust quality; 
+             IF choice = 8 THEN do ("papersize (34.544, 30.48)") FI; 
+             installed := TRUE 
+      FI. 
+ 
+  fujitsu menu: 
+    page; 
+    headline ("Fujitsu - Menü"); 
+    putline (" 1. DX 2100"); 
+    putline (" 2. DX 2200"); 
+    cursor (1,24); 
+    put ("CR: Eingabe        ESC: Zurück zum Hauptmenü"); 
+    ask user (2); 
+    page; 
+    choice := int (inp);
+    IF was esc 
+      THEN was esc := FALSE 
+      ELSE headline ("");
+           putline ("Druckertyp:"); 
+           SELECT choice OF 
+             CASE 1,2   : dx2100 inst
+           END SELECT
+    FI. 
+
+    dx2100 inst: 
+      IF choice = 1 
+        THEN putline ("Fujitsu DX 2100") 
+        ELSE putline ("Fujitsu DX 2200") 
+      FI; 
+      putline ("Der Druckertreiber unterstützt auch den Farbdruck mit entsprechendem"); 
+      putline ("Farbband.");
+      line; 
+      putline ("Die DIP-Schalter müssen so eingestellt sein:"); 
+      putline ("SW1-1 SW1-2 SW1-3 SW1-4 SW1-5 SW1-6 SW1-7 SW1-8   SW2-1 SW2-2 SW2-3 SW2-4"); 
+      putline ("egal  egal  egal  egal  egal  egal  egal  egal    egal  *)    OFF   OFF"); 
+      putline ("*) ON: Einzelblatteinzug, OFF: kein Einzug"); 
+      show control options ("std speed, paper feed"); 
+      show material options ("slow, fast"); 
+      show command options ("schwarz, rot, blau, violett, gelb, rot, grün"); 
+      ask for positioning; 
+      ask for paper feed; 
+      IF all right 
+        THEN get fonttable ("fonttab.7.fuj"); 
+             generate ("fujdx2100"); 
+             adjust positioning; 
+             adjust paper feed; 
+             IF choice = 2 THEN do ("papersize (34.544, 30.48)") FI; 
+             installed := TRUE 
+      FI. 
+ 
+ 
+ 
+  ibm menu: 
+    page; 
+    headline ("IBM - Menü"); 
+    putline (" 1. Grafikdrucker (""80 Zeichen breit"")"); 
+    putline (" 2. Grafikdrucker (""136 Zeichen breit"")"); 
+    putline (" 3. Proprinter/Grafikdrucker II (""80 Zeichen breit"")"); 
+    putline (" 4. Proprinter/Grafikdrucker II (""136 Zeichen breit"")"); 
+    cursor (1,24); 
+    put ("CR: Eingabe        ESC: Zurück zum Hauptmenü"); 
+    ask user (4); 
+    page; 
+    choice := int (inp);
+    IF was esc 
+      THEN was esc := FALSE 
+      ELSE headline ("");
+           putline ("Druckertyp:"); 
+           IF choice = 1 OR choice = 2
+             THEN ibmgp inst
+             ELSE ibmpp inst 
+           FI 
+    FI. 
+ 
+    ibmgp inst: 
+      IF choice = 1 
+        THEN putline ("IBM Grafikdrucker (""80 Zeichen breit"")") 
+        ELSE putline ("IBM Grafikdrucker (""136 Zeichen breit"")") 
+      FI; 
+      show control options ("std speed"); 
+      show material options ("slow, fast"); 
+      ask for positioning; 
+      IF all right 
+        THEN get fonttable ("fonttab.10");
+             generate ("ibmgp"); 
+             adjust positioning; 
+             IF choice = 2 THEN do ("papersize (34.544, 30.48)") FI; 
+             installed := TRUE 
+      FI.
+
+    ibmpp inst:
+      IF choice = 3 
+        THEN putline ("IBM Proprinter/Grafikdrucker II (""80 Zeichen breit"")") 
+        ELSE putline ("IBM Proprinter/Grafikdrucker II (""136 Zeichen breit"")") 
+      FI; 
+      show control options ("std speed, std quality"); 
+      show material options ("slow, fast, draft, nlq"); 
+      show command options ("draft, nlq");
+      ask for positioning; 
+      ask for quality; 
+      IF all right 
+        THEN get fonttable ("fonttab.10"); 
+             generate ("ibmpp"); 
+             adjust positioning; 
+             adjust quality;
+             IF choice = 4 THEN do ("papersize (34.544, 30.48)") FI; 
+             installed := TRUE 
+      FI.
+ 
+  mannesmann menu: 
+    page; 
+    headline ("Mannesmann - Tally - Menü"); 
+    putline (" 1. MT 230"); 
+    putline (" 2. MT 340"); 
+    cursor (1,24); 
+    put ("CR: Eingabe        ESC: Zurück zum Hauptmenü"); 
+    ask user (2); 
+    page; 
+    choice := int (inp);
+    IF was esc 
+      THEN was esc := FALSE 
+      ELSE headline ("");
+           putline ("Druckertyp:"); 
+           IF choice = 1  
+             THEN mt230 inst
+             ELSE mt340 inst 
+           FI
+    FI. 
+ 
+    mt230 inst:
+      putline ("Mannesmann-Tally MT 230"); 
+      putline ("Der Druckertreiber unterstützt auch den Farbdruck mit entsprechendem"); 
+      putline ("Farbband.");
+      line; 
+      putline ("Der Drucker muß auf den ANSI+EPSON - Modus eingestellt werden.");
+      putline ("(Siehe: MT 230 Anwenderhandbuch, S. 4-145)"); 
+      show control options ("std speed, paperfeed"); 
+      show material options ("slow, fast, schacht1, schacht2");
+      show command options ("schacht1, schacht2,  schwarz, magenta, cyan, blau, gelb, rot, grün"); 
+      ask for positioning;
+      ask for paper feed; 
+      IF all right 
+        THEN get fonttable ("fonttab.7"); 
+             generate ("mt230"); 
+             adjust positioning;
+             adjust paper feed; 
+             do ("papersize (39.37, 30.48)"); 
+             installed := TRUE 
+      FI. 
+  
+    mt340 inst:
+      putline ("Mannesmann-Tally MT 340"); 
+      putline ("Der Druckertreiber unterstützt auch den Farbdruck mit entsprechendem"); 
+      putline ("Farbband.");
+      line; 
+      putline ("Der Drucker muß auf den ANSI+EPSON - Modus eingestellt werden.");
+      putline ("(Siehe: MT 340 Anwenderhandbuch, S. 4-104)"); 
+      show control options ("std speed, paperfeed"); 
+      show material options ("slow, fast, schacht1, schacht2");
+      show command options ("schacht1, schacht2,  schwarz, magenta, cyan, blau, gelb, rot, grün"); 
+      ask for positioning;
+      ask for paper feed; 
+      IF all right 
+        THEN get fonttable ("fonttab.7.mt"); 
+             generate ("mt340"); 
+             adjust positioning;
+             adjust paper feed; 
+             do ("papersize (39.37, 30.48)"); 
+             installed := TRUE 
+      FI. 
+
+  oki menu: 
+    page; 
+    headline ("OKI - Menü"); 
+    putline (" 1. MICROLINE 182 IBM-kompatibel"); 
+    putline (" 2. MICROLINE 183 IBM-kompatibel"); 
+    putline (" 3. MICROLINE 192 ELITE");
+    putline (" 4. MICROLINE 193 ELITE"); 
+    putline (" 5. MICROLINE 292 ELITE");
+    putline (" 6. MICROLINE 293 ELITE"); 
+    putline (" 7. MICROLINE 294 IBM-kompatibel"); 
+    putline (" 8. MICROLINE 320"); 
+    putline (" 9. MICROLINE 321"); 
+    cursor (1,24); 
+    put ("CR: Eingabe        ESC: Zurück zum Hauptmenü"); 
+    ask user (9); 
+    page; 
+    choice := int (inp);
+    IF was esc 
+      THEN was esc := FALSE 
+      ELSE headline ("");
+           putline ("Druckertyp:"); 
+           SELECT choice OF 
+             CASE 1, 2: ml182i inst
+             CASE 3, 4: ml192el inst 
+             CASE 5, 6: ml292el inst 
+             CASE 7   : ml294i inst 
+             CASE 8, 9: ml320 inst 
+           END SELECT
+    FI. 
+ 
+    ml182i inst:
+      IF choice = 1 
+        THEN putline ("OKI Microline 182 IBM-kompatibel")
+        ELSE putline ("OKI Microline 183 IBM-kompatibel") 
+      FI; 
+      line; 
+      putline ("Die DIP-Schalter müssen so eingestellt sein:"); 
+      putline ("S-1   S-2   S-3   S-4   S-5   S-6   S-7   S-8");
+      putline ("egal  egal  OFF   egal  egal  OFF   egal  OFF");
+      show control options ("std speed, std quality"); 
+      show material options ("slow, fast, draft, nlq"); 
+      show command options ("draft, nlq"); 
+      ask for positioning; 
+      ask for quality; 
+      IF all right 
+        THEN get fonttable ("fonttab.10"); 
+             generate ("okiml182i"); 
+             adjust positioning; 
+             adjust quality; 
+             IF choice = 2 THEN do ("papersize (34.544, 30.48)") FI; 
+             installed := TRUE 
+      FI.
+ 
+    ml192el inst:
+      IF choice = 3 
+        THEN putline ("OKI Microline 192 ELITE (IBM/EPSON-kompatibel)")
+        ELSE putline ("OKI Microline 193 ELITE (IBM/EPSON-kompatibel)") 
+      FI; 
+      line; 
+      putline ("Der Drucker muß so konfiguriert sein (Druckmenü des Druckers):"); 
+      putline ("- 13: Automatic Line Feed: Nein"); 
+      putline ("- 18: Compatibility: EPSON FX"); 
+      putline ("(Außerdem: Jumper SP5 in Position 'B')"); 
+      show control options ("std speed, paperfeed"); 
+      show material options ("slow, fast"); 
+      ask for positioning;
+      ask for paper feed; 
+      IF all right 
+        THEN get fonttable ("fonttab.7"); 
+             generate ("okiml192el"); 
+             adjust positioning;
+             adjust paper feed; 
+             IF choice = 4 THEN do ("papersize (34.544, 30.48)") FI; 
+             installed := TRUE 
+      FI.
+ 
+    ml292el inst:
+      IF choice = 5 
+        THEN putline ("OKI Microline 292 ELITE (IBM/EPSON-kompatibel)")
+        ELSE putline ("OKI Microline 293 ELITE (IBM/EPSON-kompatibel)") 
+      FI; 
+      putline ("Der Druckertreiber unterstützt auch den Farbdruck mit entsprechendem"); 
+      putline ("Farbband.");
+      line; 
+      putline ("Der Drucker muß so konfiguriert sein (Druckmenü des Druckers):"); 
+      putline ("- Automatic Line Feed: NO"); 
+      putline ("- Compatibility: EPSON EX"); 
+      putline ("(Außerdem: Jumper SP5 in Position 'B')"); 
+      show control options ("paperfeed, std quality, std typeface"); 
+      show material options ("draft, nlq, courier, sansserif"); 
+      show command options ("draft, nlq, courier, sansserif"); 
+      putline ("schwarz, rot, blau, violett, gelb, orange, grün"); 
+      ask for paper feed; 
+      ask for quality; 
+      IF all right 
+        THEN get fonttable ("fonttab.20"); 
+             generate ("okiml292el"); 
+             adjust paper feed; 
+             adjust quality;
+             IF choice = 6 THEN do ("papersize (34.544, 30.48)") FI; 
+             installed := TRUE 
+      FI.
+ 
+    ml294i inst:
+      putline ("OKI Microline 294 IBM-kompatibel");
+      putline ("Der Druckertreiber unterstützt auch den Farbdruck mit entsprechendem"); 
+      putline ("Farbband.");
+      line; 
+      putline ("Der Drucker muß so konfiguriert sein (Druckmenü des Druckers):"); 
+      putline ("- Proportional Spacing: NO");
+      putline ("- Automatic Line Feed: NO"); 
+      putline ("- Compatibility: PROPRINTER XL"); 
+      show control options ("paperfeed, std quality"); 
+      show material options ("draft, nlq"); 
+      show command options ("draft, nlq,  schwarz, rot, blau, violett, gelb, orange, grün"); 
+      ask for paper feed; 
+      ask for quality; 
+      IF all right 
+        THEN get fonttable ("fonttab.10"); 
+             generate ("okiml294i"); 
+             adjust paper feed; 
+             adjust quality;
+             do ("papersize (34.544, 30.48)");
+             installed := TRUE 
+      FI.
+ 
+    ml320 inst:
+      IF choice = 8 
+        THEN putline ("OKI Microline 320 IBM/EPSON-kompatibel") 
+        ELSE putline ("OKI Microline 321 IBM/EPSON-kompatibel") 
+      FI; 
+      line; 
+      putline ("Der Drucker muß so konfiguriert sein (Druckmenü des Druckers):"); 
+      putline ("- Automatic Line Feed: Nein"); 
+      show control options ("std speed"); 
+      show material options ("slow, fast"); 
+      ask for positioning;
+      IF all right 
+        THEN get fonttable ("fonttab.7"); 
+             generate ("okiml320"); 
+             adjust positioning;
+             IF choice = 9 THEN do ("papersize (34.544, 30.48)") FI; 
+             installed := TRUE 
+      FI.
+ 
+  schneider menu: 
+    page; 
+    headline ("Schneider - Menü"); 
+    putline (" 1. DMP 4000"); 
+    cursor (1,24); 
+    put ("CR: Eingabe        ESC: Zurück zum Hauptmenü"); 
+    ask user (1); 
+    page; 
+    choice := int (inp);
+    IF was esc 
+      THEN was esc := FALSE 
+      ELSE headline ("");
+           putline ("Druckertyp:"); 
+           dmp4000 inst 
+    FI. 
+ 
+    dmp4000 inst:
+      putline ("Schneider DMP 4000"); 
+      line; 
+      putline ("Die DIP-Schalter müssen so eingestellt sein:"); 
+      putline ("DS1-4           übrige Schalter"); 
+      putline (" OFF                 egal");
+      show control options ("std speed"); 
+      show material options ("slow, fast");
+      ask for positioning; 
+      IF all right 
+        THEN get fonttable ("fonttab.7"); 
+             generate ("dmp4000"); 
+             adjust positioning; 
+             do ("papersize (39.37, 30.48)"); 
+             installed := TRUE 
+      FI. 
+ 
+  star menu: 
+    page; 
+    headline ("Star - Menü"); 
+    putline (" 1. LC-10 (auch LC-10 Colour)"); 
+    putline (" 2. NX-15"); 
+    putline (" 3. ND-10");
+    putline (" 4. ND-15"); 
+    putline (" 5. NR-10");
+    putline (" 6. NR-15"); 
+    cursor (1,24); 
+    put ("CR: Eingabe        ESC: Zurück zum Hauptmenü"); 
+    ask user (6); 
+    page; 
+    choice := int (inp);
+    IF was esc 
+      THEN was esc := FALSE 
+      ELSE headline ("");
+           putline ("Druckertyp:"); 
+           IF choice = 1  
+             THEN lc10 inst
+           ELIF choice = 2 
+             THEN nx15 inst 
+             ELSE nd10 inst 
+           FI
+    FI. 
+ 
+    lc10 inst:
+      putline ("Star LC-10 oder LC-10 Colour"); 
+      line; 
+      putline ("Die DIP-Schalter müssen so eingestellt sein:"); 
+      putline ("S1-1  S1-2  S1-3  S1-4  S1-5  S1-6  S1-7  S1-8     S2-1  S2-2  S2-3  S2-4");
+      putline ("egal  egal  egal  *)    egal  EIN   egal  EIN      egal  egal  egal  egal"); 
+      putline ("*) AUS: Einzelblatteinzug, EIN: kein Einzug"); 
+      show control options ("std quality, std typeface"); 
+      show material options ("draft, nlq, courier, sansserif, orator1, orator2");
+      show command options ("draft, nlq, courier, sansserif, orator1, orator2");
+      putline ("schwarz, rot, blau, violett, gelb, orange, grün"); 
+      ask for quality; 
+      IF all right 
+        THEN get fonttable ("fonttab.20.lc"); 
+             generate ("starlc10"); 
+             adjust quality; 
+             do ("papersize (21.0, 30.48)"); 
+             installed := TRUE 
+      FI. 
+ 
+    nx15 inst:
+      putline ("Star NX-15"); 
+      line; 
+      putline ("Die DIP-Schalter müssen so eingestellt sein:"); 
+      putline ("S1-4  S1-8  S2-5         übrige Schalter"); 
+      putline ("EIN   EIN   EIN               egal");
+      show control options ("std speed"); 
+      show material options ("slow, fast"); 
+      ask for positioning;
+      IF all right 
+        THEN get fonttable ("fonttab.7"); 
+             generate ("starnx15"); 
+             adjust positioning; 
+             do ("papersize (36.0, 30.48)"); 
+             installed := TRUE 
+      FI. 
+ 
+    nd10 inst:
+      IF choice = 3 
+        THEN putline ("Star ND-10"); 
+      ELIF choice = 4 
+        THEN putline ("Star ND-15"); 
+      ELIF choice = 5 
+        THEN putline ("Star NR-10"); 
+        ELSE putline ("Star NR-15"); 
+      FI; 
+      line; 
+      putline ("Die DIP-Schalter müssen so eingestellt sein:"); 
+      putline ("S1-5  S1-6  S2-2          übrige Schalter"); 
+      putline ("EIN   EIN   EIN                egal");
+      show control options ("std speed"); 
+      show material options ("slow, fast"); 
+      ask for positioning; 
+      IF all right 
+        THEN get fonttable ("fonttab.7"); 
+             generate ("starnx15"); 
+             adjust positioning;
+             IF choice = 3 OR choice = 5 
+               THEN do ("papersize (21.0, 30.48)") 
+               ELSE do ("papersize (36.0, 30.48)")
+             FI; 
+             installed := TRUE 
+      FI. 
+ 
+generate printer spool: 
+    IF service opt = 0 
+      THEN forget (generator name, quiet); 
+           forget (driver name, quiet) 
+    FI;
+    eumel must advertise;
+    cursor (1, 10);
+    putline ("In allen bestehenden Tasks - insbesondere in der Task ""PUBLIC"" - muß");
+    putline ("die Fonttabelle mit dem Kommando");
+    line;
+    putline ("      font table (""" + font tab name + """)");
+    line;
+    putline ("eingestellt werden!!!");
+    line (2);
+    putline ("Hinweis: Dieses Installationsprogramm kann in der Task """ + name (myself) + """"); 
+    putline ("         mit 'treiber einrichten' aufgerufen werden, wenn ein anderer"); 
+    putline ("         Drucker eingesetzt werden soll."); 
+    line (2); 
+    put ("Generierung beendet, weiter mit 'SV'");
+    break (quiet);
+    do ("spool manager (PROC printer)").
+ 
+  inform about restart: 
+    page; 
+    putline ("Es ist kein Druckertreiber installiert worden!"); 
+    line; 
+    putline ("Dieses Installationsprogramm kann in der Task """ + name (myself) + """"); 
+    putline ("mit 'treiber einrichten' erneut aufgerufen werden."); 
+    line. 
+ 
+END PROC treiber einrichten; 
+ 
+PROC headline (TEXT CONST header): 
+ 
+  cursor (13,1); 
+  putline ("E U M E L - Druckertreiber - Installations - Programm"); 
+  cursor (40 - LENGTH header DIV 2, 2); 
+  put (header); 
+  line (2) 
+END PROC headline; 
+ 
+PROC ask user (INT CONST max choice): 
+ 
+  TEXT VAR exit; 
+  inp := "";
+  REP 
+    cursor (1,23); 
+    IF inp = "" 
+      THEN put ("Ihre Wahl (Nummer eingeben):")  
+      ELSE put ("FEHLER! Eingabe korrigieren:")
+    FI; 
+    editget (inp, ""27"", "", exit); 
+    was esc :=  exit = ""27"";
+  UNTIL was esc OR ok PER. 
+ 
+  ok: 
+    int (inp) > 0 AND int (inp) <= max choice AND last conversion ok. 
+END PROC ask user;
+
+PROC show control options (TEXT CONST options): 
+ 
+  line; 
+  putline ("Steuerprozeduren in der Task """ + name (myself) + """:"); 
+  write ("papersize, top margin");
+  IF options <> "" 
+    THEN put (","); 
+         putline (options) 
+  FI
+END PROC show control options; 
+
+PROC show material options (TEXT CONST options): 
+ 
+  line; 
+  putline ("Mögliche Materialwerte (#material(""..."")#):"); 
+  putline (options) 
+END PROC show material options; 
+ 
+PROC show command options (TEXT CONST options): 
+ 
+  line; 
+  putline ("Mögliche direkte Druckeranweisungen (#""...""#):"); 
+  putline (options) 
+END PROC show command options; 
+ 
+PROC ask for positioning: 
+ 
+  line (2); 
+  putline ("Positionierung in x-Richtung:"); 
+  line; 
+  REP out (up); 
+    IF yes ("in Mikroschritten (genauer, aber langsamer)")
+      THEN positioning := 1; LEAVE ask for positioning 
+    FI;
+    out (up);
+    IF yes ("in Blanks (schneller, aber ungenauer)")
+      THEN positioning := 2; LEAVE ask for positioning 
+    FI;
+  PER 
+END PROC ask for positioning; 
+ 
+PROC ask for quality: 
+ 
+  line (2); 
+  putline ("Standard - Druckqualität:"); 
+  line; 
+  REP out (up); 
+    IF yes ("Draft Quality (schneller, aber nicht so schön)") 
+      THEN quality := 1; LEAVE ask for quality 
+    FI;
+    out (up);
+    IF yes ("Near Letter Quality (schöner, aber langsamer)")
+      THEN quality := 2; LEAVE ask for quality 
+    FI;
+  PER 
+END PROC ask for quality; 
+ 
+PROC ask for paper feed: 
+ 
+  line (2); 
+  putline ("Einzelblatteinzug:"); 
+  line; 
+  REP out (up); 
+    IF yes ("kein Einzelblatteinzug vorhanden") 
+      THEN sheet feeder := 0; LEAVE ask for paper feed 
+    FI;
+    out (up);
+    IF yes ("Einzelblatteinzug vorhanden")
+      THEN sheet feeder := 1; LEAVE ask for paper feed 
+    FI;
+  PER 
+END PROC ask for paper feed; 
+ 
+BOOL PROC all right: 
+ 
+  line (3);
+  cursor (1,23); 
+  yes ("Soll der ausgewählte Druckertreiber installiert werden") 
+END PROC all right; 
+ 
+PROC get fonttable (TEXT CONST name): 
+ 
+  fonttab name := name; 
+  from archive ((description file name & module file name & fonttab name) 
+                                                                    - all); 
+  fonttable (fonttab name); 
+  command dialogue (FALSE); 
+  save (fonttab name, /"configurator"); 
+  IF service option = 0 
+    THEN forget (fonttab name) 
+  FI; 
+  command dialogue (TRUE); 
+END PROC get fonttable; 
+ 
+PROC from archive (THESAURUS CONST files):
+ 
+  IF highest entry (files) > 0 
+    THEN fetch from archive; 
+         release (archive);
+         putline ("Archiv abgemeldet !")
+  FI.
+ 
+  fetch from archive: 
+    THESAURUS VAR thes :: files; 
+    REP 
+      ask for archive;
+      reserve archive;
+      fetch (thes / ALL archive, archive);
+      thes := thes - all 
+    UNTIL highest entry (thes) = 0 PER.
+
+ask for archive:
+  line;
+  putline ("Bitte Archiv mit den Dateien"); 
+  TEXT VAR buffer;
+  INT VAR index :: 0; 
+  REP 
+    get (thes, buffer, index); 
+    putline ("    " + buffer) 
+  UNTIL index = 0 PER; 
+  putline ("einlegen !"); 
+  line; 
+  putline ("Wenn eingelegt: Taste drücken !"); 
+  inchar (buffer). 
+ 
+reserve archive :
+  INT VAR p1, p2;
+  archive (" "31" ");
+  disable stop;
+  list (archive);
+  IF is error
+     THEN buffer := errormessage;
+          p1 := pos (buffer, """", 1 ) + 1;
+          p2 := pos (buffer, """", p1) - 1;
+          IF p1 > 0 AND p2 > 0
+             THEN clear error;
+                  buffer := subtext (buffer, p1, p2);
+                  archive (buffer);
+          FI;
+  FI;
+  enable stop.
+
+END PROC from archive;
+
+THESAURUS OP & (TEXT CONST left, right):
+  THESAURUS VAR result := empty thesaurus;
+  insert (result, left);
+  insert (result, right);
+  result
+END OP &;
+
+THESAURUS OP & (THESAURUS CONST left, TEXT CONST right):
+  THESAURUS VAR result := left;
+  insert (result, right);
+  result
+END OP &;
+ 
+PROC generate (TEXT CONST name): 
+ 
+  open files; 
+  read description; 
+  build programme; 
+  insert programme; 
+  forget files. 
+ 
+  open files: 
+    line (5); 
+    cursor (1, 20); 
+    putline (""4"Bitte warten !"); 
+    putline ("    - Der Treiber wird generiert."); 
+    driver name := "printer." + name + "(generiert)"; 
+    IF exists (driver name) 
+      THEN forget (driver name, quiet) 
+    FI; 
+    FILE VAR des file :: sequential file (modify, description file name), 
+             mod file :: sequential file (modify, module file name), 
+             driver file :: sequential file (output, driver name). 
+ 
+  read description: 
+    to line (des file, 1); 
+    col (des file, 1);
+    downety (des file, "$" + name + "$"); 
+    IF eof (des file) 
+      THEN errorstop ("Beschreibung von """ + name + """ nicht im"13""10"" + 
+                      "Descriptions-File enthalten")
+    FI; 
+    TEXT VAR description :: "", 
+             record; 
+    BOOL VAR done :: FALSE; 
+    read record (des file, record); 
+    record := subtext (record, col (des file) + LENGTH name + 2);
+    WHILE NOT eof (des file) AND NOT done REP 
+      treat record
+    PER. 
+ 
+  treat record: 
+    INT VAR dollar pos :: pos (record, "$"); 
+    IF dollar pos = 0
+      THEN description CAT compress (record); 
+           down (des file); 
+           read record (des file, record)  
+      ELSE description CAT compress (subtext (record, 1, dollar pos - 1));
+           col (des file, dollar pos); 
+           done := TRUE; 
+    FI. 
+ 
+  build programme: 
+    get module name; 
+    WHILE still modules REP 
+      find module; 
+      transfer module; 
+      get module name 
+    PER. 
+ 
+  get module name: 
+    INT VAR semicol pos :: pos (description, ";"); 
+    TEXT VAR module name; 
+    IF semicol pos > 0 
+      THEN module name := subtext (description, 1, semicol pos - 1); 
+           description := subtext (description, semicol pos + 1) 
+      ELSE module name := description; 
+           description := "" 
+    FI.
+ 
+  still modules: 
+    module name <> "" OR description <> "". 
+ 
+  find module: 
+    to line (mod file, 1); 
+    col (mod file, 1); 
+    downety (mod file, "$" + module name + "$"); 
+    IF eof (mod file) 
+      THEN errorstop ("Modul """ + module name + """ nicht im"13""10"" + 
+                      "Modul-File enthalten")
+    FI. 
+ 
+  transfer module: 
+    done := FALSE; 
+    read record (mod file, record); 
+    record := subtext (record, col (mod file) + LENGTH module name + 2);
+    WHILE NOT eof (mod file) AND NOT done REP 
+      transfer record
+    PER. 
+ 
+  transfer record: 
+    dollar pos := pos (record, "$"); 
+    IF dollar pos = 0
+      THEN write (driver file, compress (record)); 
+           line (driver file);
+           down (mod file); 
+           read record (mod file, record)  
+      ELSE write (driver file, compress (subtext (record, 1, 
+                                            dollar pos - 1)));
+           col (mod file, dollar pos); 
+           done := TRUE; 
+           cout (line no (mod file)) 
+    FI. 
+ 
+  insert programme: 
+    IF online 
+      THEN putline ("    - Der Treiber wird insertiert.") 
+    FI;
+    check off; 
+    insert (driver name). 
+ 
+  forget files: 
+    IF service option = 0 
+      THEN forget (description file name, quiet); 
+           forget (module file name, quiet)
+    FI.
+END PROC generate; 
+ 
+PROC adjust positioning: 
+ 
+  IF positioning = 1 
+    THEN do ("std speed (""slow"")") 
+    ELSE do ("std speed (""fast"")") 
+  FI 
+END PROC adjust positioning; 
+ 
+PROC adjust quality: 
+ 
+  IF quality = 1 
+    THEN do ("std quality (""draft"")") 
+    ELSE do ("std quality (""nlq"")") 
+  FI 
+END PROC adjust quality; 
+ 
+PROC adjust paper feed: 
+ 
+  IF sheet feeder = 1 
+    THEN do ("paper feed (""sheet"")") 
+    ELSE do ("paper feed (""tractor"")") 
+  FI 
+END PROC adjust paperfeed; 
+ 
+treiber einrichten 
+ 
+END PACKET driver inst 9
+

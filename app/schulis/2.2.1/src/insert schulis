@@ -1,0 +1,472 @@
+LET versionsnummer=" 2.2.1";INT VAR kanal:=0,meinestation:=0;ROW 2TEXT VAR 
+ausbaustufe;ausbaustufe(1):="0,1,6,";ausbaustufe(2):="0,1,6,3,4,2,5,";INT 
+VAR ausbaustufenr:=1;LET teilsystem4="4",teilsystem6="6",teilsystem2="2",
+teilsystem5="5";LET praefixtrenner=".",teilsystemtrenner=",",allgemeinedatei=
+"0";TEXT VAR gueltigepraefixe:=",";TEXT VAR installverzeichnis:="";TASK VAR 
+tasksourcequelle,testtask;BOOL VAR fehlerbeiinsert:=FALSE ,
+idanichtinstallierbar:=FALSE ;LET stundenplanpraefix="Stundenplan-*";LET 
+kurswahlpraefix="Kurswahl-*";TEXT VAR qtt:="SCHULIS-Quellen";page;TEXT VAR 
+procaufruf1:="setze schulis zeichensatz(""",procaufruf2:=
+"setze ida zeichensatz(""",procaufrufende:=""")",gewzeichensatz:="";BOOL VAR 
+exists:=TRUE ;disablestop;gewzeichensatz:=font(1);IF iserrorTHEN clearerror;
+line;putline("Vor Installation bitte Fonttabelle in "+
+"Task 'configurator' laden!");enablestop;ELSE enablestop;WHILE existsREP page
+;cursor(10,10);put("Bitte gewünschten Schrifttyp für Listen und andere");
+cursor(10,11);put("Druckausgaben angeben : ");editget(gewzeichensatz);exists
+:=NOT fontexists(gewzeichensatz)PER ;procaufruf1CAT gewzeichensatz;
+procaufruf1CAT procaufrufende;procaufruf2CAT gewzeichensatz;procaufruf2CAT 
+procaufrufende;startinsertinggesamtsystem;commanddialogue(FALSE );forget(all)
+;commanddialogue(TRUE );FI ;BOOL PROC einzurichten(TEXT CONST teilsystemnr):
+pos(gueltigepraefixe,teilsystemtrenner+teilsystemnr+teilsystemtrenner)>0END 
+PROC einzurichten;TEXT PROC inv(TEXT CONST txt):""+txt+"�"ENDPROC inv;PROC 
+startinsertinggesamtsystem:TASK VAR t;INT VAR msgcode;DATASPACE VAR ds:=
+nilspace;maske;maskentexteinitialisieren;maskentexte;IF NOT maskeeditiert
+THEN LEAVE startinsertinggesamtsystemFI ;line;kanal:=channel;taskpassword(
+taskpasswort);beginpassword(beginnpasswort);fetch((ALL sourcetaskbaisydb)
+LIKE "*BAISY-0",sourcetaskbaisydb);INT VAR pospraefixende;THESAURUS VAR thes
+:=allLIKE "*.BAISY-0";TEXT VAR datenraumname;INT VAR indexthes:=0;get(thes,
+datenraumname,indexthes);WHILE indexthes>0REP pospraefixende:=pos(
+datenraumname,praefixtrenner);ausbaustufenr:=int(subtext(datenraumname,1,
+pospraefixende-1));forget(datenraumname,quiet);get(thes,datenraumname,
+indexthes)PER ;gueltigepraefixeCAT ausbaustufe(ausbaustufenr);
+tasksourcequelle:=sourcetaskbaisy;checkoff;fetchundinsert("BASIS.files");
+break(quiet);disablestop;IF NOT fehlerbeiinsertTHEN begin("ACCESS",PROC 
+startinsertingaccess,t);call(t,0,ds,msgcode);IF msgcode=0THEN fehlerbeiinsert
+:=TRUE FI ;FI ;IF NOT fehlerbeiinsertTHEN begin("baisy server",PROC 
+startinsertingbaisyserver,t);call(t,0,ds,msgcode);IF msgcode=0THEN 
+fehlerbeiinsert:=TRUE FI ;FI ;IF NOT fehlerbeiinsertTHEN begin("ida server",
+PROC startinsertingidaserver,t);call(t,0,ds,msgcode);IF msgcode=0THEN 
+fehlerbeiinsert:=TRUE FI ;FI ;IF NOT fehlerbeiinsertTHEN begin(
+"anschreiben server",PROC startinsertinganschreibenserver,t);call(t,0,ds,
+msgcode);IF msgcode=0THEN fehlerbeiinsert:=TRUE FI ;FI ;IF NOT 
+fehlerbeiinsertTHEN begin("statistik server",PROC 
+startinsertingstatistikserver,t);call(t,0,ds,msgcode);IF msgcode=0THEN 
+fehlerbeiinsert:=TRUE FI ;FI ;IF NOT fehlerbeiinsertTHEN begin(
+"kurswahl server",PROC startinsertingkurswahlserver,t);call(t,0,ds,msgcode);
+IF msgcode=0THEN fehlerbeiinsert:=TRUE FI ;FI ;IF NOT fehlerbeiinsertTHEN 
+begin("stundenplan server",PROC startinsertingstundenplanserver,t);call(t,0,
+ds,msgcode);IF msgcode=0THEN fehlerbeiinsert:=TRUE FI ;FI ;IF NOT 
+fehlerbeiinsertTHEN begin("DB.kom",PROC startinsertingdbkom,t);call(t,0,ds,
+msgcode);IF msgcodeMOD 2=0THEN fehlerbeiinsert:=TRUE FI ;IF msgcode>=2THEN 
+idanichtinstallierbar:=TRUE FI FI ;clearerror;enablestop;continue(kanal);
+putline("Hier ist wieder "+name(myself));putline("SCHULIS ist "+fehler+
+" eingerichtet !");IF idanichtinstallierbarTHEN putline(
+"Das Modul ""Anwenderspezifische Druckausgaben"" wurde nicht eingerichtet,");
+putline("da die EUMEL-Textverarbeitung fehlt !");lineFI ;IF NOT 
+fehlerbeiinsertTHEN putline(
+"Bitte Task ""isp.archive"" unter SYSUR einrichten!");putline(
+"Bitte Task ""LOG"" unter SYSUR einrichten! <RETURN>")ELSE putline(
+"Bitte beliebige Taste (außer STOP und SV) drücken !")FI ;pause;
+freeglobalmanager.fehler:IF fehlerbeiinsertTHEN "FEHLERHAFT"ELSE 
+"ordnungsgemäß"FI .END PROC startinsertinggesamtsystem;PROC 
+startinsertingbaisyserver:TASK VAR ruftask;INT VAR msgcodert;DATASPACE VAR 
+dsrt:=nilspace;wait(dsrt,msgcodert,ruftask);continue(kanal);line;putline(name
+(myself));tasksourcequelle:=sourcetaskbaisy;line;IF taskpasswort=""THEN 
+taskpassword("-")ELSE taskpassword(taskpasswort)FI ;beginpassword(
+beginnpasswort);disablestop;fetch((ALL sourcetaskbaisydb)LIKE "*BAISY-*",
+sourcetaskbaisydb);INT VAR pospraefixende;THESAURUS VAR thes:=allLIKE (text(
+ausbaustufenr)+".BAISY-*");TEXT VAR datenraumname,neuername;INT VAR indexthes
+:=0;get(thes,datenraumname,indexthes);WHILE indexthes>0REP pospraefixende:=
+pos(datenraumname,praefixtrenner);neuername:=subtext(datenraumname,
+pospraefixende+1);rename(datenraumname,neuername);get(thes,datenraumname,
+indexthes)PER ;fetchundinsert("BAISY SERVER.files");IF iserrorTHEN putline(
+errormessage);clearerror;fehlerbeiinsert:=TRUE FI ;enablestop;putline(name(
+myself)+" ist komplett.");break(quiet);IF fehlerbeiinsertTHEN msgcodert:=0
+ELSE msgcodert:=1FI ;send(ruftask,msgcodert,dsrt);do("baisy server")END PROC 
+startinsertingbaisyserver;PROC startinsertingidaserver:TASK VAR ruftask;INT 
+VAR msgcodert;DATASPACE VAR dsrt:=nilspace;wait(dsrt,msgcodert,ruftask);
+continue(kanal);line;putline(name(myself));tasksourcequelle:=
+sourcetaskschulis;#fehlerbeiinsert:=FALSE ;#line;IF taskpasswort=""THEN 
+taskpassword("-")ELSE taskpassword(taskpasswort)FI ;beginpassword(
+beginnpasswort);disablestop;fetchundinsert("0.IDA SERVER.files");IF iserror
+THEN putline(errormessage);clearerror;fehlerbeiinsert:=TRUE FI ;enablestop;
+putline(name(myself)+" ist komplett.");break(quiet);IF fehlerbeiinsertTHEN 
+msgcodert:=0ELSE msgcodert:=1FI ;send(ruftask,msgcodert,dsrt);do("ida server"
+)END PROC startinsertingidaserver;PROC startinsertingstundenplanserver:TASK 
+VAR ruftask;INT VAR msgcodert;DATASPACE VAR dsrt:=nilspace;wait(dsrt,
+msgcodert,ruftask);continue(kanal);line;putline(name(myself));#
+fehlerbeiinsert:=FALSE ;#line;taskpassword("-");beginpassword("-");fetch((
+ALL sourcetaskschulisdb)LIKE stundenplanpraefix,sourcetaskschulisdb);putline(
+name(myself)+" ist komplett.");break(quiet);msgcodert:=1;send(ruftask,
+msgcodert,dsrt);freeglobalmanager;END PROC startinsertingstundenplanserver;
+PROC startinsertingstatistikserver:TASK VAR ruftask;INT VAR msgcodert;
+DATASPACE VAR dsrt:=nilspace;wait(dsrt,msgcodert,ruftask);continue(kanal);
+line;putline(name(myself));tasksourcequelle:=sourcetaskschulis;#
+fehlerbeiinsert:=FALSE ;#line;IF taskpasswort=""THEN taskpassword("-")ELSE 
+taskpassword(taskpasswort)FI ;beginpassword(beginnpasswort);disablestop;
+fetchundinsert("5.STATISTIK SERVER.files");IF iserrorTHEN putline(
+errormessage);clearerror;fehlerbeiinsert:=TRUE FI ;enablestop;putline(name(
+myself)+" ist komplett.");break(quiet);IF fehlerbeiinsertTHEN msgcodert:=0
+ELSE msgcodert:=1FI ;send(ruftask,msgcodert,dsrt);do("statistik manager")END 
+PROC startinsertingstatistikserver;PROC startinsertingkurswahlserver:TASK 
+VAR ruftask;INT VAR msgcodert;DATASPACE VAR dsrt:=nilspace;wait(dsrt,
+msgcodert,ruftask);continue(kanal);line;putline(name(myself));#
+fehlerbeiinsert:=FALSE ;#line;taskpassword("-");beginpassword("-");fetch((
+ALL sourcetaskschulisdb)LIKE kurswahlpraefix,sourcetaskschulisdb);putline(
+name(myself)+" ist komplett.");break(quiet);msgcodert:=1;send(ruftask,
+msgcodert,dsrt);freeglobalmanager;END PROC startinsertingkurswahlserver;PROC 
+startinsertinganschreibenserver:TASK VAR ruftask;INT VAR msgcodert;DATASPACE 
+VAR dsrt:=nilspace;wait(dsrt,msgcodert,ruftask);continue(kanal);line;putline(
+name(myself));#fehlerbeiinsert:=FALSE ;#line;taskpassword(taskpasswort);
+beginpassword(beginnpasswort);disablestop;fetch("VORDRUCKE.files",
+sourcetaskvordrucke);fetch(ALL "VORDRUCKE.files",sourcetaskvordrucke);
+clearerror;enablestop;putline(name(myself)+" ist komplett.");break(quiet);
+msgcodert:=1;send(ruftask,msgcodert,dsrt);freeglobalmanager;END PROC 
+startinsertinganschreibenserver;PROC startinsertingdbdd:TASK VAR t,ruftask;
+INT VAR msgcodert,msgcode;DATASPACE VAR dsrt:=nilspace,ds:=nilspace;wait(dsrt
+,msgcodert,ruftask);continue(kanal);line;putline(name(myself));line;
+taskpassword(taskpasswort);beginpassword(beginnpasswort);disablestop;
+tasksourcequelle:=sourcetaskschulis;fetchundinsert("0.IDA SICHERUNG.files");
+tasksourcequelle:=sourcetaskbaisy;fetchundinsert("SICHERUNG.files");do(
+"postfix ("""")");do("ausgabe namen");do("kf (TRUE)");IF iserrorTHEN putline(
+errormessage);clearerror;fehlerbeiinsert:=TRUE FI ;enablestop;IF NOT 
+fehlerbeiinsertTHEN erzeugeeumelbasebaisy;erzeugeeumelbaseschulis;FI ;break(
+quiet);IF NOT fehlerbeiinsertTHEN begin("statistik sicherung",PROC 
+startinsertingstatistiksich,t);call(t,0,ds,msgcode);IF msgcode=0THEN 
+fehlerbeiinsert:=TRUE FI ;FI ;IF NOT fehlerbeiinsertTHEN begin(
+"schulis sicherung",PROC startinsertingschulissich,t);call(t,0,ds,msgcode);
+IF msgcode=0THEN fehlerbeiinsert:=TRUE FI ;FI ;IF NOT fehlerbeiinsertTHEN 
+begin("baisy sicherung",PROC startinsertingbaisysich,t);call(t,0,ds,msgcode);
+IF msgcode=0THEN fehlerbeiinsert:=TRUE FI ;FI ;IF NOT fehlerbeiinsertTHEN 
+begin("ida sicherung",PROC startinsertingidasich,t);call(t,0,ds,msgcode);IF 
+msgcode=0THEN fehlerbeiinsert:=TRUE FI ;FI ;IF fehlerbeiinsertTHEN msgcodert
+:=0ELSE msgcodert:=1FI ;send(ruftask,msgcodert,dsrt);freeglobalmanagerEND 
+PROC startinsertingdbdd;PROC startinsertingstatistiksich:TASK VAR ruftask;
+INT VAR msgcodert;DATASPACE VAR dsrt:=nilspace;wait(dsrt,msgcodert,ruftask);
+continue(kanal);line;putline(name(myself));line;taskpassword(taskpasswort);
+beginpassword(beginnpasswort);break(quiet);msgcodert:=1;send(ruftask,
+msgcodert,dsrt);do("statistik(TRUE)");do(" postfix ("""") ");commanddialogue(
+FALSE );do("isp monitor sicherungstask(""Statistik"")")END PROC 
+startinsertingstatistiksich;PROC startinsertingidasich:TASK VAR ruftask;INT 
+VAR msgcodert;DATASPACE VAR dsrt:=nilspace;wait(dsrt,msgcodert,ruftask);
+continue(kanal);line;putline(name(myself));line;taskpassword(taskpasswort);
+beginpassword(beginnpasswort);break(quiet);msgcodert:=1;send(ruftask,
+msgcodert,dsrt);do("ida(TRUE)");do("open mit loeschen (FALSE)");do(
+" postfix ("""") ");do(" fetch dd (""EUMELbase.schulis"") ");do(
+" BOOL VAR b:: db open (""EUMELbase.schulis"") ");commanddialogue(FALSE );do(
+"isp monitor sicherungstask(""EUMELbase.schulis"")")ENDPROC 
+startinsertingidasich;PROC startinsertingschulissich:TASK VAR ruftask;INT 
+VAR msgcodert;DATASPACE VAR dsrt:=nilspace;wait(dsrt,msgcodert,ruftask);
+continue(kanal);line;putline(name(myself));line;taskpassword(taskpasswort);
+beginpassword(beginnpasswort);tasksourcequelle:=sourcetaskschulisdb;fetch((
+ALL tasksourcequelle)LIKE "EUMELbase.schulis*",tasksourcequelle);break(quiet)
+;msgcodert:=1;send(ruftask,msgcodert,dsrt);do(
+"isp monitor sicherungstask(""EUMELbase.schulis"")")ENDPROC 
+startinsertingschulissich;PROC startinsertingbaisysich:TASK VAR ruftask;INT 
+VAR msgcodert;DATASPACE VAR dsrt:=nilspace;wait(dsrt,msgcodert,ruftask);
+continue(kanal);line;putline(name(myself));line;taskpassword(taskpasswort);
+beginpassword(beginnpasswort);tasksourcequelle:=sourcetaskbaisydb;fetch((ALL 
+tasksourcequelle)LIKE "EUMELbase.baisy*",tasksourcequelle);fetch((ALL 
+tasksourcequelle)LIKE "*BAISY-*",tasksourcequelle);rename(text(ausbaustufenr)
++".BAISY-0","BAISY-0");rename(text(ausbaustufenr)+".BAISY-1","BAISY-1");break
+(quiet);msgcodert:=1;send(ruftask,msgcodert,dsrt);do(
+"isp monitor sicherungstask(""EUMELbase.baisy"")")ENDPROC 
+startinsertingbaisysich;PROC startinsertingdbkom:TASK VAR t,ruftask;INT VAR 
+msgcodert,msgcode;DATASPACE VAR dsrt:=nilspace,ds:=nilspace;wait(dsrt,
+msgcodert,ruftask);continue(kanal);line;putline(name(myself));
+tasksourcequelle:=sourcetaskbaisy;#fehlerbeiinsert:=FALSE ;#
+idanichtinstallierbar:=FALSE ;line;taskpassword(taskpasswort);beginpassword(
+beginnpasswort);disablestop;fetch("EUMELbase.schulis",sourcetaskschulisdb);
+fetchundinsert("DB.files");IF iserrorTHEN putline(errormessage);clearerror;
+fehlerbeiinsert:=TRUE FI ;enablestop;break(quiet);IF NOT fehlerbeiinsertTHEN 
+begin("DB.dd",PROC startinsertingdbdd,t);call(t,0,ds,msgcode);IF msgcode=0
+THEN fehlerbeiinsert:=TRUE FI ;FI ;IF NOT fehlerbeiinsertTHEN begin(
+"standard",PROC startinsertingstandard,t);call(t,0,ds,msgcode);IF msgcodeMOD 
+2=0THEN fehlerbeiinsert:=TRUE FI ;IF msgcode>=2THEN idanichtinstallierbar:=
+TRUE FI FI ;continue(kanal);putline(name(myself)+" ist komplett.");break(
+quiet);IF fehlerbeiinsertTHEN msgcodert:=0ELSE msgcodert:=1FI ;IF 
+idanichtinstallierbarTHEN msgcodert:=msgcodert+2FI ;send(ruftask,msgcodert,
+dsrt);freeglobalmanager;END PROC startinsertingdbkom;PROC 
+startinsertingstandard:TASK VAR t,ruftask;INT VAR msgcodert,msgcode;
+DATASPACE VAR dsrt:=nilspace,ds:=nilspace;wait(dsrt,msgcodert,ruftask);
+continue(kanal);line;putline(name(myself));tasksourcequelle:=sourcetaskbaisy;
+#fehlerbeiinsert:=FALSE ;#idanichtinstallierbar:=FALSE ;line;taskpassword(
+taskpasswort);beginpassword(beginnpasswort);disablestop;fetchundinsert(
+"STANDARD.files");IF iserrorTHEN putline(errormessage);clearerror;
+fehlerbeiinsert:=TRUE FI ;enablestop;break(quiet);IF einzurichten(teilsystem6
+)THEN IF NOT fehlerbeiinsertTHEN IF procexists("autopageform")THEN begin(
+"ida",PROC startinsertingida,t);call(t,0,ds,msgcode);IF msgcode=0THEN 
+fehlerbeiinsert:=TRUE FI ELSE idanichtinstallierbar:=TRUE FI FI ;FI ;
+fehlerbeiinsert:=FALSE ;IF NOT fehlerbeiinsertTHEN begin(
+"anschrlist werkzeuge",PROC startinsertinganschrlistwerkzeuge,t);call(t,0,ds,
+msgcode);IF msgcode=0THEN fehlerbeiinsert:=TRUE FI ;FI ;fehlerbeiinsert:=
+FALSE ;IF NOT fehlerbeiinsertTHEN begin("erfassungen",PROC 
+startinsertingerfassungen,t);call(t,0,ds,msgcode);IF msgcode=0THEN 
+fehlerbeiinsert:=TRUE FI ;FI ;fehlerbeiinsert:=FALSE ;IF NOT fehlerbeiinsert
+THEN begin("anwendung",PROC startinsertinganwendung,t);call(t,0,ds,msgcode);
+IF msgcode=0THEN fehlerbeiinsert:=TRUE FI ;FI ;continue(kanal);putline(name(
+myself)+" ist komplett.");break(quiet);IF fehlerbeiinsertTHEN msgcodert:=0
+ELSE msgcodert:=1FI ;IF idanichtinstallierbarTHEN msgcodert:=msgcodert+2FI ;
+send(ruftask,msgcodert,dsrt);freeglobalmanager;END PROC 
+startinsertingstandard;PROC startinsertingaccess:TASK VAR t,ruftask;INT VAR 
+msgcodert,msgcode;DATASPACE VAR dsrt:=nilspace,ds:=nilspace;wait(dsrt,
+msgcodert,ruftask);continue(kanal);line;putline(name(myself));
+tasksourcequelle:=sourcetaskeumelbase;#fehlerbeiinsert:=FALSE ;#line;
+taskpassword(taskpasswort);beginpassword(beginnpasswort);disablestop;
+fetchundinsert("ACCESS.files");IF iserrorTHEN putline(errormessage);
+clearerror;fehlerbeiinsert:=TRUE FI ;enablestop;break(quiet);IF NOT 
+fehlerbeiinsertTHEN begin("LOCAL",PROC startinsertinglocal,t);call(t,0,ds,
+msgcode);IF msgcode=0THEN fehlerbeiinsert:=TRUE FI ;FI ;IF NOT 
+fehlerbeiinsertTHEN begin("DB REORG",PROC startinsertingdbreorg,t);call(t,0,
+ds,msgcode);IF msgcode=0THEN fehlerbeiinsert:=TRUE FI ;FI ;continue(kanal);
+putline(name(myself)+" ist komplett.");break(quiet);IF fehlerbeiinsertTHEN 
+msgcodert:=0ELSE msgcodert:=1FI ;send(ruftask,msgcodert,dsrt);
+freeglobalmanagerEND PROC startinsertingaccess;PROC startinsertinglocal:TASK 
+VAR t,ruftask;INT VAR msgcodert,msgcode;DATASPACE VAR dsrt:=nilspace,ds:=
+nilspace;wait(dsrt,msgcodert,ruftask);continue(kanal);line;putline(name(
+myself));tasksourcequelle:=sourcetaskschulis;line;taskpassword(taskpasswort);
+beginpassword(beginnpasswort);disablestop;fetchundinsert("0.LOCAL.files");IF 
+iserrorTHEN putline(errormessage);clearerror;fehlerbeiinsert:=TRUE FI ;
+enablestop;break(quiet);IF NOT fehlerbeiinsertTHEN begin("MM",PROC 
+startinsertingmm,t);call(t,0,ds,msgcode);IF msgcode=0THEN fehlerbeiinsert:=
+TRUE FI ;FI ;continue(kanal);putline(name(myself)+" ist komplett.");break(
+quiet);IF fehlerbeiinsertTHEN msgcodert:=0ELSE msgcodert:=1FI ;send(ruftask,
+msgcodert,dsrt);freeglobalmanagerEND PROC startinsertinglocal;PROC 
+startinsertingdbreorg:TASK VAR t,ruftask;INT VAR msgcodert,msgcode;DATASPACE 
+VAR dsrt:=nilspace,ds:=nilspace;wait(dsrt,msgcodert,ruftask);continue(kanal);
+line;putline(name(myself));tasksourcequelle:=sourcetaskbaisy;line;
+taskpassword(taskpasswort);beginpassword(beginnpasswort);disablestop;
+fetchundinsert("DB REORG.files");IF iserrorTHEN putline(errormessage);
+clearerror;fehlerbeiinsert:=TRUE FI ;enablestop;putline(name(myself)+
+" ist komplett.");break(quiet);IF fehlerbeiinsertTHEN msgcodert:=0ELSE 
+msgcodert:=1FI ;send(ruftask,msgcodert,dsrt);do("db reorganisation manager")
+END PROC startinsertingdbreorg;PROC startinsertingmm:TASK VAR ruftask;INT 
+VAR msgcodert;DATASPACE VAR dsrt:=nilspace;wait(dsrt,msgcodert,ruftask);
+continue(kanal);line;putline(name(myself));tasksourcequelle:=
+sourcetaskeumelbase;line;taskpassword(taskpasswort);beginpassword(
+beginnpasswort);disablestop;fetchundinsert("MM BAISY.files");IF iserrorTHEN 
+fehlerbeiinsert:=TRUE ;putline(errormessage);clearerrorFI ;enablestop;putline
+(name(myself)+" ist komplett.");enablestop;break(quiet);IF fehlerbeiinsert
+THEN msgcodert:=0ELSE msgcodert:=1FI ;send(ruftask,msgcodert,dsrt);do(
+"generate db manager")END PROC startinsertingmm;PROC erzeugeeumelbasebaisy:
+disablestop;testtask:=/"EUMELbase.baisy";IF iserrorTHEN clearerror;
+tasksourcequelle:=sourcetaskbaisydb;fetch((ALL tasksourcequelle)LIKE 
+"EUMELbase.baisy*",tasksourcequelle);do(
+"BOOL VAR b:: create db (""EUMELbase.baisy"")");do(
+"restore db (""EUMELbase.baisy"")");commanddialogue(FALSE );forget(all);
+commanddialogue(TRUE );FI ;enablestopENDPROC erzeugeeumelbasebaisy;PROC 
+erzeugeeumelbaseschulis:disablestop;testtask:=/"EUMELbase.schulis";IF iserror
+THEN clearerror;tasksourcequelle:=sourcetaskschulisdb;fetch((ALL 
+tasksourcequelle)LIKE "EUMELbase.schulis*",tasksourcequelle);do(
+"BOOL VAR b:: create db (""EUMELbase.schulis"")");do(
+"restore db (""EUMELbase.schulis"")");commanddialogue(FALSE );forget(all);
+commanddialogue(TRUE );FI ;enablestopENDPROC erzeugeeumelbaseschulis;PROC 
+startinsertinganwendung:TASK VAR ruftask,t;INT VAR msgcodert,i;DATASPACE VAR 
+dsrt:=nilspace;wait(dsrt,msgcodert,ruftask);continue(kanal);line;putline(name
+(myself));tasksourcequelle:=sourcetaskschulis;line;taskpassword(taskpasswort)
+;beginpassword(beginnpasswort);disablestop;tasksourcequelle:=sourcetaskbaisy;
+checkoff;fetchundinsert("ANWENDUNG.files");IF iserrorTHEN putline(
+errormessage);clearerror;fehlerbeiinsert:=TRUE FI ;enablestop;break(quiet);
+FOR iFROM 1UPTO anzahlschulistasksREP IF NOT fehlerbeiinsertTHEN begin(
+"schulis"+text(i),PROC startschulis1,t);FI ;PER ;continue(kanal);putline(name
+(myself)+" ist komplett.");break(quiet);IF fehlerbeiinsertTHEN msgcodert:=0
+ELSE msgcodert:=1FI ;send(ruftask,msgcodert,dsrt);freeglobalmanager;END PROC 
+startinsertinganwendung;PROC startinsertinganschrlistwerkzeuge:TASK VAR 
+ruftask,t;INT VAR msgcodert,msgcode;DATASPACE VAR dsrt:=nilspace,ds:=nilspace
+;wait(dsrt,msgcodert,ruftask);continue(kanal);line;putline(name(myself));
+tasksourcequelle:=sourcetaskschulis;#fehlerbeiinsert:=FALSE ;#line;
+taskpassword(taskpasswort);beginpassword(beginnpasswort);disablestop;
+fetchundinsert("0.ANSCHRLISTWERKZEUGE.files");do(procaufruf1);fetchundinsert(
+"0.ANSCHRLISTWERKZEUGE TEIL2.files");IF iserrorTHEN putline(errormessage);
+clearerror;fehlerbeiinsert:=TRUE FI ;enablestop;break(quiet);IF einzurichten(
+teilsystem5)THEN fehlerbeiinsert:=FALSE ;IF NOT fehlerbeiinsertTHEN 
+installverzeichnis:="5.STATISTIK.files";begin("statistik",PROC 
+startinsertinganwendungstask,t);call(t,0,ds,msgcode);IF msgcode=0THEN 
+fehlerbeiinsert:=TRUE FI ;FI ;FI ;IF einzurichten(teilsystem2)THEN 
+fehlerbeiinsert:=FALSE ;IF NOT fehlerbeiinsertTHEN installverzeichnis:=
+"2.AUSWERTUNGEN KURSWAHL.files";begin("auswertungen kurswahl",PROC 
+startinsertinganwendungstask,t);call(t,0,ds,msgcode);IF msgcode=0THEN 
+fehlerbeiinsert:=TRUE FI ;FI ;FI ;IF einzurichten(teilsystem4)THEN 
+fehlerbeiinsert:=FALSE ;IF NOT fehlerbeiinsertTHEN installverzeichnis:=
+"4.AUSWERTUNGEN STUNDENPLAN 3.files";begin("auswertungen stundenplan 3",PROC 
+startinsertinganwendungstask,t);call(t,0,ds,msgcode);IF msgcode=0THEN 
+fehlerbeiinsert:=TRUE FI ;FI ;fehlerbeiinsert:=FALSE ;IF NOT fehlerbeiinsert
+THEN installverzeichnis:="4.AUSWERTUNGEN STUNDENPLAN 2.files";begin(
+"auswertungen stundenplan 2",PROC startinsertinganwendungstask,t);call(t,0,ds
+,msgcode);IF msgcode=0THEN fehlerbeiinsert:=TRUE FI ;FI ;fehlerbeiinsert:=
+FALSE ;IF NOT fehlerbeiinsertTHEN installverzeichnis:=
+"4.AUSWERTUNGEN STUNDENPLAN.files";begin("auswertungen stundenplan",PROC 
+startinsertinganwendungstask,t);call(t,0,ds,msgcode);IF msgcode=0THEN 
+fehlerbeiinsert:=TRUE FI ;FI ;FI ;fehlerbeiinsert:=FALSE ;IF NOT 
+fehlerbeiinsertTHEN installverzeichnis:="0.ANSCHREIBEN.files";begin(
+"anschreiben",PROC startinsertinganwendungstask,t);call(t,0,ds,msgcode);IF 
+msgcode=0THEN fehlerbeiinsert:=TRUE FI ;FI ;fehlerbeiinsert:=FALSE ;IF NOT 
+fehlerbeiinsertTHEN installverzeichnis:="0.LISTEN 2.files";begin("listen 2",
+PROC startinsertinganwendungstask,t);call(t,0,ds,msgcode);IF msgcode=0THEN 
+fehlerbeiinsert:=TRUE FI ;FI ;fehlerbeiinsert:=FALSE ;IF NOT fehlerbeiinsert
+THEN installverzeichnis:="0.LISTEN.files";begin("listen",PROC 
+startinsertinganwendungstask,t);call(t,0,ds,msgcode);IF msgcode=0THEN 
+fehlerbeiinsert:=TRUE FI ;FI ;continue(kanal);putline(name(myself)+
+" ist komplett.");break(quiet);IF fehlerbeiinsertTHEN msgcodert:=0ELSE 
+msgcodert:=1FI ;send(ruftask,msgcodert,dsrt);freeglobalmanager;END PROC 
+startinsertinganschrlistwerkzeuge;PROC startinsertinganwendungstask:TASK VAR 
+ruftask,t;INT VAR msgcodert;DATASPACE VAR dsrt:=nilspace;wait(dsrt,msgcodert,
+ruftask);continue(kanal);line;putline(name(myself));tasksourcequelle:=
+sourcetaskschulis;#fehlerbeiinsert:=FALSE ;#line;taskpassword(taskpasswort);
+beginpassword(beginnpasswort);disablestop;fetchundinsert(installverzeichnis);
+IF iserrorTHEN putline(errormessage);clearerror;fehlerbeiinsert:=TRUE FI ;
+enablestop;break(quiet);IF NOT fehlerbeiinsertTHEN begin(name(myself)+
+" manager",PROC starteaufrufmanager,t);FI ;continue(kanal);putline(name(
+myself)+" ist komplett.");break(quiet);IF fehlerbeiinsertTHEN msgcodert:=0
+ELSE msgcodert:=1FI ;send(ruftask,msgcodert,dsrt);freeglobalmanager;END PROC 
+startinsertinganwendungstask;PROC startinsertingerfassungen:TASK VAR ruftask,
+t;INT VAR msgcodert,msgcode;DATASPACE VAR dsrt:=nilspace,ds:=nilspace;wait(
+dsrt,msgcodert,ruftask);continue(kanal);line;putline(name(myself));
+tasksourcequelle:=sourcetaskschulis;#fehlerbeiinsert:=FALSE ;#line;
+taskpassword(taskpasswort);beginpassword(beginnpasswort);disablestop;
+fetchundinsert("0.ERFASSUNGEN.files");IF iserrorTHEN putline(errormessage);
+clearerror;fehlerbeiinsert:=TRUE FI ;enablestop;break(quiet);IF einzurichten(
+teilsystem2)THEN fehlerbeiinsert:=FALSE ;IF NOT fehlerbeiinsertTHEN 
+installverzeichnis:="2.ERFASSUNGEN KURSWAHL 2.files";begin(
+"erfassungen kurswahl 2",PROC startinsertinganwendungstask,t);call(t,0,ds,
+msgcode);IF msgcode=0THEN fehlerbeiinsert:=TRUE FI ;FI ;fehlerbeiinsert:=
+FALSE ;IF NOT fehlerbeiinsertTHEN installverzeichnis:=
+"2.ERFASSUNGEN KURSWAHL.files";begin("erfassungen kurswahl",PROC 
+startinsertinganwendungstask,t);call(t,0,ds,msgcode);IF msgcode=0THEN 
+fehlerbeiinsert:=TRUE FI ;FI ;FI ;IF einzurichten(teilsystem4)THEN IF NOT 
+fehlerbeiinsertTHEN installverzeichnis:="4.ERFASSUNGEN STUNDENPLAN.files";
+begin("erfassungen stundenplan",PROC startinsertingerfassungenstundenplan,t);
+call(t,0,ds,msgcode);IF msgcode=0THEN fehlerbeiinsert:=TRUE FI ;FI ;FI ;
+fehlerbeiinsert:=FALSE ;IF NOT fehlerbeiinsertTHEN installverzeichnis:=
+"0.ERFASSUNGEN EINZELN 2.files";begin("erfassungen einzeln 2",PROC 
+startinsertinganwendungstask,t);call(t,0,ds,msgcode);IF msgcode=0THEN 
+fehlerbeiinsert:=TRUE FI ;FI ;fehlerbeiinsert:=FALSE ;IF NOT fehlerbeiinsert
+THEN installverzeichnis:="0.ERFASSUNGEN EINZELN.files";begin(
+"erfassungen einzeln",PROC startinsertinganwendungstask,t);call(t,0,ds,
+msgcode);IF msgcode=0THEN fehlerbeiinsert:=TRUE FI ;FI ;fehlerbeiinsert:=
+FALSE ;IF einzurichten(teilsystem4)THEN IF NOT fehlerbeiinsertTHEN 
+installverzeichnis:="4.ERFASSUNGEN LISTENWEISE 3.files";begin(
+"erfassungen listenweise 3",PROC startinsertinganwendungstask,t);call(t,0,ds,
+msgcode);IF msgcode=0THEN fehlerbeiinsert:=TRUE FI ;FI ;fehlerbeiinsert:=
+FALSE ;IF NOT fehlerbeiinsertTHEN installverzeichnis:=
+"4.ERFASSUNGEN LISTENWEISE 2.files";begin("erfassungen listenweise 2",PROC 
+startinsertinganwendungstask,t);call(t,0,ds,msgcode);IF msgcode=0THEN 
+fehlerbeiinsert:=TRUE FI ;FI ;FI ;fehlerbeiinsert:=FALSE ;IF NOT 
+fehlerbeiinsertTHEN installverzeichnis:="0.ERFASSUNGEN LISTENWEISE.files";
+begin("erfassungen listenweise",PROC startinsertinganwendungstask,t);call(t,0
+,ds,msgcode);IF msgcode=0THEN fehlerbeiinsert:=TRUE FI ;FI ;continue(kanal);
+putline(name(myself)+" ist komplett.");break(quiet);IF fehlerbeiinsertTHEN 
+msgcodert:=0ELSE msgcodert:=1FI ;send(ruftask,msgcodert,dsrt);
+freeglobalmanager;END PROC startinsertingerfassungen;PROC 
+startinsertingerfassungenstundenplan:TASK VAR ruftask,t;INT VAR msgcodert;
+DATASPACE VAR dsrt:=nilspace;wait(dsrt,msgcodert,ruftask);continue(kanal);
+line;putline(name(myself));tasksourcequelle:=sourcetaskschulis;#
+fehlerbeiinsert:=FALSE ;#line;taskpassword(taskpasswort);beginpassword(
+beginnpasswort);disablestop;fetchundinsert("4.ERFASSUNGEN STUNDENPLAN.files")
+;IF iserrorTHEN putline(errormessage);clearerror;fehlerbeiinsert:=TRUE FI ;
+enablestop;break(quiet);IF NOT fehlerbeiinsertTHEN begin(name(myself)+
+" manager",PROC starteaufrufmanagersingletask,t);FI ;continue(kanal);putline(
+name(myself)+" ist komplett.");break(quiet);IF fehlerbeiinsertTHEN msgcodert
+:=0ELSE msgcodert:=1FI ;send(ruftask,msgcodert,dsrt);freeglobalmanager;END 
+PROC startinsertingerfassungenstundenplan;PROC starteaufrufmanager:do(
+"starte aufruf manager")ENDPROC starteaufrufmanager;PROC 
+starteaufrufmanagersingletask:do("starte aufruf manager(1)")ENDPROC 
+starteaufrufmanagersingletask;PROC startinsertingida:TASK VAR ruftask,t;INT 
+VAR msgcodert;DATASPACE VAR dsrt:=nilspace;wait(dsrt,msgcodert,ruftask);
+continue(kanal);line;putline(name(myself));tasksourcequelle:=
+sourcetaskschulis;line;taskpassword(taskpasswort);beginpassword(
+beginnpasswort);disablestop;fetchundinsert("6.IDA.files");do(procaufruf2);IF 
+iserrorTHEN putline(errormessage);clearerror;fehlerbeiinsert:=TRUE FI ;
+enablestop;break(quiet);IF NOT fehlerbeiinsertTHEN begin("ida manager",PROC 
+starteaufrufmanager,t);FI ;continue(kanal);putline(name(myself)+
+" ist komplett.");break(quiet);IF fehlerbeiinsertTHEN msgcodert:=0ELSE 
+msgcodert:=1FI ;send(ruftask,msgcodert,dsrt);freeglobalmanager;END PROC 
+startinsertingida;PROC startbaisy1:do("monitor")END PROC startbaisy1;PROC 
+startschulis1:disablestop;startschulisunterdisablestop;IF iserrorTHEN 
+clearerrorFI ;enablestop;do("monitor")END PROC startschulis1;PROC 
+startschulisunterdisablestop:enablestop;do(
+"oeffne datenbank (""EUMELbase.schulis"")");do("starte schulis");END PROC 
+startschulisunterdisablestop;PROC fetchundinsert(TEXT CONST datname):IF 
+fehlerbeiinsertTHEN LEAVE fetchundinsertFI ;disablestop;fetch(datname,
+tasksourcequelle);putline("Task "+name(myself)+" wird eingerichtet !");INT 
+VAR indexnr:=0;TEXT VAR thesname;THESAURUS VAR thes:=ALL datname;get(thes,
+thesname,indexnr);WHILE indexnr>0REP IF dateizuberuecksichtigen(thesname)
+THEN fetch(thesname,tasksourcequelle);putline(thesname);INT VAR taskkanal:=
+channel;break(quiet);insert(thesname);continue(taskkanal);IF iserrorTHEN 
+fehlerbeiinsert:=TRUE ;put(errormessage);clearerrorFI ;forget(thesname,quiet)
+FI ;get(thes,thesname,indexnr);PER ;commanddialogue(FALSE );forget(datname,
+quiet);commanddialogue(TRUE );enablestop.END PROC fetchundinsert;BOOL PROC 
+dateizuberuecksichtigen(TEXT CONST dateiname):INT VAR pospraefixende:=pos(
+dateiname,praefixtrenner);TEXT VAR dateipraefix:=subtext(dateiname,1,
+pospraefixende-1);IF dateipraefix=""THEN TRUE ELIF dateipraefix=
+allgemeinedateiTHEN TRUE ELIF dateipraefix>"9"THEN TRUE ELSE pos(
+gueltigepraefixe,teilsystemtrenner+dateipraefix+teilsystemtrenner)>0FI END 
+PROC dateizuberuecksichtigen;LET invers="",inversoff="",cdown=10,cup=3,esc=
+27,hop=1,zeilenlaenge=80,strichelement="=",maxiofelder=15;TYPE MASKENTEXTE =
+STRUCT (INT x,y,l,TEXT t,BOOL lfest);ROW maxiofelderMASKENTEXTE VAR mt;TASK 
+PROC sourcetask(INT CONST i):IF int(mt[i+1].t)<>meinestationTHEN int(mt[i+1].
+t)/mt[i].tELSE /mt[i].tFI ENDPROC sourcetask;TASK PROC sourcetaskbaisy:
+sourcetask(1)ENDPROC sourcetaskbaisy;TASK PROC sourcetaskschulis:sourcetask(3
+)ENDPROC sourcetaskschulis;TASK PROC sourcetaskeumelbase:sourcetask(5)
+ENDPROC sourcetaskeumelbase;TASK PROC sourcetaskvordrucke:sourcetask(7)
+ENDPROC sourcetaskvordrucke;TASK PROC sourcetaskbaisydb:sourcetask(9)ENDPROC 
+sourcetaskbaisydb;TASK PROC sourcetaskschulisdb:sourcetask(11)ENDPROC 
+sourcetaskschulisdb;INT PROC anzahlschulistasks:int(mt[13].t)ENDPROC 
+anzahlschulistasks;TEXT PROC taskpasswort:mt[14].tENDPROC taskpasswort;TEXT 
+PROC beginnpasswort:mt[15].tENDPROC beginnpasswort;PROC writexytext(INT 
+CONST x,y,TEXT CONST t):cursor(x,y);write(t)ENDPROC writexytext;PROC 
+writexyinvers(INT CONST x,y,TEXT CONST t):cursor(x,y);write(invers+t+
+inversoff)ENDPROC writexyinvers;PROC strich(INT CONST zeile):writexytext(1,
+zeile,zeilenlaenge*strichelement)ENDPROC strich;PROC kosmetik:page;strich(1);
+strich(4);strich(23);kopf.kopf:writexyinvers(27,2," S  C  H  U  L  I  S ");
+writexytext(10,3,"Installationsprogramm für SCHULIS Version "+versionsnummer)
+.ENDPROC kosmetik;PROC maske:kosmetik;fuss;rumpf.fuss:writexyinvers(2,24,
+"ESC HOP = Start   CURSOR UP/DOWN = nächstes/voriges Feld   ESC ESC = Abbruch"
+);.rumpf:writexytext(3,5,
+"BAISY-Quelltexte in Task    :                             auf Station:");
+writexytext(3,7,
+"SCHULIS-Quelltexte in Task  :                             auf Station:");
+writexytext(3,9,
+"EUMELbase-Quelltexte in Task:                             auf Station:");
+writexytext(3,11,
+"Vordrucke in Task           :                             auf Station:");
+writexytext(3,13,
+"BAISY-Datenbank in Task     :                             auf Station:");
+writexytext(3,15,
+"SCHULIS-Datenbank in Task   :                             auf Station:");
+writexytext(3,20,"Anzahl der Arbeitsplätze für  SCHULIS:");writexytext(3,22,
+"Task-Password:                          Beginn-Password:").ENDPROC maske;
+TEXT PROC mystation:text(station(myself))ENDPROC mystation;PROC 
+maskentexteinitialisieren:setmt(1,33,5,27,"BAISY-Quellen");setmt(2,75,5,3,
+mystation,TRUE );setmt(3,33,7,27,"SCHULIS-Quellen");setmt(4,75,7,3,mystation,
+TRUE );setmt(5,33,9,27,"EUMELbase-Quellen");setmt(6,75,9,3,mystation,TRUE );
+setmt(7,33,11,27,"VORDRUCKE");setmt(8,75,11,3,mystation,TRUE );setmt(9,33,13,
+27,"BAISY-SCHULIS-DB");setmt(10,75,13,3,mystation,TRUE );setmt(11,33,15,27,
+"BAISY-SCHULIS-DB");setmt(12,75,15,3,mystation,TRUE );setmt(13,45,20,3,"1",
+TRUE );setmt(14,18,22,21,"");setmt(15,60,22,21,"");ENDPROC 
+maskentexteinitialisieren;PROC setmt(INT CONST i,px,py,pl,TEXT CONST pt):
+setmt(i,px,py,pl,pt,FALSE )ENDPROC setmt;PROC setmt(INT CONST i,px,py,pl,
+TEXT CONST pt,BOOL CONST pf):mt[i].x:=px;mt[i].y:=py;mt[i].l:=pl;mt[i].t:=pt;
+mt[i].lfest:=pfENDPROC setmt;PROC maskentexte:INT VAR i;FOR iFROM 1UPTO 
+maxiofelderREP writexytext(mt[i].x,mt[i].y,text(mt[i].t,mt[i].l))PER ENDPROC 
+maskentexte;BOOL PROC maskeeditiert:INT VAR fnr:=1,editl;TEXT VAR exitchar:=
+"";REP cursor(mt[fnr].x,mt[fnr].y);bestimmeeditlaenge;editget(mt[fnr].t,editl
+,mt[fnr].l,"�
+","��?",exitchar);exitchar:=exitcharSUB length(exitchar);
+SELECT code(exitchar)OF CASE cup:vorigesfeldCASE cdown:naechstesfeldCASE esc:
+kosmetik;cursor(8,10);IF yes(
+"Soll die Installation tatsächlich abgebrochen werden")THEN LEAVE 
+maskeeditiertWITH FALSE ELSE restorescreenFI CASE hop:kosmetik;cursor(1,10);
+IF yes("Soll mit der Installation von SCHULIS begonnen werden")THEN page;
+LEAVE maskeeditiertWITH TRUE ELSE restorescreenFI OTHERWISE :naechstesfeld
+ENDSELECT PER ;FALSE .restorescreen:maske;maskentexte.naechstesfeld:fnr:=(fnr
+MOD maxiofelder)+1.vorigesfeld:IF fnr=1THEN fnr:=maxiofelderELSE fnrDECR 1FI 
+.bestimmeeditlaenge:IF mt[fnr].lfestTHEN editl:=mt[fnr].lELSE editl:=maxint-1
+FI .ENDPROC maskeeditiert;LET endofpermanenttable=32767;DATASPACE VAR 
+bulletinds:=nilspace;FILE VAR bulletinfile;TEXT VAR buffer,objectname,pattern
+;INT VAR packetlink,linenumber;BOOL VAR found:=TRUE ;BOOL PROC procexists(
+TEXT CONST procname):prepbulletin;objectname:=compress(procname);scan(
+objectname);nextsymbol(pattern);packetlink:=endofpermanenttable;standardhelp.
+prepbulletin:forget(bulletinds);bulletinds:=nilspace;bulletinfile:=
+sequentialfile(output,bulletinds);linenumber:=0;buffer:="".standardhelp:
+toobject(pattern);found.END PROC procexists;PROC toobject(TEXT CONST 
+searchedobject):LET endofhashtable=1023;INT VAR permanentpointer,index,ntlink
+;ntlink:=0;FOR indexFROM 1UPTO LENGTH searchedobjectREP ntlinkINCR ntlink;IF 
+ntlink>endofhashtableTHEN ntlinkDECR endofhashtableFI ;ntlink:=(ntlink+code(
+searchedobjectSUB index))MOD 1024PER ;found:=FALSE ;WHILE yetanotherntentry
+REP permanentpointer:=cdbint(ntlink+1);objectname:=cdbtext(ntlink+2);IF 
+objectname=searchedobjectTHEN found:=TRUE ;LEAVE toobjectFI PER .
+yetanotherntentry:ntlink:=cdbint(ntlink);ntlink<>0.END PROC toobject;INT 
+PROC cdbint(INT CONST index):EXTERNAL 116END PROC cdbint;TEXT PROC cdbtext(
+INT CONST index):EXTERNAL 117END PROC cdbtext;
+

@@ -1,0 +1,366 @@
+PACKET transformation DEFINES transform,      (* Autor: Heiko Indenbirken*)
+                              diagonal,       (* Stand: 12.04.85         *)
+                              height, width,  (*Änderung: 05.08.86/13:14 *)
+                              set values,     (*Änderung: 17.09.86/19:57 *)
+                              get values,
+                              new values,
+                              projektion,
+                              window,
+                              viewport,
+                              view,
+                              oblique,
+                              orthographic,
+                              perspective:
+(* *******************  Hardwareunabhängiger Teil  ********************* *)
+(*     transform:   Die Prozedur projeziert einen 3-dimensionalen Vektor *)
+(*     ----------   (x, y, z) auf einen 2-dimensionalen (h, v)           *)
+(*     diagonal     Die Prozedur berechnet die Pixel als Prozent der     *)
+(*     ----------   Diagonalen der Zeichenfläche                         *)
+(*     height       Die Prozedur berechnet die Pixel als Prozent der     *)
+(*     ----------   Höhe der Zeichenfläche                               *)
+(*     width        Die Prozedur berechnet die Pixel als Prozent der     *)
+(*     ----------   Breite der Zeichenfläche                             *)
+(*                                                                       *)
+(*     set values:  Mit dieser Prozedur werden die Projektionsparameter  *)
+(*     -----------  gesetzt.                                             *)
+(*                  size:          Weltkoordinatenbereich                *)
+(*                           ((xmin,xmax),(ymin,ymax),(zmin,zmax))       *)
+(*                  limits:  Zeichenfläche                               *)
+(*                           ((h min, h max), (v min, v max))            *)
+(*                           Bei Werten < 2.0 werden die Werte als       *)
+(*                           Prozente interpretiert, ansonsten als       *)
+(*                           cm-Grössen.                                 *)
+(*     get values:  Übergibt die aktuellen Werte                         *)
+(*     -----------                                                       *)
+(*     new values:  Berechnet die neue Projektionsmatrix                 *)
+(*     -----------                                                       *)
+(*=======================================================================*)
+
+BOOL VAR perspective projektion :: FALSE;
+INT VAR hor pixel, vert pixel, i;
+REAL VAR  hor cm, vert cm,
+          h min limit, h max limit, v min limit, v max limit;
+ROW 5 ROW 5 REAL VAR p;
+ROW 3 ROW 2 REAL VAR size;
+ROW 2 ROW 2 REAL VAR limits;
+ROW 4 REAL VAR angles;
+ROW 2 REAL VAR obliques;
+ROW 3 REAL VAR perspectives;
+
+(*                 Initialisieren der Projektionsmatrizen                *)
+INT VAR d;
+window (0.0, 1.0, 0.0, 1.0, 0.0, 1.0);
+viewport (0.0, 0.0, 0.0, 0.0);
+view (0.0, 0.0, 1.0);
+view (0.0);
+orthographic;
+new values  (27.46, 19.21, 274, 192, d, d, d, d);
+
+PROC projektion (ROW 5 ROW 5 REAL VAR matrix):
+  matrix := p
+END PROC projektion;
+
+PROC oblique (REAL CONST a, b) :
+  set values (size, limits, angles, ROW 2 REAL : (a, b), ROW 3 REAL : (0.0, 0.0, 0.0)) 
+END PROC oblique;
+
+PROC orthographic :
+  set values (size, limits, angles, ROW 2 REAL : (0.0, 0.0), ROW 3 REAL : (0.0, 0.0, 0.0))
+END PROC orthographic;
+
+PROC perspective (REAL CONST cx, cy, cz) :
+  set values (size, limits, angles, ROW 2 REAL : (0.0, 0.0), ROW 3 REAL : (cx, cy, cz))
+END PROC perspective;
+
+PROC window (REAL CONST x min, x max, y min, y max) :
+  window (x min, x max, y min, y max, 0.0, 1.0)
+END PROC window;
+
+PROC window (REAL CONST x min, x max, y min, y max, z min, z max) :
+  set values (ROW 3 ROW 2 REAL : (ROW 2 REAL : (x min, x max),
+                                  ROW 2 REAL : (y min, y max),
+                                  ROW 2 REAL : (z min, z max)),
+              limits, angles, obliques, perspectives)
+END PROC window;
+
+PROC viewport (REAL CONST h min, h max, v min, v max) :
+  set values (size, ROW 2 ROW 2 REAL : (ROW 2 REAL : (h min, h max), 
+                                        ROW 2 REAL : (v min, v max)),
+              angles, obliques, perspectives)
+END PROC view port;
+
+PROC view (REAL CONST alpha) :
+  set values (size, limits, ROW 4 REAL : (alpha, angles(2), angles (3), angles (4)),
+              obliques, perspectives)
+END PROC view;
+
+PROC view (REAL CONST phi, theta):
+  set values (size, limits, ROW 4 REAL : (angles (1), sind (theta) * cosd (phi),
+                                          sind (theta) * sind (phi), cosd (theta)),
+              obliques, perspectives)
+END PROC view;
+
+PROC view (REAL CONST x, y, z) :
+  set values (size, limits, ROW 4 REAL : (angles (1), x, y, z), obliques, perspectives)
+END PROC view;
+
+PROC get values (ROW 3 ROW 2 REAL VAR act size, 
+                 ROW 2 ROW 2 REAL VAR act limits,
+                 ROW 4 REAL VAR act angles,
+                 ROW 2 REAL VAR act obliques,
+                 ROW 3 REAL VAR act perspectives) : 
+  act size        := size;
+  act limits      := limits;
+  act angles      := angles;
+  act obliques     := obliques;
+  act perspectives := perspectives;
+
+END PROC get values;
+
+PROC set values (ROW 3 ROW 2 REAL CONST new size, 
+                 ROW 2 ROW 2 REAL CONST new limits,
+                 ROW 4 REAL CONST new angles,
+                 ROW 2 REAL CONST new obliques,
+                 ROW 3 REAL CONST new perspectives) : 
+  size        := new size;
+  limits      := new limits;
+  angles      := new angles;
+  obliques     := new obliques;
+  perspectives := new perspectives
+
+END PROC set values;
+
+PROC new values (INT VAR h min range, h max range, v min range, v max range):
+  new values (hor cm, vert cm, hor pixel, vert pixel, 
+              h min range, h max range, v min range, v max range)
+END PROC new values;
+
+PROC new values (REAL CONST size hor, size vert,
+                 INT CONST pixel hor, pixel vert,
+                 INT VAR h min range, h max range,
+                         v min range, v max range):
+   remember screensize;
+   calc views;
+   calc projektion; 
+   calc limits;
+   calc projection frame;
+   normalize projektion;
+   set picture range;
+   set perspective mark  .
+
+remember screensize:
+  hor cm     := size hor;
+  vert cm    := size vert;
+  hor pixel  := pixel hor;
+  vert pixel := pixel vert  .
+
+calc views :
+  calc diagonale;
+  calc projektion;
+  calc angles;
+  calc normale;
+  calc matrix;
+  calc alpha angle  .
+
+calc diagonale:
+  REAL VAR diagonale := sqrt (angles [2] * angles [2] +
+                              angles [3] * angles [3] +
+                              angles [4] * angles [4])  .
+
+calc projektion:
+  REAL VAR projektion := sqrt (angles [2] * angles [2] +
+                               angles [4] * angles [4])  .
+
+calc angles:
+  REAL VAR sin p, cos p, sin t, cos t, sin a, cos a;
+
+  IF diagonale = 0.0
+  THEN sin p :=  0.0;  cos p :=  1.0;
+       sin t :=  0.0;  cos t :=  1.0
+  ELIF projektion = 0.0
+  THEN sin p :=  angles [3] / diagonale;
+       cos p :=  projektion / diagonale;
+       sin t :=  0.0;  cos t :=  1.0
+  ELSE sin p :=  angles [3] / diagonale;
+       cos p :=  projektion / diagonale;
+       sin t :=  angles [2] / projektion;
+       cos t :=  angles [4] / projektion
+  FI  .
+
+calc normale:
+  REAL VAR   sin p sin t := sin p * sin t,
+             sin p cos t := sin p * cos t,
+             cos p sin t := cos p * sin t,
+             cos p cos t := cos p * cos t,
+
+             dx          := size [1][2] - size [1][1],
+             dy          := size [2][2] - size [2][1],
+             dz          := size [3][2] - size [3][1],
+             norm az     := obliques [1] ,
+             norm bz     := obliques [2] ,
+             norm cx     := perspectives [1] / dx,
+             norm cy     := perspectives [2] / dy,
+             norm cz     := perspectives [3] / dz  .
+
+calc matrix:
+p :=  ROW 5 ROW 5 REAL :
+      (ROW 5 REAL : (  cos t       / dx - cos p sin t / dx * norm az ,
+                     - sin p sin t / dx - cos p sin t / dx * norm bz,
+                       0.0,
+                                        - cos p sin t / dx * norm cz,
+                       0.0 ),
+       ROW 5 REAL : (                   - sin p       / dy * norm az,
+                       cos p       / dy - sin p       / dy * norm bz,
+                       0.0, 
+                                        - sin p       / dy * norm cz,
+                       0.0 ),
+       ROW 5 REAL : (  sin t       / dz + cos p cos t / dz * norm az,
+                     + sin p cos t / dz + cos p cos t / dz * norm bz,
+                       0.0,
+                                        cos p cos t / dz * norm cz,
+                       0.0 ),
+       ROW 5 REAL : (- norm cx, - norm cy, 0.0, 1.0, 0.0 ),
+       ROW 5 REAL : (0.0, 0.0, 0.0, 0.0, 1.0))  .
+
+calc alpha angle:
+  IF angles (1) = 0.0
+  THEN set alpha as y vertical
+  ELSE sin a := sind (angles (1));
+       cos a := cosd (angles (1))
+  FI  .
+ 
+set alpha as y vertical :
+  REAL VAR r := sqrt (p(2)(1)**2 + p(2)(2)**2);
+  IF r = 0.0
+  THEN sin a := 0.0;
+       cos a := 1.0
+  ELSE sin a :=-p(2)(1)/r;
+       cos a := p(2)(2)/r
+  FI  .
+
+calc limits :
+  IF limits as percent
+  THEN calc percent limits
+  ELSE calc centimeter limits FI  .
+
+limits as percent:
+  limits [1][2] < 2.0 AND limits [2][2] < 2.0  .
+
+max limits:
+  h min limit := 0.0;
+
+  v min limit := 0.0;
+  v max limit := real (pixel vert)  .
+
+calc percent limits:
+  h min limit := real (pixel hor) * limits (1)(1)*size vert / size hor;
+  v min limit := limits (2)(1) * real (pixel vert);
+
+  IF limits [1][2] = 0.0
+  THEN h max limit := real (pixel hor)
+  ELSE h max limit := real (pixel hor) * limits [1][2]*size vert / size hor FI;
+
+  IF limits [2][2] = 0.0
+  THEN v max limit := real (pixel vert)
+  ELSE v max limit := limits (2)(2) * real (pixel vert)  FI  .
+
+calc centimeter limits:
+  h min limit := real (pixel hor) * (limits (1)(1)/size hor);
+  v min limit := real (pixel vert) * (limits (2)(1)/size vert);
+
+  IF limits [1][2] = 0.0
+  THEN h max limit := real (pixel hor)
+  ELSE h max limit := real (pixel hor) * (limits (1)(2)/size hor) FI;
+ 
+  IF limits [2][2] = 0.0
+  THEN v max limit := real (pixel vert)
+  ELSE v max limit := real (pixel vert) * (limits (2)(2)/size vert) FI  .
+
+calc projection frame:
+  REAL VAR h min := max real,  h max :=-max real,
+           v min := max real,  v max :=-max real;
+ 
+  extrema (size [1][1], size [2][1], size [3][1], h min, h max, v min, v max); 
+  extrema (size [1][2], size [2][1], size [3][1], h min, h max, v min, v max);
+  extrema (size [1][2], size [2][2], size [3][1], h min, h max, v min, v max); 
+  extrema (size [1][1], size [2][2], size [3][1], h min, h max, v min, v max);
+  extrema (size [1][1], size [2][1], size [3][2], h min, h max, v min, v max); 
+  extrema (size [1][2], size [2][1], size [3][2], h min, h max, v min, v max);
+  extrema (size [1][2], size [2][2], size [3][2], h min, h max, v min, v max); 
+  extrema (size [1][1], size [2][2], size [3][2], h min, h max, v min, v max)  .
+
+normalize projektion :
+  REAL VAR sh := (h max limit - h min limit) / (h max - h min),
+           sv := (v max limit - v min limit) / (v max - v min),
+           dh := h min limit - h min*sh,
+           dv := v min limit - v min*sv;
+
+  FOR i FROM 1 UPTO 5
+  REP REAL CONST p  i 1 := p (i)(1);
+      p (i)(1) :=  (p  i  1  * cos a - p (i)(2) * sin a) * sh;
+      p (i)(2) :=  (p  i  1  * sin a + p (i)(2) * cos a) * sv
+  PER;
+  p (5)(1) := dh;
+  p (5)(2) := dv  .
+
+set picture range:
+  h min range := int (h min limit-0.5);
+  h max range := int (h max limit+0.5);
+  v min range := int (v min limit-0.5);
+  v max range := int (v max limit+0.5)  .
+
+set perspective mark:
+  perspective projektion := perspectives [3] <> 0.0  .
+
+END PROC new values;
+ 
+PROC transform (REAL CONST x, y, z, INT VAR h, v) :
+  IF perspective projektion
+  THEN REAL CONST w :: 1.0/(x*p (1)(4) + y*p (2)(4) + z*p (3)(4) + 1.0);
+       h := int ((x*p (1)(1)+y*p (2)(1)+z*p (3)(1) + p (4)(1))*w + p (5)(1));
+       v := int ((x*p (1)(2)+y*p (2)(2)+z*p (3)(2) + p (4)(2))*w + p (5)(2))
+  ELSE h := int (x*p (1)(1)+y*p (2)(1)+z*p (3)(1) + p (5)(1));
+       v := int (x*p (1)(2)+y*p (2)(2)+z*p (3)(2) + p (5)(2));
+  FI;
+END PROC transform;
+
+PROC extrema (REAL CONST x, y, z, REAL VAR h min, h max, v min, v max):
+  REAL VAR h, v;
+  IF perspective projektion
+  THEN REAL CONST w :: 1.0/(x*p (1)(4) + y*p (2)(4) + z*p (3)(4) + 1.0);
+       h := (x*p (1)(1)+y*p (2)(1)+z*p (3)(1) +p (4)(1))*w;
+       v := (x*p (1)(2)+y*p (2)(2)+z*p (3)(2) +p (4)(2))*w
+  ELSE h := (x*p (1)(1)+y*p (2)(1)+z*p (3)(1));
+       v := (x*p (1)(2)+y*p (2)(2)+z*p (3)(2))
+  FI;
+ 
+ IF h < h min
+ THEN h min := h
+ ELIF h > h max
+ THEN h max := h FI;
+
+ IF v < v min
+ THEN v min := v
+ ELIF v > v max
+ THEN v max := v FI
+
+END PROC extrema;
+
+INT PROC diagonal (REAL CONST percent):
+  int (percent * 0.01 * diagonale + 0.5)  .
+
+diagonale:
+  sqrt ((h max limit-h min limit) ** 2 + (v max limit-v min limit) ** 2) .
+
+END PROC diagonal;
+
+INT PROC height (REAL CONST percent):
+  int (percent * 0.01 * (v max limit-v min limit) + 0.5)
+END PROC height;
+
+INT PROC width (REAL CONST percent):
+  int (percent * 0.01 * (h max limit-h min limit) + 0.5)
+END PROC width;
+
+END PACKET transformation
+

@@ -1,0 +1,760 @@
+PACKET  editor functions  DEFINES                     (* FUNCTIONS - 052 *)
+        (**************)                              (*  17.07.85 -bk-  *)
+                                                      (*  10.09.85 -ws-  *)
+        edit,                                         (*  25.04.86 -sh-  *)
+        show,                                         (*  27.05.86 -wk-  *)
+        U, 
+        D,
+        T,
+        up,
+        down,
+        downety,
+        uppety,
+        to line,
+        PUT,
+        GET,
+        P,
+        G,
+        limit,
+        len,
+        eof,
+        C,
+        change to,
+        CA,
+        change all,
+        lines,
+        line no,
+        col,
+        mark,
+        at,
+        word,
+        std kommando interpreter,
+        note,
+        note line,
+        note edit,
+        anything noted,
+        note file:
+ 
+ 
+LET     marker       = "^",
+        ersatzmarker = "'",
+        schritt      = 50,
+        file size    = 4072,
+        write acc    = TRUE,
+        read acc     = FALSE;
+ 
+LET     bold         = 2,
+        integer      = 3,
+        string       = 4,
+        end of file  = 7;
+ 
+LET     std res      = "eqvw19dpgn"9"";
+ 
+FILE VAR edfile;
+BOOL VAR from scratchfile :: FALSE;
+TEXT VAR kommandotext, tabulator, zeile;
+ 
+
+PROC std kommando interpreter (TEXT CONST taste) :
+  enable stop ; 
+  edfile := editfile;
+  set busy indicator; 
+  SELECT pos (std res, taste) OF
+    CASE 1 (*e*)  : edit 
+    CASE 2 (*q*)  : quit
+    CASE 3 (*v*)  : quit last
+    CASE 4 (*w*)  : open editor (next editor)
+    CASE 5 (*1*)  : toline (1); col (1)
+    CASE 6 (*9*)  : toline (lines); col (len+1)
+    CASE 7 (*d*)  : d case 
+    CASE 8 (*p*)  : p case 
+    CASE 9 (*g*)  : g case 
+    CASE 10(*n*)  : note edit
+    CASE 11(*tab*): change tabs
+    OTHERWISE     : echtes kommando analysieren
+  END SELECT . 
+ 
+d case :
+  IF   mark
+  THEN PUT ""; mark (FALSE); from scratchfile := TRUE
+  ELSE textzeile auf taste legen
+  FI .
+
+p case :
+  IF   mark                                                          (*sh*)
+  THEN IF   write permission 
+       THEN PUT ""; push(""27""12""); from scratchfile := TRUE
+       ELSE out (""7"")
+       FI
+  ELSE textzeile auf taste legen
+  FI .
+
+g case :
+  IF   write permission                                              (*sh*)
+  THEN IF   from scratchfile 
+       THEN GET "" 
+       ELSE IF is editget
+              THEN push (lernsequenz auf taste ("g")); nichts neu
+            FI
+       FI
+  ELSE out (""7"")
+  FI .
+
+textzeile auf taste legen : 
+  read record (edfile, zeile); 
+  zeile := subtext (zeile, col);
+  lernsequenz auf taste legen ("g", zeile);
+  from scratchfile := FALSE; zeile neu . 
+
+next editor :
+  (aktueller editor MOD groesster editor) + 1 .
+ 
+change tabs :
+  get tabs (edfile, tabulator) ;
+  IF   pos (tabulator, marker) <> 0
+  THEN change all (tabulator, marker, ersatzmarker)
+  ELSE change all (tabulator, ersatzmarker, marker)
+  FI ;
+  put tabs (edfile, tabulator) ;
+  ueberschrift neu .
+ 
+echtes kommando analysieren :
+  kommandotext := kommando auf taste (taste);
+  IF   kommandotext = ""
+  THEN nichts neu; LEAVE std kommando interpreter
+  FI ;
+  scan (kommandotext);
+  TEXT VAR s1; INT VAR t1; next symbol (s1, t1);
+  TEXT VAR s2; INT VAR t2; next symbol (s2, t2);
+  IF   t1 = integer AND t2 = end of file THEN toline (int (s1))
+  ELIF t1 = string  AND t2 = end of file THEN down (s1)
+  ELIF perhaps simple up or down         THEN
+  ELIF perhaps simple changeto           THEN
+  ELSE do (kommandotext)
+  FI . 
+ 
+perhaps simple up or down :
+  IF   t1 = bold
+  THEN TEXT VAR s3; INT VAR t3; next symbol (s3, t3);
+       IF   t3 <> end of file THEN FALSE
+       ELIF s1 = "U"          THEN perhaps simple up
+       ELIF s1 = "D"          THEN perhaps simple down
+                              ELSE FALSE
+       FI
+  ELSE FALSE
+  FI .
+ 
+perhaps simple up :
+  IF   t2 = string  THEN up (s2);       TRUE 
+  ELIF t2 = integer THEN up (int (s2)); TRUE 
+                    ELSE                FALSE 
+  FI . 
+ 
+perhaps simple down : 
+  IF   t2 = string  THEN down (s2);       TRUE 
+  ELIF t2 = integer THEN down (int (s2)); TRUE 
+                    ELSE                  FALSE 
+  FI .
+ 
+perhaps simple changeto : 
+  IF   t1 = string AND s2 = "C" AND t3 is string AND t4 is eof 
+  THEN s1 C s3; TRUE 
+  ELSE FALSE 
+  FI . 
+ 
+t3 is string : 
+  next symbol (s3, t3); 
+  t3 = string . 
+
+t4 is eof : 
+  TEXT VAR s4; INT VAR t4; 
+  next symbol (s4, t4); 
+  t4 = end of file . 
+END PROC std kommando interpreter; 
+
+ 
+PROC edit (FILE VAR f) : 
+  enable stop; 
+  IF aktueller editor > 0                                            (*wk*)
+    THEN ueberschrift neu
+  FI ;
+  open editor (f, write acc);
+  edit (groesster editor, std res, PROC(TEXT CONST) std kommando interpreter)
+END PROC edit;
+ 
+ 
+PROC edit (FILE VAR f, INT CONST x, y, x size, y size) :
+  enable stop;
+  open editor (groesster editor + 1, f, write acc, x, y, x size, y size);
+  edit (groesster editor, std res, PROC(TEXT CONST) std kommando interpreter)
+END PROC edit;
+ 
+
+PROC edit (FILE VAR f, TEXT CONST res, PROC (TEXT CONST) kdo interpreter) :
+  enable stop;
+  open editor (f, write acc);
+  edit (groesster editor, res, PROC(TEXT CONST) kdo interpreter)
+END PROC edit;
+ 
+ 
+PROC edit :
+  IF   aktueller editor > 0
+  THEN dateiname einlesen;
+       edit (dateiname)
+  ELSE edit (last param)
+  FI .
+ 
+dateiname einlesen :
+  INT VAR x, y; get editcursor (x, y);
+  IF x < x size - 17                                                 (*sh*)
+  THEN cursor (x, y);
+       out (""15"Dateiname:"14"");
+       (x size-14-x) TIMESOUT " ";
+       (x size-14-x) TIMESOUT ""8"";
+       TEXT VAR dateiname := std;
+       editget (dateiname);
+       trailing blanks entfernen; 
+       quotes entfernen
+  ELSE errorstop ("Fenster zu klein")
+  FI .
+ 
+trailing blanks entfernen: 
+  INT VAR i := LENGTH dateiname; 
+  WHILE (dateiname SUB i) = " " REP i DECR 1 PER; 
+  dateiname := subtext (dateiname, 1, i) . 
+ 
+quotes entfernen :
+  IF   (dateiname SUB 1) = """" AND (dateiname SUB LENGTH dateiname) = """"
+  THEN dateiname := subtext (dateiname, 2, LENGTH dateiname - 1)
+  FI .
+END PROC edit;
+ 
+ 
+PROC edit (TEXT CONST filename) :
+  IF   filename <> ""
+  THEN edit named file
+  ELSE errorstop ("Name ungueltig")
+  FI . 
+ 
+edit named file :
+  last param (filename);
+  IF   exists (filename) COR yes ("""" + filename + """ neu einrichten")
+  THEN IF aktueller editor > 0 THEN ueberschrift neu FI;             (*sh*)
+       FILE VAR f := sequential file (modify, filename);
+       headline (f, filename); edit (f); last param (filename)
+  ELSE errorstop ("")
+  FI .
+END PROC edit;
+ 
+ 
+PROC edit (TEXT CONST filename, INT CONST x, y, x size, y size) :
+  last param (filename);
+  IF exists (filename) COR yes ("""" + filename + """ neu einrichten")
+  THEN FILE VAR f := sequential file (modify, filename);
+       headline (f, filename); edit (f, x, y, x size, y size);
+       last param (filename)
+  ELSE errorstop ("")
+  FI
+END PROC edit;
+ 
+ 
+PROC edit (INT CONST i) :
+  edit (i, std res, PROC (TEXT CONST) std kommando interpreter)
+END PROC edit;
+ 
+ 
+PROC show (FILE VAR f) :
+  enable stop; 
+  open editor (f, read acc);
+  edit(groesster editor, std res, PROC(TEXT CONST) std kommando interpreter);
+END PROC show;
+ 
+
+PROC show (TEXT CONST filename) :                                    (*sh*)
+  last param (filename);
+  IF   exists (filename)
+  THEN FILE VAR f := sequential file (modify, filename);
+       show (f); last param (filename)
+  ELSE errorstop ("""" + filename + """ gibt es nicht") 
+  FI
+END PROC show; 
+
+ 
+PROC show :
+  show (last param)
+END PROC show;
+ 
+ 
+DATASPACE VAR local space;
+INT  VAR zeilenoffset;
+TEXT VAR kopierzeile;
+ 
+ 
+OP PUT (TEXT CONST filename) :
+  nichts neu;
+  IF   mark 
+  THEN markierten bereich in datei schreiben
+  FI .
+ 
+markierten bereich in datei schreiben :
+  disable stop;
+  zieldatei vorbereiten;
+  quelldatei oeffnen;
+  IF   noch genuegend platz in der zieldatei                         (*sh*)
+  THEN zeilenweise kopieren
+  ELSE errorstop ("FILE-Ueberlauf")
+  FI ;
+  quelldatei schliessen;
+  zieldatei schliessen;
+  set busy indicator .
+
+zieldatei vorbereiten :
+  FRANGE VAR ganze zieldatei;
+  IF exists (filename) THEN forget (filename); ueberschrift neu FI;
+  FILE VAR destination;
+  IF   filename = ""
+  THEN forget (local space); local space := nilspace;
+       destination := sequential file (output, local space)
+  ELSE destination := sequential file (modify, filename) ;
+       INT CONST groesse der zieldatei := lines (destination);       (*sh*)
+       set marked range (destination, ganze zieldatei) ;
+       output (destination)
+  FI .
+
+quelldatei oeffnen :
+  zeilenoffset := mark line no (edfile) - 1;
+  INT CONST old line := line no, old col := col;
+  FRANGE VAR ganze datei;
+  set range (edfile, mark lineno (edfile), mark col (edfile), ganze datei);
+  input (edfile) .
+ 
+noch genuegend platz in der zieldatei :
+  lines + groesse der zieldatei < file size .
+
+zeilenweise kopieren :
+  enable stop;
+  satznr neu;
+  INT VAR zeile;
+  FOR zeile FROM 1 UPTO lines (edfile) REP
+    getline (edfile, kopierzeile);
+    putline (destination, kopierzeile);
+    satznr zeigen
+  PER .
+ 
+quelldatei schliessen :
+  modify (edfile);
+  set range (edfile, ganze datei);
+  to line (old line);
+  col (old col) .
+ 
+zieldatei schliessen :
+  IF   filename <> ""
+  THEN INT CONST last line written := line no (destination) ;
+       modify (destination) ;
+       to line (destination, last line written) ;
+       col (destination, len (destination) + 1) ;
+       bild neu (destination) ;
+       set range (destination, ganze zieldatei)
+  FI .
+END OP PUT;
+
+ 
+OP P (TEXT CONST filename) :
+  PUT filename
+END OP P ;
+
+
+OP GET (TEXT CONST filename) :                                       (*sh*)
+  IF   NOT write permission
+  THEN errorstop ("Schreibversuch auf 'show'-Datei")
+  FI ;
+  quelldatei oeffnen;
+  IF   nicht mehr genuegend platz im editfile 
+  THEN quelldatei schliessen; errorstop ("FILE-Ueberlauf")
+  FI ;
+  disable stop;
+  zieldatei oeffnen;
+  zeilenweise kopieren ;
+  zieldatei schliessen;
+  quelldatei schliessen;
+  set busy indicator .
+
+quelldatei oeffnen :
+  FILE VAR source;
+  FRANGE VAR ganze quelldatei;
+  IF   filename = ""
+  THEN source := sequential file (input, local space)
+  ELSE IF NOT exists (filename) 
+       THEN errorstop ("""" + filename + """ gibt es nicht")
+       FI ;
+       source := sequential file (modify, filename); 
+       INT CONST old line := line no (source),
+                 old col  := col (source);
+       set marked range (source, ganze quelldatei);
+       input (source)
+  FI .
+ 
+nicht mehr genuegend platz im editfile :
+  lines (source) + lines >= file size .
+
+zeilenweise kopieren :
+  enable stop;
+  satznr neu;
+  INT VAR zeile;
+  FOR zeile FROM 1 UPTO lines (source) REP
+    getline (source, kopierzeile);
+    putline (edfile, kopierzeile);
+    satznr zeigen
+  PER .
+ 
+zieldatei oeffnen :
+  zeilenoffset := line no - 1;
+  leere datei in editfile einschachteln;
+  output (edfile) .
+ 
+leere datei in editfile einschachteln :
+  INT CONST range start col := col;
+  FRANGE VAR ganze datei;
+  set range (edfile, line no, col, ganze datei);
+  IF lines = 1 THEN delete record (edfile) FI .
+ 
+quelldatei schliessen :
+  IF   filename <> ""
+  THEN modify (source);
+       set range (source, ganze quelldatei);
+       to line (source, old line);
+       col (source, old col)
+  FI .
+ 
+zieldatei schliessen :
+  modify (edfile);
+  to line (lines);
+  col (range start col);
+  set range (edfile, ganze datei);
+  abschnitt neu (zeilenoffset + 1, lines) .
+END OP GET;
+
+ 
+OP G (TEXT CONST filename) :
+  GET filename
+END OP G;
+ 
+ 
+INT PROC len :
+  len (edfile)
+END PROC len;
+ 
+ 
+PROC col (INT CONST stelle) :
+  nichts neu; col (edfile, stelle)
+END PROC col;
+ 
+ 
+INT PROC col :
+  col (edfile)
+END PROC col;
+ 
+ 
+PROC limit (INT CONST limit) :
+  nichts neu; max line length (edfile, limit)
+END PROC limit;
+ 
+ 
+INT PROC limit :
+  max line length (edfile)
+END PROC limit;
+ 
+ 
+INT PROC lines :
+  lines (edfile)
+END PROC lines;
+ 
+ 
+INT PROC line no :
+  line no (edfile)
+END PROC line no;
+ 
+ 
+PROC to line (INT CONST satz nr) :
+  satznr neu;
+  edfile := editfile; 
+  IF   satz nr > lines 
+  THEN toline (edfile, lines); col (len + 1)
+  ELSE to line (edfile, satz nr)
+  FI
+END PROC to line;
+ 
+ 
+OP T (INT CONST satz nr) :
+  to line (satz nr)
+END OP T;
+ 
+ 
+PROC down (INT CONST anz) :
+  nichts neu; down (edfile, anz)
+END PROC down;
+ 
+ 
+OP D (INT CONST anz) :
+  down (anz)
+END OP D;
+ 
+ 
+PROC up (INT CONST anz) :
+  nichts neu; up (edfile, anz)
+END PROC up;
+ 
+ 
+OP U (INT CONST anz) :
+  up (anz)
+END OP U;
+ 
+ 
+PROC down (TEXT CONST muster) :
+  nichts neu;
+  REP
+    down (muster, schritt - line no MOD schritt);
+    IF   pattern found
+    THEN LEAVE down
+    ELSE satznr zeigen
+    FI
+  UNTIL eof PER
+END PROC down;
+ 
+ 
+OP D (TEXT CONST muster) :
+  down (muster)
+END OP D;
+ 
+ 
+PROC down (TEXT CONST muster, INT CONST anz) :
+  nichts neu; down (edfile, muster, anz)
+END PROC down;
+ 
+ 
+PROC up (TEXT CONST muster) :
+  nichts neu;
+  REP
+    up (muster, (line no - 1) MOD schritt + 1);
+    IF   pattern found
+    THEN LEAVE up
+    ELSE satznr zeigen
+    FI
+  UNTIL line no = 1 PER
+END PROC up;
+ 
+ 
+OP U (TEXT CONST muster) :
+  up (muster)
+END OP U;
+ 
+ 
+PROC up (TEXT CONST muster, INT CONST anz) :
+  nichts neu; up (edfile, muster, anz)
+END PROC up;
+ 
+ 
+PROC downety (TEXT CONST muster) :
+  nichts neu;
+  IF   NOT at (muster)
+  THEN down (muster)
+  FI
+END PROC downety;
+ 
+
+PROC downety (TEXT CONST muster, INT CONST anz) :
+  nichts neu; downety (edfile, muster, anz)
+END PROC downety;
+ 
+
+PROC uppety (TEXT CONST muster) :
+  nichts neu;
+  IF   NOT at (muster)
+  THEN up (muster)
+  FI
+END PROC uppety;
+
+ 
+PROC uppety (TEXT CONST muster, INT CONST anz) :
+  nichts neu; uppety (edfile, muster, anz)
+END PROC uppety;
+
+ 
+OP C (TEXT CONST old, new) :
+  change to (old, new)
+END OP C;
+ 
+OP C (TEXT CONST replacement) : 
+  IF   NOT write permission                                          (*sh*)
+  THEN errorstop ("Schreibversuch auf 'show'-Datei")
+  FI ;
+  IF   at (edfile, match(0))
+  THEN zeile neu; change (edfile, matchpos(0), matchend(0), replacement)
+  FI
+END OP C; 
+ 
+PROC change to (TEXT CONST old, new) :
+  IF   NOT write permission                                          (*sh*)
+  THEN errorstop ("Schreibversuch auf 'show'-Datei")
+  FI ;
+  nichts neu;
+  REP
+    downety (old, schritt - line no MOD schritt);
+    IF   pattern found
+    THEN change (edfile, matchpos(0), matchend(0), new);
+         col (col + LENGTH new); zeile neu;
+         LEAVE changeto
+    ELSE satznr zeigen
+    FI
+  UNTIL eof PER 
+END PROC change to;
+ 
+ 
+OP CA (TEXT CONST old, new) :
+  change all (old, new)
+END OP CA;
+ 
+
+PROC change all (TEXT CONST old, new) :
+  WHILE NOT eof REP old C new PER
+END PROC change all;
+ 
+ 
+BOOL PROC eof :
+  eof (edfile)
+END PROC eof;
+ 
+ 
+BOOL PROC mark :
+  mark (edfile)
+END PROC mark;
+ 
+ 
+PROC mark (BOOL CONST mark on) :
+  nichts neu;
+  IF   mark on
+  THEN mark (edfile, line no, col)
+  ELSE mark (edfile, 0, 0)
+  FI
+END PROC mark;
+ 
+ 
+BOOL PROC at (TEXT CONST pattern) :
+  at (edfile, pattern)
+END PROC at;
+ 
+TEXT PROC word :
+  word (edfile)
+END PROC word;
+
+ 
+TEXT PROC word (TEXT CONST sep) :
+  word (edfile, sep)
+END PROC word;
+
+ 
+TEXT PROC word (INT CONST len) :
+ word (edfile, len)
+END PROC word;
+ 
+ 
+LET no access = 0,
+    edit access = 1,
+    output access = 2;
+ 
+INT VAR last note file mode;
+FILE VAR notebook; 
+INITFLAG VAR this packet := FALSE;
+DATASPACE VAR note ds;
+ 
+ 
+PROC note (TEXT CONST text) :
+  access note file (output access);
+  write (notebook, text)
+END PROC note;
+ 
+
+PROC note (INT CONST number) :
+  access note file (output access);
+  put (notebook, number)
+END PROC note;
+ 
+
+PROC note line :
+  access note file (output access);
+  line (notebook)
+END PROC note line;
+ 
+
+BOOL PROC anything noted :
+  access note file (no access);
+  last note file mode = output access
+END PROC anything noted;
+ 
+
+FILE PROC note file :
+  access note file (output access);
+  notebook
+END PROC note file;
+ 
+
+PROC note edit (FILE VAR context) :                                  (*sh*)
+  access note file (edit access);
+  make notebook erasable;
+  IF aktueller editor = 0
+    THEN open editor (1, context, write acc, 1, 1, x size - 1, y size)
+  FI ;
+  get window size;
+  IF   window large enough
+  THEN include note editor;
+       edit (aktueller editor-1, aktueller editor, aktueller editor-1,
+             std res, PROC (TEXT CONST) std kommando interpreter)
+  FI .
+ 
+get window size : 
+  INT VAR x, y, windows x size, windows y size; 
+  get window (x, y, windows x size, windows y size) .
+ 
+window large enough :
+  windows y size > 4 .
+ 
+include note editor :
+  open editor (aktueller editor + 1, notebook, write acc,
+               x, y + (windows y size + 1) DIV 2,
+               windows x size, windows y size DIV 2) .
+ 
+make notebook erasable :
+  last note file mode := edit access .
+END PROC note edit;
+ 
+
+PROC note edit :
+  access note file (edit access);
+  make notebook erasable;
+  edit (notebook) .
+ 
+make notebook erasable :
+  last note file mode := edit access .
+END PROC note edit;
+ 
+ 
+PROC access note file (INT CONST new mode) :
+  disable stop;
+  initialize note ds if necessary;
+  IF   last note file mode < new mode
+  THEN forget (note ds);
+       note ds := nilspace;
+       notebook := sequential file (output, note ds);
+       headline (notebook, "notebook");
+       last note file mode := new mode
+  FI .
+ 
+initialize note ds if necessary :
+  IF   NOT initialized (this packet)
+  THEN note ds := nilspace;
+       last note file mode := no access
+  FI .
+END PROC access note file;
+
+END PACKET editor functions;
+

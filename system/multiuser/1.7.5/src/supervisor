@@ -1,0 +1,774 @@
+(* ------------------- VERSION 19     03.06.86 ------------------- *)
+PACKET supervisor :                            (* Autor: J.Liedtke *)
+ 
+ 
+ 
+
+LET ack           = 0 ,
+    nak           = 1 ,
+    error nak     = 2 ,
+
+    system catalogue code        = 3 ,
+    begin code                   = 4 ,
+    end code                     = 5 ,
+    break code                   = 6 ,
+    rename code                  = 7 ,
+    halt code                    = 8 ,
+    password code                = 9 ,
+    family password code         = 40 ,
+    set autonom code             = 41 ,
+    reset autonom code           = 42 ,
+    define canal code            = 43 ,
+    go back to old canal code    = 44 ,
+    task of channel code         = 45 ,
+    canal of channel code        = 46 ,
+    set automatic startup code   = 47 ,
+    reset automatic startup code = 48 ,
+
+    continue code low            = 100 ,
+    continue code high           = 132 ,
+
+    system start code            = 100 ,
+    define station code          = 32000 ,
+    max station no               = 127 ,
+ 
+    nil = 0 ,
+
+    number of tasks       = 125 ,
+ 
+    number of channels       = 32 ,
+    highest terminal channel = 16 ,
+    highest user channel     = 24 ,
+    highest system channel   = 32 ,
+    configurator channel     = 32 ,
+
+    shutup and save code = 12 ,
+
+    channel field         = 4 ,
+    fromid field          = 11 ,
+    nilchannel            = 0 ;
+
+
+
+TASK VAR order task ;
+INT VAR  order code ,
+         channel nr ,
+         channel index ;
+
+DATASPACE VAR ds ;
+
+BOUND STRUCT (TEXT tname, tpass, TASK task, PROCA start proc) VAR msg ;
+BOUND TEXT VAR error msg ;
+
+REAL VAR last rename time := 0.0 ;
+
+
+TEXT VAR actual password, supply password ;
+
+ 
+ROW highest terminal channel TASK VAR canal ;
+
+ROW number of channels TASK VAR connected task ;
+
+FOR channel index FROM 1 UPTO highest terminal channel REP
+  canal (channel index) := niltask ;
+PER ;
+FOR channel index FROM 1 UPTO number of channels REP
+  connected task (channel index) := niltask
+PER ;
+
+
+ROW number of tasks BOOL VAR autonom flag ;
+ROW number of tasks BOOL VAR automatic startup flag ;
+ROW number of tasks TEXT VAR task password ;
+
+task password (1) := "-"  ;
+task password (2) := "-"  ;
+
+set clock (date ("09.06.86")) ;
+
+TASK VAR dummy task ;
+command dialogue (TRUE) ; 
+
+ke ;     (* maintenance ke *) 
+
+create son (myself, "SYSUR", dummy task, proca (PROC sysur)) ;
+
+PROC sysur :
+
+  disable stop ;
+  begin ("ARCHIVE", PROC archive manager, dummy task) ;
+  begin ("OPERATOR", PROC monitor, dummy task) ;
+  begin ("conf", PROC configurator, dummy task) ;
+  system manager
+
+ENDPROC sysur ;
+
+PROC configurator :
+
+  page ;
+  REP UNTIL yes("Archiv 'dev' eingelegt") PER;
+  archive ("dev") ;
+  fetch all (archive) ;
+  release (archive) ;
+  REP UNTIL yes ("save system") PER ;
+  command dialogue (FALSE) ;
+  save system ;
+  command dialogue (TRUE) ;
+  rename myself ("configurator") ;
+  disable stop ;
+  REP
+    configuration manager ;
+    clear error
+  PER
+
+ENDPROC configurator ;
+
+
+erase last bootstrap source dataspace ;
+channel (myself, 1) ;
+command dialogue (TRUE) ;
+IF yes("Leere Floppy eingelegt")
+  THEN channel (myself, nilchannel) ;
+       command dialogue (FALSE) ;
+       sys op (shutup and save code)
+  ELSE channel (myself, nilchannel) ;
+       command dialogue (FALSE)
+FI ;
+supervisor ;
+ 
+ 
+PROC supervisor :
+ 
+  disable stop ;
+  INT VAR old session := session ;
+  REP
+    wait (ds, order code, order task) ;
+    IF is niltask (order task)
+      THEN interrupt
+    ELIF station (order task) = station (myself)
+      THEN order from task
+    FI 
+  PER .
+
+interrupt :
+  IF order code = 0
+    THEN IF old session <> session
+           THEN disconnect all terminal tasks ;
+                old session := session
+         FI ;
+         system start interrupt
+    ELSE supervisor interrupt (canal (order code), order code,
+                               connected task (order code)) 
+  FI .
+
+disconnect all terminal tasks :
+  INT VAR i ;
+  FOR i FROM 1 UPTO highest terminal channel REP
+    TASK VAR id := connected task (i) ;
+    IF NOT (is niltask (id) COR automatic startup flag (index (id))
+            COR is niltask (canal (i))) 
+      THEN break task
+    FI
+  PER .
+
+break task :
+  IF task direct connected to channel
+    THEN channel (id, nilchannel) ;
+         connected task (i) := niltask 
+    ELSE disconnect if at terminal but overloaded by canal
+  FI .
+
+task direct connected to channel :
+ pcb (id, channel field) <> nilchannel .
+
+disconnect if at terminal but overloaded by canal :
+  connected task (i) := niltask .
+
+order from task :
+  channel index := channel (order task) ;
+  IF is command analyzer task
+    THEN order from command analyzer (connected task (channel index))
+    ELSE order from user task
+  FI ;
+  IF is error
+    THEN send back error message
+  FI .
+
+is command analyzer task :
+        channel index <> nilchannel
+  CAND  channel index <= highest terminal channel
+  CAND  order task = canal (channel index) .
+
+send back error message :
+  forget (ds) ;
+  ds := nilspace ;
+  error msg := ds ;
+  CONCR (error msg) := error message ;
+  clear error ;
+  send (order task, error nak, ds) .
+
+ENDPROC supervisor ;
+
+PROC supervisor interrupt (TASK VAR command analyzer, INT CONST channel nr,
+                           TASK VAR terminal task) :
+ 
+  IF NOT is niltask (terminal task)
+    THEN channel (terminal task, nilchannel)
+  FI ;
+  create command analyzer if necessary ;
+  IF already at terminal
+    THEN halt process (command analyzer)
+    ELSE send acknowledge
+  FI ;
+  channel (command analyzer, channel nr) ;
+  activate (command analyzer) .
+
+create command analyzer if necessary :
+  IF is niltask (command analyzer)
+    THEN create son (myself, "-", command analyzer, proca (PROC analyze supervisor command))
+  FI .
+
+send acknowledge : 
+  forget (ds) ;
+  ds := nilspace ;
+  send (command analyzer, ack, ds) .
+
+already at terminal :  channel (command analyzer) = channel nr .
+
+ENDPROC supervisor interrupt ;
+
+PROC order from command analyzer (TASK VAR terminal task) :
+
+enable stop ;
+IF is continue                          THEN sv cmd continue 
+ELIF order code = system catalogue code THEN task info cmd
+ELIF order code = task of channel code  THEN sv cmd task of channel
+ELSE SELECT order code OF  CASE ack :
+                           CASE end code   : sv cmd end
+                           CASE break code : sv cmd break
+                           CASE halt code  : sv cmd halt 
+                           OTHERWISE errorstop ("falscher Auftrag fuer Task ""SUPERVISOR""") 
+     END SELECT ;
+     channel (command analyzer, nilchannel)
+FI ;
+
+forget (ds) ;
+IF NOT is niltask (terminal task) AND order code <> system catalogue code
+  THEN channel (order task, nilchannel) ;
+       channel (terminal task, channel index) ;
+       activate (terminal task)
+FI .
+
+sv cmd task of channel :
+  msg := ds ;
+  msg.task := terminal task ;
+  send (order task,ack, ds) ;
+  LEAVE order from command analyzer .
+
+sv cmd end :
+  IF NOT is niltask (terminal task)
+    THEN delete task (terminal task) ;
+         terminal task := niltask
+  FI .
+
+sv cmd break :
+  terminal task := niltask .
+
+sv cmd continue :
+  sv cmd break ;
+  continue cmd by canal .
+
+sv cmd halt :
+  IF is niltask (terminal task)
+    THEN errorstop ("keine Task angekoppelt")
+    ELSE halt process (terminal task)
+  FI .
+
+is continue :
+  order code > continue code low AND order code <= continue code high .
+
+command analyzer : canal (channel index) .
+
+ENDPROC order from command analyzer ;
+
+PROC order from user task :
+
+  enable stop ;
+  SELECT order code OF
+    CASE nak, error nak               : 
+    CASE system catalogue code        : task info cmd
+    CASE begin code                   : user begin cmd
+    CASE end code                     : user end cmd
+    CASE break code                   : user break cmd
+    CASE rename code                  : user rename cmd
+    CASE password code                : password cmd
+    CASE family password code         : family password cmd
+    CASE set autonom code             : set autonom cmd
+    CASE reset autonom code           : reset autonom cmd
+    CASE define canal code            : define new canal
+    CASE go back to old canal code    : go back to old canal
+    CASE task of channel code         : task of channel
+    CASE canal of channel code        : canal of channel
+    CASE set automatic startup code   : set automatic startup cmd
+    CASE reset automatic startup code : reset automatic startup cmd
+    OTHERWISE IF is continue
+                THEN            user continue cmd
+              ELIF is define station
+                THEN            define new station
+                  ELSE errorstop ("falscher Auftrag fuer Task ""SUPERVISOR""") 
+              FI
+  ENDSELECT .
+
+user begin cmd :
+  msg := ds ;
+  create son (order task, new task name, new task, new start proc) ;
+  send (order task, ack, ds) .
+
+user end cmd :
+  msg := ds ;
+  TASK VAR to be erased := CONCR (msg).task ;
+  IF task end permitted
+    THEN delete task (to be erased)
+    ELSE errorstop ("'end' unzulaessig")
+  FI ;
+  IF exists (order task)
+    THEN send (order task, ack, ds)
+    ELSE forget (ds)
+  FI .
+
+task end permitted :
+  ( (task is dead AND system catalogue contains entry) OR exists (to be erased))
+  CAND  (     to be erased = order task 
+          COR to be erased < order task
+          COR (order task < myself AND NOT (order task < to be erased)) ) .
+
+task is dead :
+  status (to be erased) > 6 .
+
+system catalogue contains entry :
+  task in catalogue (to be erased, index (to be erased)) .
+
+user rename cmd :
+  IF last rename was long ago
+    THEN msg := ds ;
+         name (order task, CONCR (msg).tname) ;
+         update entry in connected task array ;
+         send (order task, ack, ds) ;
+         remember rename time
+    ELSE send (order task, nak, ds)
+  FI .
+
+update entry in connected task array :
+  IF channel (order task) <> nilchannel
+    THEN connected task (channel (order task)) := order task
+  FI .
+
+remember rename time :
+  last rename time := clock (1) .
+
+last rename was long ago :  abs (clock (1) - last rename time) > 20.0 .
+
+user break cmd :
+  break order task ;
+  send (order task, ack, ds) .
+
+break order task :
+  IF task direct connected to channel
+    THEN channel (order task, nilchannel) ;
+         terminal task := niltask
+    ELSE disconnect if at terminal but overloaded by canal
+  FI .
+
+task direct connected to channel : channel index <> nilchannel .
+
+terminal task :  connected task (channel index) .
+
+disconnect if at terminal but overloaded by canal :
+  INT VAR i ;
+  FOR i FROM 1 UPTO highest terminal channel REP
+    IF connected task (i) = order task
+      THEN connected task (i) := niltask ;
+           LEAVE disconnect if at terminal but overloaded by canal
+    FI
+  PER .
+
+user continue cmd :
+  INT CONST dest channel := order code - continue code low ;
+  IF dest channel <= highest user channel OR order task < myself
+    THEN IF NOT channel really existing
+           THEN errorstop ("kein Kanal")
+         ELIF dest channel is free OR task is already at dest channel
+           THEN break order task ;
+                continue (order task, dest channel) ;
+                autonom flag (index (order task)) := FALSE ;
+                send (order task, ack, ds) 
+           ELSE errorstop ("Kanal belegt")
+         FI
+     ELSE errorstop ("ungueltiger Kanal")
+   FI .
+
+channel really existing :
+  channel type (dest channel) <> 0 OR dest channel = configurator channel .
+
+dest channel is free : 
+  (is niltask (connected task (dest channel)) OR channel (connected task (dest channel)) = nilchannel)
+  AND no canal active .
+
+no canal active :
+  dest channel > highest terminal channel    COR
+  is niltask (canal (dest channel))          COR 
+  channel (canal (dest channel)) = nilchannel .
+
+task is already at dest channel :
+  channel index = dest channel .
+
+
+password cmd :
+  msg := ds ;
+  task password (index (order task)) := new task password ;
+  forget (ds) ;
+  ds := nilspace ;
+  send (order task, ack, ds) .
+
+family password cmd :
+  msg := ds ;
+  actual password := new task password ;
+  supply password := task password (index (order task)) ;
+  change pw of all sons where necessary (son (order task)) ;
+  task password (index (order task)) := actual password ;
+  forget (ds) ;
+  ds := nilspace ;
+  send (order task, ack, ds) .
+
+set autonom cmd :
+  autonom flag (index (order task)) := TRUE ;
+  send (order task, ack, ds) .
+
+reset autonom cmd :
+  autonom flag (index (order task)) := FALSE ;
+  send (order task, ack, ds) .
+ 
+define new canal :
+  IF order task < myself AND
+     channel index > 0 AND channel index <= highest terminal channel CAND
+     is niltask (canal (channel index))
+    THEN canal (channel index) := order task ;
+         connected task (channel index) := niltask ;
+         send (order task, ack, ds)
+    ELSE errorstop ("falscher Auftrag fuer Task ""SUPERVISOR""")
+  FI .
+
+go back to old canal :
+  IF order task < myself AND
+     channel index > 0 AND channel index <= highest terminal channel 
+    THEN IF NOT is niltask (canal (channel index))
+           THEN delete task (canal (channel index)) 
+         FI ;
+         send (order task, ack, ds)
+    ELSE errorstop ("falscher Auftrag fuer Task ""SUPERVISOR""")
+  FI .
+
+task of channel :
+  msg := ds ;
+  channel nr := int (msg.tname) ;
+  msg.task := channel task ;
+  send (order task, ack, ds).
+
+channel task :
+  IF channel nr <= highest terminal channel
+    THEN IF no command analyzer active
+           THEN connected task (channel nr)
+           ELSE canal (channel nr)
+         FI
+    ELSE connected task (channel nr)
+  FI .
+
+no command analyzer active :
+  channel (canal (channel nr)) = nilchannel .
+
+canal of channel :
+  msg := ds ;
+  channel nr := int (msg.tname) ;
+  msg.task := canal (channel nr) ;
+  send (order task, ack, ds).
+
+set automatic startup cmd :
+  automatic startup flag (index (order task)) := TRUE ;
+  send (order task, ack, ds) .
+
+reset automatic startup cmd :
+  automatic startup flag (index (order task)) := FALSE ;
+  send (order task, ack, ds) .
+ 
+is continue :
+  order code > continue code low AND order code <= continue code high .
+
+new task name :     CONCR (msg).tname . 
+
+new task      :     CONCR (msg).task .
+ 
+new task password : subtext (CONCR (msg).tpass, 1, 100) .
+
+new start proc :    CONCR (msg).start proc .
+ 
+is define station :
+  order code >= define station code AND order task < myself AND 
+  order code <= define station code + max station no .
+
+ENDPROC order from user task ;
+
+PROC continue cmd by canal :
+
+  access task name and password ;
+  check password if necessary ;
+  continue or send continue request ;
+  channel (order task, nilchannel) .
+
+access task name and password :
+  msg := ds ;
+  TASK CONST user task := task (CONCR (msg).tname) ;
+  INT CONST task index := index (user task) ;
+  actual password := task password (task index) ;
+  supply password := CONCR (msg).tpass .
+
+check password if necessary :
+  IF actual password <> ""
+    THEN IF supply password = ""
+           THEN ask for password ;
+                LEAVE continue cmd by canal
+         ELIF actual password <> supply password OR actual password = "-"
+           THEN errorstop ("Passwort falsch")
+         FI
+   FI .
+ask for password :
+  send (order task, password code, ds) .
+
+continue or send continue request :
+  IF autonom flag (task index)
+    THEN send continue request to user task
+    ELSE continue (user task, order code - continue code low)
+  FI .
+ 
+send continue request to user task :
+  INT VAR request count , quit ;
+  FOR request count FROM 1 UPTO 10 REP
+    send (user task, order code, ds, quit) ;
+    IF quit = ack
+      THEN LEAVE send continue request to user task
+    FI ;
+    pause (3)
+  PER ;
+  errorstop ("Task antwortet nicht") .
+
+ENDPROC continue cmd by canal ;
+
+PROC continue (TASK CONST id, INT CONST channel nr) :
+
+  IF NOT is niltask (id) CAND channel (id) <> channel nr
+    THEN check whether not linked to another channel ;
+         channel (id, channel nr) ;
+         connected task (channel nr) := id ;
+         prio (id, 0) ;
+         activate (id)
+  FI .
+
+check whether not linked to another channel :
+  INT VAR i ;
+  FOR i FROM 1 UPTO number of channels REP
+    IF connected task (i) = id
+      THEN errorstop ("bereits an Kanal " + text (i) ) ;
+           LEAVE continue
+    FI
+  PER .
+ 
+ENDPROC continue ;
+
+PROC task info cmd :
+
+  forget (ds) ;
+  ds := sys cat ;
+  send (order task, ack, ds) .
+
+ENDPROC task info cmd ;
+ 
+PROC delete task (TASK CONST superfluous) :
+
+  delete all sons of superfluous ;
+  delete superfluous itself .
+
+delete superfluous itself :
+  update cpu time of father ;
+  erase process (superfluous) ;
+  delete (superfluous) ;
+  erase terminal connection remark .
+
+update cpu time of father :
+  TASK CONST father task := father (superfluous) ;
+  IF NOT is niltask (father task)
+    THEN disable stop ;
+         REAL CONST father time := clock (father task) + clock (superfluous);
+         IF is error
+           THEN clear error
+           ELSE set clock (father task, father time)
+         FI ;
+         enable stop
+  FI .
+
+erase terminal connection remark :
+  INT VAR i ;
+  FOR i FROM 1 UPTO number of channels REP
+    IF connected task (i) = superfluous
+      THEN connected task (i) := niltask ;
+           LEAVE erase terminal connection remark
+    FI
+  PER ;
+  FOR i FROM 1 UPTO highest terminal channel REP
+    IF canal (i) = superfluous
+      THEN canal (i) := niltask ;
+           LEAVE erase terminal connection remark
+    FI
+  PER .
+
+delete all sons of superfluous :
+  TASK VAR son task ;
+  REP
+    son task := son (superfluous) ;
+    IF is niltask (son task)
+      THEN LEAVE delete all sons of superfluous
+    FI ;
+    delete task (son task)
+  PER .
+
+ENDPROC delete task ;
+
+PROC create son (TASK CONST father, TEXT CONST task name, TASK VAR new task, PROCA CONST start) :
+
+  entry (father, task name, new task) ;
+  autonom flag  (index (new task)) := FALSE ;
+  automatic startup flag (index (new task)) := TRUE ;
+  task password (index (new task)) := "" ;
+  create (father, new task, privilege, start) .
+
+privilege :
+  IF new task < myself
+    THEN 1
+    ELSE 0
+  FI .
+
+ENDPROC create son ;
+
+
+PROC system start interrupt :
+
+  IF exists task ("configurator")
+    THEN send system start message
+  FI .
+
+send system start message :
+  ds := nilspace ;
+  INT VAR request count, quit ;
+  FOR request count FROM 1 UPTO 10 REP
+    send (task ("configurator"), system start code, ds, quit) ;
+    IF quit = ack
+      THEN LEAVE send system start message
+    FI ;
+    pause (3)
+  PER ;
+  forget (ds) .
+
+ENDPROC system start interrupt ;
+
+PROC define new station :
+
+  INT CONST station := order code - define station code ;
+  INT VAR i ;
+  FOR i FROM 1 UPTO highest terminal channel REP
+    IF NOT is niltask (canal (i))
+      THEN delete task (canal (i))
+    FI
+  PER ;
+  define station (station) ;
+  FOR i FROM 1 UPTO number of channels REP
+    update (connected task (i))
+  PER ;
+  forget (ds) .
+
+ENDPROC define new station ;
+
+PROC change pw of all sons where necessary (TASK CONST first son) :
+
+  TASK VAR actual task := first son ;
+  WHILE NOT is niltask (actual task) REP
+    change pw ;
+    change pw of all sons where necessary (son (actual task));
+    actual task := brother (actual task)
+  PER.
+
+  change pw :
+    IF task password (index (actual task)) = supply password 
+                        OR
+       task password (index (actual task)) = ""
+      THEN task password (index (actual task)) := actual password
+    FI.
+
+END PROC change pw of all sons where necessary ;
+
+(******************* basic supervisor operations **********************)
+
+
+PROC channel (TASK CONST id, INT CONST channel nr) :
+  pcb (id, channel field, channel nr)
+ENDPROC channel ;
+
+INT PROC channel type (INT CONST channel nr) :
+  disable stop ;
+  channel (myself, channel nr) ;
+  INT VAR type ;
+  control (1, 0, 0, type) ;
+  channel (myself, nilchannel) ;
+  type
+ENDPROC channel type ;
+
+PROC erase last bootstrap source dataspace :
+
+  disable stop ;
+  errorstop ("") ;
+  clear error
+
+ENDPROC erase last bootstrap source dataspace ;
+
+PROC set clock (TASK CONST id, REAL CONST clock value) :
+  EXTERNAL 82
+ENDPROC set clock ;
+
+PROC sys op (INT CONST code) :
+  EXTERNAL 90
+END PROC sys op ;
+
+PROC create (TASK CONST father, son, INT CONST priv, PROCA CONST start) :
+  EXTERNAL 95
+ENDPROC create ;
+ 
+PROC pcb (TASK CONST id, INT CONST field, value) :
+  EXTERNAL 105
+ENDPROC pcb ;
+
+PROC activate (TASK CONST id) :
+  EXTERNAL 108
+ENDPROC activate ;
+
+PROC deactivate (TASK CONST id) :
+  EXTERNAL 109
+ENDPROC deactivate ;
+
+PROC halt process (TASK CONST id) :
+  EXTERNAL 110
+ENDPROC halt process ;
+
+PROC erase process (TASK CONST id) :
+  EXTERNAL 112
+ENDPROC erase process ;
+
+ENDPACKET supervisor ;
+

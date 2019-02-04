@@ -1,0 +1,1571 @@
+(***************************************************************************)
+(*                                                                         *)
+(*           Erste von drei Dateien des EUMEL-BASIC-Systems                *)
+(*                                                                         *)
+(*           Autor: Heiko Indenbirken                                      *)
+(*           Überarbeitet von: Rudolf Ruland und Michael Overdick          *)
+(*                                                                         *)
+(*           Stand: 27.10.1987                                             *)
+(*                                                                         *)
+(***************************************************************************)
+
+PACKET basic std DEFINES EQU, UEQ,            (* Autor: Heiko Indenbirken *)
+                         LES, LEQ,            (* Stand: 23.10.1987/rr/mo  *)
+                         GRE, GEQ,
+                         EQV, IMP,
+                         ^, swap,
+                         val, asc, cdbl, chr,
+                         cint, cvi, cvd, fre,
+                         hex, inchars,
+                         instr, ent, left,
+                         mid, mki, mkd,
+                         oct, right,
+                         rnd, init rnd,
+                         space, string,  
+                         l set, r set,
+                         int not, real not,
+                         /, DIV, real mod,
+                         time, timer,
+                         arctan, cos, sin, tan,
+                         exp, ln, floor,
+                         sqrt:
+
+
+INT CONST true := -1,
+          false := 0;
+
+LET real overflow = 6;
+
+
+(*BASIC-Integervergleiche                                                *)
+INT OP EQU (INT CONST a, b):
+  IF a=b
+  THEN true
+  ELSE false FI
+END OP EQU;
+
+INT OP UEQ (INT CONST a, b):
+  IF a=b
+  THEN false
+  ELSE true FI
+END OP UEQ;
+
+INT OP LES (INT CONST a, b):
+  IF a<b
+  THEN true
+  ELSE false FI
+END OP LES;
+
+INT OP LEQ (INT CONST a, b):
+  IF a<=b
+  THEN true
+  ELSE false FI
+END OP LEQ;
+
+INT OP GRE (INT CONST a, b):
+  IF a>b
+  THEN true
+  ELSE false FI
+END OP GRE;
+
+INT OP GEQ (INT CONST a, b):
+  IF a>=b
+  THEN true
+  ELSE false FI
+END OP GEQ;
+
+(*BASIC-Realvergleiche                                                   *)
+INT OP EQU (REAL CONST a, b):
+  IF a=b
+  THEN true
+  ELSE false FI
+END OP EQU;
+
+INT OP UEQ (REAL CONST a, b):
+  IF a=b
+  THEN false
+  ELSE true FI
+END OP UEQ;
+
+INT OP LES (REAL CONST a, b):
+  IF a<b
+  THEN true
+  ELSE false FI
+END OP LES;
+
+INT OP LEQ (REAL CONST a, b):
+  IF a<=b
+  THEN true
+  ELSE false FI
+END OP LEQ;
+
+INT OP GRE (REAL CONST a, b):
+  IF a>b
+  THEN true
+  ELSE false FI
+END OP GRE;
+
+INT OP GEQ (REAL CONST a, b):
+  IF a>=b
+  THEN true
+  ELSE false FI
+END OP GEQ;
+
+(*BASIC-Tesxtvergleiche                                                  *)
+INT OP EQU (TEXT CONST a, b):
+  IF a=b
+  THEN true
+  ELSE false FI
+END OP EQU;
+
+INT OP UEQ (TEXT CONST a, b):
+  IF a=b
+  THEN false
+  ELSE true FI
+END OP UEQ;
+
+INT OP LES (TEXT CONST a, b):
+  IF a<b
+  THEN true
+  ELSE false FI
+END OP LES;
+
+INT OP LEQ (TEXT CONST a, b):
+  IF a<=b
+  THEN true
+  ELSE false FI
+END OP LEQ;
+
+INT OP GRE (TEXT CONST a, b):
+  IF a>b
+  THEN true
+  ELSE false FI
+END OP GRE;
+
+INT OP GEQ (TEXT CONST a, b):
+  IF a>=b
+  THEN true
+  ELSE false FI
+END OP GEQ;
+
+
+(*BASIC         INTEGER / BOOL Operatoren                                *)
+REAL PROC real not (REAL CONST a):          (* mo *)
+  real (int (a) XOR -1)
+END PROC real not;
+
+INT PROC int not (INT CONST a):             (* mo *)
+  a XOR -1
+END PROC int not;
+
+INT OP EQV (INT CONST l, r):
+  int not (l XOR r)
+END OP EQV;
+
+INT OP IMP (INT CONST l, r):
+  (l EQV r) OR r
+END OP IMP;
+
+LET smallest significant = 5.0e-12;
+REAL OP ^ (REAL CONST x, y):                                  (* F22/rr *)
+  IF   x > 0.0
+       THEN x ** y
+  ELIF x = 0.0
+       THEN IF   y > 0.0
+                 THEN 0.0
+            ELIF y = 0.0
+                 THEN 1.0
+                 ELSE errorstop (real overflow, "");
+                      max real
+            FI
+       ELSE REAL VAR floor y := floor (y + round value);            
+            IF   (abs (y - floor y) > smallest significant)
+                      COR (floor y = 0.0 AND y <> 0.0)
+                 THEN errorstop (1005, "bei " + text (x) +
+                                        " ^ " + text (y, 19) +
+                                        " : neg. Basis, gebr. Exponent");
+                      0.0
+            ELIF (floor y MOD 2.0) = 0.0
+                 THEN     (-x) ** floor y
+                 ELSE - ( (-x) ** floor y )
+            FI
+  FI .
+
+  round value : IF y >= 0.0 THEN 0.5 ELSE -0.5 FI .
+
+END OP ^;
+
+REAL OP ^ (INT CONST x, y):
+  real (x) ** y
+END OP ^;
+
+REAL OP / (INT CONST l, r):                 (* mo *)
+  real (l) / real (r)
+END OP /;
+
+INT OP DIV (REAL CONST l, r):               (* mo *)
+  cint (l) DIV cint (r)
+END OP DIV;
+
+REAL PROC real mod (REAL CONST l, r):       (* mo *)
+  round (l, 0) MOD round (r, 0)
+END PROC real mod;
+
+(*                            Basic Arithmetik                           *)
+REAL VAR r swap;
+PROC swap (REAL VAR left, right):
+  r swap := left;
+  left := right;
+  right := r swap
+END PROC swap;
+
+INT VAR i swap;
+PROC swap (INT VAR left, right):
+  i swap := left;
+  left := right;
+  right := i swap
+END PROC swap;
+
+TEXT VAR t swap;
+PROC swap (TEXT VAR left, right):
+  t swap := left;
+  left := right;
+  right := t swap
+END PROC swap;
+
+(*Internkonvertierungen                                                  *)
+INT PROC cvi (TEXT CONST v):
+  v ISUB 1
+END PROC cvi;
+
+REAL PROC cvd (TEXT CONST v):
+  v RSUB 1
+END PROC cvd;
+
+TEXT VAR i text :: 2*""0"", r text :: 8*""0"";
+TEXT PROC mki (REAL CONST x):
+  mki (cint (x))
+END PROC mki;
+
+TEXT PROC mki (INT CONST i):
+  replace (i text, 1, i);
+  i text
+END PROC mki;
+
+TEXT PROC mkd (INT CONST i):
+  mkd (real (i))
+END PROC mkd;
+
+TEXT PROC mkd (REAL CONST r):
+  replace (r text, 1, r);
+  r text
+END PROC mkd;
+
+(*Textoperationen                                                        *)
+PROC l set (TEXT VAR left, TEXT CONST right):
+  replace (left, 1, right)
+END PROC l set;
+
+PROC r set (TEXT VAR left, TEXT CONST right):
+  replace (left, length (left)-length (right)+1, right)
+END PROC r set;
+
+TEXT PROC left (TEXT CONST string, REAL CONST no):
+  left (string, cint (no))
+END PROC left;
+
+TEXT PROC left (TEXT CONST string, INT CONST no):
+  subtext (string, 1, no)
+END PROC left;
+
+TEXT PROC right (TEXT CONST string, REAL CONST no):
+  right (string, cint (no))
+END PROC right;
+
+TEXT PROC right (TEXT CONST string, INT CONST no):
+  subtext (string, length (string)-no+1)
+END PROC right;
+
+TEXT PROC mid (TEXT CONST source, REAL CONST from):
+  mid (source, cint (from))
+END PROC mid;
+
+TEXT PROC mid (TEXT CONST source, INT CONST from):
+  subtext (source, from)
+END PROC mid;
+
+TEXT PROC mid (TEXT CONST source, REAL CONST from, length):
+  mid (source, cint (from), cint (length))
+END PROC mid;
+
+TEXT PROC mid (TEXT CONST source, INT CONST from, length):
+  subtext (source, from, from+length-1)
+END PROC mid;
+
+TEXT PROC string (REAL CONST x, y):
+  string (cint (x), cint (y))
+END PROC string;
+
+TEXT PROC string (INT CONST x, REAL CONST y):
+  string (x, cint (y))
+END PROC string;
+
+TEXT PROC string (REAL CONST x, INT CONST y):
+  string (cint (x), y)
+END PROC string;
+
+TEXT PROC string (INT CONST i, j):
+  i * code (j)
+END PROC string;
+
+TEXT PROC string (REAL CONST i, TEXT CONST x):
+  string (cint (i), x)
+END PROC string;
+
+TEXT PROC string (INT CONST i, TEXT CONST x):
+  i * (x SUB 1)
+END PROC string;
+
+(*Konvertierungen                                                       *)
+
+REAL PROC val (TEXT CONST text) :                               (* F18/rr *)
+
+  TEXT VAR buffer := text;
+  change (buffer, "d", "e");
+  change (buffer, "D", "e");
+  change (buffer, "E", "e");
+  real (buffer)
+
+END PROC val;
+
+REAL PROC asc (TEXT CONST text):
+  real (code (text SUB 1))
+END PROC asc;
+
+TEXT PROC chr (INT CONST n):
+  code (n)
+END PROC chr;
+
+TEXT PROC chr (REAL CONST n):
+  code (cint (n))
+END PROC chr;
+
+TEXT PROC hex (REAL CONST x):
+  hex (cint (x))
+END PROC hex;
+
+TEXT PROC hex (INT CONST x):
+  TEXT VAR value :: "12";
+  replace (value, 1, x);
+  high byte + low byte  .
+
+low byte:
+  hexdigit (code (value SUB 1) DIV 16) + hexdigit (code (value SUB 1) MOD 16)  .
+
+high byte:
+  IF (value SUB 2) = ""0""
+  THEN ""
+  ELSE hexdigit (code (value SUB 2) DIV 16) +
+       hexdigit (code (value SUB 2) MOD 16) 
+  FI  .
+
+END PROC hex;
+
+TEXT PROC oct (REAL CONST x):
+  oct (cint (x))
+END PROC oct;
+
+TEXT PROC oct (INT CONST x):
+  INT VAR number :: x AND maxint;
+  generate oct number;
+  IF x < 0
+    THEN "1" + oct number
+    ELSE subtext (oct number, pos (oct number, "1", "7", 1))
+  FI.
+
+generate oct number:
+  TEXT VAR oct number :: "";
+  INT VAR digit;
+  FOR digit FROM 1 UPTO 5 REP
+    oct number := hexdigit (number MOD 8) + oct number;
+    number := number DIV 8
+  PER.
+
+END PROC oct;
+
+TEXT PROC hexdigit (INT CONST digit):
+  IF 0 <= digit AND digit <= 9
+  THEN code (digit + 48)
+  ELIF 10 <= digit AND digit <= 15
+  THEN code (digit + 55)
+  ELSE errorstop (1051, "Hexziffer außerhalb des gültigen Bereichs"); "" FI
+END PROC hexdigit;
+
+TEXT PROC inchars (REAL CONST n):
+  inchars (cint (n))
+END PROC inchars;
+
+TEXT PROC inchars (INT CONST n):
+  TEXT VAR buffer :: "", char;
+  INT VAR i;
+  FOR i FROM 1 UPTO n
+  REP inchar (char);
+      buffer CAT char
+  PER;
+  buffer
+
+END PROC inchars;
+
+(*Mathematische Prozeduren                                               *)
+REAL PROC ent (INT CONST r):
+  real (r)
+END PROC ent;
+
+REAL PROC ent (REAL CONST r):
+  IF r >= 0.0 OR frac (r) = 0.0
+  THEN floor (r)
+  ELSE floor (r-1.0) FI
+END PROC ent;
+
+REAL PROC cdbl (INT CONST r):
+  real (r)
+END PROC cdbl;
+
+REAL PROC cdbl (REAL CONST r):
+  r
+END PROC cdbl;
+
+INT PROC cint (INT CONST r):
+  r
+END PROC cint;
+
+INT PROC cint (REAL CONST r):
+  IF r >= 0.0
+  THEN int (r+0.5)
+  ELSE int (r-0.5) FI
+END PROC cint;
+
+REAL VAR last rnd :: rnd (1.0);
+REAL PROC rnd (INT CONST x):
+  rnd (real (x))
+END PROC rnd;
+
+REAL PROC rnd (REAL CONST x):
+  IF x > 0.0
+  THEN last rnd := random;
+       last rnd
+  ELIF x = 0.0
+  THEN last rnd
+  ELSE init rnd (x);
+       last rnd := random;
+       last rnd
+  FI
+
+END PROC rnd;
+
+REAL PROC rnd:
+  rnd (1.0)
+END PROC rnd;
+
+PROC init rnd (REAL CONST init value) :
+
+  REAL VAR init := init value;
+  IF init <= -1.0 OR 1.0 <= init
+     THEN set exp (- decimal exponent (init) - 1, init) FI; 
+  initialize random (init) 
+
+END PROC init rnd;
+
+
+REAL PROC fre (TEXT CONST dummy):
+  INT VAR f, u;
+  collect heap garbage;
+  storage (f, u);
+
+  real (f - u) * 1024.0
+END PROC fre;
+
+REAL PROC fre (REAL CONST dummy):
+  fre ("")
+END PROC fre;
+
+REAL PROC fre (INT CONST dummy):
+  fre ("")
+END PROC fre;
+
+(*Inputroutinenen                                                        *)
+INT PROC instr (TEXT CONST source, pattern):
+  pos (source, pattern)
+END PROC instr;
+
+INT PROC instr (REAL CONST from, TEXT CONST source, pattern):
+  instr (cint (from), source, pattern)
+END PROC instr;
+
+INT PROC instr (INT CONST from, TEXT CONST source, pattern):
+  pos (source, pattern, from)
+END PROC instr;
+
+TEXT PROC space (REAL CONST len):
+  space (cint (len))
+END PROC space;
+
+TEXT PROC space (INT CONST len):
+  len * " "
+END PROC space;
+
+TEXT PROC time:                                        (* mo *)
+  subtext (time (clock (1) MOD day), 1, 8)          (* hh:mm:ss *)
+END PROC time;
+
+REAL PROC timer:
+  clock (0)
+END PROC timer;
+
+REAL PROC arctan (INT CONST x):
+  arctan (real (x))
+END PROC arctan;
+
+REAL PROC cos (INT CONST x):
+  cos (real (x))
+END PROC cos;
+
+REAL PROC sin (INT CONST x):
+  sin (real (x))
+END PROC sin;
+
+REAL PROC tan (INT CONST x):
+  tan (real (x))
+END PROC tan;
+
+REAL PROC exp (INT CONST x):
+  exp (real (x))
+END PROC exp;
+
+REAL PROC ln (INT CONST x):
+  ln (real (x))
+END PROC ln;
+
+REAL PROC floor (INT CONST x):
+  real (x)
+END PROC floor;
+
+REAL PROC sqrt (INT CONST x):
+  sqrt (real (x))
+END PROC sqrt;
+
+END PACKET basic std;
+
+PACKET basic using DEFINES using,             (* Autor: Heiko Indenbirken *)
+                           clear using,       (* Stand: 05.08.1987/rr/mo  *)
+                           basic text:
+
+
+LET exclamation point = "!",
+    backslash         = "\",
+    comercial and     = "&",
+    numbersign        = "#",
+    plus              = "+",
+    minus             = "-",
+    asterisk dollar   = "**$",
+    asterisk          = "**",
+    dollarsign        = "$$",
+    comma             = ",",
+    point             = ".",
+    caret             = "^^^^",
+    underscore        = "_",
+    blank             = " ",
+    nil               = "",
+
+    number format chars = "#+-*$.^",
+    format chars        = "!\&#+-$*.";
+
+TEXT VAR result, using format :: "", pre format :: "";
+INT VAR using pos :: 0;
+BOOL VAR image used :: FALSE;
+
+PROC using (TEXT CONST format):
+  using format := format;
+  using pos := 0;
+  result := "";
+  image used := TRUE
+
+END PROC using;
+
+PROC clear using:
+  using format := "";
+  image used := FALSE
+END PROC clear using;
+
+TEXT PROC next format:
+  pre format := "";
+  IF using pos = 0
+  THEN ""
+  ELSE search rest of format FI  .
+
+search rest of format:
+  WHILE using pos <= length (using format)
+  REP IF at underscore
+      THEN using pos INCR 1;
+           pre format CAT akt char
+      ELIF at format char
+      THEN LEAVE next format WITH pre format
+      ELSE pre format CAT akt char FI;
+      using pos INCR 1
+  PER;
+  using pos := 0;
+  pre format  .
+ 
+at underscore:
+  akt char = underscore  .
+
+at format char:
+  pos (format chars, akt char) > 0 CAND
+  evtl double asterisk CAND
+  evtl point with numbersign  .
+
+evtl double asterisk:
+  akt char <> asterisk COR next char = asterisk  .
+
+evtl point with numbersign:
+  akt char <> point COR next char = numbersign  .
+
+akt char: using format SUB using pos  .
+next char: using format SUB using pos+1  .
+END PROC next format;
+
+PROC init (TEXT VAR l result):
+  IF using pos = 0
+  THEN using pos := 1;
+       l result := next format;
+       IF using pos = 0
+       THEN errorstop (1005, "USING: kein Format gefunden") FI
+  ELSE l result := "" FI
+
+END PROC init;
+
+TEXT PROC basic text (TEXT CONST string):
+  IF image used
+  THEN using text
+  ELSE string FI  .
+
+using text:
+  init (result);
+  result CAT format string;
+  using pos INCR 1;
+  result CAT next format;
+  result  .
+
+format string:
+  IF akt char = exclamation point
+  THEN string SUB 1
+  ELIF akt char = backslash
+  THEN given length string
+  ELIF akt char = comercial and
+  THEN string
+  ELSE errorstop (1005, "USING-Format fehlerhaft: " + using format); ""  FI  .
+
+given length string:
+  INT VAR len :: 2;
+  FOR using pos FROM using pos+1 UPTO length (using format)
+  REP IF akt char = "\"
+      THEN LEAVE given length string WITH text (string, len) FI;
+      len INCR 1
+  UNTIL akt char <> " "PER;
+  errorstop (1005, "USING-Format fehlerhaft: " + using format);
+  ""  .
+
+akt char: using format SUB using pos
+END PROC basic text;
+ 
+TEXT PROC basic text (INT CONST number):
+  IF image used
+  THEN basic text (real (number))
+  ELSE sign + text (number) FI  .
+
+sign:
+  IF number >= 0
+  THEN " "
+  ELSE "" FI  .
+
+END PROC basic text;
+
+TEXT PROC basic text (REAL CONST number):
+  IF image used
+  THEN using text
+  ELSE normal text FI  .
+
+normal text:
+(*   Bei Real Zahlen werden maximal 7 signifikante Stellen ausgegeben,   *)
+(*          führende und nachfolgende Nullen werden unterdrückt,         *)
+(*           der Dezimalpunkt wird im Normalformat unterdrückt           *)
+  calculate sign;
+  REAL VAR mantissa := round (abs (number), 6-decimal exponent (number));
+  INT CONST exp :: decimal exponent (mantissa);
+
+  IF mantissa = 0.0
+  THEN result := " 0"
+  ELIF exp > 6 OR exp < -7 OR (exp < 0 AND more than 7 signifikant digits)
+  THEN scientific notation
+  ELIF exp < 0
+  THEN short negative notation
+  ELSE short positive notation FI;
+  result  .
+
+more than 7 signifikant digits:
+   REAL VAR signifikant := mantissa;
+   set exp (7+exp, signifikant);
+   frac (signifikant) <> 0.0  .
+
+calculate sign:
+  IF number >= 0.0
+  THEN result := " "
+  ELSE result := "-" FI  .
+
+scientific notation:
+  set exp (0, mantissa);
+  result CAT non zero (text (mantissa, 8, 6));
+
+  IF exp < 0
+  THEN result CAT "E-"
+  ELSE result CAT "E+" FI;
+
+  IF abs (exp) > 9
+  THEN result CAT text (abs (exp))
+  ELSE result CAT "0";
+       result CAT text (abs (exp))
+  FI  .
+
+short positive notation:
+  result CAT non zero (text (mantissa, 8, 6-exp));
+  IF (result SUB LENGTH result) = "."
+  THEN delete char (result, LENGTH result) FI  .
+
+short negative notation:
+  result CAT non zero (subtext (text (abs (mantissa), 9, 7), 2)).(* F13/rr *)
+
+using text:
+  init (result);
+  result CAT format number (subformat, number);
+  result CAT next format;
+  result  .
+
+subformat:
+  INT VAR from :: using pos, to :: last format char;
+  subtext (using format, from, to)  .
+
+last format char:
+  FOR using pos FROM using pos+1 UPTO length (using format)
+  REP IF non format char
+      THEN LEAVE last format char WITH using pos-1 FI
+  PER;
+  using pos := 0;
+  length (using format)  .
+
+non format char:
+  IF (using format SUB using pos) = comma
+  THEN (using format SUB (using pos+1)) <> point
+  ELSE pos (numberformat chars, using format SUB using pos) = 0  FI  .
+
+END PROC basic text;
+
+TEXT PROC non zero (TEXT CONST text):
+  INT VAR i;
+  FOR i FROM length (text) DOWNTO 2
+  REP UNTIL (text SUB i) <> "0" PER;
+  subtext (text, 1, i)
+END PROC non zero;
+
+TEXT PROC format number (TEXT CONST format, REAL CONST number):
+  IF no digit char
+  THEN errorstop (1005, "USING-Format fehlerhaft: " + using format);  ""
+  ELIF exponent found
+  THEN exponent format
+  ELSE normal format FI  .
+
+no digit char:
+  pos (format, numbersign) = 0 AND
+  pos (format, asterisk) = 0 AND
+  pos (format, dollarsign) = 0  .
+
+exponent found:
+  INT CONST exponent pos := pos (format, caret);
+  exponent pos > 0  .
+
+exponent format:
+  IF leading plus
+  THEN plus or minus + exponent field (subtext (format, 2), number, exponent pos-1) 
+  ELIF trailing plus
+  THEN exponent field (format, number, exponent pos) + plus or minus 
+  ELIF trailing minus
+  THEN exponent field (format, number, exponent pos) + nil or minus 
+  ELSE blank or minus + exponent field (subtext (format, 2), number, exponent pos-1) FI  .
+
+normal format:
+  IF leading numbersign
+  THEN number field (format, number, "", " ")
+  ELIF leading point
+  THEN number field (format, number, "", " ")
+  ELIF leading plus 
+  THEN number field (format, abs (number), plus or minus, " ")
+  ELIF leading asterisk dollar
+  THEN number field (format, number, "$", "*")
+  ELIF leading asterisk 
+  THEN number field (format, number, "", "*")
+  ELIF leading dollarsign
+  THEN number field (format, number, "$", " ")
+  ELSE errorstop (1005, "USING-Format fehlerhaft: " + using format); "" FI  . 
+ 
+leading numbersign:      (format SUB 1) = numbersign  .
+leading point:           (format SUB 1) = point  .
+leading plus:            (format SUB 1) = plus  .
+leading asterisk dollar: subtext (format, 1, 3) = asterisk dollar  .
+leading asterisk:        subtext (format, 1, 2) = asterisk  .
+leading dollarsign:      subtext (format, 1, 2) = dollarsign  .
+
+trailing minus: (format SUB LENGTH format) = minus   .
+trailing plus:  (format SUB LENGTH format) = plus  .
+
+plus or minus:  IF number < 0.0 THEN minus ELSE plus FI  .
+nil or minus:   IF number < 0.0 THEN minus ELSE nil FI  .
+blank or minus: IF number < 0.0 THEN minus ELSE blank FI .
+
+END PROC format number;
+
+TEXT PROC exponent field (TEXT CONST format, REAL CONST value, INT CONST exponent pos):
+  REAL VAR number := abs (value);
+  INT CONST point pos := pos (format, point);
+  calc leading and trailing;
+  INT CONST new exponent :: decimal exponent (value) - leading + 1;
+  IF abs (new exponent) >= 100
+    THEN "%" + mantissa + "E" + null text (new exponent, 4)
+    ELSE mantissa + exponent
+  FI.
+
+calc leading and trailing:
+  INT VAR leading, trailing;
+  IF point pos = 0
+  THEN leading := exponent pos-1;
+       trailing := 0
+  ELSE leading := point pos-1;
+       trailing := exponent pos-point pos-1
+  FI  .
+
+mantissa:
+  set exp (leading - 1, number);
+  IF point pos = 0
+  THEN subtext (text (number, leading+1, 0), 1, leading)
+  ELSE subtext (text (number, leading+trailing+2, trailing), 2) FI  .
+
+exponent:
+  "E" + null text (new exponent, 3)  .
+
+END PROC exponent field;
+
+TEXT PROC number field (TEXT CONST format, REAL CONST value,
+                        TEXT CONST pretext, lead char):
+  INT CONST point pos :: pos (format, point);
+  calc fraction;
+  calc digits;
+  calc commata if necessary;
+  fill with lead chars and sign  .
+
+calc fraction:
+  INT VAR fraction :: 0, i;
+  FOR i FROM point pos+1 UPTO length (format)
+  WHILE (format SUB i) = numbersign
+  REP fraction INCR 1 PER  .
+
+calc digits:
+  TEXT VAR valuetext;
+  IF point pos = 0
+  THEN valuetext := digits (abs (value), 0, TRUE);
+       delete char (valuetext, length (valuetext))
+  ELSE valuetext := digits (abs (value), fraction, point pos <> 1) FI  .
+
+calc commata if necessary:
+  IF comma before point
+  THEN insert commata FI  .
+
+comma before point:
+  point pos > 0 CAND (format SUB point pos-1) = comma   .
+
+insert commata:
+  i := pos (valuetext, point)-3;
+  WHILE i > 1 CAND (valuetext SUB i) <> " "
+  REP insert char (valuetext, ",", i);
+      i DECR 3
+  PER  .
+
+fill with lead chars and sign:
+  IF trailing minus
+  THEN fillby (pretext + valuetext, length (format)-1, lead char) + nil or minus
+  ELIF trailing plus
+  THEN fillby (pretext + valuetext, length (format)-1, lead char) + plus or minus
+  ELIF value < 0.0
+  THEN fillby (pretext + minus + valuetext, length (format), lead char)
+  ELSE fillby (pretext + valuetext, length (format), lead char) FI  .
+
+
+plus or minus:  IF value < 0.0 THEN minus ELSE plus FI  .
+nil or minus:   IF value < 0.0 THEN minus ELSE nil FI  .
+trailing minus: (format SUB LENGTH format) = minus   .
+trailing plus:  (format SUB LENGTH format) = plus  .
+END PROC numberfield;
+
+TEXT PROC null text (INT CONST n, digits):
+  TEXT VAR l result := text (abs (n), digits);
+  IF n < 0
+  THEN replace (l result, 1, "-")
+  ELSE replace (l result, 1, "+") FI;
+  change all (l result, " ", "0");
+  l result  .
+END PROC null text;
+
+TEXT PROC fillby (TEXT CONST source, INT CONST format, TEXT CONST with):
+  IF differenz >= 0
+  THEN differenz * with + source
+  ELSE "%" + source FI  .
+
+differenz:  format - length (source)  .
+END PROC fillby;
+
+TEXT PROC digits (REAL CONST value, INT CONST frac, BOOL CONST null):
+  IF decimal exponent (value) < 0
+  THEN TEXT VAR l result := text (value, frac+2, frac);
+
+       IF null AND first char <> "0"
+       THEN replace (l result, 1, "0");
+            l result
+       ELIF (NOT null AND first char = "0") OR first char = " "
+       THEN subtext (l result, 2)
+       ELSE l result FI
+  ELSE text (value, decimal exponent (value)+frac+2, frac) FI  .
+
+first char:
+  (l result SUB 1)  .
+
+END PROC digits;
+
+TEXT PROC right (TEXT CONST msg, INT CONST len):
+  IF length (msg) >= len
+  THEN subtext (msg, 1, len)
+  ELSE (len - length (msg)) * " " + msg FI
+
+END PROC right;
+
+END PACKET basic using;
+
+PACKET basic output                          (* Autor: R. Ruland        *)
+                                             (* Stand: 28.08.1987/rr/mo *)
+       DEFINES basic page,
+               width,           
+               init output,     
+               basic out,
+               basic write,
+               tab,
+               next zone,
+               next line,
+               next page,
+               cursor x pos,
+               pos,
+               csrlin,
+               l pos,
+               switch to printout file,
+               switch back to old sysout state:
+
+LET zone width = 16;  (*  sd.ddddddEsdddb  (s = sign, d = digit, b = blank) *)
+LET printfile name = "BASIC LPRINT OUTPUT";
+
+INT VAR screen width, x cursor, y cursor, line no;
+BOOL VAR paging := FALSE, first time,
+         in lprint;     (* mo *)
+TEXT VAR buffer, output line, last sysout file, old sysout, char;
+
+PROC basic page (BOOL CONST status):
+
+  paging := status
+
+END PROC basic page;
+
+BOOL PROC basic page:  paging  END PROC basic page;
+
+
+PROC width (INT CONST max):
+
+  IF   max < 0
+       THEN errorstop (1005, "WIDTH: negatives Angabe: " + text (max))
+  ELIF max = 0
+       THEN screen width := 1
+       ELSE screen width := max
+  FI;
+  last sysout file := "";
+
+END PROC width;
+
+INT PROC width :  screen width  END PROC width;
+
+
+PROC init output:
+
+  clear using;
+  width (max (1, x size));
+  line no      := 1;
+  output line  := "";
+  first time   := TRUE;
+  in lprint := FALSE
+
+END PROC init output;
+
+
+PROC basic out (INT  CONST i):   bas out (basic text (i) + " ")  END PROC basic out;
+ 
+PROC basic out (REAL CONST r):   bas out (basic text (r) + " ")  END PROC basic out;
+ 
+PROC basic out (TEXT CONST t):   bas out (basic text (t))        END PROC basic out;
+
+PROC basic write (INT  CONST i): bas out (basic text (i))  END PROC basic write;
+
+PROC basic write (REAL CONST r): bas out (basic text (r))  END PROC basic write;
+
+PROC basic write (TEXT CONST t): bas out (basic text ("""" + t + """"))  END PROC basic write;
+
+ 
+PROC bas out (TEXT CONST msg):
+
+  get cursor;
+  IF length (msg) > free
+     THEN IF first time
+             THEN first time := FALSE;
+                  next line;
+                  bas out (msg);
+             ELSE buffer := subtext (msg, 1, free);
+                  IF sysout = ""
+                    THEN out (buffer)
+                    ELSE sysout write (buffer)
+                  FI;
+                  next line;
+                  buffer := subtext (msg, free + 1);
+                  bas out (buffer);
+          FI;
+     ELSE first time := TRUE;
+          IF sysout = ""
+            THEN out (msg)
+            ELSE sysout write (msg)
+          FI;
+  FI;
+
+  . free : screen width - x cursor + 1
+
+END PROC bas out;
+
+
+PROC tab (INT CONST n):
+
+  get cursor;
+  IF   n <= 0
+       THEN tab position out of range
+  ELIF n > screen width
+       THEN tab (n MOD screen width);
+  ELIF x cursor > n
+       THEN next line;
+            tab (n);
+  ELIF sysout = ""
+       THEN cursor (n, y cursor);
+       ELSE buffer := (n - x cursor) * " ";
+            sysout write (buffer)
+  FI;
+
+  . tab position out of range :
+      IF x cursor <> 1 THEN next line FI;
+      write ("WARNUNG : TAB-Position <= 0");
+      next line;
+
+END PROC tab;
+
+
+PROC next zone:
+
+  get cursor;
+  IF   x cursor > screen width - zone width
+       THEN next line;
+  ELIF sysout = ""
+       THEN free TIMESOUT " ";
+       ELSE buffer := free * " ";
+            sysout write (buffer)
+  FI;
+
+  . free : ((x cursor - 1) DIV zone width + 1) * zone width - x cursor + 1
+
+END PROC next zone;
+
+
+PROC next line :
+
+  IF sysout = ""
+     THEN next line on screen
+     ELSE line;
+          write ("");              (* generates new record *)
+          output line := "";
+  FI;
+
+  . next line on screen:
+      line no INCR 1;
+      IF paging CAND line no > y size
+        THEN IF in last line
+               THEN warte;
+               ELSE out (""13""10"");
+                    line no := y cursor + 1;
+             FI;
+      ELIF NOT paging
+        THEN char := incharety;
+             IF char <> ""
+               THEN IF char = "+"
+                      THEN paging := TRUE
+                      ELSE type (char)
+                    FI
+             FI;
+             out (""13""10"")
+        ELSE out (""13""10"")
+      FI
+
+  . in last line :
+      get cursor;
+      y cursor = y size
+
+  . warte :
+      cursor (x size - 2, y size);
+      out (">>");
+      inchar (char);
+      IF   char = ""13""
+           THEN next page
+      ELIF char = ""10""
+           THEN out (""8""8"  "13""10"") 
+      ELIF char = ""27""
+           THEN clear editor buffer;
+                errorstop (1, "")
+      ELIF char = "-"
+           THEN out (""8""8"  "13""10"");
+                line no := 1;
+                paging  := FALSE;
+           ELSE out (""8""8"  "13""10"");
+                line no := 1;
+      FI;
+
+      . clear editor buffer:
+          REP UNTIL get charety = "" PER;
+
+END PROC next line;
+
+
+PROC next page:
+
+  IF sysout = ""
+    THEN out (""1""4"")
+    ELSE line
+  FI;
+  clear using;
+  line no     := 1;
+  output line := "";
+
+END PROC next page;
+
+
+INT PROC pos (REAL CONST dummy):           (* mo *)
+
+  cursor x pos
+
+END PROC pos;
+
+
+INT PROC pos (INT CONST dummy):            (* mo *)
+
+  cursor x pos
+
+END PROC pos;
+
+
+INT PROC cursor x pos :
+
+  get cursor;
+  x cursor
+
+END PROC cursor x pos;
+
+
+INT PROC csrlin:                              (* mo *)
+
+  get cursor;
+  y cursor
+
+END PROC csrlin;
+
+
+PROC get cursor :
+
+  IF sysout = ""
+     THEN get cursor (x cursor, y cursor);
+     ELSE x cursor := LENGTH output line + 1;
+  FI;
+
+END PROC get cursor;
+
+
+INT PROC l pos (REAL CONST dummy):                   (* mo *)
+
+  l pos (0)
+
+END PROC l pos;
+
+
+INT PROC l pos (INT CONST dummy):                    (* mo *)
+
+  INT VAR lprint position :: 1;
+  IF exists (printfile name)
+    THEN disable stop;
+         FILE VAR printfile :: sequential file (modify, printfile name);
+         IF lines (printfile) > 0
+           THEN to line (printfile, lines (printfile));
+                lprint position := len (printfile) + 1
+         FI;
+         output (printfile)
+  FI;
+  lprint position
+
+END PROC l pos;
+
+
+PROC switch to printout file:                       (* mo *)
+
+  in lprint := TRUE;
+  old sysout := sysout;
+  careful sysout (printfile name);
+
+END PROC switch to printout file;
+
+
+PROC switch back to old sysout state:               (* mo *)
+
+  IF in lprint
+    THEN careful sysout (old sysout);
+         in lprint := FALSE
+  FI
+
+END PROC switch back to old sysout state;
+
+
+PROC sysout write (TEXT CONST string):
+  check sysout;
+  write (string);
+  output line CAT string.
+
+check sysout:
+  IF sysout <> last sysout file
+    THEN careful sysout (sysout)
+  FI.
+
+END PROC sysout write;
+
+
+PROC careful sysout (TEXT CONST new sysout):                  (* mo *)
+
+IF new sysout <> ""
+  THEN disable stop;
+       FILE VAR outfile :: sequential file (modify, new sysout);
+       max line length (outfile, screen width);
+       last sysout file := sysout;
+       IF lines (outfile) > 0
+         THEN to line (outfile, lines (outfile));
+              read record (outfile, output line);
+              delete record (outfile)
+         ELSE output line := ""
+       FI;
+       sysout (new sysout);
+       write (output line);
+  ELSE sysout ("")
+FI
+
+END PROC careful sysout;
+
+END PACKET basic output;
+
+
+PACKET basic input                              (* Autor: R. Ruland        *)
+                                                (* Stand: 27.10.1987/rr/mo *)
+
+       DEFINES init input,
+               read input,       
+               check input,
+               assign input,
+               assign input line,
+               input ok,
+               input eof:            
+
+
+LET comma             = ",",
+    quote             = """",
+
+    wrong type        = 1,
+    insufficient data = 2,
+    too much data     = 3,
+    overflow          = 4,
+
+    int overflow      = 4,
+    real overflow     = 6;
+
+INT VAR input line pos, input error no;
+BOOL VAR on terminal;
+TEXT VAR input line :: "", previous input line := "", input value;
+
+. first quote found : (input value SUB 1) = quote
+.;
+
+PROC init input :
+
+  input error no      := 0;
+  input line pos      := 0;
+  input line          := "";
+  previous input line := "";
+
+END PROC init input;
+
+
+PROC read input (BOOL CONST cr lf, TEXT CONST msg, BOOL CONST question mark):
+
+  on terminal := sysout <> "" AND sysin = "";
+  check input error;
+  out string (msg);
+  IF question mark THEN out string ("? ") FI;
+  IF sysin <> ""
+     THEN getline (input line);
+     ELSE editget input line;
+  FI;
+  out string (input line);
+  IF crlf THEN out line FI;
+  input line pos := 0;
+  input error no := 0;
+
+  . check input error :
+      IF input error no = 0
+         THEN input line := "";
+         ELSE IF sysin = ""
+                 THEN BOOL CONST old basic page := basic page;
+                      basic page (FALSE);
+                      IF cursor x pos <> 1 THEN next line FI;
+                      basic out ("?Eingabe wiederholen ! (" + error text + ")");
+                      next line;
+                      basic page (old basic page);
+                 ELSE errorstop (1080,"INPUT-Fehler (" + error text +
+                                               ") : >" + input line + "<");
+              FI;
+       FI;
+
+       . error text :
+           SELECT input error no OF
+             CASE wrong type        : "falscher Typ"
+             CASE insufficient data : "zu wenig Daten"
+             CASE too much data     : "zu viele Daten"
+             CASE overflow          : "Überlauf"
+                          OTHERWISE : ""
+           END SELECT
+
+  . editget input line :
+      TEXT VAR exit char;
+      INT VAR x, y;
+      get cursor (x, y);
+      REP IF width - x < 1
+            THEN out (""13""10"");
+                 get cursor (x, y)
+          FI;
+          editget (input line, max text length, width - x, "", "k", exit char);
+          cursor (x, y);
+          IF exit char = ""27"k"
+             THEN input line := previous input line;
+             ELSE previous input line := input line;
+                  LEAVE editget input line;
+          FI;
+      PER;
+      
+END PROC read input;
+
+
+PROC out string (TEXT CONST string) :
+
+  basic out (string);
+  IF on terminal THEN out (string) FI;
+
+END PROC out string;
+
+
+PROC out line :
+
+  next line;
+  IF on terminal THEN out (""13""10"") FI;
+
+END PROC out line;
+
+
+BOOL PROC check input (INT CONST type) :
+
+  get next input value;
+  input value := compress (input value);
+  set conversion (TRUE);
+  SELECT type OF
+    CASE 1 : check int input
+    CASE 2 : check real input
+    CASE 3 : check text input
+  END SELECT;
+  IF NOT last conversion ok THEN input error no := wrong type FI;
+  input error no = 0
+
+  . check int input :
+      IF input value <> ""
+         THEN disable stop;
+              INT VAR help int value;
+              help int value := int (input value);
+              IF is error CAND error code = int overflow
+                 THEN clear error;
+                      input error no := overflow;
+              FI;
+              enable stop;
+      FI;
+
+  . check real input :
+      IF input value <> ""
+         THEN disable stop;
+              REAL VAR help real value;
+              help real value := val (input value);
+              IF is error CAND (error code = real overflow
+                                OR error code = int overflow) (* <-- Aufgrund eines Fehlers in 'real' *)
+                 THEN clear error;
+                      input error no := overflow;
+              FI;
+              enable stop;
+        FI;
+
+  . check text input :
+      (* IF input value = "" THEN input error no := wrong type FI; *)
+      IF NOT is quoted string CAND quote found
+         THEN input error no := wrong type
+      FI; 
+
+      . is quoted string :
+          first quote found CAND last quote found
+
+          . last quote found :
+              (input value SUB LENGTH input value) = quote
+
+      . quote found :
+          pos (input value, quote) > 0
+
+END PROC check input;
+
+
+PROC assign input (INT VAR int value) :
+
+  get next input value;
+  int value := int (input value);
+
+END PROC assign input;
+
+PROC assign input (REAL VAR real value) :
+
+  get next input value;
+  real value := val (input value);
+
+END PROC assign input;
+
+PROC assign input (TEXT VAR string value) :
+
+  get next input value;
+  input value := compress (input value);
+  IF first quote found
+     THEN string value := subtext (input value, 2, LENGTH input value -1)
+     ELSE string value := input value
+  FI;
+
+END PROC assign input;
+
+PROC assign input line (TEXT VAR string line) :
+
+  string line := input line;
+
+END PROC assign input line;
+
+
+PROC get next input value :                                  (* F27/rr *)
+
+  IF input line pos > LENGTH input line 
+     THEN input value    := "";
+          input error no := insufficient data;
+     ELSE IF next non blank char = quote
+             THEN get quoted string
+             ELSE get unquoted string
+          FI;
+  FI;
+
+  . next non blank char :
+      INT CONST next non blank char pos := pos (input line, ""33"", ""255"", input line pos + 1);
+      input line SUB next non blank char pos
+
+  . get quoted string :
+      INT CONST quote pos := pos (input line, quote, next non blank char pos + 1);
+      IF quote pos = 0
+         THEN input value    := subtext (input line, next non blank char pos);
+              input line pos := LENGTH input line + 1;
+              input error no := wrong type;
+         ELSE input value    := subtext (input line, next non blank char pos, quote pos);
+              input line pos := pos (input line, ""33"", ""255"", quote pos + 1);
+              IF   input line pos = 0
+                   THEN input line pos := LENGTH input line + 1;
+              ELIF (input line SUB input line pos) <> comma
+                   THEN input error no := wrong type;
+                        input line pos DECR 1;
+              FI;
+      FI;
+
+  . get unquoted string :
+      INT VAR comma pos := pos (input line, comma, input line pos + 1);
+      IF comma pos = 0
+         THEN input value    := subtext (input line, input line pos + 1);
+              input line pos := LENGTH input line + 1;
+         ELSE input value    := subtext (input line, input line pos + 1, comma pos - 1);
+              input line pos := comma pos;
+      FI;
+
+END PROC get next input value;
+
+
+BOOL PROC input ok:
+
+  IF input line pos <= LENGTH input line
+     THEN input error no := too much data FI;
+  input line pos := 0;
+  input error no = 0
+
+END PROC input ok;
+
+BOOL PROC input eof:  input line = ""  END PROC input eof;
+
+
+END PACKET basic input; 
+
+PACKET basic std using io                         (* Autor: R. Ruland      *)
+                                                  (* Stand: 26.10.87/rr/mo *)
+
+       DEFINES init rnd:
+
+
+PROC init rnd:
+
+  REAL VAR init;
+  REP read input (TRUE, "Startwert des Zufallszahlengenerators ? ", FALSE);
+  UNTIL check input (2) CAND input ok PER;                      (* F24/rr *)
+  assign input (init);
+  init rnd (init);
+
+END PROC init rnd;
+
+
+END PACKET basic std using io;
+

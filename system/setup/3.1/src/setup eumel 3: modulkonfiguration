@@ -1,0 +1,854 @@
+
+(**************************************************************************)
+(***** Ergänzung des SHards um ein Modul (mit Dialog)     *****************)
+(***** Copyright (c) 1987, 1988 by                        *****************)
+(***** Lutz Prechelt, Karlsruhe                           *****************)
+(**************************************************************************)
+
+PACKET setup eumel modulkonfiguration     (* Copyright (c) by         *)
+DEFINES configurate module,               (* Lutz Prechelt, Karlsruhe *)
+        print configuration,              (* Eumel 1.8.1              *)
+        give me, take you,                (* Stand : 12.07.88   3.2   *)
+        new index,                        
+        perform dtcb dialogue,
+        perform ccb  dialogue,
+        (* für Modulprogrammierer : *)
+        write info,
+        channel free,
+        reserve channel,
+        channels of this module,
+        buffer address :
+
+(* Dieses Modul führt den kompletten Dialog mit dem Benutzer durch, der
+   nötig ist, um alle Kanäle, die mit demselben Modul laufen sollen, zu 
+   konfigurieren. 
+   Verfahren : 
+      im alten SHard den dtcb suchen 
+      dtcb und Modul im neuen SHard eintragen
+      dtcb mit oder ohne Vorbild konfigurieren 
+      alle ccbs zu dem Modul im alten SHard suchen und Kanalnummern merken
+      Auswahl einer Kanalmenge durch Benutzer mit alten als Vorschlag
+      ccbs in neuen SHard kopieren
+      ccbs mit oder ohne Vorbild konfigurieren
+      Kanaltabelle auf den neuen Stand bringen
+      neuen Shard und seine geänderte Länge zurückgeben 
+
+   Dabei kann der "Dialog" bei geeigneten Rahmenbedingungen durch bloßes
+   Übertragen der Werte aus einem Vorlage-SHard ersetzt werden, wenn der
+   Benutzer dies wünscht (want automatic mode). Dann geht alles von selbst.
+   (....kaufen Sie Setup-Eumel und es geht alles wie von selbst !)
+
+Format des SHard-Hauptmoduls : 
+   1. (Byte 0-2)     jmp boot (3 Byte)
+   2. (Byte 3)       reserviert
+   3. (Byte 4)       SHard-Version
+   4. (Byte 5)       SHard-Release
+   5. (Byte 6/7)     SHardlänge (2 Byte)
+   6. (Byte 8/9)     Verweis auf Bad-Block Tabelle (2 Byte)
+   7. (Byte 10/11)   Verweis auf Kanaltabelle
+   8. (Byte 16-175)  Eumelleiste
+   9. (Byte 176-299) SHardleiste
+  10. (ab Byte 300)  Shardhauptmodulroutinen und -daten
+  11. (danach)       Rumpf des Hauptmoduls mit Bad-Block-Tabelle,
+                     Kanaltabelle, Routinen und Daten
+  12. (danach)       Folge der Module (bis Byte SHardlänge - 1)
+
+Kanaltabelle:
+        feste Länge 40 Einträge "nr of channels total" (Kanal 0 bis Kanal 39)
+        jeder Eintrag besteht aus : (alles 2 Byte) 
+        offset dtcb, offset ccb 
+ 
+Achtung : Dieses Programm schmiert bei SHards über 32767 Byte Länge
+          eventuell ab (es hat noch niemand probiert) !
+
+Abkürzungen: cb steht für control block und meint entweder ccb oder dtcb 
+ 
+Implementationsanmerkung :
+Bei der Verwendung von THESAURUS wird von dem Wissen über die Art der
+Implementation derselben Gebrauch gemacht, indem folgende Annahmen in den
+Code eingehen:
+1. Bei einem THESAURUS, in dem nicht gelöscht wurde, ist highest entry gleich
+   der Kardinalität
+2. außerdem entspricht dann die Nummer (link) eines Eintrags seinem
+   Eintragszeitpunkt, d.h. der Position in der Eintragsfolge
+3. + und - liefert THESAURi, in denen nicht gelöscht wurde und die Eintrags-
+   reihenfolge ist wie von den Parametern vorgegeben (bei + links zuerst)
+4. certain und ONE liefern THESAURi, in denen nicht gelöscht wurde.
+*)
+
+(************************* Daten ********************************)
+
+LET    nr of channels total          = 40,  (* SHard Tabellenlänge *)
+       mdts                          = 40,  (* max dialogtable size in INTs *)
+       mchm                          = 20,  (* max channels for module *)
+       offset sh version             = 4,
+       offset sh structureversion    = 5,
+       offset shardlength            = 6,
+
+       do name = "PrOgRaM tO Do";
+
+LET  UNSIGNED  = INT,
+     VARIABLES = ROW mdts ROW mchm INT;
+TEXT CONST variables var xxv :: "ROW " + text (mdts) + " ROW "+
+                                text (mchm) + " INT VARxxv;";
+
+VARIABLES VAR v;             (* siehe give me / take you *)
+
+INT  VAR max index;          (* Information für new index *)
+
+INT  VAR channels of module; (* Information für channels of this module *)
+
+TEXT VAR actual info;        (* fuer write info *)
+
+ROW 256 INT VAR channel table of new shard;  (* für channel free *)
+
+DATASPACE VAR dummy ds;      (* für print configuration *)
+
+REAL VAR new shard length;
+
+(***************************************************************************)
+(************* Hier geht's los...... ***************************************)
+(***************************************************************************)
+
+(******************** configurate module **********************************)
+
+PROC configurate module (MODUL VAR  new shard, MODUL CONST old shard,
+                         BOOL CONST old shard valid, want automatic mode,
+                         TEXT CONST modulname) :
+  do configurate module (new shard, old shard, old shard valid,
+                      want automatic mode, modulname, FALSE)
+END PROC configurate module;
+
+(********************** print configuration *******************************)
+
+PROC print configuration (MODUL CONST old shard, TEXT CONST modulname) :
+  (* Es ist hier schon sichergestellt, daß old shard valid ist und das Modul
+     auch im SHard enthalten
+  *)
+  forget (dummy ds); dummy ds := nilspace;
+  BOUND MODUL VAR dummy :: dummy ds;
+  do configurate module (dummy, old shard, TRUE, FALSE, modulname, TRUE);
+  forget (dummy ds).
+END PROC print configuration;
+
+
+(******************* do configurate module *********************************)
+
+PROC do configurate module (MODUL VAR  new shard, MODUL CONST old shard,
+                            BOOL CONST old shard valid, want automatic mode,
+                            TEXT CONST modulname,
+                            BOOL CONST print configuration only):
+  (* In dieser Prozedur ist die Beschränkung auf Module mit unter 32kB
+     Länge ausgenutzt.
+     Ist kein alter SHard vorhanden, so muss ein leerer SHard übergeben
+     werden (d.h. alle Einträge in der Kanaltabelle sind 0).
+     Ein alter SHard darf keinesfalls unterschiedliche releases desselben
+     Modultyps enthalten.
+     Resultierende SHardgesamtlängen von über 32k sind noch nicht getestet.
+  *)
+  BOUND MODUL VAR m;
+  INT VAR  (***** Daten über das neue Modul *****)
+           sh version, sh structure version, release,
+           max ccb, nr of ccbs,
+           dtcb table entries, offset dtcb table, (* Variablentabellen *)
+           ccb  table entries, offset ccb  table,
+           muster ccb length, offset muster ccb, (* Muster-ccb im Modul *)
+           module body length,  (* Länge des zu kopierenden Modulrumpfs *)
+           offset module body, offset dtcb;
+  TEXT VAR modultyp; (* 4 Byte *)
+  INT VAR  (***** Daten über den alten SHard *****)
+           old release :: -2;  (* garantiert inkompatibel *)
+  REAL VAR offset old dtcb :: 0.0;
+  ROW nr of channels total REAL VAR offset old ccb;
+  BOOL VAR old cbs valid :: FALSE;
+  THESAURUS VAR old channels :: empty thesaurus;
+  (***** Daten über den neuen SHard *****)
+  REAL VAR dtcb location;
+  ROW nr of channels total REAL VAR ccb location;
+  (***** Sonstige Daten *****)
+  INT  VAR i, k, kanal, ccb count;
+  BOOL VAR automatic mode, configurate :: NOT print configuration only;
+  reset direction (FALSE); (* zur Sicherheit *)
+  IF configurate
+  THEN new shard length := unsigned (int (new shard, offset shard length)) FI;
+  connect module;
+  get module data;
+  test sh version compatibility;      (* ggf. LEAVE *)
+  (* Bisher wurde nur gelesen, ab jetzt darf nicht mehr abgebrochen werden *)
+  search old shard for module and find all old ccbs;
+  test release compatibility;         (* ggf. LEAVE *)
+  IF configurate
+  THEN write module with dtcb to shard;
+       perhaps set automatic mode;
+  FI;
+  configurate dtcb;
+  IF configurate
+  THEN kopf;
+       select channels;
+       write ccbs to shard;
+  ELSE nr of ccbs := highest entry (old channels)
+  FI;
+  configurate ccbs;
+  IF configurate
+  THEN make entries in channeltable of new shard;
+       int (new shard, offset shardlength, unsigned (new shard length))
+  FI.
+
+connect module :
+  m := old (modulname);
+  actual info := info (m);
+  IF configurate
+  THEN kopf
+  ELSE put ("-----"); put (modulname); putline ("-----")
+  FI.
+
+get module data :
+  (* Format des Moduls in den ersten Bytes:
+     Byte    Entry
+     0/1     offset dtcb variablen tabelle
+     2/3     offset ccb  variablen tabelle
+     4/5     offset muster-ccb
+     6/7     offset modulrumpf
+     8/9     offset dtcb
+     10/11   max anzahl ccbs
+     die tabellen enthalten im ersten Wort die Anzahl ihrer Einträge
+     der modulrumpf und der ccb ihre Länge in Byte
+     die Länge der Tabellen ergibt sich aus den offset-Differenzen.
+     dtcb-Format : Modultyp (4 Byte)
+                   SHardversion (1 Byte)
+                   SHardstrukturversion (1 Byte)
+                   Modulrelease (2 Byte)     ....
+  *)
+  max ccb := int (m, 10);
+  offset dtcb table  := int (m, 0);
+  dtcb table entries := int (m, offset dtcb table);
+  offset ccb table   := int (m, 2);
+  ccb  table entries := int (m, offset ccb table);
+  offset muster ccb  := int (m, 4);
+  muster ccb length  := int (m, offset muster ccb);
+  offset module body := int (m, 6);
+  module body length := int (m, offset module body);
+  offset dtcb        := int (m, 8);
+(*****
+put ("  offset dtcb table:"); put(       offset dtcb table); line;
+put ("  dtcb table entrie:"); put(      dtcb table entries); line;
+put ("  offset ccb table :"); put(       offset ccb table);  line;
+put ("  ccb  table entrie:"); put(      ccb  table entries); line;
+put ("  offset muster ccb:"); put(       offset muster ccb); line;
+put ("  muster ccb length:"); put(       muster ccb length); line;
+put ("  offset module bod:"); put(      offset module body); line;
+put ("  module body lengt:"); put(      module body length); line;
+put ("  offset dtcb      :"); put(       offset dtcb);       line;*****)
+  modultyp            := text (m, offset dtcb, 4);
+  sh version          := byte (m, offset dtcb + 4);
+  sh structureversion := byte (m, offset dtcb + 5);
+  release             := int  (m, offset dtcb + 6).
+
+test sh version compatibility :
+  IF configurate AND NOT version is compatible
+  THEN putline ("Das Modul ist mit dieser SHard-Version nicht mehr verträglich.");
+       putline (""10""10""15"  Installation des Moduls wird abgebrochen.  "14""7""13""10"");
+       go on;
+       LEAVE do configurate module
+  FI.
+
+version is compatible:
+  (* Kompatibel, wenn das Modul eine ältere oder gleiche sh version verlangt
+     und die gleiche sh structureversion
+  *)
+  sh version <= byte (new shard, offset sh version) CAND
+  sh structure version = byte (new shard, offset sh structureversion).
+
+search old shard for module and find all old ccbs :
+  (* Es werden alle Kanäle des alten SHard untersucht, ob der dortige Treiber
+     den gleichen Modultyp hat und in diesem Fall die Kanalnummer in
+     "old channels" gesammelt, sowie offset old ccb gemerkt, im Nichterfolgs-
+     falle wird offset old ccb auf diesem Kanal 0 gesetzt.
+     Es werden auch alle verketteten Treiber untersucht.
+     Auch old cbs valid und offset old dtcb werden ggf. gesetzt.
+  *)
+  IF NOT old shard valid
+  THEN LEAVE search old shard for module and find all old ccbs  FI;
+  IF configurate THEN put ("Ich untersuche den alten SHard :")  FI;
+  FOR kanal FROM 0 UPTO nr of channels total - 1 REP
+    IF configurate THEN cout (kanal)  FI;
+    collect ccbs on this channel
+  PER;
+  IF configurate THEN put (""13""5"")  FI.  (* Zeile löschen *)
+
+collect ccbs on this channel :
+  REAL VAR p dtcb :: sh dtcb offset (old shard, kanal),
+           p ccb  :: sh ccb offset (old shard, kanal);
+  WHILE p dtcb <> 0.0 AND p ccb <> 0.0 REP
+    BOOL CONST success :: text (old shard, p dtcb, 4) = modultyp;
+    IF success
+    THEN offset old dtcb := p dtcb;
+         old release     := int (old shard, p dtcb + 6.0);
+         insert (old channels, text (kanal));
+         offset old ccb [kanal+1] := p ccb
+    ELSE p dtcb := unsigned (int (old shard, p ccb + 2.0));  (* verkettet *)
+         p ccb  := unsigned (int (old shard, p ccb + 4.0))
+    FI
+  UNTIL success  PER;
+  old cbs valid := old shard valid AND offset old dtcb <> 0.0 AND
+                   (release = old release + 1 OR release = old release).
+
+test release compatibility:
+  IF print configuration only AND NOT old cbs valid
+  THEN putline ("Kein Zugriff auf die Konfigurationsdaten möglich");
+       LEAVE do configurate module
+  FI.
+
+write module with dtcb to shard :
+  put ("Modul """ + modulname + """ wird in den SHard eingetragen :");
+  IF int (new shard length MOD 2.0) <> offset module body MOD 2
+  THEN new shard length INCR 1.0  FI;   (* kopiert so schneller *)
+  dtcb location := new shard length +
+                      real (offset dtcb - offset module body);
+  copy (m, real (offset module body), new shard, new shard length,
+        module body length);
+  new shard length INCR real (module body length).
+
+perhaps set automatic mode :
+  IF old cbs valid AND old release = release
+  THEN automatic mode := want automatic mode
+  ELSE automatic mode := FALSE  FI.
+
+configurate dtcb :
+  IF configurate
+  THEN kopf;
+       putline ("Konfiguration des Treibers :");
+       get new channel table (new shard, channel table of new shard);
+  FI;
+  perform dtcb dialogue (m, real (offset dtcb table+2), dtcb table entries,
+                         new shard, dtcb location,
+                         old shard, offset old dtcb,
+                         old cbs valid, release = old release,
+                         dtcb refinements (m), dtcb abfragen (m),
+                         automatic mode, print configuration only).
+
+select channels :
+  ccb count := highest entry (old channels);
+  k := min (ccb count, max ccb); (* .... Mutter der Porzellankiste *)
+  nr of ccbs := max (k, 1);
+  IF automatic mode THEN LEAVE select channels  FI;
+  IF max ccb > 1
+  THEN REP
+         editget ("Wieviele Kanäle mit diesem Treiber (1 bis " +
+                  text (max ccb) + ") : ", nr of ccbs);
+         out (""13"")
+       UNTIL nr of ccbs IN range (1, max ccb)  PER;
+       out (""10""10"")
+  ELSE nr of ccbs := 1  FI;
+  IF nr of ccbs < ccb count  (* weniger als früher *)
+  THEN put ("Wählen Sie mindestens"); putline (x kanäle aus deren);
+       putline ("Werte nicht als Vorbesetzung angeboten werden sollen"10"");
+       REP
+         THESAURUS CONST help :: certain (old channels, empty thesaurus);
+         IF NOT enough refused THEN out (""7"")  FI
+       UNTIL enough refused  PER;
+       old channels := old channels - help;
+       out (""3""3""3""4"")  (* clear screen from incl. "Wählen..." on *)
+  FI.
+
+x kanäle aus deren :
+  IF ccb count - nr of ccbs > 1
+  THEN text (ccb count - nr of ccbs) + " Kanäle aus, deren"
+  ELSE "einen Kanal aus, dessen"  FI.
+
+enough refused :
+  highest entry (help) >= ccb count - nr of ccbs.
+
+write ccbs to shard :
+  (* Ausserdem wird hier ccb location vorbereitet *)
+  out ("Die Kanäle werden in den neuen SHard eingetragen : ");
+  FOR i FROM 1 UPTO nr of ccbs REP
+    ccb location [i] := new shard length;
+    copy (m, real (offset muster ccb + 2), new shard, new shard length,
+         muster ccb length);
+    new shard length INCR real (muster ccb length)
+  PER.
+
+configurate ccbs :
+  (*put (old shard valid); put ("Release:"); put (release); put ("  old release:"); put (old release);
+    put (old cbs valid); pause;*)
+  IF configurate
+  THEN out (""13""10"Konfiguration der Kanäle:"13""10"");
+       get new channel table (new shard, channel table of new shard)  
+  FI;
+  ccb count := 0;
+  FOR kanal FROM 0 UPTO nr of channels total REP
+    IF old channels CONTAINS text (kanal)
+    THEN ccb count INCR 1;
+         offset old ccb [ccb count] := offset old ccb [kanal+1]
+    FI
+  PER;
+  FOR i FROM ccb count + 1 UPTO nr of ccbs REP
+    offset old ccb [i] := 0.0
+  PER;
+  perform ccb dialogue (m, real (offset ccb table+2), ccb table entries,
+                        new shard, ccb location,
+                        old shard, offset old ccb,
+                        nr of ccbs,
+                        offset old dtcb <> 0.0, release = old release,
+                        ccb refinements (m), ccb abfragen (m),
+                        automatic mode, print configuration only).
+
+make entries in channeltable of new shard :
+  kopf;
+  out ("Konfigurationsdaten werden in den neuen SHard eingetragen : ");
+  FOR i FROM 1 UPTO nr of ccbs REP
+    cout (i);
+    kanal := (*v[1][i]falsch???!!!*) byte (new shard, ccb location [i]);
+    make entry in channeltable of new shard
+  PER.
+
+make entry in channeltable of new shard :
+  IF NOT channel free (kanal)
+  THEN (* dtcb/ccb Adresse aus channel table nach neuem ccb umtragen. *)
+       int (new shard, ccb location [i] + 2.0,
+            unsigned (sh dtcb offset (new shard, kanal)));
+       int (new shard, ccb location [i] + 4.0,
+            unsigned (sh ccb offset (new shard, kanal)));
+  ELSE (* Folge-dtcb/ccb Adresse auf 0 setzen *)
+       int (new shard, ccb location [i] + 2.0, 0);
+       int (new shard, ccb location [i] + 4.0, 0);
+  FI;
+  (* Jetzt neue Adresse in channel table eintragen *)
+  sh dtcb offset (new shard, kanal, dtcb location);
+  sh ccb  offset (new shard, kanal, ccb location [i]);
+  k := byte (new shard, ccb location [i] + 1.0);  (* Zusatzkanalnummer *)
+  IF k <> 255  (* 255 = kein Zusatzkanal vorhanden *)
+  THEN (* IF NOT channel free (k) THEN alter eintrag futsch !!! *)
+       sh dtcb offset (new shard, k, dtcb location);
+       sh ccb  offset (new shard, k, ccb location [i])
+  FI.
+
+kopf :
+  write head ("""" + modulname + """ in den SHard aufnehmen");
+  out (actual info);
+  out (""13""10"").
+END PROC do configurate module;
+
+
+(********************* perform dialogue ************************************)
+
+PROC perform dtcb dialogue
+   (MODUL VAR m,          REAL CONST offset dialogue table, 
+    INT CONST dialogue table entries,
+    MODUL VAR   dtcb,     REAL CONST offset dtcb,
+    MODUL CONST old dtcb, REAL CONST offset old dtcb,
+    BOOL CONST old dtcb valid, same release,
+    TEXT CONST refinements, INT CONST count,
+    BOOL CONST automatic mode, print configuration only):
+  ROW nr of channels total REAL VAR offset cb, offset old cb;
+  offset cb [1]     := offset dtcb;
+  offset old cb [1] := offset old dtcb;
+  perform dialogue (TRUE, m, offset dialogue table, dialogue table entries,
+                    dtcb, offset cb, old dtcb, offset old cb, 1,
+                    old dtcb valid, same release, refinements, count,
+                    automatic mode, print configuration only).
+END PROC perform dtcb dialogue;
+
+PROC perform ccb dialogue
+   (MODUL VAR m,         REAL CONST offset dialogue table, 
+    INT CONST dialogue table entries,
+    MODUL VAR   ccb,     ROW nr of channels total REAL CONST offset ccb,
+    MODUL CONST old ccb, ROW nr of channels total REAL CONST offset old ccb,
+    INT CONST nr of ccbs, BOOL CONST old ccbs valid, same release,
+    TEXT CONST refinements, INT CONST count,
+    BOOL CONST automatic mode, print configuration only) : 
+  perform dialogue (FALSE, m, offset dialogue table, dialogue table entries,
+                    ccb, offset ccb, old ccb, offset old ccb, nr of ccbs,
+                    old ccbs valid, same release, refinements, count,
+                    automatic mode, print configuration only).
+END PROC perform ccb dialogue;
+
+
+PROC perform dialogue
+  (BOOL CONST is dtcb,
+  MODUL VAR m,       REAL CONST offset dialogue table, 
+  INT CONST dialogue table entries,
+  MODUL VAR   cb,     ROW nr of channels total REAL CONST offset cb,
+  MODUL CONST old cb, ROW nr of channels total REAL CONST offset old cb,
+  INT CONST nr of cbs, BOOL CONST old cb valid, same release,
+  TEXT CONST refinements, INT CONST refinement count,
+  BOOL CONST automatic mode, print configuration only) : 
+  (* Konfigurationsdialog für einen (Satz von) Kontrollblock(s) oder bloßes
+     Anzeigen der Konfigurationsdaten derselben.
+
+  1. bei NOT print configuration only:
+     Führt den Dialog für eine Tabelle (also ccb oder dtcb Variablentabelle) 
+     durch und bestückt den controlblock entsprechend. 
+     Es wird gleich eine ganze Tabelle von controlblocks (max. mchm Stück)
+     abgearbeitet und zwar nr of cbs Stück; im Falle is dtcb wird natürlich
+     nur der Eintrag 1 der Tabellen benutzt (vom Aufrufer).
+     Das Eingabemodul ist m mit der zu bearbeitenden Tabelle an der Stelle
+     offset dialogue table. Die Tabelle enthält dialogue table entries
+     Einträge (max. mdts Stück !)
+     Die Ausgabe des Prozesses landet im Modul cb ab den Stellen offset cb.
+     cb ist dabei jeweils der neue SHard, damit man nicht das Modul ändert.
+     Die Vorlagen zum Abgucken liefert, falls old cb valid ist, das
+     Modul old cb (der alte SHard) ab offset old cb, dabei ist die Struktur
+     gleich der neuen, wenn same release gilt, andernfalls sind die
+     Vorversionsoffsets zu benutzen (Versionsnummer um genau 1 erhöht).
+     Bei automatic mode werden nur still diese Vorgabewerte übernommen.
+     Die Elan-Teile für den Dialog liefert schliesslich der Text refinements,
+     er enthält refinement count Abfragen der Namen r1, r2, .....
+     Wenn refinent count = 0 ist, passiert hier eigentlich nichts,
+     deshalb sollte dann
+     für eine korrekte Initialisierung auch die Variablentabelle leer sein;
+     ist sie es allerdings doch nicht, werden hier noch die Standardwerte in
+     die ccbs eingetragen und nur der leere Dialog unterdrückt.
+     Vor Beginn/Nach Ende des gesamten Dialogs wird das refinement
+     dialoguestart/dialogueend aufgerufen; bei NOT is dtcb vor/nach dem Dialog
+     jedes Kanals auch noch channelstart/channelend.
+
+  2. bei print configuration only:
+     Die Daten zum new shard werden überhaupt nicht benutzt, von den
+     refinements wird nur für jeden Kanal einmal "print configuration"
+     aufgerufen.
+  *)
+  REAL VAR table byte :: offset dialogue table;
+  ROW mdts INT VAR offset, old offset, length;
+  INT  VAR i, k;
+  BOOL VAR configurate :: NOT print configuration only;
+  TEXT VAR program, t;
+  IF print configuration only       (* Hier wird evtl. schon verlassen *)
+  THEN startup for print
+  ELSE startup for dialogue  FI;
+  IF refinement count > 0 THEN build program  FI;
+  build data in v;
+  IF refinement count > 0 THEN do program  FI;
+  IF configurate THEN put values in cb  FI.
+
+startup for print :
+  IF refinement count = 0 OR dialogue table entries = 0
+  THEN LEAVE perform dialogue  FI.
+
+startup for dialogue:
+  IF refinement count = 0
+  THEN putline ("Keine Konfiguration notwendig.");
+       IF dialogue table entries = 0
+       THEN pause (20); LEAVE perform dialogue  FI
+  ELSE putline ("Die Konfiguration wird vorbereitet.")  FI.
+
+build program:
+  max index := refinement count;  (* damit new index bescheid weiss *)
+  program := variables var xxv;
+  program cat main part;
+  perhaps program cat data refinements;
+  program CAT refinements.
+
+program cat main part :
+  program CAT "LET UNSIGNED=INT;giveme(xxv);INT VARxxi::1,actchannel;";
+  IF print configuration only OR automatic mode
+  THEN program cat main part for print or automatic mode
+  ELSE program cat main part for dialogue  FI.
+
+program cat main part for print or automatic mode:
+  (* Leider muss man, wenn man den Modulprogrammierer bei den .ccb und .dtcb
+     Teilen nicht zu stark reglementieren will, einiges mitübersetzen, was
+     dann gar nicht benutzt wird (z.B. alle Refinements).
+           Und der Gedanke macht ihn blaß,
+           wenn er fragt: was kostet das ?
+                                     Wilhelm Busch
+  *)
+  program CAT "FORactchannelFROM 1 UPTOchannelsofthismoduleREP";
+  IF print configuration only
+  THEN program CAT "printconfigurationPER."
+  ELSE (* automatic mode: *) program CAT "automaticPER;takeyou(xxv)."
+  FI;
+  program CAT " xxa:actchannel. thischannel:";
+  IF NOT is dtcb THEN program CAT "channelstart;"  FI;
+  FOR i FROM 1 UPTO refinement count REP
+    program CAT "r";         (* Alle in this channel aufrufen, damit  *)
+    program CAT text (i);    (* "LEAVE this channel" kein Fehler ist. *)
+    program CAT ";"
+  PER;
+  IF NOT is dtcb
+  THEN program CAT "channelend"  FI;
+  program CAT ". ".
+
+program cat main part for dialogue:
+  program CAT "dialoguestart;FORactchannelFROM 1 UPTOchannelsofthismoduleREP";
+  program CAT "thischannelPER;dialogueend;takeyou(xxv). ";
+  program CAT "xxa:actchannel. thischannel:";
+  IF NOT is dtcb THEN program CAT "channelstart;"  FI;
+  program CAT "REP SELECTxxiOF ";
+  FOR i FROM 1 UPTO refinement count REP
+    program CAT "CASE ";
+    program CAT text (i);
+    program CAT ":r";
+    program CAT text (i);
+    program CAT " "
+  PER;
+  program CAT "ENDSELECT UNTIL NOTnewindex(xxi)PER";
+  IF NOT is dtcb
+  THEN program CAT ";channelend;reservechannel(xxv[1][xxa])"  FI;
+  program CAT ". ".
+
+perhaps program cat data refinements :
+  FOR i FROM 1 UPTO dialogue table entries REP
+    IF configurate THEN cout (i)  FI;
+    read start of next table entry; (* must be done in autom. mode, too,  *)
+    t := next variable name;        (* to get offset/oldoffset/length [i] *)
+    program CAT t;
+    program CAT ":xxv[";
+    program CAT text (i);
+    program CAT "][xxa]. ";  (* Das war der normale Eintrag "varname" *)
+    program CAT t;           (* Jetzt der für alle Kanäle "varname k" *)
+    program CAT "k:xxv[";
+    program CAT text (i);
+    program CAT "]. "
+  PER.
+
+read start of next table entry :
+  (* Format der Einträge in den Variablentabellen:
+     dw offset in cb
+     dw offset in old cb (oder ffffh falls neu)
+     db Typ (d.h. Länge und ist 1 oder 2)
+     db Namenslänge
+     db ...(Name)...
+  *)
+  INT CONST length of variable :: byte (m, table byte + 4.0),
+            length of name     :: byte (m, table byte + 5.0);
+  old offset [i] := int (m, table byte + 2.0);  (* Diese Sammlung *)
+  offset [i]     := int (m, table byte);  (* bereitet das Datenholen vor *)
+  length [i]     := length of variable;
+  IF length of variable < 1 OR length of variable > 2
+  THEN errorstop ("invalid variablelength : " + text (length of variable))
+  FI;
+  table byte INCR 6.0.
+
+next variable name:
+  table byte INCR real (length of name);
+  text (m, table byte - real (length of name), length of name).
+
+build data in v :
+  FOR k FROM 1 UPTO nr of cbs REP  (* Kanäle *)
+    IF configurate THEN cout (k)  FI;
+    FOR i FROM 1 UPTO dialogue table entries REP  (* Variablen *)
+      v[i][k] := next init value
+    PER
+  PER.
+
+next init value :
+  IF old cb valid CAND old cb present CAND value accessible
+  THEN value from old cb
+  ELSE value from new cb  FI.
+
+old cb present :
+  offset old cb [k] > 0.0.
+
+value accessible :
+  same release OR
+  (* Ein release zuvor und Variable gibts schon: *) old offset [i] <> -1.
+
+value from old cb :
+  IF length [i] = 1
+  THEN byte (old cb, offset old cb [k] + real (offset of old value))
+  ELSE int  (old cb, offset old cb [k] + real (offset of old value))
+  FI.
+
+value from new cb :
+  IF length [i] = 1
+  THEN byte (cb, offset cb [k] + real (offset [i]))
+  ELSE int  (cb, offset cb [k] + real (offset [i]))  FI.
+
+offset of old value :
+  IF same release
+  THEN offset [i]
+  ELSE old offset [i]  FI.
+
+do program :
+  reset direction (TRUE);
+  channels of module := nr of cbs;
+  IF setup testing
+    THEN (* für diesen THEN-Teil beim abgespeckten Eumel
+            setup eummel mini eumel dummies insertieren *)
+         forget (do name, quiet);
+         FILE VAR f := sequentialfile (output, do name);
+         putline (f, program);
+         (*edit (do name);*)
+         run (do name);
+         forget(do name, quiet);
+    ELSE do (program);
+  FI;
+  program := "";  (* Platz sparen *)
+  reset direction (FALSE).
+
+put values in cb :
+  FOR k FROM 1 UPTO nr of cbs REP
+    cout (k);
+    FOR i FROM 1 UPTO dialogue table entries REP
+      IF length [i] = 1 THEN put byte ELSE put int  FI
+    PER;
+  PER.
+
+put byte :
+  byte (cb, offset cb [k] + real (offset [i]), v[i][k]).
+
+put int :
+  int  (cb, offset cb [k] + real (offset [i]), v[i][k]).
+END PROC perform dialogue;
+
+(****************** give me, take you, new index ***************************)
+
+(* Diese Prozeduren werden aus dem do beim perform dialogue heraus aufgerufen
+   Sie dienen zur Kommunikation mit den Paketdaten dieses Pakets (give me,
+   take you) oder zur Verkleinerung des do-Programms (new index)
+*)
+
+PROC give me (VARIABLES VAR variables) :
+  (* Der Sinn dieser Prozedur besteht in Folgendem :
+     bei perform dialogue wird in dem do, das die refinements des
+     SHard-Moduls ausführt, eine Datenstruktur vom Typ VARIABLES aufgebaut,
+     die alle in den Variablentabellen des Moduls aufgeführten Variablen
+     enthält und einzeln über passend benannte refinements zugänglich macht.
+     Diese Datenstruktur wird zuvor in diesem Paket hier initialisiert mit
+     Initwerten aus der Variablentabelle oder wenn möglich mit den
+     entsprechenden Werten aus dem alten SHard. Mit give me fordert das
+     do-Programm die initialisierte Datenstruktur aus diesem Paket hier an.
+     Im do wird am Schluss mit take you diese Datenstruktur an dieses Paket
+     (und damit an perform dialogue) zurückgegeben, damit die durch den
+     Dialog gesetzten Werte in den neuen SHard eingetragen werden können.
+     Eine alternative Methode, diese Kommunikation zu realisieren, wäre die
+     Benutzung von BOUND VARIABLES VARs mit demselben Datenraum.
+   *)
+  variables := v
+END PROC give me;
+
+PROC take you (VARIABLES CONST variables) :
+  (* Gegenstück zu give me, siehe dort *)
+  v := variables
+END PROC take you;
+
+BOOL PROC new index (INT VAR index) :
+  (* Verändert den Index je nach der direction und fragt bei down am Ende,
+     ob fertig. Liefert, ob es noch weitergehen soll (falls nein: index = 1)
+  *)
+  LET up     = ""3"",
+      down   = ""10"",
+      error  = ""0"";
+  TEXT CONST old direction :: direction;
+  reset direction (TRUE);
+  IF old direction = error   (* Bei Fehlern immer stehenbleiben *)
+  THEN TRUE
+  ELIF index = max index     (* am Schluss aufhören oder nach 1 springen *)
+  THEN perhaps end
+  ELIF index = 1 AND old direction = up  (* bei 1 und up an den Schluss *)
+  THEN index := max index; TRUE
+  ELSE normal new index     (* sonst je nach direction up oder down *)
+  FI.
+
+perhaps end :  (* index = max index *)
+  IF old direction = up AND max index > 1    (* hoch vom Ende *)
+  THEN index DECR 1;
+       TRUE
+  ELIF old direction = up
+  THEN TRUE
+  ELIF old direction = down                  (* runter am Ende *)
+  THEN index := 1;
+       TRUE
+  ELSE reset direction (FALSE);          (* normal oder runter ans Ende *)
+       index := 1;
+       BOOL CONST ready :: yes (1, 23, "Fertig", FALSE);
+       reset direction (TRUE);
+       NOT ready
+  FI.
+
+normal new index :
+  IF old direction = up
+  THEN index DECR 1; TRUE
+  ELSE index INCR 1; TRUE  FI.
+END PROC new index;
+
+(******************** channel (table) handling *****************************)
+
+BOOL PROC channel free (INT CONST nr,
+                        ROW 256 INT CONST channel table of shard) :
+  IF nr < 0 OR nr > nr of channels total
+  THEN FALSE
+  ELSE channel table of shard [index ccb offset] = 0  FI.
+
+index ccb offset :
+  2 * nr + 1 + 1.
+END PROC channel free;
+
+BOOL PROC channel free (INT CONST nr) :
+  channel free (nr, channel table of new shard).
+END PROC channel free;
+
+PROC reserve channel (INT CONST nr,
+                      ROW 256 INT VAR channel table of shard) :
+  IF nr >= 0 AND nr < nr of channels total
+  THEN channel table of shard [index ccb offset] := 1  (* nichtnull *)  FI.
+
+index ccb offset :
+  2 * nr + 1 + 1.  (* Start nicht bei 0 und ccb hinter dtcb *)
+END PROC reserve channel;
+
+PROC reserve channel (INT CONST nr) :
+  reserve channel (nr, channel table of new shard).
+END PROC reserve channel;
+
+(*THESAURUS PROC free channels (ROW 256 INT VAR channel table of shard):
+  (* Liefert einen THESAURUS, der die Klartextform genau aller in
+     channel table of shard als frei angegebenen Kanäle enthält.
+  *)
+  INT VAR i;
+  THESAURUS VAR result :: empty thesaurus;
+  FOR i FROM 1 UPTO nr of channels total REP
+    IF channel free (i, channel table of shard)
+    THEN insert (result, text (i))  FI
+  PER;
+  result.
+END PROC free channels;*)
+
+INT PROC channels of this module :
+  channels of module.
+END PROC channels of this module;
+
+(********************* write info, buffer adress **************************)
+
+PROC write info :
+  putline (actual info)
+END PROC write info;
+
+INT PROC buffer address (INT CONST buffer size):
+  IF new shard length MOD 2.0 <> 0.0 THEN new shard length INCR 1.0 FI;
+  INT CONST buf adr := unsigned (new shard length);
+  new shard length INCR real (buffer size);
+  IF new shard length >= 65536.0 OR buffer size > 1024
+    THEN errorstop ("zu großer Puffer verlangt")
+  FI;
+  buf adr
+END PROC buffer address;
+
+(************************* Hilfsprozeduren *******************************)
+
+PROC elan (INT CONST mode, DATASPACE CONST source, TEXT CONST line,
+           INT VAR start module nr, BOOL CONST new init, ins, dump, lst,
+           sys, coder, rt check, sermon) :
+  EXTERNAL 256
+END PROC elan;
+
+PROC do (TEXT CONST long line) :
+  DATASPACE VAR ds;
+  INT VAR module nr :: 0;
+  elan (2, ds, long line, module nr, FALSE, FALSE, FALSE, FALSE,
+        FALSE, FALSE, FALSE, FALSE);
+  forget (ds);
+  no do again
+END PROC do;
+
+PROC go on :
+  put ("   >>>>> Taste drücken zum Weitermachen  ");
+  REPEAT UNTIL incharety (2) = ""  PER;
+  pause;
+  line.
+END PROC go on;
+
+END PACKET setup eumel modulkonfiguration;
+

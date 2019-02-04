@@ -1,0 +1,89 @@
+(**********************************************************************)
+(*                                                                    *)
+(* This program generates/updates a dataspace "procheads" from the    *)
+(* file "bulletin", including the module numbers. "procheads" will    *)
+(* be used by 'trace" and 'disasm" to show the name and the formal    *)
+(* param list of a called procedure.                                  *)
+(*                                                                    *)
+(*                                      GMD-Z2.P/G.Szalay/86-04-06    *)
+(*                                                                    *)
+(**********************************************************************)
+
+LET digits = "1234567890", outname = "procheads",
+    maxno of procs = 3071, first compiled module no = 256;
+FILE VAR infile := sequential file (input, old ("bulletin"));
+TEXT VAR buf, linebuf, entry, answer;
+INT VAR i, j, module no, posit, max module no := 0;
+BOUND ROW maxno of procs TEXT VAR proc heads;
+
+putline ("generating """ + outname + """ ...");
+BOOL VAR oldfile := exists (outname);
+IF oldfile
+THEN ask for action to be taken;
+     IF answer = "r"
+     THEN forget (outname); oldfile := FALSE;
+          proc heads := new (outname)
+     ELSE proc heads := old (outname)
+     FI
+ELSE proc heads := new (outname)
+FI;
+
+IF NOT oldfile THEN init heads FI;
+getline (infile, linebuf);
+FOR i FROM 1 UPTO 1000 REP
+  process line;
+  cout (i);
+  getline (infile, linebuf)
+UNTIL eof (infile) PER;
+process missing heads.
+
+ask for action to be taken:
+  out ("replace or append to old file """+outname+""" (r/a) ? ");
+  REP inchar (answer);
+      IF answer <> "r" AND answer <> "a" THEN out(""7"") FI
+  UNTIL answer = "r" OR answer = "a" PER;
+  putline (answer).
+
+init heads:
+  proc heads (1) := "+>1";
+  FOR i FROM 2 UPTO maxno of procs REP proc heads (i) := "" PER.
+
+process line:
+  fetch module no and entry;
+  IF module no >= first compiled module no
+  THEN IF module no < 10000
+       THEN proc heads (module no) := entry
+       ELSE proc heads (module no - 10000) := entry
+       FI
+  FI.
+
+fetch module no and entry:
+  posit := LENGTH linebuf - 1;
+  WHILE pos (digits, linebuf SUB posit) <> 0
+  REP posit DECR 1 PER;
+  module no := int (subtext (linebuf, posit+1));
+  IF module no < 10000 AND module no > max module no
+  THEN max module no := module no
+  FI;
+  WHILE (linebuf SUB posit) = " " REP posit DECR 1 PER;
+  entry := subtext (linebuf, 1, posit).
+
+process missing heads:
+  putline ("max module no=" + text(max module no));
+  FOR i FROM 1 UPTO max module no REP
+    cout(i);
+    IF proc heads (i) = "" THEN put in offset to last head FI
+  PER.
+
+put in offset to last head:
+  FOR j FROM i-1 DOWNTO 1 REP
+    IF proc heads (j) <> ""
+    THEN IF subtext (proc heads (j), 1, 2) = "+>"
+         THEN proc heads (i) := "+>" + text (i - j
+                                        + int (subtext (proc heads (j), 3)))
+         ELSE proc heads (i) := "+>" + text (i - j)
+         FI;
+         LEAVE put in offset to last head
+    FI
+  PER.
+

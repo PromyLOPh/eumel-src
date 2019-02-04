@@ -1,0 +1,420 @@
+PACKET uebersichtsanzeige
+
+(*************************************************************************)
+(*                                                                       *)
+(*     Anzeige von EUDAS-Dateien als Übersicht                           *)
+(*                                                                       *)
+(*     Version 02                                                        *)
+(*                                                                       *)
+(*     Autor: Thomas Berlage                                             *)
+(*     Stand: 08.07.87                                                   *)
+(*                                                                       *)
+(*************************************************************************)
+
+  DEFINES
+
+  uebersicht,
+  uebersichtsfenster :
+
+
+ROW 24 INT VAR zeilensatz;
+
+ROW 24 INT VAR zeilenkombi;
+
+FENSTER VAR fenster;
+fenster initialisieren (fenster);
+
+INT VAR
+  laenge := 24,
+  breite := 79,
+  zeilen anf := 1,
+  spalten anf := 1,
+  freier rest,
+  feldversion := -1;
+
+BOOL VAR
+  bis zeilenende,
+  satznummer markieren;
+
+TEXT VAR
+  feldnummern;
+
+LET
+  niltext = "",
+  begin mark = ""15"",
+  end mark = ""14"",
+  blank = " ",
+  piep = ""7"",
+  cleol = ""5"";
+
+LET
+  t satznr =  #901#
+    ""15"Satznr. ",
+  t dateiende =  #902#
+    "  << DATEIENDE >>",
+  uebersicht status =  #903#
+"UEBERSICHT:   Rollen: HOP OBEN, HOP UNTEN   Beenden: ESC q   Hilfe: ESC ?";
+
+
+PROC uebersichtsfenster (INT CONST x anf, y anf, x laenge, y laenge) :
+
+  fenstergroesse setzen (fenster, x anf, y anf, x laenge, y laenge);
+  bis zeilenende := x anf + x laenge >= 80;
+  laenge := y laenge;
+  breite := x laenge;
+  zeilen anf := y anf;
+  spalten anf := x anf
+
+END PROC uebersichtsfenster;
+
+PROC uebersicht (TEXT CONST nummern, PROC hilfe) :
+
+  TEXT VAR eingabezeichen;
+  BOOL VAR dummy;
+  INT VAR
+    angezeigter satz := 1,
+    ausgegebene zeilen := 0,
+    eingabezustand := 1;
+
+  fensterzugriff (fenster, dummy);
+  status anzeigen (uebersicht status);
+  feldnummern bestimmen;
+  satznummer markieren := FALSE;
+  aktueller satz wird erster;
+  REP
+    kommando annehmen und zeile ausgeben;
+    alte markierung entfernen;
+    kommando interpretieren
+  END REP .
+
+feldnummern bestimmen :
+  IF nummern = niltext THEN
+    ggf alte auswahl uebernehmen
+  ELSE
+    feldnummern := nummern;
+    feldversion := dateiversion
+  END IF .
+
+ggf alte auswahl uebernehmen :
+  IF feldversion <> dateiversion THEN
+    alle felder anzeigen;
+    feldversion := dateiversion
+  END IF .
+
+alle felder anzeigen :
+  INT VAR i;
+  feldnummern := niltext;
+  FOR i FROM 1 UPTO anzahl felder REP
+    feldnummern CAT code (i)
+  END REP .
+
+kommando annehmen und zeile ausgeben :
+  WHILE ausgegebene zeilen < laenge REP
+    eingabezeichen := getcharety;
+    IF eingabezeichen <> "" THEN
+      LEAVE kommando annehmen und zeile ausgeben
+    END IF;
+    eine zeile ausgeben;
+    ausgegebene zeilen INCR 1
+  END REP;
+  aktuellen satz markieren und einnehmen;
+  getchar (eingabezeichen) .
+
+eine zeile ausgeben :
+  IF ausgegebene zeilen = 0 THEN
+    ueberschrift ausgeben
+  ELIF ausgegebene zeilen = 1 THEN
+    erste zeile ausgeben
+  ELSE
+    weitere zeile ausgeben
+  END IF .
+
+ueberschrift ausgeben :
+  cursor (spalten anf, zeilen anf);
+  out (t satznr);
+  freier rest := breite - 10;
+  INT VAR feldindex;
+  FOR feldindex FROM 1 UPTO length (feldnummern)
+  WHILE freier rest > 0 REP
+    feldnamen bearbeiten (code (feldnummern SUB feldindex),
+      PROC (TEXT CONST, INT CONST, INT CONST) feld bis rest)
+  END REP;
+  zeilenrest loeschen;
+  cursor (spalten anf + breite - 1, zeilen anf);
+  out (end mark) .
+
+erste zeile ausgeben :
+  auf uebersichtssatz (1);
+  satznummer in zeile (1);
+  satz als zeile ausgeben .
+
+weitere zeile ausgeben :
+  cursor (spalten anf, zeilen anf + ausgegebene zeilen);
+  IF dateiende THEN
+    zeilensatz (ausgegebene zeilen) := 0;
+    freier rest := breite;
+    zeilenrest loeschen
+  ELSE
+    naechsten satz einnehmen;
+    satznummer in zeile (ausgegebene zeilen);
+    satz als zeile ausgeben
+  END IF .
+
+naechsten satz einnehmen :
+  weiter (2);
+  auf abbruch testen;
+  zeilensatz (ausgegebene zeilen) := satznummer;
+  zeilenkombi (ausgegebene zeilen) := satzkombination .
+
+auf abbruch testen :
+  IF NOT (satz ausgewaehlt OR dateiende) THEN
+    LEAVE uebersicht
+  END IF .
+
+alte markierung entfernen :
+  IF angezeigter satz < ausgegebene zeilen THEN
+    satznummer in zeile (angezeigter satz)
+  END IF;
+  cursor (spalten anf, zeilen anf + angezeigter satz) .
+
+aktuellen satz markieren und einnehmen :
+  satznummer markieren := TRUE;
+  WHILE zeilensatz (angezeigter satz) = 0 REP
+    angezeigter satz DECR 1
+  END REP;
+  satznummer in zeile (angezeigter satz);
+  auf uebersichtssatz (angezeigter satz);
+  markierung ausgeben;
+  satznummer markieren := FALSE .
+
+kommando interpretieren :
+  SELECT eingabezustand OF
+  CASE 1 : normales kommando interpretieren
+  CASE 2 : hop kommando interpretieren
+  CASE 3 : esc kommando interpretieren
+  END SELECT .
+
+normales kommando interpretieren :
+  SELECT pos (""3""10""1""27"+-", eingabezeichen) OF
+  CASE 1 : zeile nach oben
+  CASE 2 : zeile nach unten
+  CASE 3 : eingabezustand := 2
+  CASE 4 : eingabezustand := 3
+  CASE 5 : markieren
+  CASE 6 : demarkieren
+  OTHERWISE out (piep)
+  END SELECT .
+
+hop kommando interpretieren :
+  SELECT pos (""3""10""13"", eingabezeichen) OF
+  CASE 1 : seite nach oben
+  CASE 2 : seite nach unten
+  CASE 3 : hop return
+  OTHERWISE out (piep)
+  END SELECT;
+  eingabezustand := 1 .
+
+esc kommando interpretieren :
+  SELECT pos ("19qh?", eingabezeichen) OF
+  CASE 1 : esc 1
+  CASE 2 : esc 9
+  CASE 3, 4 : esc q
+  CASE 5 : hilfestellung
+  OTHERWISE out (piep)
+  END SELECT;
+  eingabezustand := 1 .
+
+zeile nach oben :
+  IF angezeigter satz > 1 THEN
+    angezeigter satz DECR 1;
+  ELSE
+    nach oben rollen (1);
+    ausgegebene zeilen := 1
+  END IF .
+
+zeile nach unten :
+  IF NOT dateiende THEN
+    IF angezeigter satz < laenge - 1 THEN
+      angezeigter satz INCR 1
+    ELSE
+      zeilensatz (1) := zeilensatz (2);
+      zeilenkombi (1) := zeilenkombi (2);
+      ausgegebene zeilen := 1
+    END IF
+  END IF .
+
+markieren :
+  IF NOT satz markiert THEN
+    markierung aendern
+  END IF .
+
+demarkieren :
+  IF satz markiert THEN
+    markierung aendern
+  END IF .
+
+seite nach oben :
+  IF angezeigter satz > 1 THEN
+    angezeigter satz := 1
+  ELSE
+    nach oben rollen (laenge - 1);
+    ausgegebene zeilen := 1
+  END IF .
+
+seite nach unten :
+  IF angezeigter satz = laenge - 1 AND NOT dateiende THEN
+    weiter (2);
+    aktueller satz wird erster;
+    ausgegebene zeilen := 1
+  ELSE
+    angezeigter satz := laenge - 1
+  END IF .
+
+hop return :
+  IF angezeigter satz <> 1 THEN
+    zeilensatz (1) := zeilensatz (angezeigter satz);
+    zeilenkombi (1) := zeilenkombi (angezeigter satz);
+    angezeigter satz := 1;
+    ausgegebene zeilen := 1
+  END IF .
+
+esc 1 :
+  auf satz (1);
+  IF NOT satz ausgewaehlt THEN
+    weiter (2)
+  END IF;
+  aktueller satz wird erster;
+  angezeigter satz := 1;
+  ausgegebene zeilen := 1 .
+
+esc 9 :
+  auf satz (32767);
+  aktueller satz wird erster;
+  nach oben rollen (laenge - 2);
+  ausgegebene zeilen := 1 .
+
+esc q :
+  satznummer markieren := true;
+  satznummer in zeile (angezeigter satz);
+  LEAVE uebersicht .
+
+hilfestellung :
+  hilfe;
+  status anzeigen (uebersicht status);
+  ausgegebene zeilen := 0 .
+
+END PROC uebersicht;
+
+PROC nach oben rollen (INT CONST gerollt) :
+
+  INT VAR i;
+  auf uebersichtssatz (1);
+  FOR i FROM 1 UPTO gerollt
+  WHILE satznummer > 1 REP
+    zurueck (2)
+  END REP;
+  aktueller satz wird erster
+
+END PROC nach oben rollen;
+
+PROC auf uebersichtssatz (INT CONST zeile) :
+
+  auf satz (zeilensatz (zeile));
+  WHILE satzkombination <> zeilenkombi (zeile) REP
+    weiter (1)
+  END REP
+
+END PROC auf uebersichtssatz;
+
+PROC aktueller satz wird erster :
+
+  zeilensatz (1) := satznummer;
+  zeilenkombi (1) := satzkombination
+
+END PROC aktueller satz wird erster;
+
+BOOL PROC uebereinstimmung (INT CONST zeile) :
+
+  satznummer = zeilensatz (zeile) CAND satzkombination = zeilenkombi (zeile)
+
+END PROC uebereinstimmung;
+
+PROC feld bis rest (TEXT CONST satz, INT CONST von, bis) :
+
+  INT CONST laenge := min (freier rest, bis - von + 1);
+  outsubtext (satz, von, von + laenge - 1);
+  freier rest DECR laenge;
+  IF freier rest >= 2 THEN
+    out (", "); freier rest DECR 2
+  ELIF freier rest = 1 THEN
+    out (","); freier rest := 0
+  END IF
+
+END PROC feld bis rest;
+
+PROC satznummer in zeile (INT CONST zeile) :
+
+  cursor (spalten anf, zeilen anf + zeile);
+  IF satznummer markieren THEN
+    out (begin mark)
+  ELSE
+    out (blank)
+  END IF;
+  outtext (text (zeilensatz (zeile)), 1, 5);
+  IF satznummer markieren THEN
+    out (end mark)
+  ELSE
+    out (blank)
+  END IF;
+  freier rest := breite - 7
+
+END PROC satznummer in zeile;
+
+PROC zeilenrest loeschen :
+
+  IF bis zeilenende THEN
+    out (cleol)
+  ELSE
+    freier rest TIMESOUT blank
+  END IF
+
+END PROC zeilenrest loeschen;
+
+PROC satz als zeile ausgeben :
+
+  IF satz ausgewaehlt THEN
+    markierung ausgeben;
+    felder ausgeben
+  ELIF dateiende THEN
+    out (t dateiende);
+    freier rest DECR 17
+  ELSE
+    markierung ausgeben;
+    out ("<< >>");
+    freier rest DECR 5
+  END IF;
+  zeilenrest loeschen .
+
+felder ausgeben :
+  INT VAR feldindex;
+  FOR feldindex FROM 1 UPTO length (feldnummern)
+  WHILE freier rest > 0 REP
+    feld bearbeiten (code (feldnummern SUB feldindex),
+      PROC (TEXT CONST, INT CONST, INT CONST) feld bis rest)
+  END REP .
+
+END PROC satz als zeile ausgeben;
+
+PROC markierung ausgeben :
+
+  IF satz markiert THEN
+    out ("+ ")
+  ELSE
+    out ("- ")
+  END IF;
+  freier rest DECR 2
+
+END PROC markierung ausgeben;
+
+END PACKET uebersichtsanzeige;
+

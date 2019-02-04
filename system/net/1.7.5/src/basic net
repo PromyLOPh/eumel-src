@@ -1,0 +1,840 @@
+PACKET basic net DEFINES                          (* D. Heinrichs *)
+                                                  (* 02.10.85     *)
+  nam,
+  max verbindungsnummer,
+  neuer start,
+  packet eingang,
+  neue sendung,
+  zeitueberwachung,
+  verbindung,
+  loesche verbindung:
+
+TEXT PROC nam (TASK CONST t):
+  IF t = collector THEN name (t)
+  ELIF station (t) <> station (myself) 
+  THEN "** fremd **"
+  ELSE name (t)
+  FI
+END PROC nam;
+
+INT PROC tasknr (TASK CONST t):
+  IF t = collector THEN maxtasks
+  ELSE index (t)
+  FI
+END PROC tasknr;
+
+LET
+    maxtasks = 127,
+    max strom = 20,
+    max strom 1 = 21,
+    stx = ""2"",
+    code stx = 2, 
+    ack = 0,
+    nak = 1,
+    error nak = 2,
+    zeichen eingang = 4,
+    list code = 15,
+    fetch code = 11,
+    inspect code = 30,
+    continue code = 100,
+    erase code = 14,
+    report code = 99,
+    seiten groesse = 512,
+    dr verwaltungslaenge = 8,
+    dr verwaltungslaenge2=10,
+    nutzlaenge = 64,
+    openlaenge = 20,
+    vorspannlaenge = 10, 
+    neue ack laenge = 10, 
+    ack laenge = 8,
+
+    (* Typen von Kommunikationsstr”men *)
+
+    send wait = 0,
+    zustellung = 1,
+    call pingpong = 2,
+    call im wait = 3,
+    call im abbruch = 4,
+    call in zustellung = 5,
+
+    (*quittungscodes*)
+
+    ok = 0,
+    von vorne = 1,
+    wiederhole = 2,
+    loesche = 3,
+    beende = 4;
+
+LET STEUER =
+      STRUCT ( 
+      INT  head, 
+           rechner nummern, 
+           strom,
+           sequenz,
+           seitennummer,
+      TASK quelle,ziel,
+      INT  sende code);
+ 
+BOUND STEUER VAR open block;
+
+BOUND STRUCT (STEUER steuer, INT typ) VAR info block; 
+ 
+BOUND STRUCT (
+      INT  head, 
+           rechner nummern, 
+           strom,
+           sequenz,
+           seitennummer) VAR vorspann ;
+ 
+BOUND STRUCT ( 
+      INT  head, 
+           rechner nummern, 
+           strom, 
+           code) VAR ack packet ; 
+ 
+INT CONST max verbindungsnummer := max strom;
+
+BOOL PROC blockin (DATASPACE VAR ds, INT CONST seite, abstand, laenge): 
+ INT VAR hilfslaenge:=laenge, code:= abstand+laenge+512;
+ REAL VAR time out := clock (1) + 10.0;
+ REP 
+   blockin (ds,seite,code-hilfslaenge, hilfslaenge, hilfslaenge); 
+ UNTIL hilfslaenge = 0 OR clock (1) > time out PER  ;
+ hilfslaenge = 0
+END PROC blockin; 
+
+PROC blockout (DATASPACE CONST ds, INT CONST seite, abstand, laenge): 
+ INT VAR hilfslaenge:=laenge, code:= abstand+laenge+512; 
+ REP 
+   blockout (ds,seite,code-hilfslaenge, hilfslaenge, hilfslaenge); 
+ UNTIL hilfslaenge = 0 PER 
+END PROC blockout; 
+ 
+ 
+ 
+ 
+DATASPACE VAR work space;
+ 
+ 
+INT CONST packete pro seite:= seitengroesse DIV nutzlaenge, 
+          packete pro seite minus 1 := packete pro seite -1,
+          datenpacketlaenge := vorspannlaenge + nutzlaenge;
+ 
+INT VAR err,strom; 
+ 
+INT VAR   own:=station (myself) ,
+          quit max := 3,
+          quit zaehler := 3,
+          own256 := 256*own;
+INT CONST stx open := code stx+256*openlaenge,
+          stx quit := code stx+256*acklaenge;
+
+  ROW maxstrom1 STEUER VAR verbindungen; 
+  ROW maxstrom1 DATASPACE VAR netz dr; 
+  ROW maxstrom1 INT VAR zeit, typ;
+  FOR strom FROM 1 UPTO maxstrom1 REP vdr := nilspace; forget (vdr) PER;
+  ROW maxstrom INT VAR dr page ;
+  ROW maxtasks INT VAR alter call;
+  STEUER VAR opti;
+ 
+.vx : verbindungen (strom). 
+ 
+vdr: netz dr (strom). 
+ 
+falsche stromnummer: strom < 1 OR strom > maxstrom.
+
+call aufruf: typ(strom) >= call pingpong.
+
+alles raus: vx.seitennummer = -1 AND letztes packet der seite . 
+
+letztes packet der seite :
+(vx.sequenz AND packete pro seite minus 1) = packete pro seite minus 1.
+
+PROC neuer start (INT CONST empfangsstroeme):
+  workspace := nilspace;
+  open block := workspace; 
+  info block := workspace;
+  vorspann := workspace; 
+  ack packet := workspace;
+  FOR strom FROM 1 UPTO maxstrom1 REP 
+  vx.strom := 0;  forget (vdr)
+  PER; 
+  INT VAR i;
+  FOR i FROM 1 UPTO maxtasks REP alter call (i) := 0 PER;
+  quitmax := empfangsstroeme;
+  own:=station (myself);
+  quit zaehler := quit max;
+  own256 := 256*own; 
+  reset box.
+
+reset box: 
+  out (90*""4""); 
+  REP UNTIL incharety (1) = "" PER. 
+ 
+END PROC neuer start;
+
+DATASPACE PROC verbindung (INT CONST nr):
+  infoblock.steuer := verbindungen (nr);
+  infoblock.typ := typ (nr);
+  workspace
+END PROC verbindung;
+
+PROC neue sendung (TASK CONST q,z, INT CONST cod, DATASPACE CONST dr):
+
+  naechste verbindung vorbereiten;
+  forget (vdr); vdr := dr;
+  IF z = collector 
+  THEN 
+    verbindungsebene 
+  ELSE 
+    sendung starten (q,z,cod)
+  FI.
+
+verbindungsebene: 
+  IF cod = 256 THEN name von fremdstation
+  ELIF cod > 256
+  THEN
+    taskinfo fremd 
+  ELSE
+    task id von fremd
+  FI.
+
+taskinfo fremd: sendung starten (q, collector, cod-256, -8).
+
+task id von fremd: sendung starten (q,collector, zielstation,-6) .
+
+name von fremdstation:
+  BOUND TASK VAR tsk := vdr;
+  TASK VAR tsk1 := tsk;
+  forget (vdr);
+  vdr := nilspace;
+  sendung starten (q, tsk1, -7).
+
+zielstation: cod.
+
+END PROC neue sendung; 
+
+PROC zeitueberwachung
+     (INT VAR snr, TASK VAR  q, z, INT VAR ant,DATASPACE VAR  dr):
+  snr INCR 1;
+  FOR strom FROM snr UPTO maxstrom REP zeitkontrolle PER;
+  snr := 0. 
+
+zeitkontrolle: 
+  IF vx.strom <> 0 AND zeit(strom) > 0
+  THEN 
+    zeit(strom) DECR 1; 
+    IF sendung noch nicht zugestellt
+    THEN 
+      IF zeit(strom) = 0 THEN 
+         report ("Nicht zustellbar. """+nam (vx.ziel)+""". "+
+         text (vx.rechnernummernDIV256)); 
+         loesche verbindung (strom)
+      ELSE
+         snr := strom;
+         q := vx.quelle;
+         z := vx.ziel;
+         ant := vx.sendecode;
+         dr := vdr;
+         LEAVE zeitueberwachung
+      FI
+    ELIF zeit(strom) = 0 THEN wiederholen FI 
+  FI. 
+ 
+sendung noch nicht zugestellt:
+  typ (strom) = zustellung.
+
+wiederholen: 
+  IF sendeeintrag 
+  THEN 
+    sendung wiederholen
+  ELSE
+    empfangseintrag freigeben
+  FI. 
+ 
+sendeeintrag : vx.rechnernummern DIV 256 = own . 
+ 
+sendung wiederholen:
+  IF wiederholung noch sinnvoll 
+  THEN
+    IF frisch 
+    THEN 
+      time out bei open
+    ELSE 
+      datenteil wiederholen 
+    FI
+  ELSE
+    sendung loeschen
+  FI.
+
+wiederholung noch sinnvoll:
+  task noch da AND bei call noch im call.
+
+task noch da: vx.quelle = collector OR exists (vx.quelle).
+
+bei call noch im call: 
+  IF call aufruf
+  THEN
+    callee (vx.quelle) = vx.ziel
+  ELSE
+    TRUE
+  FI.
+
+frisch: vx.sequenz = -1. 
+ 
+time out bei open:
+  IF vx.sendecode > -4 THEN open wiederholen ELSE nak an quelle senden FI.
+
+nak an quelle senden:
+  forget (vdr); vdr := nilspace;
+  BOUND TEXT VAR erm := vdr;
+  erm := "Station "+text(vx.rechnernummernMOD256)+" antwortet nicht";
+  snr := strom;
+  q := collector;
+  z := vx.quelle;
+  ant := error nak;
+  dr := vdr;
+  sendung loeschen;
+  LEAVE zeitueberwachung .
+
+open wiederholen: 
+  sendereport ("wdh open"); 
+  zeit(strom) := 20;
+  openblock := vx; 
+  openblock.head := stx open; 
+  ab die post. 
+ 
+datenteil wiederholen: 
+  sendereport ("wdh data. sqnr "+text (vx.sequenz));
+  senden .
+
+empfangseintrag freigeben:
+  IF antwort auf call 
+  THEN
+    weiter warten
+  ELSE
+    empfangsreport ("Empfangseintrag freigegeben");
+    empfang loeschen
+  FI.
+antwort auf call: callee (vx.ziel) = vx.quelle.
+
+weiter warten: zeit (strom) := 200.
+
+END PROC zeitueberwachung;
+
+PROC sendereport (TEXT CONST txt):
+  report (text (strom)+":"+txt+". Absender: """+nam (vx.quelle)+
+          """. Ziel "+text(vx.rechnernummernMOD256)); 
+END PROC sendereport;
+
+PROC empfangsreport  (TEXT CONST txt):
+  report (text (strom)+":"+txt+". Empf„nger: """
+          +nam (vx.ziel)+""". Quelle "+text (vx.rechnernummernDIV256));
+END PROC empfangsreport  ;
+
+PROC sendung loeschen:
+    IF callaufruf CAND alter call (tasknr (vx.quelle)) = strom
+    THEN
+       alter call (tasknr (vx.quelle)) := 0
+    FI;
+    vx.strom := 0;
+    forget (vdr)
+END PROC sendung loeschen;
+
+PROC empfang loeschen:
+    quit zaehler INCR 1;
+    IF callaufruf AND alter call (tasknr (vx.ziel)) = strom
+    THEN
+       alter call (tasknr (vx.ziel)) := 0
+    FI; 
+    forget (vdr);
+    vx.strom := 0
+END PROC empfang loeschen;
+
+PROC loesche verbindung (INT CONST nr):
+  strom := nr;
+  IF sendeeintrag
+  THEN
+    sendung loeschen
+  ELSE
+    gegenstelle zum loeschen auffordern; 
+    empfang loeschen
+  FI.
+
+gegenstelle zum loeschen auffordern:
+  IF verbindung aktiv THEN quittieren (-loesche) FI.
+
+verbindung aktiv: vx.strom > 0.
+
+sendeeintrag: vx.rechnernummern DIV 256 = own . 
+
+END PROC loesche verbindung;
+
+PROC weiter senden: 
+  IF NOT alles raus
+  THEN
+    sequenz zaehlung; 
+    IF neue seite THEN seitennummer eintragen FI;
+    senden
+  FI.
+
+sequenz zaehlung: 
+  vx.sequenz INCR 1. 
+ 
+neue seite: 
+  (vx.sequenz AND packete pro seite minus 1) = 0. 
+
+seitennummer eintragen: 
+  dr page (strom) :=  vx.seiten nummer;
+  vx.seitennummer := next ds page (vdr, dr page (strom)). 
+ 
+ 
+END PROC weiter senden;
+ 
+PROC senden:
+  zeit(strom) := 3;
+  vorspann senden;
+  daten senden.
+
+vorspann senden: 
+  openblock := vx; 
+  blockout (workspace, 1, dr verwaltungslaenge, vorspannlaenge). 
+ 
+daten senden: 
+  blockout (vdr,dr page (strom),distanz,nutzlaenge). 
+ 
+distanz: nutzlaenge* (vx.sequenz AND (packete pro seite minus 1)). 
+
+END PROC senden;
+
+PROC naechste verbindung vorbereiten: 
+  FOR strom FROM 1 UPTO maxstrom REP 
+  UNTIL vx.strom = 0 PER; 
+  IF vx.strom <> 0 THEN errorstop ("Verbindungsengpass") FI. 
+END PROC naechste verbindung vorbereiten;
+
+PROC sendung starten (TASK CONST quelle, ziel, INT CONST code): 
+  sendung starten (quelle,ziel, station(ziel), code) 
+END PROC sendung starten;
+ 
+PROC sendung starten (TASK CONST quelle, ziel, INT CONST ziel station,code):
+  IF ziel station = own 
+  THEN
+    report ("Irrl„ufer: Sendung an eigene Station. Absender:"""+
+            nam (quelle)+""".");
+    vx.strom := 0;
+    forget (vdr)
+  ELSE
+    openblock.ziel := ziel;
+    openblock.quelle :=quelle; 
+    openblock.sendecode := code;
+    openblock.rechnernummern:= ziel station + own256; 
+    alten call loeschen (quelle);
+    IF call oder ping pong
+    THEN typ (strom) := call pingpong; call merken
+    ELSE typ (strom) := send wait FI;
+    sendung neu starten
+  FI.
+
+call oder pingpong: openblock.ziel = callee (openblock.quelle).
+
+call merken: alter call (tasknr (quelle)) := strom.
+
+END PROC sendung starten;
+
+PROC sendung neu starten:
+  openblock.head:= stx open; 
+  openblock.sequenz := -1; 
+  openblock.seitennummer:= next ds page (vdr,-1); 
+  openblock.strom := strom;
+  vx := open block; 
+  zeit(strom) := 3;
+  ab die post;
+  vx.head:=code stx+256*(vorspannlaenge+nutzlaenge). 
+ 
+END PROC sendung neu starten; .
+
+ab die post: 
+  block out (work space,1, dr verwaltungslaenge,open laenge).
+ 
+PROC alten call loeschen (TASK CONST quelle):
+  IF alter call aktiv
+  THEN
+    INT VAR lstrom := strom;
+    vx:=openblock;
+    strom := alter call (tasknr (quelle));
+    IF in ausfuehrungsphase
+    THEN
+      sendereport ("Call-L”schung vorgemerkt");
+      loeschung vormerken
+    ELSE
+      report ("Call gel”scht."""+nam(quelle)+""". Strom "+text(strom));
+      loesche verbindung (strom)
+    FI;
+    strom := lstrom;
+    openblock := vx
+  FI.
+
+in ausfuehrungsphase:
+  typ(strom) = call im wait OR typ (strom) = call in zustellung.
+
+loeschung vormerken:
+  typ(strom) := call im abbruch;
+  alter call (tasknr (quelle)) := 0.
+
+ 
+  alter call aktiv:
+    alter call (tasknr (quelle)) > 0.
+
+END PROC alten call loeschen;
+
+PROC packet eingang
+  (TEXT CONST ft, INT VAR snr, TASK VAR  q, z, INT VAR ant,DATASPACE VAR  dr):
+    snr := 0;
+    vorspann holen; 
+    IF NOT ring logik THEN daten teil FI.
+
+ring logik: FALSE.
+# IF selbst quelle THEN daten aus puffer entfernen ; TRUE
+  ELIF NOT selbst ziel THEN weitergeben; TRUE 
+  ELSE FALSE
+  FI.
+
+selbst quelle: openblock.rechnernummern DIV 256 = station (myself).
+
+selbst ziel:   (openblock.rechnernummern AND 255) = own.
+#
+daten aus puffer entfernen:
+  IF code (t) > nutzlaenge 
+  THEN
+    BOOL VAR dummy :=blockin (workspace, 1, drverwaltungslaenge, nutzlaenge) 
+  FI.
+#
+weitergeben:
+  IF code (t) > nutzlaenge
+  THEN 
+    IF NOT  blockin (workspace, 2, 0, nutzlaenge) 
+    THEN LEAVE test auf packeteingang FI;
+  FI;
+  out (stx+t);
+  blockout (workspace, 1, drverwaltungslaenge2, blocklaenge);
+  IF code (t) > nutzlaenge
+  THEN
+    blockout (workspace, 2, 0, nutzlaenge)
+  FI.
+#
+vorspann holen: 
+  sync; 
+  IF NOT blockin (workspace, 1, dr verwaltungslaenge2, block laenge)
+  THEN LEAVE packeteingang 
+  FI.
+
+
+blocklaenge: IF code t  > nutzlaenge 
+             THEN 
+               vorspannlaenge-2 
+             ELSE 
+               code t -2 
+             FI. 
+
+sync: 
+  TEXT VAR skipped:=ft , t :="";
+  REP 
+    skipped CAT t;
+    t := incharety (1); 
+    IF t = "" THEN 
+      report ("skipped",skipped); 
+      LEAVE packet eingang
+    FI ;
+    INT VAR codet := code (t);
+  UNTIL blockanfang PER; 
+  IF skipped <> stx THEN report ("skipped bei sync:", skipped) FI. 
+ 
+blockanfang: 
+  (skipped SUB length(skipped)) = stx 
+  AND
+  (codet = datenpacketlaenge
+  OR codet = ack laenge OR codet = neue ack laenge OR code t = openlaenge). 
+ 
+daten teil: 
+  IF neue verbindung 
+  THEN
+    verbindung bereitstellen
+  ELIF quittung 
+  THEN 
+    strom := ack packet.strom; 
+    IF falsche stromnummer THEN report ("Strom falsch in Quittung");
+                                LEAVE datenteil FI;
+    IF vx.strom = 0 THEN LEAVE datenteil FI;
+    IF ackpacket.code >= ok   THEN weiter senden
+    ELIF ackpacket.code = -von vorne THEN
+        sendereport ("Neustart");
+        openblock := vx; 
+        sendung neu starten 
+    ELIF ackpacket.code = -wiederhole THEN back 16
+    ELIF ackpacket.code = -loesche    THEN fremdloeschung
+    ELIF ackpacket.code = -beende AND alles raus THEN strom abschliessen
+    FI
+  ELIF verbindung festgestellt 
+  THEN
+    zeit(strom) := 200;
+    opti := vx;
+    datenpacket
+  ELSE 
+    strom := maxstrom1; 
+    vx:=openblock;
+    report ("Daten ohne Eroeffnung von " +text(vx.rechnernummernDIV256) 
+    +"  Sequenznr "+text(openblock.sequenz)); 
+    daten aus puffer entfernen;
+    IF alles raus THEN quittieren (-beende) ELSE quittieren(-von vorne) FI
+  FI. 
+
+verbindung bereitstellen:
+  IF openblock.ziel = collector OR station (openblock.ziel) = own
+  THEN
+    freie verbindungsnummer; 
+    vdr := nilspace;
+    vx := open block; 
+    zeit(strom) := 10;
+    quittieren falls genug pufferplatz;
+    vx.sequenz := 0 ; 
+    IF loeschung vorgemerkt
+    THEN 
+      loesche verbindung (strom)
+    ELSE
+      opti := vx;
+      abschluss testen
+    FI;
+  FI.
+
+loeschung vorgemerkt: typ(strom) = call im abbruch.
+
+strom abschliessen:
+  IF call aufruf THEN zeit(strom) := 80; ausfuehrungsphase merken
+  ELSE
+    vx.strom := 0; 
+    forget (vdr)
+  FI.
+
+ausfuehrungsphase merken: typ(strom) := call in zustellung.
+ 
+back16:
+  datenraum etwas rueckspulen; 
+  nicht sofort senden (* wegen vagabundierender Quittungen *).
+
+nicht sofort senden: zeit(strom) := 2.
+
+datenraum etwas rueckspulen:
+  sendereport ("etwas rueckgespult");
+  INT VAR sk , vs :=-1;
+  dr page (strom) := -1;
+  INT VAR i;
+  FOR i FROM 1 UPTO vx.sequenz DIV packete pro seite - etwas REP
+    vs INCR packete pro seite;
+    dr page (strom) := next ds page (vdr, dr page (strom)) 
+  PER;
+  vx.seiten nummer := next ds page (vdr, dr page (strom)) ;
+  vx.sequenz := vs.
+
+etwas: 3.
+
+fremdloeschung:
+  IF fremdrechner ok und sendung 
+  THEN
+    IF typ (strom) = call in zustellung
+    THEN
+      typ (strom) := call im wait
+    ELSE
+      sendereport ("Sendung von Gegenstelle geloescht");
+      sendung loeschen
+    FI
+  FI.
+
+fremdrechner ok und sendung:
+ (ackpacket.rechnernummern DIV 256) = (vx.rechnernummern AND 255).
+
+
+quittieren falls genug pufferplatz:
+  IF quit zaehler > 0 THEN
+    quit zaehler DECR 1;
+    open quittieren;
+    block vorab quittieren
+  FI.
+
+open quittieren: quittieren (ok).
+block vorab quittieren: quittieren (ok).
+
+quittung:  code t <= neue ack laenge. 
+ 
+neue verbindung: code t = open laenge.
+ 
+verbindung festgestellt: 
+  FOR strom FROM maxstrom DOWNTO 1 REP 
+    IF bekannter strom
+    THEN LEAVE verbindung festgestellt WITH TRUE FI 
+  PER; 
+  FALSE. 
+ 
+bekannter strom: 
+  vx.strom = vorspann.strom AND vom selben rechner. 
+ 
+vom selben rechner: 
+  vx.rechnernummern = vorspann.rechnernummern. 
+ 
+daten: 
+  IF NOT blockin (vdr, opti.seiten nummer, distanz, nutzlaenge)
+  THEN quittieren (-wiederhole); LEAVE packeteingang 
+  FI; 
+  sequenz zaehlung;
+  IF neue seite kommt 
+  THEN 
+    vx.seiten nummer := vorspann.seiten nummer 
+  FI. 
+ 
+datenpacket:
+  IF sendung wartet auf zustellung THEN auffrischen ELSE daten holen FI.
+
+sendung wartet auf zustellung: typ (strom) = zustellung.
+
+auffrischen: zeit (strom) := 100; daten aus puffer entfernen.
+
+daten holen:
+  IF opti.sequenz >= vorspann.sequenz AND opti.sequenz < vorspann.sequenz+100
+  THEN 
+    IF opti.sequenz <> vorspann.sequenz
+    THEN empfangsreport ("Sequenzreset von "+text(opti.sequenz)+" auf "+
+                  text (vorspann.sequenz));
+         vx.sequenz := vorspann.sequenz;
+         vorabquittung regenerieren 
+    FI;
+    quittieren(ok); 
+    daten  ; 
+    abschluss testen
+  ELSE 
+    empfangsreport ("Sequenzfehler: soll "+text(vx.sequenz)+" ist "+ 
+            text(vorspann.sequenz));
+    quittieren (-wiederhole);
+    daten aus puffer entfernen
+  FI. 
+ 
+vorabquittung regenerieren: quittieren (ok).
+ 
+distanz: (opti.sequenz AND  packete pro seite minus 1 ) * nutzlaenge. 
+ 
+sequenz zaehlung: 
+  vx.sequenz INCR 1. 
+ 
+neue seite kommt: 
+(vx.sequenz AND packete pro seite minus1) = 0. 
+ 
+freie verbindungsnummer: 
+  INT VAR h strom :=0;
+  FOR strom FROM 1 UPTO maxstrom REP 
+    IF vx.strom = 0 THEN h strom := strom 
+    ELIF bekannter strom
+    THEN empfangsreport ("Reopen"); 
+         quit zaehler INCR 1;
+         forget (vdr);
+         LEAVE freie verbindungsnummer 
+    ELIF antwort auf call
+    THEN
+      typ (strom) := call pingpong;
+      forget (vdr);
+      LEAVE freie verbindungsnummer 
+    FI
+  PER; 
+  strom := h strom; 
+  IF strom = 0 THEN
+    error stop ("Zuviele simulatane Verbindungen") 
+  FI; 
+  typ(strom) := send wait.
+
+antwort auf call:
+  openblock.sendecode >= 0 AND
+  call aufruf AND vx.quelle = openblock.ziel AND vx.ziel = openblock.quelle. 
+
+abschluss testen: 
+  IF neue seite kommt AND vx.seiten nummer = -1 
+  THEN 
+    quittieren (-beende);
+    an ziel weitergeben 
+  FI. 
+ 
+an ziel weitergeben: 
+  IF tasknummerfrage  THEN taskfrage beantworten ;pufferplatz freigeben;
+  ELIF tasknamenfrage THEN name senden ;pufferplatz freigeben;
+  ELIF taskinfofrage  THEN task info senden;pufferplatz freigeben;
+  ELSE                     senden
+  FI. 
+
+pufferplatz freigeben: quitzaehler INCR 1.
+
+senden:
+  max 100 versuche; 
+  snr := strom;
+  IF NOT callaufruf THEN typ (strom) := zustellung FI;
+  q := vx.quelle;
+  z := vx.ziel;
+  ant := vx.sendecode;
+  dr := vdr;
+  LEAVE packet eingang.
+
+tasknummerfrage:opti.sendecode = -6.
+ 
+tasknamenfrage: opti.sendecode = -7.
+ 
+taskinfofrage: opti.sendecode = -8.
+
+max 100 versuche: zeit(strom) := 100.
+
+taskfrage beantworten:
+  BOUND TEXT VAR tsk := vdr; 
+  TEXT VAR save tsk := tsk;
+  forget (vdr); vdr := nilspace; 
+  BOUND TASK VAR task id := vdr;
+  disable stop;
+  task id := task(save tsk);
+  IF is error THEN 
+    clear error; enable stop;
+    forget (vdr); vdr := nilspace; 
+    BOUND TEXT VAR errtxt := vdr;
+    errtxt := text(station(myself))+"/"""+save tsk+""" gibt es nicht";
+    sendung starten (collector, opti.quelle, 2)
+  ELSE
+    enable stop;
+    sendung starten (collector, opti.quelle, 0)
+  FI.
+ 
+name senden: 
+  forget (vdr); vdr := nilspace;
+  tsk := vdr; 
+  disable stop;
+  tsk := nam (opti.ziel);
+  clear error; enable stop;
+  sendung starten (collector, opti.quelle, 0). 
+ 
+task info senden:
+  BOUND INT VAR ti code := vdr;
+  INT VAR ti cd := ti code;
+  forget (vdr); vdr := nilspace;
+  FILE VAR task inf := sequential file (output,vdr);
+  head line (task inf,"Station "+text(own)); 
+  task info (ti cd, task inf);
+  sendung starten (collector,opti.quelle,0).
+ 
+END PROC packet eingang;
+
+PROC quittieren(INT CONST code) : 
+  quellrechner wird zielrechner; 
+  ackpacket.code := code; 
+  ackpacket.head := stx quit;
+  ackpacket.strom := vx.strom;
+  blockout (workspace,1,dr verwaltungslaenge, ack laenge). 
+ 
+quellrechner wird zielrechner: 
+  ack packet.rechnernummern := vx.rechnernummern DIV 256 
+                               + own256. 
+ 
+END PROC quittieren; 
+ 
+END PACKET basic net;

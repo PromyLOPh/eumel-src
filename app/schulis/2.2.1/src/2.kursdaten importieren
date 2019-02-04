@@ -1,0 +1,199 @@
+PACKET kursdatenueberschnittstelleimportierenDEFINES 
+kursdatenschnittstelleimportanfang,
+kursdatenschnittstelleimportaufbereitenfrage,
+kursdatenschnittstelleimportaufbereiten,
+kursdatenschnittstelleimportloescheundreturn,
+kursdatenschnittstelleimportarchiv:LET eingangsmaske=
+"ms kurswahldaten importieren",schuljahr="Schuljahr",halbjahr="Schulhalbjahr"
+,kuwa2sperre="Kurswahl-2 ",filemodus="file ibm",listenname=
+"Liste der Dateien auf der Diskette:",protname="Protokoll zur Übernahme",
+schulname="Schulname",schulort="Schulort",leerzeile=" ",ueberschrift1=
+"Protokoll zur Übernahme von Kurswahldaten aus Standardschnittstelle der",
+ueberschrift2a="Jgst. ",ueberschrift2b=" für das Halbjahr ",ueberschrift2c=
+" (Schuljahr ",unterschrift=
+"-----------------------------------------------------------------------",
+fehlerfall1="Fehler,  Schüler nicht in akt. Jgst. : ",fehlerfall2=
+"Warnung, neuer Kurs                  : ",fehlerfall3a=
+"Fehler,  Planblock nicht übernommen  : ",fehlerfall3b=
+"            Nicht übernommene Daten  : ",fehlerfall3c=
+"                                       ",fehlerfall4a=
+"Fehler,  unbekannter Kurs            : ",fehlerfall4b=
+"         in Kurswahl von             : ",trenner="�",dos="DOS",
+eingangdateiname=2,kurslaengebr=6,kurslaengewk=7,kursendebr=5,kursendewk=6,
+kzart="A",kzalle="A",kzplbl="P",kzstd="S",suffixfa=".FA",suffixwk=".WK",
+suffixbr=".BR",suffixzi=".ZI",meldungkeineschueler=423,meldunggewhjunzul=405,
+meldunggewsjunzul=127,meldunggewjgstunzul=404,meldungparallelanw=425,
+meldungbearbwird=352,meldungwarten=69,meldungpraezisieren=129,
+meldungserverfehler=416,meldungdatenuebernehmen=433,meldungdatenirrelevant=
+432,meldungnamefalsch=323,meldungrausreichen=343,meldungnameunbek=351;INT 
+VAR i;TEXT VAR t;INT VAR fstat,aktfeld,ermwstd,kurspos,aktpos,aktzeile;TEXT 
+VAR aktdateiname:="schulis",gewjgst,gewhj,aktjgst,geplsj,geplhj,gewsj,aktsj:=
+"0000",akthj,neuewahldaten,aktfake,dateieintrag,aktkurs,neuekurse:=trenner,
+fach,kennung,behandeltekurse:=trenner,weitererblock;BOOL VAR archivfehler:=
+FALSE ,sperreok:=TRUE ,aktodergeplhj:=FALSE ;THESAURUS VAR thes;FILE VAR dsfa
+,dswk,dsbr,dszi,prot,g;PROC kursdatenschnittstelleimportanfang:
+standardstartproc(eingangsmaske);infeld(2);standardmaskenfeld(aktdateiname,
+eingangdateiname);standardfelderausgeben;standardnproc.END PROC 
+kursdatenschnittstelleimportanfang;PROC 
+kursdatenschnittstelleimportaufbereitenfrage:standardmeldung(meldungwarten,""
+);fstat:=0;pruefdateiname;holedateivomarchiv;holedatenfuerabfrage.
+holedatenfuerabfrage:toline(dszi,1);readrecord(dszi,dateieintrag);gewsj:=text
+(dateieintrag,4);i:=int(gewsj);IF NOT lastconversionokTHEN 
+fehlermeldungsjunzulaessigFI ;gewhj:=dateieintragSUB 7;IF gewhj<>"1"CAND 
+gewhj<>"2"THEN fehlermeldunggewhjunzulaessigFI ;gewjgst:=subtext(dateieintrag
+,5,6);IF gewjgst<>"10"CAND gewjgst<>"11"CAND gewjgst<>"12"CAND gewjgst<>"13"
+THEN fehlermeldunggewjgstunzulaessigFI ;IF aktsj="0000"THEN aktsj:=
+schulkenndatum(schuljahr);akthj:=schulkenndatum(halbjahr);geplhj:=akthj;
+geplsj:=aktsj;geplanteshjundsjberechnen(geplhj,geplsj)FI ;IF gewsj=aktsjCAND 
+gewhj=akthjTHEN aktodergeplhj:=TRUE ;aktjgst:=gewjgstELIF gewsj=aktsjCAND 
+gewhj<akthjTHEN fehlermeldungdatennichtrelevantELIF gewsj<aktsjTHEN 
+fehlermeldungdatennichtrelevantELSE IF gewsj=geplsjCAND gewhj=geplhjTHEN 
+aktodergeplhj:=TRUE ELSE aktodergeplhj:=FALSE FI ;aktjgst:=text(int(gewjgst)-
+(int(text(gewsj,2))-int(text(aktsj,2))))FI ;standardmeldung(
+meldungdatenuebernehmen,aktjgst+"#"+gewjgst+"."+gewhj+"#");standardnproc.
+fehlermeldungdatennichtrelevant:meldungausgeben(meldungdatenirrelevant,
+eingangdateiname,1);LEAVE kursdatenschnittstelleimportaufbereitenfrage.
+fehlermeldungsjunzulaessig:meldungausgeben(meldunggewsjunzul,eingangdateiname
+,1);LEAVE kursdatenschnittstelleimportaufbereitenfrage.
+fehlermeldunggewhjunzulaessig:meldungausgeben(meldunggewhjunzul,
+eingangdateiname,1);LEAVE kursdatenschnittstelleimportaufbereitenfrage.
+fehlermeldunggewjgstunzulaessig:meldungausgeben(meldunggewjgstunzul,
+eingangdateiname,1);LEAVE kursdatenschnittstelleimportaufbereitenfrage.
+pruefdateiname:aktdateiname:=standardmaskenfeld(eingangdateiname);IF 
+aktdateiname=""THEN fehlermeldungfeldfuellenELIF falschercode(aktdateiname)
+THEN fehlermeldungnamefalsch(TRUE )FI .holedateivomarchiv:archivanmelden;IF 
+archivfehlerTHEN LEAVE kursdatenschnittstelleimportaufbereitenfrageFI ;
+disablestop;forget(aktdateiname+suffixfa,quiet);fetch(aktdateiname+suffixfa,/
+dos);IF iserrorTHEN abbruchnachfehler(1);LEAVE 
+kursdatenschnittstelleimportaufbereitenfrageFI ;dsfa:=sequentialfile(modify,
+old(aktdateiname+suffixfa));forget(aktdateiname+suffixwk,quiet);fetch(
+aktdateiname+suffixwk,/dos);IF iserrorTHEN abbruchnachfehler(1);LEAVE 
+kursdatenschnittstelleimportaufbereitenfrageFI ;dswk:=sequentialfile(modify,
+old(aktdateiname+suffixwk));forget(aktdateiname+suffixbr,quiet);fetch(
+aktdateiname+suffixbr,/dos);IF iserrorTHEN abbruchnachfehler(1);LEAVE 
+kursdatenschnittstelleimportaufbereitenfrageFI ;dsbr:=sequentialfile(modify,
+old(aktdateiname+suffixbr));forget(aktdateiname+suffixzi,quiet);fetch(
+aktdateiname+suffixzi,/dos);IF iserrorTHEN abbruchnachfehler(1);LEAVE 
+kursdatenschnittstelleimportaufbereitenfrageFI ;dszi:=sequentialfile(modify,
+old(aktdateiname+suffixzi));enablestop.END PROC 
+kursdatenschnittstelleimportaufbereitenfrage;PROC 
+kursdatenschnittstelleimportaufbereiten:standardmeldung(meldungwarten,"");
+kurswahlinitialisieren(aktjgst,gewjgst,gewhj,kzalle,gewsj);kurswahlbasisholen
+(fstat);IF fstat<>0THEN meldungausgeben(meldungserverfehler,eingangdateiname,
+1);LEAVE kursdatenschnittstelleimportaufbereitenELIF letzterschueler<
+ersterschuelerTHEN meldungausgeben(meldungkeineschueler,eingangdateiname,1);
+LEAVE kursdatenschnittstelleimportaufbereitenFI ;kurswahlsperresetzen(
+kuwa2sperre,sperreok);IF NOT sperreokTHEN meldungausgeben(meldungparallelanw,
+eingangdateiname,1);LEAVE kursdatenschnittstelleimportaufbereitenFI ;
+neuekurse:=trenner;behandeltekurse:=trenner;bereiteprotokollvor;
+uebernehmebrdatei;uebernehmewkdatei;loeschemeldung;kurswahlsperrebeenden(
+kuwa2sperre);kurswahlbasissichern;zeigedatei(protname,"vr").
+kurswahlbasissichern:kurswahl0sichern(fstat);kurswahl1sichern(fstat);
+kurswahl2sichern(fstat);IF fstat<>0THEN meldungausgeben(meldungserverfehler,
+eingangdateiname,1);LEAVE kursdatenschnittstelleimportaufbereitenFI .
+bereiteprotokollvor:forget(protname,quiet);prot:=sequentialfile(output,
+protname);putline(prot,schulkenndatum(schulname));putline(prot,text(
+schulkenndatum(schulort),65)+date);putline(prot,leerzeile);putline(prot,
+ueberschrift1);putline(prot,ueberschrift2a+aktjgst+ueberschrift2b+gewjgst+"."
++gewhj+ueberschrift2c+text(gewsj,2)+"/"+subtext(gewsj,3)+"):");putline(prot,
+unterschrift);putline(prot,leerzeile).uebernehmebrdatei:bereitek1dateivor;
+toline(dsbr,1);col(dsbr,1);WHILE NOT eof(dsbr)REP readrecord(dsbr,
+dateieintrag);IF compress(dateieintrag)<>""THEN pruefplanblockundkurse(text(
+dateieintrag,3),subtext(dateieintrag,4))FI ;down(dsbr);col(dsbr,1)PER .
+bereitek1dateivor:planbloeckeinitialisieren;FOR iFROM 1UPTO 22REP 
+planblockloeschen(text(i))PER .uebernehmewkdatei:toline(dswk,1);col(dswk,1);
+WHILE NOT eof(dswk)REP readrecord(dswk,dateieintrag);pruefschueler(compress(
+text(dateieintrag,30)),compress(subtext(dateieintrag,31,45)),subtext(
+dateieintrag,46,53),subtext(dateieintrag,54));down(dswk);col(dswk,1)PER .END 
+PROC kursdatenschnittstelleimportaufbereiten;PROC pruefplanblockundkurse(
+TEXT CONST block,kurse):INT VAR blockbez:=int(text(block,2)),laengekurse:=
+length(kurse);standardmeldung(meldungbearbwird,"Planblock "+text(block,2)+"#"
+);IF blockbez>0CAND blockbez<23THEN tragblockein;tragkurseeinELSE 
+fehlermeldungblockfalschFI .fehlermeldungblockfalsch:putline(prot,
+fehlerfall3a+text(block,2));putline(prot,fehlerfall3b+text(kurse,42));IF 
+laengekurse>42THEN putline(prot,fehlerfall3c+subtext(kurse,43))FI .
+tragblockein:planblockeintragen(text(block,2),text(int(blockSUB 3))).
+tragkurseein:kurspos:=1;WHILE kurspos<laengekurseREP aktkurs:=subtext(kurse,
+kurspos,kurspos+kursendebr);aktfake:=text(aktkurs,2)+text(subtext(aktkurs,5),
+4);weitererblock:="";t:=kursdaten(aktfake,kzart);IF dbstatus=1CAND compress(
+aktfake)<>""THEN ermittlewstd;tragkursein;
+planbloeckezumkurseintragenmitevtlblockeintrag(aktfake,text(block,2),
+weitererblock);behandeltekurseCAT aktfake+trennerELSE 
+evtlplanbloeckeaktualisierenFI ;kursposINCR kurslaengebrPER .ermittlewstd:IF 
+pos(neuekurse,trenner+aktfake+trenner)=0THEN aktzeile:=lineno(dsbr);ermwstd:=
+int(blockSUB 3);toline(dsbr,aktzeile+1);col(dsbr,1);WHILE NOT eof(dsbr)REP 
+downety(dsbr,aktkurs);aktpos:=col(dsbr);IF NOT eof(dsbr)CAND ((aktpos-3)MOD 6
+)=1THEN readrecord(dsbr,t);ermwstdINCR int(tSUB 3);weitererblock:=text(t,2);
+down(dsbr);col(dsbr,1);neuekurseCAT aktfake+trenner;toline(dsbr,aktzeile);
+LEAVE ermittlewstdELSE col(dsbr,aktpos+1)FI ;PER ;neuekurseCAT aktfake+
+trenner;toline(dsbr,aktzeile)FI .evtlplanbloeckeaktualisieren:IF pos(
+behandeltekurse,trenner+aktfake+trenner)=0CAND compress(aktfake)<>""THEN 
+aktzeile:=lineno(dsbr);toline(dsbr,aktzeile+1);col(dsbr,1);WHILE NOT eof(dsbr
+)REP downety(dsbr,aktkurs);aktpos:=col(dsbr);IF NOT eof(dsbr)CAND ((aktpos-3)
+MOD 6)=1THEN readrecord(dsbr,t);weitererblock:=text(t,2);behandeltekurseCAT 
+aktfake+trenner;toline(dsbr,aktzeile);
+planbloeckezumkurseintragenmitevtlblockeintrag(aktfake,text(block,2),
+weitererblock);LEAVE evtlplanbloeckeaktualisierenELSE col(dsbr,aktpos+1)FI ;
+PER ;weitererblock:="";planbloeckezumkurseintragenmitevtlblockeintrag(aktfake
+,text(block,2),weitererblock);behandeltekurseCAT aktfake+trenner;toline(dsbr,
+aktzeile)FI .tragkursein:IF aktodergeplhjTHEN putline(prot,fehlerfall2+text(
+aktkurs,2)+" "+text(subtext(aktkurs,5),4)+", Art "+subtext(aktkurs,3,4))FI ;
+kurseintragen(text(aktkurs,2),text(subtext(aktkurs,5),4),text(ermwstd),
+subtext(aktkurs,3,4)).END PROC pruefplanblockundkurse;PROC 
+planbloeckezumkurseintragenmitevtlblockeintrag(TEXT CONST kurs,block1,block2)
+:TEXT VAR t:=planblockdaten(block1,kzstd);IF dbstatus=1THEN 
+planblockeintragen(block1,"0")FI ;t:=planblockdaten(block2,kzstd);IF dbstatus
+=1THEN planblockeintragen(block2,"0")FI ;planbloeckezumkurseintragen(kurs,
+block1,block2)END PROC planbloeckezumkurseintragenmitevtlblockeintrag;PROC 
+pruefschueler(TEXT CONST famname,rufname,gebdatum,wahldaten):standardmeldung(
+meldungbearbwird,famname+", "+rufname+"#");t:=wahldatenzumschueler(famname,
+rufname,gebdatum,kzart);IF dbstatus=1THEN fehlermeldungunbekschuelerELSE 
+tragwahldateneinFI .fehlermeldungunbekschueler:putline(prot,fehlerfall1+text(
+famname+", "+rufname+", "+gebdatum,40)).tragwahldatenein:
+schuelerwahleintragen(famname,rufname,gebdatum,aufbereitetewahldaten(famname,
+rufname,gebdatum,wahldaten)).END PROC pruefschueler;TEXT PROC 
+aufbereitetewahldaten(TEXT CONST famname,rufname,gebdatum,altewahldaten):INT 
+VAR wahllaenge:=length(altewahldaten);TEXT VAR planbloecke;kurspos:=1;
+neuewahldaten:="";WHILE kurspos<wahllaengeREP aktkurs:=subtext(altewahldaten,
+kurspos,kurspos+kursendewk);fach:=text(aktkurs,2);kennung:=subtext(aktkurs,6)
++"  ";planbloecke:=kursdaten(fach+kennung,kzplbl);IF compress(planbloecke)=""
+THEN putline(prot,fehlerfall4a+fach+" "+kennung+", Art "+subtext(aktkurs,3,4)
+);putline(prot,fehlerfall4b+text(famname+", "+rufname+", "+gebdatum,40))ELSE 
+ergaenzewahldatenFI ;kursposINCR kurslaengewkPER ;neuewahldaten.
+ergaenzewahldaten:neuewahldatenCAT (aktkursSUB 5);neuewahldatenCAT subtext(
+aktkurs,3,4);neuewahldatenCAT fach;neuewahldatenCAT kennung;neuewahldatenCAT 
+planbloecke.END PROC aufbereitetewahldaten;BOOL PROC falschercode(TEXT CONST 
+t):INT VAR zeichencode;FOR iFROM 1UPTO LENGTH t-3REP zeichencode:=code(tSUB i
+);IF NOT ((zeichencode>=48AND zeichencode<=57)OR (zeichencode>=65AND 
+zeichencode<=90)OR (zeichencode>=97AND zeichencode<=122))THEN LEAVE 
+falschercodeWITH TRUE FI PER ;FALSE END PROC falschercode;PROC 
+meldungausgeben(INT CONST meldung,gewfeld,gewruecksprung):fstat:=1;
+standardmeldung(meldung,"");infeld(gewfeld);return(gewruecksprung)END PROC 
+meldungausgeben;PROC archivanmelden:aktfeld:=infeld;archivfehler:=FALSE ;
+commanddialogue(FALSE );disablestop;reserve(filemodus,/dos);IF iserrorTHEN 
+archivfehler:=TRUE ;abbruchnachfehler(1);ELSE enablestopFI .END PROC 
+archivanmelden;PROC kursdatenschnittstelleimportarchiv:aktfeld:=infeld;
+archivanmelden;IF archivfehlerTHEN LEAVE kursdatenschnittstelleimportarchiv
+FI ;archivlisten;infeld(aktfeld).archivlisten:standardmeldung(meldungwarten,
+"");disablestop;g:=sequentialfile(output,listenname);thes:=ALL /dos;IF 
+iserrorTHEN abbruchnachfehler(1);ELSE thesaurusaufbereiten;enablestop;
+zeigedatei(listenname,"vr");release(/dos)FI .thesaurusaufbereiten:t:=" ";i:=0
+;REP get(thes,t,i);putline(g,t)UNTIL t=""PER .END PROC 
+kursdatenschnittstelleimportarchiv;PROC abbruchnachfehler(INT CONST schritte)
+:standardmeldung(meldungrausreichen,"Fehler: "+errormessage+" !#");clearerror
+;return(schritte);infeld(aktfeld);release(/dos);commanddialogue(TRUE );
+enablestopEND PROC abbruchnachfehler;PROC fehlermeldungdateifehlt:fstat:=1;
+standardmeldung(meldungnameunbek,aktdateiname+".FA (-WK,-BR,-ZI)#");infeld(
+eingangdateiname);return(1).END PROC fehlermeldungdateifehlt;PROC 
+fehlermeldungfeldfuellen:meldungausgeben(meldungpraezisieren,eingangdateiname
+,1).END PROC fehlermeldungfeldfuellen;PROC fehlermeldungnamefalsch(BOOL 
+CONST mitfalschemzeichen):IF mitfalschemzeichenTHEN fstat:=1;standardmeldung(
+meldungnamefalsch,subtext(aktdateiname,i,i)+"#"+aktdateiname+"#");infeld(
+eingangdateiname);return(1)ELSE meldungausgeben(meldungnamefalsch,
+eingangdateiname,1)FI END PROC fehlermeldungnamefalsch;PROC 
+kursdatenschnittstelleimportloescheundreturn:forget(listenname,quiet);forget(
+protname,quiet);loeschemeldung;return(3)END PROC 
+kursdatenschnittstelleimportloescheundreturn;PROC loeschemeldung:aktfeld:=
+infeld;infeld(1);standardfelderausgeben;infeld(aktfeld)END PROC 
+loeschemeldung;END PACKET kursdatenueberschnittstelleimportieren
+

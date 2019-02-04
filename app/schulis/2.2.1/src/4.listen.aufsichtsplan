@@ -1,0 +1,78 @@
+PACKET aufsichtsplandruckenDEFINES aufsichtsplanmaskebearbeiten,
+aufsichtsplanggferstellen,aufsichtsplanzeigen,aufsichtsplandrucken:LET maske=
+"ms aufsichtsplan drucken eingang",mnrlistewirderstellt=7,
+mnrlistewirdgedruckt=58,mnrbittewarten=69,mnrlistewirdaufbereitet=190,
+mnrkeinedatenimbestand=68,blank=" ",sixblanks="      ";INT CONST fnr2aktsj:=2
+,fnr3ausgbs:=3,fnr4ausgdr:=4;INT VAR druckzeilenzahl;TEXT VAR 
+gesamtueberschrift,ueberschrift2,halbjahr,schuljahr,sjhjaufber,altertag;TEXT 
+CONST ueberschrift1:="Aufsicht  Aufsichtsorte ",ueberschrift3:=7*"----------"
++blank,aufsichtsorte:="c02 aufsichtsorte";FILE VAR showdatei,druckdatei;LET 
+niltext="",maxaufsichtszeiten=90,maxorteprozeile=10;ROW maxaufsichtszeiten
+TEXT VAR zeiten;ROW maxorteprozeileTEXT VAR ortejezeile;BOOL VAR keinedatenda
+;INT VAR status,zaehler,anzahlzeiten,anzahlorte;BOOL VAR bildschirmausgabe;
+PROC aufsichtsplanmaskebearbeiten:standardvproc(maske);END PROC 
+aufsichtsplanmaskebearbeiten;PROC aufsichtsplanggferstellen:standardpruefe(5,
+fnr3ausgbs,fnr4ausgdr,0,niltext,status);IF status<>0THEN infeld(status);
+return(1)ELSE bildschirmausgabe:=standardmaskenfeld(fnr4ausgdr)=niltext;
+standardmeldung(mnrbittewarten,niltext);ggfdatenmerkenundshowdateierstellen;
+IF keinedatendaTHEN standardmeldung(mnrkeinedatenimbestand,niltext);return(1)
+ELSE IF bildschirmausgabeTHEN aufsichtsplanzeigenELSE aufsichtsplandrucken(0)
+FI ;FI ;FI ;.ggfdatenmerkenundshowdateierstellen:halbjahr:=schulkenndatum(
+"Schulhalbjahr");schuljahr:=schulkenndatum("Schuljahr");IF standardmaskenfeld
+(fnr2aktsj)=niltextTHEN geplanteshjundsjberechnen(halbjahr,schuljahr)FI ;
+sjhjaufber:=subtext(schuljahr,1,2)+"/";sjhjaufberCAT subtext(schuljahr,3,4)+
+" ";sjhjaufberCAT halbjahr;zaehler:=0;keinedatenda:=FALSE ;inittupel(
+dnraufsichtszeiten);exactmatch(FALSE );statleseschleife(dnraufsichtszeiten,
+schuljahr,halbjahr,fnrazsj,fnrazhj,PROC aufsichtszeitenmerken);keinedatenda:=
+anzahlzeiten=0;IF NOT keinedatendaTHEN ggfdiezehnerstenortelesenFI ;.
+ggfdiezehnerstenortelesen:zaehler:=0;anzahlorte:=0;inittupel(dnrschluessel);
+putwert(fnrschlsachgebiet,aufsichtsorte);search(dnrschluessel,FALSE );IF 
+dbstatus<>0OR wert(fnrschlsachgebiet)<>aufsichtsorteTHEN keinedatenda:=TRUE ;
+ELSE maximalzehnortemerkenundueberschriftenbasteln;standardmeldung(
+mnrlistewirderstellt,niltext);TEXT CONST namedershowdatei:="Aufsichtsplan : "
++sjhjaufber+". Halbj.";forget(namedershowdatei,quiet);showdatei:=
+sequentialfile(output,namedershowdatei);inittupel(dnraufsichtsplan);putwert(
+fnrapsj,schuljahr);putwert(fnraphj,halbjahr);
+prozeitproorteintraegeausaufsichtsplaninshowdatei;IF anzahlorte=
+maxorteprozeileTHEN WHILE wert(fnrschlsachgebiet)=aufsichtsorteAND dbstatus<>
+3REP anzahlorte:=0;zaehler:=0;maximalzehnortemerkenundueberschriftenbasteln;
+prozeitproorteintraegeausaufsichtsplaninshowdatei;PER FI ;FI ;END PROC 
+aufsichtsplanggferstellen;PROC maximalzehnortemerkenundueberschriftenbasteln:
+ueberschrift2:="Tag Nr.  ";WHILE dbstatus<>3AND wert(fnrschlsachgebiet)=
+aufsichtsorteAND zaehler<maxorteprozeileREP zaehlerINCR 1;ortejezeile(zaehler
+):=wert(fnrschlschluessel);ueberschrift2CAT text(ortejezeile(zaehler),6);succ
+(dnrschluessel);PER ;anzahlorte:=zaehlerEND PROC 
+maximalzehnortemerkenundueberschriftenbasteln;PROC aufsichtszeitenmerken(
+BOOL VAR b):IF dbstatus<>0OR wert(fnrazhj)<>halbjahrTHEN b:=TRUE ;ELSE 
+zaehlerINCR 1;zeiten(zaehler):=wert(fnrazaufsichtszeit);FI ;anzahlzeiten:=
+zaehlerEND PROC aufsichtszeitenmerken;PROC 
+prozeitproorteintraegeausaufsichtsplaninshowdatei:INT VAR hilfszaehler;TEXT 
+VAR hilfstext,tag,aufsichtsnr,zeile;putline(showdatei,ueberschrift1);putline(
+showdatei,ueberschrift2);putline(showdatei,ueberschrift3);altertag:="";FOR 
+zaehlerFROM 1UPTO anzahlzeitenREP hilfstext:=zeiten(zaehler);putwert(
+fnrapaufsichtszeit,hilfstext);IF length(hilfstext)=2THEN aufsichtsnr:=" ";
+aufsichtsnrCAT subtext(hilfstext,2,2);ELSE aufsichtsnr:=subtext(hilfstext,2,3
+);FI ;tagnummeraufbereiten;FOR hilfszaehlerFROM 1UPTO anzahlorteREP putwert(
+fnrapaufsichtsort,ortejezeile(hilfszaehler));search(dnraufsichtsplan,TRUE );
+IF dbstatus=0THEN hilfstextCAT text(wert(fnrapparaphe),6);ELSE hilfstextCAT 
+sixblanksFI ;PER ;zeile:=hilfstext;hilfstext:=sixblanks;putline(showdatei,
+zeile);PER ;putline(showdatei,blank);.tagnummeraufbereiten:tag:=text(
+hilfstext,1);IF tag="1"THEN tag:="Mo "ELIF tag="2"THEN tag:="Di "ELIF tag="3"
+THEN tag:="Mi "ELIF tag="4"THEN tag:="Do "ELIF tag="5"THEN tag:="Fr "ELIF tag
+="6"THEN tag:="Sa "FI ;IF tag=altertagTHEN hilfstext:=3*blankELSE hilfstext:=
+tag;FI ;hilfstextCAT aufsichtsnr+".   ";altertag:=tagEND PROC 
+prozeitproorteintraegeausaufsichtsplaninshowdatei;PROC aufsichtsplanzeigen:
+zeigedatei("Aufsichtsplan : "+sjhjaufber+". Halbj.","a");END PROC 
+aufsichtsplanzeigen;PROC aufsichtsplandrucken(INT CONST ruecksprungregel):
+INT VAR zeilenzaehler:=1;TEXT VAR zeile;gesamtueberschrift:=
+"Aufsichtsplan für Schuljahr ";gesamtueberschriftCAT sjhjaufber;
+gesamtueberschriftCAT ". Halbjahr";druckdatei:=sequentialfile(output,
+"liste.1");input(showdatei);druckvorbereiten;druckzeilenzahl:=drucklaenge(2);
+initdruckkopf(gesamtueberschrift,blank);druckkopfschreiben;
+setzemitseitennummern(TRUE );WHILE NOT eof(showdatei)REP getline(showdatei,
+zeile);druckzeileschreiben(zeile);zeilenzaehlerINCR 1;IF zeilenzaehler>
+druckzeilenzahlTHEN seitenwechsel;zeilenzaehler:=1FI ;PER ;drucknachbereiten;
+IF ruecksprungregel=0THEN return(1)ELSE return(2)FI ;standardmeldung(
+mnrlistewirdgedruckt,niltext);END PROC aufsichtsplandrucken;END PACKET 
+aufsichtsplandrucken;
+

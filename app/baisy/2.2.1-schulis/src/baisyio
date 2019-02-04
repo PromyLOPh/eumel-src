@@ -1,0 +1,51 @@
+PACKET baisyioDEFINES hardcopy,protected,protect,setzeschulisversion,
+schulisversion,get,putget,inaktuellesmaskenfeld,getcursorposfuerauskunft,
+bildschirmausdrucken:LET #variablenzahlklein=10,#variablenzahlgross=100,
+variablenzahlganzgross=200,cesc=27,cseiterueck=15,cseitevor=14,
+bildschirmausdruck="Bildschirm-Ausdruck",versilaenge=5,meldungsfeldnummer=1;
+INT VAR x,y;INT VAR xauskunft,yauskunft;LET xruhepos=1,yruhepos=24;BOOL VAR 
+cl,pr,se,sp,le;INT VAR dummy;TEXT VAR versionsnummer:="01";TEXT VAR 
+untergeschobenerfeldinhalt:="";PROC getcursorposfuerauskunft(INT VAR xpos,
+ypos):xpos:=xauskunft;ypos:=yauskunftEND PROC getcursorposfuerauskunft;PROC 
+hardcopy:FILE VAR f:=sequentialfile(output,bildschirmausdruck);screencopy(f);
+print(bildschirmausdruck);forget(bildschirmausdruck,quiet)END PROC hardcopy;
+PROC inaktuellesmaskenfeld(TEXT CONST auskunftsteiltext):
+untergeschobenerfeldinhalt:=auskunftsteiltextEND PROC inaktuellesmaskenfeld;
+BOOL PROC protected(TAG CONST t,INT CONST feld):fieldinfos(t,feld,dummy,cl,pr
+,se,sp,le);clOR prEND PROC protected;PROC protect(TAG VAR t,INT CONST feld,
+BOOL CONST prneu):fieldinfos(t,feld,dummy,cl,pr,se,sp,le);setfieldinfos(t,
+feld,cl,prneu,se);END PROC protect;PROC setzeschulisversion(TEXT CONST versi)
+:versionsnummer:=text(versi,versilaenge)END PROC setzeschulisversion;TEXT 
+PROC schulisversion:versionsnummerEND PROC schulisversion;PROC putget(TAG 
+CONST t,ROW variablenzahlgrossTEXT VAR feld,INT VAR pos):INT VAR i;FOR iFROM 
+posUPTO variablenzahlgrossREP IF fieldexists(t,i)THEN put(t,feld(i),i)FI PER 
+;get(t,feld,pos);END PROC putget;PROC get(TAG CONST t,ROW variablenzahlgross
+TEXT VAR feld,INT VAR pos):einkopieren(t,feld(pos),pos);
+bestimmexykoordinatendesmeldungsfelds(t);REP get(t,feld(pos),pos);
+executeextendedcommandcode(t,pos);UNTIL leavingcode=cescPER ;getcursor(
+xauskunft,yauskunft);cursor(xruhepos,yruhepos).END PROC get;PROC putget(TAG 
+CONST t,ROW variablenzahlganzgrossTEXT VAR feld,INT VAR pos):INT VAR i;FOR i
+FROM posUPTO variablenzahlganzgrossREP IF fieldexists(t,i)THEN put(t,feld(i),
+i)FI PER ;get(t,feld,pos);END PROC putget;PROC get(TAG CONST t,ROW 
+variablenzahlganzgrossTEXT VAR feld,INT VAR pos):einkopieren(t,feld(pos),pos)
+;bestimmexykoordinatendesmeldungsfelds(t);REP get(t,feld(pos),pos);
+executeextendedcommandcode(t,pos);UNTIL leavingcode=cescPER ;getcursor(
+xauskunft,yauskunft);cursor(xruhepos,yruhepos).END PROC get;PROC einkopieren(
+TAG CONST t,TEXT VAR feld,INT CONST pos):IF etwasuntergeschobenTHEN zeigees
+FI .etwasuntergeschoben:untergeschobenerfeldinhalt<>"".zeigees:feld:=
+untergeschobenerfeldinhalt;put(t,feld,pos);untergeschobenerfeldinhalt:="".
+END PROC einkopieren;PROC bestimmexykoordinatendesmeldungsfelds(TAG CONST t):
+cursor(t,meldungsfeldnummer);getcursor(x,y);END PROC 
+bestimmexykoordinatendesmeldungsfelds;PROC executeextendedcommandcode(TAG 
+CONST t,INT VAR pos):INT VAR charcode:=leavingcode;SELECT charcodeOF CASE 
+cseiterueck:tofirstfieldCASE cseitevor:tolastfieldOTHERWISE 
+executecommandcode(t,pos)END SELECT .tofirstfield:pos:=firstfield(t);WHILE 
+gesperrtREP pos:=nextfield(t,pos)PER .tolastfield:INT VAR oldpos;REP oldpos:=
+pos;pos:=nextfield(t,pos)UNTIL warletztesPER ;pos:=oldpos;WHILE gesperrtREP 
+pos:=priorfield(t,pos)PER .warletztes:pos<1.gesperrt:protected(t,pos).END 
+PROC executeextendedcommandcode;PROC bildschirmausdrucken(PROC (INT CONST )
+return):cursor(x,y);out(" Der Bildschirminhalt wird ausgedruckt.  ");
+hardcopy;pause(10);cursor(x,y);out(
+"===================================================");return(1)END PROC 
+bildschirmausdrucken;END PACKET baisyio;
+

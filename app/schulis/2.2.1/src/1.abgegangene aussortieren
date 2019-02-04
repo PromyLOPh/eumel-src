@@ -1,0 +1,75 @@
+PACKET abgegangeneaussortierenDEFINES 
+abgegangeneaussortiereneingangsbehandlung,abgegangeneaussortieren:LET null=0,
+fnrdatum=2,fnrankreuz1=3,fnrankreuz2=4,pruefartalternative=5,niltext="",
+tofather=1,meldtrenner="#",namenstrenner=", ",meldfalschesdatum=157,
+meldbearbeitung=153,meldspeicherfehler=131,meldende=158;LET falschertag="00",
+keindatum="01.01.00";LET anzschlfelder=3;LET bestandabgegangene="abg",
+bestandlaufsj="ls";LET jgstufe10=10;LET logtextbeginn1=
+"Anw. 1.3.4 Abgemeldete bis ",logtextbeginn2="Anw. 1.3.4 Abgegangene bis ",
+logtextende1=" aussortieren",logtextende2=" entfernen";ROW anzschlfelderTEXT 
+VAR key;TEXT VAR jgst,zugtutor;PROC abgegangeneaussortiereneingangsbehandlung
+:reinitparsing;standardvproc(maske(vergleichsknoten)).END PROC 
+abgegangeneaussortiereneingangsbehandlung;PROC abgegangeneaussortieren:
+pruefeplausibilitaet;IF allesokTHEN aussortierendurchfuehrenELSE 
+fehlerbehandlungFI .pruefeplausibilitaet:pruefedatum;IF allesokTHEN 
+pruefeankreuzfelderFI .allesok:INT VAR pruefstatus;pruefstatus=null.
+pruefeankreuzfelder:standardpruefe(pruefartalternative,fnrankreuz1,
+fnrankreuz2,null,niltext,pruefstatus);.pruefedatum:TEXT VAR stichtag:=
+standardmaskenfeld(fnrdatum);IF (subtext(stichtag,1,2)=falschertag)COR (datum
+(stichtag)=nildatum)THEN pruefstatus:=fnrdatum;standardmeldung(
+meldfalschesdatum,niltext);ELSE pruefstatus:=nullFI .fehlerbehandlung:infeld(
+pruefstatus);return(tofather).aussortierendurchfuehren:aussortieren(stichtag,
+standardmaskenfeld(fnrankreuz1)<>niltext);return(tofather).END PROC 
+abgegangeneaussortieren;PROC aussortieren(TEXT CONST stichtag,BOOL CONST 
+uebertragen):TEXT VAR eintrag;IF uebertragenTHEN inbestandabgegangeneELSE 
+endgueltigloeschenFI .inbestandabgegangene:eintrag:=logtextbeginn1;eintrag
+CAT datumskonversion(stichtag);eintragCAT logtextende1;logeintrag(eintrag);
+leseschleife(ixsustatabgdat,bestandlaufsj,stichtag,PROC 
+abgegangeneuebertragen).endgueltigloeschen:eintrag:=logtextbeginn2;eintrag
+CAT datumskonversion(stichtag);eintragCAT logtextende2;logeintrag(eintrag);
+leseschleife(ixsustatabgdat,bestandabgegangene,stichtag,PROC 
+endgueltigloeschen).END PROC aussortieren;PROC leseschleife(INT CONST 
+sekbestandindex,TEXT CONST sustatus,TEXT CONST stichtag,PROC (BOOL VAR )
+aktion):erstenlesen;WHILE NOT schlussREP ausfuehrung;naechstenlesenPER ;
+endemeldung.erstenlesen:BOOL VAR endegewuenscht:=FALSE ;putwert(fnrsustatuss,
+sustatus);putwert(fnrsuabgdats,datumskonversion(stichtag));search(
+sekbestandindex,FALSE );IF NOT gueltigesabgangsdatum(sustatus,stichtag)THEN 
+pred(sekbestandindex)FI ;statusueberpruefen.schluss:(dbstatus<>null)COR 
+endegewuenscht.ausfuehrung:bearbeitungmelden;aktion(endegewuenscht).
+naechstenlesen:pred(sekbestandindex);statusueberpruefen.endemeldung:IF NOT 
+endegewuenschtTHEN standardmeldung(meldende,niltext)FI .statusueberpruefen:
+IF gueltigesabgangsdatum(sustatus,stichtag)THEN lesenzumaendernELSE dbstatus(
+notfound)FI .END PROC leseschleife;PROC abgegangeneuebertragen(BOOL VAR 
+schluss):delete(dnrschueler);IF dbstatus=okTHEN IF intwert(fnrsusgrpjgst)>=
+jgstufe10THEN kurswahlserveraktualisieren(wert(fnrsusgrpjgst),"","")FI ;
+putwert(fnrsustatuss,bestandabgegangene);insert(dnrschueler);IF dbstatus<>ok
+THEN aktbestandzuruecksetzen;schlussundfehlermeldenFI ;
+aktbestandzuruecksetzenELSE schlussundfehlermeldenFI .aktbestandzuruecksetzen
+:putwert(fnrsustatuss,bestandlaufsj);.schlussundfehlermelden:schluss:=TRUE ;
+fehlermelden.END PROC abgegangeneuebertragen;PROC endgueltigloeschen(BOOL 
+VAR schluss):#aenderunginstatraumvorbereiten(TRUE );dr11.05.88#IF NOT schluss
+THEN #einenschuelerausstatraumentfernen;dr11.05.88#datenloeschen(
+dnrhalbjahresdaten,schluss);IF NOT schlussTHEN diffdatenloeschen;delete(
+dnrschueler);schluss:=dbstatus<>null;FI FI ;IF schlussTHEN #
+einenschuelerinstatraumeinfuegen;dr11.05.88#fehlermeldenFI .diffdatenloeschen
+:IF wert(fnrsudiffdatennrs)<>""THEN putwert(fnrdddiffdatennr,wert(
+fnrsudiffdatennrs));search(dnrdiffdaten,TRUE );IF dbstatus=okTHEN delete(
+dnrdiffdaten)FI FI .END PROC endgueltigloeschen;PROC datenloeschen(INT CONST 
+dateinummer,BOOL VAR schluss):inittupel(dateinummer);putwert(dateinummer+1,
+key(1));putwert(dateinummer+2,key(2));putwert(dateinummer+3,datumskonversion(
+key(3)));search(dateinummer,FALSE );WHILE dbstatus=okCAND gleicherschueler
+REP delete(dateinummer);IF dbstatus<>okTHEN schluss:=TRUE ELSE succ(
+dateinummer)FI PER .gleicherschueler:key(1)=wert(dateinummer+1)CAND key(2)=
+wert(dateinummer+2)CAND key(3)=datumrekonversion(wert(dateinummer+3)).END 
+PROC datenloeschen;BOOL PROC gueltigesabgangsdatum(TEXT CONST bestand,
+stichtag):dbstatus=okCAND wert(fnrsustatuss)=bestandCAND wert(fnrsuabgdats)<>
+keindatumCAND datum(wert(fnrsuabgdats))<=datum(datumskonversion(stichtag)).
+END PROC gueltigesabgangsdatum;PROC lesenzumaendern:key(1):=wert(
+fnrsufamnames);key(2):=wert(fnrsurufnames);key(3):=datumrekonversion(wert(
+fnrsugebdatums));jgst:=wert(fnrsusgrpjgst);zugtutor:=wert(fnrsusgrpzugtut)
+END PROC lesenzumaendern;PROC bearbeitungmelden:standardmeldung(
+meldbearbeitung,key(1)+namenstrenner+key(2)+meldtrenner+jgst+zugtutor+
+meldtrenner)END PROC bearbeitungmelden;PROC fehlermelden:standardmeldung(
+meldspeicherfehler,text(dbstatus)+meldtrenner+key(1)+namenstrenner+key(2)+
+meldtrenner);END PROC fehlermelden;END PACKET abgegangeneaussortieren
+

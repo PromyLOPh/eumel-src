@@ -1,0 +1,254 @@
+(* ------------------- VERSION 4     22.04.86 ------------------- *)
+PACKET konfigurieren DEFINES                (* Autor: D.Heinrichs *)
+
+
+
+    ansi cursor,
+    baudrate ,
+    bits ,
+    cursor logic , 
+    elbit cursor , 
+    enter incode , 
+    enter outcode , 
+    flow , 
+    input buffer size , 
+    link ,
+    new configuration ,
+    new type , 
+    ysize :
+
+LET max dtype nr = 5,  (* maximum number of active device tables *)
+    device table = 32000,
+    ack = 0 ;
+
+ 
+INT VAR next outstring,
+        next instring; 
+ 
+BOUND STRUCT (ALIGN space,                       (* umsetzcodetabelle *)
+              ROW 128 INT outcodes,
+              ROW  64 INT outstrings,
+              ROW  64 INT instrings) VAR x;
+
+
+ROW max dtype nr DATASPACE VAR device code table;
+
+THESAURUS VAR dtypes ;
+
+ 
+PROC new configuration :
+
+  dtypes := empty thesaurus ;
+  INT VAR i ;
+  insert (dtypes, "psi", i) ;
+  insert (dtypes, "transparent", i) ;
+  FOR i FROM 1 UPTO max dtype nr REP
+    forget (device code table (i))
+  PER .
+
+ENDPROC new configuration ;
+
+ 
+PROC block out (DATASPACE CONST ds, INT CONST page, code): 
+  INT VAR err; 
+  block out (ds,page,0,code,err);
+  announce error (err)
+END PROC block out; 
+ 
+PROC announce error (INT CONST err):
+  SELECT err OF 
+  CASE 0:
+  CASE 1: errorstop ("unbekanntes Terminalkommando")
+  CASE 2: errorstop ("Nummer der Terminal-Typ-Tabelle falsch")
+  CASE 3: errorstop ("falsche Terminalnummer") 
+  OTHERWISE errorstop ("blockout: unzulaessiger Kanal")
+  ENDSELECT
+END PROC announce error;
+ 
+PROC flow (INT CONST nr, INT CONST dtype):
+  control (6, dtype, nr)
+END PROC flow;
+
+PROC ysize (INT CONST channel ,new size, INT VAR old size) :
+  control (11, channel, new size, old size)
+ENDPROC ysize ;
+
+PROC input buffer size (INT CONST nr,size):
+  INT VAR err;
+  control (2,nr,size,err)
+END PROC input buffer size;
+
+PROC baudrate (INT CONST nr, rate) :
+  control (8, rate, nr)
+ENDPROC baudrate ;
+
+PROC bits (INT CONST channel, number, parity) :
+  bits (channel, number-1 + 8*parity)
+ENDPROC bits ;
+
+PROC bits (INT CONST channel, key) :
+  control (9, key, channel)
+ENDPROC bits ;
+
+PROC control (INT CONST function, key, channel) :
+
+  INT VAR err ;
+  IF key > -128 AND key < 127
+    THEN control (function, channel, key, err)
+  ELIF key = -128
+    THEN control (function, channel, -maxint-1, err)
+  FI
+
+ENDPROC control ;
+
+
+PROC new type (TEXT CONST dtype):
+  x := new (dtype);
+  type (old (dtype), device table);
+  next outstring := 4;
+  next instring := 0;
+  INT VAR i;
+  (* Defaults, damit trmpret den cursor mitfuehrt: *)
+    FOR i FROM 1 UPTO 6 REP
+    enter outcode (i,i)
+    PER;
+    enter outcode (8,8); 
+    enter outcode (10,10);
+    enter outcode (13,13);
+    enter outcode (14,126); 
+    enter outcode (15,126);
+END PROC new type;
+
+INT PROC activate dtype (TEXT CONST dtype): 
+ 
+ INT VAR i := link (dtypes, dtype);
+ IF (exists (dtype) CAND type (old (dtype)) = device table) 
+    THEN IF i <= 0
+            THEN insert (dtypes, dtype, i);
+         FI;
+         forget(device code table (i-2));
+         device code table (i-2) := old (dtype)
+ FI;
+ IF i > max dtype nr +2  (* 5 neue Typen erlaubt *) 
+    THEN delete (dtypes,i);
+         error stop ("Anzahl Terminaltypen > "+text (i));0 
+    ELIF i <= 0
+         THEN error stop ("Unbekannter Terminaltyp" + dtype); 0
+    ELSE i
+ FI. 
+
+END PROC activate dtype; 
+
+PROC link (INT CONST nr, TEXT CONST dtype): 
+ 
+  INT VAR lst nr := activate dtype (dtype)-3;
+  IF lst nr < 0
+     THEN lst nr INCR 256  (* fuer std terminal und std device *)
+     ELSE blockout (device code table(lst nr+1), 2, lst nr); 
+  FI; 
+  INT VAR err := 0;
+  control (1,nr,lst nr,err) ;
+  announce error(err)
+
+END PROC link;
+ 
+
+PROC enter outcode (INT CONST eumel code, ziel code):
+
+  IF ziel code < 128
+    THEN simple entry (eumel code, ziel code)
+    ELSE enter outcode (eumel code, 0, code (ziel code))
+  FI .
+
+ENDPROC enter outcode ;
+
+PROC simple entry (INT CONST eumel code, ziel code) :
+
+  INT CONST position := eumel code DIV 2 +1, 
+            teil := eumel code - 2*position + 2;
+  TEXT VAR h :="     ";
+  replace (h,1,out word);
+  replace (h,1+teil,code (ziel code));
+  out word := (h ISUB 1).
+
+  out word: x.outcodes (position).
+
+END PROC simple entry ;
+
+PROC enter outcode (INT CONST eumel code, wartezeit,
+                    TEXT CONST sequenz):
+
+     INT VAR i;
+     simple entry (eumel code, next outstring + 128);
+     enter part (x.outstrings, next outstring, wartezeit); 
+     FOR i FROM 1 UPTO length (sequenz) REP
+       enter part (x.outstrings, next outstring + i, code (sequenzSUBi))
+     PER;
+     next outstring INCR length (sequenz)+2;
+     abschluss. 
+ 
+     abschluss:
+     enter part (x.outstrings, next outstring-1, 0)
+END PROC enter outcode;
+
+PROC enter outcode (INT CONST eumelcode, TEXT CONST wert):
+  enter outcode (eumelcode,code(wert))
+END PROC enter outcode;
+
+PROC enter part (ROW 64 INT VAR a,INT CONST index, wert):
+  INT CONST position := index DIV 2 +1, 
+            teil := index - 2*position + 2;
+  IF position > 64 THEN errorstop ("Ueberlauf der Terminaltyptabelle") FI;
+  TEXT VAR h :="     ";
+  replace (h,1,out word);
+  replace (h,1+teil,code (wert));
+  out word := (h ISUB 1).
+
+  out word: a (position).
+END PROC enter part;
+
+
+PROC enter incode (INT CONST elan code, TEXT CONST sequenz):
+     IF elan code > 254 OR elan code < 0 THEN errorstop ("kein Eingabecode")
+     ELSE
+     INT VAR i;
+     enter part (x.instrings, next instring, elan code); 
+     FOR i FROM 1 UPTO length (sequenz) REP
+       enter part (x.instrings, next instring + i, code (sequenzSUBi))
+     PER;
+     next instring INCR length (sequenz)+2;
+
+     FI
+
+END PROC enter incode;
+
+PROC cursor logic (INT CONST dist, TEXT CONST pre, mid, post):
+
+     cursor logic (dist,255,pre,mid,post)
+
+END PROC cursor logic;
+
+PROC ansi cursor (TEXT CONST pre, mid, post):
+ 
+     cursor logic (0, 1, pre, mid, post)
+
+END PROC ansi cursor;
+
+PROC cursor logic (INT CONST dist, modus, TEXT CONST pre, mid, post):
+
+     enter part (x.outstrings,2,dist);
+     enter part (x.outstrings,3,dist);
+     enter part (x.outstrings,0,modus);
+     enter part (x.outstrings,1,modus);
+     enter outcode (6,0,pre+""0"y"+mid+""0"x"+post+""0"")
+
+END PROC cursor logic;
+
+PROC elbit cursor: 
+     cursor logic (0,""27"","",""); 
+     enter part (x.outstrings,0,2);
+     enter part (x.outstrings,1,255);
+END PROC elbit cursor;
+
+ENDPACKET konfigurieren;
+

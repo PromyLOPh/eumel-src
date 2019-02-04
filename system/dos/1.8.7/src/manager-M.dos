@@ -1,0 +1,211 @@
+PACKET dos manager multi DEFINES             (* Copyright (C) 1985, 86, 87 *)
+                                             (* Frank Klapper              *)
+  provide channel,                           (* 16.10.87                   *)
+  dos manager:
+ 
+LET std archive channel = 31,
+
+    ack              = 0,
+    second phase ack = 5,
+    false code       = 6,
+
+    fetch code       = 11,
+    save code        = 12,
+    exists code      = 13,
+    erase code       = 14,
+    list code        = 15,
+    all code         = 17,
+    clear code       = 18,
+    reserve code     = 19,
+    free code        = 20,
+    check read code  = 22,
+    format code      = 23,
+
+    log code         = 78,
+
+    quote            = """";
+
+BOUND STRUCT (TEXT name, pass) VAR msg;
+
+TASK VAR order task;
+
+INT VAR dos channel;
+
+INT VAR fetch save modus;
+
+REAL VAR last access time := 0.0;
+
+TASK VAR disk owner := niltask; 
+
+TEXT VAR save file name;
+
+PROC provide channel (INT CONST channel):
+  dos channel := channel
+
+END PROC provide channel;
+
+IF hd version
+  THEN provide channel (29)
+  ELSE provide channel (std archive channel)
+FI;
+
+PROC dos manager:
+  dos manager (dos channel)
+
+END PROC dos manager;
+
+PROC dos manager (INT CONST channel):
+  dos channel := channel;
+  task password ("-");
+  global manager
+        (PROC (DATASPACE VAR, INT CONST, INT CONST, TASK CONST) dos manager) 
+
+END PROC dos manager;
+
+PROC dos manager (DATASPACE VAR ds, INT CONST order code, phase,
+                  TASK CONST from task):
+  enable stop;
+  order task := from task;
+  msg := ds;
+  IF NOT (order task = disk owner) AND 
+     order code <> free code AND order code <> reserve code
+    THEN errorstop ("DOS nicht angemeldet")
+  FI;
+  IF order task = disk owner
+    THEN last access time := clock (1)
+  FI;
+  SELECT order code OF 
+    CASE fetch code     : fetch file 
+    CASE save code      : save file
+    CASE erase code     : erase file
+    CASE clear code     : clear disk
+    CASE exists code    : exists file
+    CASE list code      : list disk
+    CASE all code       : deliver directory
+    CASE reserve code   : reserve
+    CASE free code      : free
+    CASE check read code: check
+    CASE format code    : format
+    CASE log code       : send log
+    OTHERWISE errorstop ("unbekannter Auftrag für Task: " + name (myself))
+  END SELECT.
+
+fetch file:
+  fetch (dos name (msg.name, read modus), ds, fetch save modus);
+  manager ok (ds).
+
+check:
+  check file (dos name (msg.name, read modus));
+  manager message (expanded name (msg.name, read modus) + " ohne Fehler gelesen"). 
+
+format:
+  IF phase = 1
+    THEN manager question ("Diskette formatieren")
+    ELSE format dos disk (int (msg.name));
+         manager ok (ds)
+  FI.
+
+save file:
+  IF phase = 1
+    THEN save first phase
+    ELSE save second phase
+  FI.
+
+save first phase:
+  save file name := dos name (msg.name, write modus);
+  IF dos file exists (save file name)
+    THEN manager question (expanded name (msg.name, write modus) + " auf der MS-DOS Disk ueberschreiben")
+    ELSE send (order task, second phase ack, ds)
+  FI.
+
+save second phase:
+  IF dos file exists (save file name)
+    THEN erase dos file (save file name)
+  FI;
+  save (save file name, ds, fetch save modus);
+  forget (ds) ;
+  ds := nilspace ;
+  manager ok (ds).
+
+clear disk: 
+  IF phase = 1
+    THEN manager question ("Diskette loeschen")
+    ELSE clear dos disk;
+         manager ok (ds)
+  FI.
+
+erase file:
+  IF dos file exists (dos name (msg.name, read modus))
+    THEN IF phase = 1
+           THEN manager question (expanded name (msg.name, TRUE) + " auf der MS-DOS Disk loeschen")
+           ELSE erase dos file (dos name (msg.name, read modus));
+                manager ok (ds)
+         FI
+    ELSE manager message ("die Datei " + expanded name (msg.name, TRUE) + " gibt es nicht auf der MS-DOS Disk")
+  FI.
+ 
+exists file:
+  IF dos file exists (dos name (msg.name, read modus))
+    THEN manager ok (ds)
+    ELSE send (order task, false code, ds)
+  FI.
+
+list disk:
+  dos list (ds);
+  manager ok (ds).
+
+send log:
+  forget (ds);
+  ds := old ("logbuch");
+  manager ok (ds).
+
+deliver directory:
+  forget (ds);
+  ds := nilspace;
+  BOUND THESAURUS VAR all names := ds;
+  all names := all dos files;
+  manager ok (ds).
+
+reserve:
+  IF reserve or free permitted
+    THEN continue channel (dos channel);
+         disk owner := from task;
+         fetch save modus := save fetch mode (msg.name);
+         open dos disk (path (msg.name));
+         forget ("logbuch", quiet);
+         manager ok (ds)
+    ELSE errorstop ("Archivlaufwerk wird von Task """+ name (disk owner) + """ benutzt")
+  FI.
+
+reserve or free permitted :
+  from task = disk owner OR last access more than five minutes ago
+  OR disk owner = niltask OR NOT
+  (exists (disk owner) OR station(disk owner) <> station (myself)).
+
+last access more than five minutes ago :
+  abs (last access time - clock (1)) > 300.0.
+
+free: 
+  IF reserve or free permitted
+    THEN close dos disk;
+         disk owner := niltask;
+         break (quiet);
+         manager ok (ds)
+    ELSE manager message ("DOS nicht angemeldet")
+  FI.
+
+END PROC dos manager;
+
+PROC manager ok (DATASPACE VAR ds):
+  send (order task, ack, ds);
+  last access time := clock (1).
+
+END PROC manager ok;
+
+TEXT PROC expanded name (TEXT CONST name, BOOL CONST status):
+  text (quote + dos name (name, status) + quote, 14)
+
+END PROC expanded name;
+
+END PACKET dos manager multi;
+

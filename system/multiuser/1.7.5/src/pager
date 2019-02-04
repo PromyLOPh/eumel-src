@@ -1,0 +1,2451 @@
+(*-------------------- VERSION 197 vom 05.05.86 -------(1.7.5)------ *)
+PACKET seiten formatieren DEFINES pageform,
+                                  auto pageform,
+                                  number empty lines before foot,
+                                  first head,
+                                  last bottom:
+
+(* Programm zur interaktiven Formatierung von Seiten, Fussnoten, Kopf- und
+   Fusszeilen, Seitennummern usw.
+   Autor: Rainer Hahn
+ *)
+ 
+(***************** Deklarationen fuer pageform ************)
+
+LET type1        = 1,
+    linefeed     = 3,
+    limit        = 4,
+    free         = 5,
+    page command0= 6,
+    page command1= 7,
+    pagenr       = 8,
+    pagelength   = 9,
+    foot         = 10,
+    end          = 11,
+    head         = 12,
+    headeven     = 13,
+    headodd      = 14,
+    bottom       = 15,
+    bottomeven   = 16,
+    bottomodd    = 17,
+    columns      = 18,
+    columnsend   = 19,
+    topage       = 20,
+    goalpage     = 21,
+    count0       = 22,
+    count1       = 23,
+    setcount     = 24,
+    value0       = 25,
+    value1       = 26,
+    on           = 27, 
+    off          = 28,
+    head on      = 29,
+    head off     = 30,
+    bottom on    = 31,
+    bottom off   = 32,
+    count per page=33,
+    foot contd   = 34,
+    table        = 35,
+    table end    = 36,
+    r pos        = 37,
+    l pos        = 38,
+    c pos        = 39,
+    d pos        = 40,
+    b pos        = 41,
+    clearpos0    = 42,
+    clearpos1    = 43,
+    fillchar     = 44,
+    pageblock    = 45,
+    counter1     = 46,
+    counter2     = 47,
+    counter store= 48,
+    countervalue0= 49,
+    countervalue1= 50,
+    set counter  = 51,
+    u            = 52,
+    d            = 53,
+    e            = 54,
+    fehler index = 100,
+    hop          = ""1"",
+    upchar       = ""3"",
+    cl eop       = ""4"",
+    cl eol       = ""5"",
+    downchar     = ""10"",
+    rub in       = ""11"",
+    rub out      = ""12"",
+    return       = ""13"",
+    end mark     = ""14"",
+    begin mark   = ""15"",
+    begin end mark = ""15""14"",
+    esc          = ""27"",
+    blank        = " ",
+    kommando zeichen = "#",
+    kopf          = 1,
+    kopf gerade   = 2,
+    fuss          = 3,
+    fuss gerade   = 4,
+    kopf ungerade = 5,
+    fuss ungerade = 6,
+    foot note     = 7,
+    dina4 limit           = "16.0",
+    dina4 pagelength      = 25.0,
+    pos seitengrenze      = 17,
+    zeilen nach oben      = 13,
+    zeilen nach unten     = 6,
+    max foot zeilen       = 120,
+    max zeilen zahl       = 15,
+    max refers            = 300,
+    max anz seitenzeichen = 3;
+ 
+BOOL VAR interaktiv,
+         bereich aufnehmen,
+         zeile noch nicht verarbeitet,
+         es war ein linefeed in der zeile,
+         mindestens ein topage gewesen,
+         insert first head  :: TRUE,
+         insert last bottom :: TRUE,
+         pageblock on,
+         ausgeschalteter head,
+         ausgeschalteter bottom,
+         count seitenzaehlung,
+         file works,
+         in tabelle,
+         in nullter seite,
+         letzte textzeile war mit absatz,
+         letztes seitenende war mit absatz,
+         letztes seitenende war in tabelle;
+ 
+INT VAR kommando anfangs pos,
+        kommando ende pos,
+        kommando index,
+        number blank lines before foot :: 1,
+        in index oder exponent,
+        durchgang,
+        nummer erste seite, 
+        nummer letzte seite,
+        laufende spaltennr,
+        anz refers,
+        counter,
+        anz spalten,
+        anz zeilen nach oben,
+        anz vertauschte zeilen,
+        font nr,
+        type          zeilenvorschub,
+        berechneter   zeilenvorschub,
+        max           zeilenvorschub,
+        max type      zeilenvorschub,
+        textbegin zeilennr,
+        anz textzeilen,
+        text laenge vor columns,
+        bereichshoehe,
+        aktuelle seitenlaenge,
+        eingestellte seitenlaenge;
+ 
+REAL VAR real eingestellter zeilenvorschub,
+         realparam;
+
+TEXT VAR kommando,
+         par1, par2,
+         macro line, 
+         vor macro, 
+         nach macro,
+         dummy,
+         fehlerdummy,
+         modifikation,
+         modifikations speicher,
+         kommando seitenspeicher,
+         dec value,
+         counter numbering store,
+         counter reference store,
+         letzte kommandoleiste,
+         kommando speicher,
+         tab pos speicher,
+         bereich kommando speicher,
+         seitenzeichen,
+         name druck datei,
+         name eingabe datei,
+         zeile,
+         eingestellter typ,
+         eingestelltes limit;
+ 
+TEXT VAR kommando liste ::
+"type:1.1linefeed:3.1limit:4.1free:5.1page:6.01pagenr:8.2pagelength:9.1
+foot:10.0end:11.0head:12.0headeven:13.0headodd:14.0bottom:15.0bottomeven:16.0
+bottomodd:17.0columns:18.2columnsend:19.0topage:20.1goalpage:21.1count:22.01
+setcount:24.1";
+ 
+kommando liste CAT
+"value:25.01on:27.1off:28.1headon:29.0headoff:30.0bottomon:31.0bottomoff:32.0
+countperpage:33.0footcontinued:34.0table:35.0tableend:36.0rpos:37.1lpos:38.1
+cpos:39.1dpos:40.2bpos:41.2clearpos:42.01fillchar:44.1pageblock:45.0";
+ 
+kommando liste CAT
+"counter:46.12storecounter:48.1putcounter:49.01setcounter:51.2u:52.0d:53.0
+e:54.0";
+
+FILE VAR eingabe,
+         ausgabe;
+ 
+ROW 6 ROW max zeilenzahl TEXT VAR kopf fuss zeilen;
+ 
+ROW max foot zeilen TEXT VAR foot zeilen;
+ 
+ROW max foot zeilen BOOL VAR kommandos vorhanden;
+
+ROW 7 INT VAR anz kopf oder fuss zeilen,
+              kopf oder fuss laenge; 
+
+ROW max anz seitenzeichen INT VAR laufende seitennr;
+ 
+BOUND ROW max refers REFER VAR refer sammler;
+ 
+LET REFER = STRUCT (TEXT kennzeichen, INT nummer, BOOL referenced);
+ 
+DATASPACE VAR ds;
+ 
+(********************* Einstell-Prozeduren ***************************)
+
+PROC first head (BOOL CONST was): 
+  insert first head := was 
+END PROC first head; 
+ 
+PROC last bottom (BOOL CONST was): 
+  insert last bottom := was 
+END PROC last bottom; 
+ 
+PROC number empty lines before foot (INT CONST n):
+  IF n >= 0 AND n < 10
+    THEN number blank lines before foot := n
+    ELSE errorstop ("nur einstellbar zwischen 0 und 9")
+  FI
+END PROC number empty lines before foot;
+
+(************************** Fehlermeldungen **********************)
+ 
+PROC fehler (INT CONST nr, TEXT CONST addition):
+  IF durchgang = 1 OR
+     kommando index = goalpage  OR kommandoindex = count0 OR
+     kommando index = count1    OR kommando index = value1  OR 
+     kommando index = topage    OR kommando index = pagelength OR
+     kommando index = counterstoreOR kommando index = counter1 OR
+     kommando index = counter2  OR kommando index = countervalue1
+    THEN fehler melden;
+         fehlermeldung auf terminal ausgeben
+  FI.
+ 
+fehler melden:
+  report text processing error (nr, line no (ausgabe), fehlerdummy, addition).
+ 
+fehlermeldung auf terminal ausgeben:
+  IF interaktiv
+    THEN cursor(1,2); out(cleop);
+    ELSE line
+  FI;
+  out (fehlerdummy);
+  line.
+END PROC fehler;
+ 
+PROC warnung (INT CONST nr, TEXT CONST addition):
+  IF durchgang = 1 OR
+     kommando index = goalpage OR kommandoindex = count0 OR
+     kommando index = count1 OR kommando index = value1  OR 
+     kommando index = topage OR kommando index = set counter
+    THEN fehler melden;
+         meldung auf terminal ausgeben
+  FI.
+ 
+fehler melden:
+  report text processing warning (nr, line no (ausgabe), fehlerdummy, addition).
+ 
+meldung auf terminal ausgeben:
+  IF interaktiv
+    THEN cursor(1,2); out(cleop);
+    ELSE line
+  FI;
+  out (fehlerdummy);
+  line.
+END PROC warnung;
+
+(*************************** Globale Dateibehandlung **************)
+ 
+PROC datei assoziieren:
+   IF exists (name eingabe datei)
+     THEN ausgabe datei einrichten
+     ELSE errorstop (name eingabe datei + " existiert nicht")
+   FI.
+ 
+ausgabe datei einrichten:
+   IF name eingabe datei = name druck datei
+     THEN errorstop ("Name Eingabedatei = Name Ausgabedatei")
+   ELIF subtext (name eingabe datei, length (name eingabe datei) - 1) = ".p"
+     THEN errorstop ("Druckdatei kann nicht nochmal formatiert werden")
+     ELSE eingabe := sequential file (input, name eingabe datei);
+          copy (name eingabedatei, name druck datei);
+          ausgabe := sequential file (modify, name druck datei);
+          copy attributes (eingabe, ausgabe);
+          headline (ausgabe, name druck datei);
+   FI
+END PROC datei assoziieren;
+
+PROC record einfuegen (TEXT CONST rec):
+  insert record (ausgabe);
+  write record (ausgabe, rec);
+  down (ausgabe);
+END PROC record einfuegen;
+
+(******************** Kopf- oder Fusszeilen aufnehmen *************)
+ 
+PROC fussnote aufnehmen:
+  bereich aufnehmen := TRUE;
+  IF keine zeichen ausser blank nach dem kommando
+    THEN aufnehmen (footnote)
+    ELSE fehler (19, kommando)
+  FI;
+  in index oder exponent := 0;
+  bereich aufnehmen := FALSE
+END PROC fussnote aufnehmen;
+
+PROC aufnehmen (INT CONST was):
+  kommando zustand vor bereich speichern;
+  aktuelle zeile ggf mitzaehlen;
+  aufnehmen initialisieren;
+  kopf oder fuss zeilen aufnehmen.
+ 
+kommando zustand vor bereich speichern:
+  kommandos in dummy speichern;
+  bereich kommando speicher := dummy.
+
+aktuelle zeile ggf mitzaehlen:
+INT VAR einleitungs kommando anfang :: kommando anfangs pos;
+  IF kommando anfangs pos > 1 
+    THEN IF NOT only command line (zeile)
+           THEN aktuelle seitenlaenge INCR max zeilenvorschub
+         FI;
+         read record (ausgabe, zeile)
+  FI. 
+ 
+aufnehmen initialisieren:
+  IF was = foot note
+    THEN initialisierung fuer fussnoten
+    ELSE anz kopf oder fuss zeilen [was] := 1;
+         kommandos in dummy speichern;
+         kopf fuss zeilen [was] [1] := dummy;
+         kopf oder fuss laenge [was] := 0;
+  FI;
+  bereichshoehe := kopf oder fusslaenge [was].
+
+initialisierung fuer fussnoten:
+  INT CONST fussnotenlaenge vorher :: kopf oder fuss laenge [footnote],
+            anz fusszeilen vorher  :: anz kopf oder fusszeilen [footnote];
+  anz kopf oder fuss zeilen [footnote] INCR 1;
+  kommandos in dummy speichern;
+  kommandoleiste in fussnote speichern; (* davor *)
+  IF anz kopf oder fuss zeilen [footnote] = 1
+    THEN unterstreichungsstrich
+  FI.
+ 
+kommandoleiste in fussnote speichern:
+  foot zeilen [anz kopf oder fuss zeilen [footnote]] := dummy;
+  kommandos vorhanden [anz kopf oder fuss zeilen [footnote]]:= TRUE.
+
+unterstreichungsstrich:
+  FOR i FROM 2 UPTO max foot zeilen REP
+    kommandos vorhanden [i] := FALSE
+  ENDREP;
+  FOR i FROM 1 UPTO number blank lines before foot REP
+    foot zeilen [i + 1] := " "
+  END REP;
+  foot zeilen [number blank lines before foot + 2] :=
+     "#on(""underline"")#               #off(""underline"")# ";
+  kopf oder fuss laenge [footnote] :=
+     (number blank lines before foot + 1) * berechneter zeilenvorschub;
+  anz kopf oder fuss zeilen [footnote] := number blank lines before foot + 2.
+
+kopf oder fuss zeilen aufnehmen:
+INT VAR anzahl :: 1;
+  REP
+    naechste zeile lesen;
+    cout (line no (ausgabe));
+    IF mindestens ein kommando vorhanden
+      THEN kommandos von kopf oder fuss verarbeiten
+    FI;
+    in index oder exponent := 0;
+    zeile aufnehmen;
+    anzahl INCR 1
+  UNTIL eof (ausgabe) END REP;
+  errorstop ("end fehlt bei Dateiende").
+
+kommandos von kopf oder fuss verarbeiten:
+  max zeilenvorschub := berechneter zeilenvorschub;
+  max type zeilenvorschub := type zeilenvorschub;
+  kommando anfangs pos := pos (zeile, kommando zeichen);
+  WHILE kommando anfangs pos <> 0 REP
+    verarbeite kommando;
+    kommandos von kopf oder fuss pruefen;
+    kommando anfangs pos :=
+        pos (zeile, kommando zeichen, kommando ende pos + 1)
+  END REP.
+ 
+kommandos von kopf oder fuss pruefen:
+  IF kommandoindex = end
+    THEN aufnehmen beenden
+  ELIF kommando index = free
+    THEN IF y step conversion (realparam) >= eingestellte seitenlaenge
+           THEN fehler (24, text (realparam))
+           ELSE kopf oder fusslaenge [was] INCR y step conversion (realparam)
+         FI
+  ELIF seitenende
+    THEN INT VAR xx := durchgang;
+         durchgang := 1;
+         fehler (25, "");
+         durchgang := xx;
+         zeile zurueck lesen;
+         kommando index := end;
+         LEAVE aufnehmen
+  ELIF kommando index = fehler index
+    THEN LEAVE aufnehmen
+  ELIF kommando index > free AND kommando index < to page
+    THEN fehler (11, kommando);
+         kommando index := fehler index;
+         LEAVE aufnehmen
+  FI.
+
+aufnehmen beenden:
+  IF kommando anfangs pos > 1
+    THEN IF absatzzeile
+           THEN zeile := subtext (zeile, 1, kommando anfangs pos -1);
+                zeile CAT blank;
+           ELSE zeile := subtext (zeile, 1, kommando anfangs pos -1);
+         FI;
+         zeile aufnehmen
+  FI;
+  IF NOT (durchgang = 1 AND was = footnote)
+    THEN die aufgenommenen zeilen in druckdatei loeschen
+  FI;
+  LEAVE aufnehmen.
+
+die aufgenommenen zeilen in druckdatei loeschen:
+  INT VAR i;
+  delete record (ausgabe);
+  FOR i FROM 1 UPTO anzahl - 1 REP
+    up (ausgabe);
+    delete record (ausgabe)
+  END REP;
+  zeile zurueck lesen;
+  letztes kommando dieser zeile loeschen;
+  ggf kommandoleiste generieren.
+ 
+letztes kommando dieser zeile loeschen:
+  IF einleitungs kommando anfang = 1
+    THEN delete record (ausgabe);
+         IF line no (ausgabe) = 1
+           THEN zeile noch nicht verarbeitet := TRUE
+           ELSE zeile zurueck lesen
+         FI
+    ELSE dummy := subtext (zeile, 1, einleitungs kommando anfang - 1);
+         IF absatz zeile
+           THEN dummy CAT blank;
+         ELIF (dummy SUB length (dummy)) = " "
+           THEN delete char (dummy, length (dummy))
+         FI;
+         write record (ausgabe, dummy)
+  FI.
+ 
+ggf kommandoleiste generieren:
+  kommandos in dummy speichern;
+  IF was = footnote
+    THEN anz kopf oder fusszeilen [footnote] INCR 1;
+         kommandoleiste in fussnote speichern (* danach *)
+  FI;
+  IF dummy <> bereich kommando speicher
+    THEN down (ausgabe);
+         record einfuegen (dummy);
+         up (ausgabe, 2);
+  FI.
+
+zeile aufnehmen:
+  zeile speichern (was, anzahl);
+  IF erreichte seitenlaenge > eingestellte seitenlaenge
+    THEN bereich aufnehmen := FALSE;
+         IF kommando index = end
+           THEN seitenende nach geteilter fussnote
+           ELSE seitenende vor der fussnote
+         FI;
+         kommando index := end;
+         LEAVE aufnehmen
+  FI.
+
+seitenende nach geteilter fussnote:
+  kopf oder fuss laenge     [footnote] DECR max zeilenvorschub;
+  anz kopf oder fuss zeilen [footnote] DECR 1;
+  seitenende einbringen und zurueck.
+
+seitenende vor der fussnote:
+  kopf oder fuss laenge     [footnote] := fussnotenlaenge vorher;
+  anz kopf oder fuss zeilen [footnote] := anz fusszeilen vorher;
+  ende einer seite.
+END PROC aufnehmen;
+ 
+PROC zeile speichern (INT CONST was, anzahl):
+  zeile mitzaehlen;
+  IF was = footnote
+    THEN fussnote aufnehmen
+  ELIF anz kopf oder fuss zeilen [was] > max zeilenzahl
+    THEN errorstop ("Zu viele 'head' oder 'bottom' Zeilen");
+    ELSE kopf fuss zeilen [was] [anz kopf oder fuss zeilen [was]] := zeile
+  FI.
+ 
+zeile mitzaehlen: 
+  anz kopf oder fuss zeilen [was] INCR 1;
+  IF NOT only command line (zeile)
+    THEN IF mindestens ein kommando vorhanden
+           THEN kopf oder fuss laenge [was] INCR max zeilenvorschub;
+                bereichshoehe INCR max zeilenvorschub
+           ELSE kopf oder fuss laenge [was] INCR berechneter zeilenvorschub;
+                bereichshoehe INCR berechneter zeilenvorschub
+         FI;
+         IF bereichshoehe >= eingestellte seitenlaenge
+           THEN errorstop
+            ("head, bottom oder footzeilen > Seitenlänge (end vergessen?)")
+         FI
+  FI;
+  IF es war ein linefeed in der zeile
+    THEN berechne zeilenvorschub;
+         es war ein linefeed in der zeile := FALSE
+  FI;
+  IF erreichte seitenlaenge > eingestellte seitenlaenge
+    THEN fussnotenumbruch pruefung
+  FI.
+ 
+fussnote aufnehmen: 
+  IF anz kopf oder fuss zeilen [footnote] > max footzeilen
+    THEN errorstop ("Zu viele Fußnotenzeilen")
+  ELIF bereichshoehe > eingestellte seitenlaenge - seitenlaenge fester teil
+                       - (eingestellte seitenlaenge DIV 100 * 15) 
+    THEN errorstop ("Fußnote > 85% der Seitenlänge (end vergessen?)")
+    ELSE foot zeilen [anz kopf oder fuss zeilen [footnote]] := zeile
+  FI. 
+ 
+fussnotenumbruch pruefung:
+  IF fussnotenumbruch moeglich
+    THEN ggf fussnote aufbrechen
+    ELSE lese rueckwaerts um (anzahl);
+         IF only command line (zeile)
+           THEN lese rueckwaerts um (1)
+         FI
+  FI.
+
+fussnotenumbruch moeglich:
+  was = footnote AND anzahl > 2.
+
+ggf fussnote aufbrechen:
+  up (ausgabe);
+  IF interaktiv
+    THEN fussnotenumbruch anfrage;
+         line (2)
+  FI;
+  anweisungen fuer umbruch einfuegen.
+
+fussnotenumbruch anfrage:
+  schreibe titelzeile ("Weiterführen der Fußnote auf nächster Seite (j/n)?");
+  line (2);
+  schreibe bildschirm;
+  cursor (53, 1);
+  skip input;
+  REP
+    TEXT VAR steuerzeichen;
+    inchar (steuerzeichen);
+    IF steuerzeichen = "n"
+      THEN lese rueckwaerts um (anzahl - 1);
+           IF only command line (zeile)
+             THEN lese rueckwaerts um (1)
+           FI;
+           LEAVE ggf fussnote aufbrechen
+    ELIF steuerzeichen = "j" OR steuerzeichen = return
+      THEN LEAVE fussnotenumbruch anfrage
+    ELIF steuerzeichen = esc
+      THEN errorstop ("Abbruch durch ESC")
+    FI
+  END REP.
+
+anweisungen fuer umbruch einfuegen:
+  record einfuegen ("#end#");
+  record einfuegen ("#foot continued#");
+  kommandos in dummy speichern;
+  record einfuegen (dummy);
+  record einfuegen ("Forts. von letzter Seite: ");
+  lese rueckwaerts um (3);
+  kommando index := end.
+END PROC zeile speichern;
+
+PROC lese rueckwaerts um (INT CONST anzahl):
+  to line (ausgabe, line no (ausgabe) - anzahl);
+  read record (ausgabe, zeile)
+END PROC lese rueckwaerts um;
+
+PROC schreibe kopf oder fuss (INT CONST was):
+  IF was = footnote
+    THEN fussnoten generieren
+  ELIF laufende spaltennr < 2
+    THEN kopf oder fuss zeilen generieren
+  FI.
+
+kopf oder fusszeilen generieren:
+INT VAR i :: 1;
+BOOL VAR in generierter zeile war kommando :: FALSE;
+   ggf anfangs kommandos generieren;
+   FOR i FROM 2 UPTO anz kopf oder fuss zeilen [was] REP
+      dummy := kopf fuss zeilen [was] [i];
+      IF NOT in generierter zeile war kommando
+        THEN in generierter zeile war kommando :=
+              pos (dummy, kommandozeichen) <> 0
+      FI;
+      fuege seitennr ein;
+      record einfuegen (dummy)
+   END REP;
+   ggf ende kommandos generieren.
+ 
+ggf anfangs kommandos generieren:
+   kommandos in dummy speichern;
+   IF dummy <> kopf fuss zeilen [was] [1]
+     THEN record einfuegen (kopf fuss zeilen [was] [1])
+   FI.
+ 
+ggf ende kommandos generieren:
+   kommandos in dummy speichern;
+   IF dummy <> kopf fuss zeilen [was] [1] OR
+                                       in generierter zeile war kommando
+     THEN record einfuegen (dummy)
+   FI.
+ 
+fuege seitennr ein:
+INT VAR k;
+  change all (dummy,
+              (seitenzeichen SUB 1) + (seitenzeichen SUB 1),
+              text (laufende seitennr [1] +1));
+  FOR k FROM 1 UPTO length (seitenzeichen) REP
+    change all (dummy, seitenzeichen SUB k, text (laufende seitennr [k]));
+  END REP.
+ 
+fussnoten generieren:
+   kommandos in dummy speichern;
+   letzte kommandoleiste := dummy;
+   i := 1;
+   WHILE i < anz kopf oder fusszeilen [footnote] REP
+     IF kommandos vorhanden [i]
+       THEN IF letzte kommandoleiste <> footzeilen [i]
+              THEN record einfuegen (footzeilen [i]);
+                   letzte kommandoleiste := footzeilen [i]
+            FI
+       ELSE record einfuegen (footzeilen [i])
+     FI;
+     i INCR 1
+   END REP;
+   IF footzeilen [i] <> dummy
+     THEN record einfuegen (dummy)
+   FI
+END PROC schreibe kopf oder fuss;
+
+PROC fussnoten loeschen:
+  kopf oder fuss laenge [footnote] := 0;
+  anz kopf oder fuss zeilen [footnote] := 0
+END PROC fussnoten loeschen;
+ 
+PROC schreibe ggf fuss:
+  record einfuegen ("#text end#");
+  ggf tabellenende generieren;
+  letztes seitenende war mit absatz := letzte textzeile war mit absatz;
+  IF erreichte seitenlaenge <> eingestellte seitenlaenge
+    THEN schreibe freien platz
+  FI;
+  IF kopf oder fuss laenge [footnote] > 0
+    THEN ggf tabellenende generieren; 
+         schreibe kopf oder fuss (footnote);
+         fussnoten loeschen
+  FI;
+  IF (NOT insert last bottom AND laufende seitennr [1] = nummer letzte seite)
+     OR ausgeschalteter bottom
+    THEN 
+    ELSE schreibe mal fussbereich
+  FI.
+ 
+schreibe mal fussbereich:
+  IF kopf oder fuss laenge [fuss] > 0
+    THEN schreibe kopf oder fuss (fuss)
+  ELIF kopf oder fuss laenge [fuss gerade] > 0 AND
+            (laufende seitennr [1] MOD 2 = 0)
+    THEN schreibe kopf oder fuss (fuss gerade)
+  ELIF kopf oder fuss laenge [fuss ungerade] > 0 AND
+            (laufende seitennr [1] MOD 2 <> 0)
+    THEN schreibe kopf oder fuss (fuss ungerade)
+  FI.
+
+ggf tabellenende generieren:
+  IF tab pos speicher <> ""
+    THEN record einfuegen ("#clear pos# ")
+  FI;
+  IF in tabelle
+    THEN record einfuegen ("#table end# ");
+         letztes seitenende war in tabelle := TRUE;
+         in tabelle := FALSE
+  FI.
+
+schreibe freien platz:
+  IF pageblock on
+    THEN schreibe ggf stauchung oder streckungs anweisung
+    ELSE schreibe free (eingestellte seitenlaenge - erreichte seitenlaenge) 
+  FI.
+
+schreibe ggf stauchung oder streckungs anweisung:
+  IF interaktiv AND seitenluecke > fuenf prozent der seitenlaenge
+    THEN cursor (1, 2);
+         dummy := begin mark;
+         dummy CAT "Soll die Seite beim Druck gestreckt werden (";
+         dummy CAT text (ystepconversion (seitenluecke)); 
+         dummy CAT " cm)";
+         dummy CAT end mark;
+         IF no (dummy)
+          THEN cursor (1, 2);
+               out (cl eol);
+               schreibe free
+                        (eingestellte seitenlaenge - erreichte seitenlaenge);
+               line;
+               LEAVE schreibe ggf stauchung oder streckungs anweisung
+         FI;
+         cursor (1, 2);
+         out (cl eol);
+         line
+  FI;
+  INT VAR i :: lineno (ausgabe);
+  to line (ausgabe, textbegin zeilennr);
+  dummy := "#textbegin (";
+  dummy CAT text (anz textzeilen);
+  dummy CAT ", """;
+  dummy CAT text (ystepconversion (seitenluecke)); 
+  dummy CAT """)#";
+  read record (ausgabe, zeile);
+  IF (zeile SUB length (zeile)) = blank
+    THEN dummy CAT blank
+  FI;
+  write record (ausgabe, dummy);
+  to line (ausgabe, i).
+
+seitenluecke:
+  eingestellte seitenlaenge - erreichte seitenlaenge.
+
+fuenf prozent der seitenlaenge:
+  ((eingestellte seitenlaenge + 99) DIV 100) * 5.
+END PROC schreibe ggf fuss;
+
+(**************************** kommando speicherung *****************)
+ 
+PROC grenzmarkierung in dummy speichern:
+  dummy := "#page##";
+  dummy CAT (3 * "-----------");
+  dummy CAT " Ende der Seite ";
+  IF in nullter seite
+    THEN dummy CAT "0 "
+    ELSE dummy CAT (text (laufende seitennr [1]) + blank)
+  FI;
+  IF anz spalten > 1
+    THEN dummy CAT "und Spalte ";
+         dummy CAT (text (laufende spaltennr) + blank)
+    ELSE dummy CAT "-----------"
+  FI;
+  dummy CAT kommando zeichen
+END PROC grenzmarkierung in dummy speichern;
+
+PROC kommandos in dummy speichern:
+  type speichern;
+  dummy CAT modifikation;
+  limit speichern;
+  linefeed mit absatzblank speichern.
+ 
+type speichern:
+  dummy := "#type(""";
+  dummy CAT eingestellter typ;
+  dummy CAT """)#".
+
+limit speichern:
+  dummy CAT "#limit(";
+  dummy CAT eingestelltes limit;
+  dummy CAT ")#".
+
+linefeed mit absatzblank speichern:
+  dummy CAT "#linefeed(0";
+  dummy CAT text (real eingestellter zeilenvorschub);
+  dummy CAT ")# ".
+END PROC kommandos in dummy speichern; 
+
+PROC kommandos aufheben:
+   kommandos in dummy speichern;
+   kommando speicher := dummy
+END PROC kommandos aufheben;
+
+PROC kommandos wiederherstellen:
+  zeile := kommando speicher;
+  kommandos verarbeiten;
+  berechneter zeilenvorschub :=
+  int (real (type zeilenvorschub) * real eingestellter zeilenvorschub + 0.5);
+  max zeilenvorschub := berechneter zeilenvorschub;
+  max type zeilenvorschub := type zeilenvorschub
+END PROC kommandos wiederherstellen;
+ 
+(**************************** headzeilen einfuegen ************************) 
+ 
+PROC schreibe ggf kopf:
+  IF (NOT insert first head AND laufende seiten nr [1] = nummer erste seite)
+     OR ausgeschalteter head
+    THEN 
+    ELSE schreibe mal 
+  FI;
+  ggf tabellenanfang generieren;
+  text begin anweisung generieren.
+ 
+schreibe mal: 
+  IF kopf oder fuss laenge [kopf] > 0
+    THEN schreibe kopf oder fuss (kopf);
+         aktuelle seitenlaenge INCR kopf oder fuss laenge [kopf]
+  ELIF kopf oder fuss laenge [kopf gerade] > 0
+             AND (laufende seitennr [1] MOD 2 = 0)
+    THEN schreibe kopf oder fuss (kopf gerade);
+         aktuelle seitenlaenge INCR kopf oder fuss laenge [kopf gerade]
+  ELIF kopf oder fuss laenge [kopf ungerade] > 0
+             AND (laufende seitennr [1] MOD 2 <> 0)
+    THEN schreibe kopf oder fuss (kopf ungerade);
+         aktuelle seitenlaenge INCR kopf oder fuss laenge [kopf ungerade]
+  FI.
+
+ggf tabellenanfang generieren:
+  IF tab pos speicher <> ""
+    THEN record einfuegen ("#clearpos#");
+         record einfuegen (tab pos speicher)
+  FI;
+  IF letztes seitenende war in tabelle
+    THEN record einfuegen ("#table# ");
+         letztes seitenende war in tabelle := FALSE;
+         in tabelle := TRUE
+  FI.
+
+text begin anweisung generieren:
+  dummy := "#text begin#";
+  IF letztes seitenende war mit absatz
+    THEN dummy CAT " "
+  FI;
+  record einfuegen (dummy);
+  textbegin zeilennr := line no (ausgabe) - 1.
+END PROC schreibe ggf kopf;
+
+PROC erhoehe seiten und spaltennr:
+  IF anz spalten > 1
+    THEN erhoehe spaltennummer
+  FI;
+  IF NOT in nullter seite
+    THEN erhoehe seitennummer
+  FI.
+ 
+erhoehe spaltennummer:
+  laufende spaltennr INCR 1;
+  IF laufende spaltennr > anz spalten
+    THEN laufende spaltennr := 1;
+         text laenge vor columns := 0
+    ELSE LEAVE erhoehe seiten und spaltennr
+  FI.
+
+erhoehe seitennummer:
+  INT VAR i;
+  FOR i FROM 1 UPTO length (seitenzeichen) REP
+    laufende seitennr [i] INCR 1
+  END REP
+END PROC erhoehe seiten und spaltennr;
+ 
+PROC seitennummer setzen (INT CONST akt nummer):
+  IF pos (seitenzeichen, par1) = 0
+    THEN IF length (seitenzeichen) >= max anz seitenzeichen
+           THEN fehler (16, "");
+                LEAVE seitennummer setzen
+         FI;
+         seitenzeichen CAT par1
+  FI;
+  laufende seitennr [pos (seitenzeichen, par1)] := akt nummer.
+END PROC seitennummer setzen;
+ 
+PROC kommando seitenspeicher fuellen:
+  kommando seitenspeicher CAT "#";
+  kommando seitenspeicher CAT kommando;
+  kommando seitenspeicher CAT "#"
+END PROC kommando seitenspeicher fuellen;
+
+(************************** kommandos verarbeiten ********************) 
+ 
+PROC verarbeite kommando:
+INT VAR anz params, intparam;
+  kommando ende pos :=
+      pos (zeile, kommando zeichen, kommando anfangs pos + 1);
+  IF kommando ende pos <> 0
+    THEN kommando oder kommentar kommando verarbeiten
+    ELSE fehler (2,
+            subtext (zeile, kommandoanfangspos, kommandoanfangspos+9)+"...");
+         zeile CAT kommando zeichen;
+         write record (ausgabe, zeile);
+         kommando ende pos := length (zeile)
+  FI.
+ 
+kommando oder kommentar kommando verarbeiten:
+  IF pos ("-/"":", zeile SUB kommando anfangs pos + 1) = 0
+    THEN kommando :=
+         subtext (zeile, kommando anfangs pos + 1, kommando ende pos - 1);
+         scanne kommando;
+         setze kommando um
+    ELSE kommando index := 0
+  FI.
+
+scanne kommando:
+  analyze command (kommandoliste, kommando, 3,
+                   kommando index, anz params, par1, par2);
+  disable stop;
+   command error;
+   IF is error
+     THEN dummy := error message;
+          clear error;
+          dummy CAT " -> ";
+          dummy CAT kommando;
+          fehler (22, dummy);
+          enable stop;
+          LEAVE verarbeite kommando
+   FI;
+  enable stop.
+ 
+setze kommando um:
+  IF durchgang = 3 AND kommando index <> value1 AND kommando index <> to page
+     AND kommando index <> counter value1
+    THEN LEAVE verarbeite kommando
+  FI;
+  SELECT kommando index OF
+ 
+CASE type1:
+     modifikation := "";
+     IF in index oder exponent > 0
+       THEN LEAVE setze kommando um
+     ELIF font exists (par1)
+       THEN font nr := font (par1);
+            eingestellter typ := par1;
+            type zeilenvorschub :=
+            font height (fontnr) + font lead (fontnr) + font depth (fontnr);
+            IF type zeilenvorschub > max type zeilenvorschub
+              THEN max type zeilenvorschub := type zeilenvorschub
+            FI
+       ELSE fehler (1, par1)
+     FI;
+     berechne zeilenvorschub
+ 
+CASE linefeed:
+     realparam := real (par1);
+     IF last conversion ok AND pos (par1, ".") <> 0
+       THEN real eingestellter zeilenvorschub := realparam;
+            es war ein linefeed in der zeile  := TRUE
+       ELSE fehler (4, par1)
+     FI
+ 
+CASE limit:
+     eingestelltes limit := par1
+ 
+CASE free:
+     realparam := real (par1);
+     IF last conversion ok AND pos (par1, ".") <> 0
+       THEN IF keine zeichen ausser blank nach dem kommando 
+              THEN free kommando ausfuehren
+              ELSE fehler (19, kommando);
+            FI
+       ELSE fehler (4, par1)
+     FI
+ 
+CASE page command0:
+  IF keine zeichen ausser blank nach dem kommando
+    THEN page behandlung;
+         schreibe titelzeile
+    ELSE fehler (19, kommando)
+  FI
+ 
+CASE page command1: 
+  IF keine zeichen ausser blank nach dem kommando
+    THEN INT VAR seitennummer mit page := int (par1);
+         page behandlung;
+         laufende spaltennr := 1;
+         text laenge vor columns := 0;
+         IF seitennummer mit page <= 0 
+           THEN fehler (27, "page (" + text (seitennummer mit page) + ")")
+           ELSE laufende seitennr [1] := seitennummer mit page
+         FI
+     ELSE fehler (19, kommando)
+  FI
+
+CASE pagenr:
+     IF in nullter seite OR durchgang = 4
+       THEN intparam := int (par2);
+            IF length (par1) <> 1
+              THEN fehler (14, "")
+            ELIF NOT last conversion ok
+              THEN fehler (5, kommando)
+            ELIF intparam <= 0
+              THEN fehler (27, kommando)
+              ELSE seitennummer setzen (intparam) 
+            FI
+     ELIF durchgang = 2
+       THEN kommando seitenspeicher fuellen
+     FI
+ 
+CASE pagelength:
+     realparam := real (par1);
+     IF last conversion ok AND pos (par1, ".") <> 0
+       THEN IF in nullter seite OR durchgang = 4
+              THEN eingestellte seitenlaenge := y step conversion (realparam)
+            ELIF durchgang = 2
+              THEN kommando seitenspeicher fuellen
+            FI 
+       ELSE fehler (4, kommando) 
+     FI
+ 
+CASE foot, foot contd:
+     fussnote aufnehmen
+ 
+CASE end:
+     IF NOT bereich aufnehmen
+       THEN fehler (31, "")
+     FI;
+     bereich aufnehmen := FALSE;
+     kommando index := end;
+     IF NOT keine zeichen ausser blank nach dem kommando
+       THEN fehler (19, kommando)
+     FI
+ 
+CASE head:
+     bereich aufnehmen := TRUE;
+     IF keine zeichen ausser blank nach dem kommando
+       THEN kopf oder fuss laenge [kopf ungerade] := 0;
+            kopf oder fuss laenge [kopf gerade] := 0;
+            aufnehmen (kopf)
+       ELSE fehler (19, kommando)
+     FI;
+     bereich aufnehmen := FALSE
+ 
+CASE headeven:
+     bereich aufnehmen := TRUE;
+     IF keine zeichen ausser blank nach dem kommando
+       THEN kopf oder fuss laenge [kopf] := 0;
+            aufnehmen (kopf gerade)
+       ELSE fehler (19, kommando)
+     FI; 
+     bereich aufnehmen := FALSE
+ 
+CASE headodd:
+     bereich aufnehmen := TRUE;
+     IF keine zeichen ausser blank nach dem kommando
+       THEN kopf oder fuss laenge [kopf] := 0;
+            aufnehmen (kopf ungerade)
+       ELSE fehler (19, kommando)
+     FI;
+     bereich aufnehmen := FALSE
+ 
+CASE bottom:
+     bereich aufnehmen := TRUE;
+     IF keine zeichen ausser blank nach dem kommando
+       THEN kopf oder fuss laenge [fuss ungerade] := 0;
+            kopf oder fuss laenge [fuss gerade] := 0;
+            aufnehmen (fuss)
+       ELSE fehler (19, kommando)
+     FI;
+     bereich aufnehmen := FALSE
+ 
+CASE bottomeven:
+     bereich aufnehmen := TRUE;
+     IF keine zeichen ausser blank nach dem kommando
+       THEN kopf oder fuss laenge [fuss] := 0;
+            aufnehmen (fuss gerade)
+       ELSE fehler (19, kommando)
+     FI;
+     bereich aufnehmen := FALSE
+ 
+CASE bottomodd:
+     bereich aufnehmen := TRUE;
+     IF keine zeichen ausser blank nach dem kommando
+       THEN kopf oder fuss laenge [fuss] := 0;
+            aufnehmen (fuss ungerade)
+       ELSE fehler (19, kommando)
+     FI;
+     bereich aufnehmen := FALSE
+
+CASE columns:
+     IF anz spalten > 1
+       THEN fehler (29, "")
+       ELSE anz spalten := int (par1);
+            laufende spalten nr := 1;
+            IF anz spalten < 2
+              THEN fehler (26, "");
+                   anz spalten := 2
+            FI;
+            text laenge vor columns :=
+                   aktuelle seitenlaenge + kopf oder fuss laenge [footnote]
+     FI
+
+CASE columnsend:
+     IF durchgang = 1
+       THEN delete record (ausgabe);
+            IF NOT nur dateiende danach
+              THEN seitenende einbringen und zurueck;
+                   record einfuegen ("#columnsend#");
+                   text laenge vor columns := 0;
+                   laufende spaltennr := 1;
+                   anz spalten := 1;
+                   kommando index := page command0;
+                   down (ausgabe)
+            FI
+     FI
+
+CASE topage:
+     IF durchgang > 1
+       THEN ggf gespeicherte nummer einsetzen (par1);
+            mindestens ein topage gewesen := TRUE
+     FI
+
+CASE goalpage:
+     IF durchgang > 1
+       THEN nummer und kennzeichen speichern (laufende seitennr[1], par1)
+     FI
+
+CASE count0, count1:
+     IF durchgang > 1
+       THEN counter INCR 1;
+            change (zeile,
+                    kommando anfangs pos, kommando ende pos, text(counter));
+            kommando ende pos := kommando anfangs pos;
+            write record (ausgabe, zeile);
+            IF anz params = 1
+              THEN nummer und kennzeichen speichern (counter, par1)
+            FI
+     FI
+
+CASE setcount:
+     intparam := int (par1);
+     IF last conversion ok AND intparam >= 0
+       THEN counter := intparam - 1
+       ELSE fehler (30, par1)
+     FI
+
+CASE value0:
+     IF durchgang > 1
+       THEN change (zeile, kommando anfangs pos, kommando ende pos,
+                     text (counter));
+            write record (ausgabe, zeile);
+            kommando ende pos := kommando anfangs pos
+     FI
+
+CASE value1:
+     IF durchgang > 1
+       THEN ggf gespeicherte nummer einsetzen (par1)
+     FI
+ 
+CASE on: 
+     change all (par1, " ", ""); 
+     par1 := (par1 SUB 1); 
+     modifikation CAT "#on(""" + par1 + """)#"
+ 
+CASE off: 
+     change all (par1, " ", ""); 
+     par1 := (par1 SUB 1); 
+     changeall (modifikation, "#on(""" + par1 + """)#", ""); 
+ 
+CASE head on:  ausgeschalteter head := FALSE
+CASE head off: ausgeschalteter head := TRUE
+
+CASE bottom on:  ausgeschalteter bottom := FALSE
+CASE bottom off: ausgeschalteter bottom := TRUE
+
+CASE count per page: count seitenzaehlung := TRUE
+
+CASE table:
+     IF durchgang > 1
+       THEN in tabelle := TRUE
+     FI
+
+CASE table end:
+     IF durchgang > 1
+       THEN in tabelle := FALSE
+     FI
+
+CASE r pos, l pos, c pos, d pos, b pos, clearpos1, fillchar:
+     IF durchgang > 1
+       THEN tab pos speicher CAT "#";
+            tab pos speicher CAT kommando;
+            tab pos speicher CAT "#"
+     FI
+
+CASE clearpos0:
+     IF durchgang > 1
+       THEN tab pos speicher := ""
+     FI
+
+CASE pageblock : pageblock on := TRUE
+
+CASE counter1, counter2:
+     IF durchgang > 1
+       THEN process counter
+     FI
+
+CASE set counter:
+     IF durchgang > 1
+       THEN process set counter
+     FI
+
+CASE counter store:
+     IF durchgang > 1
+       THEN process counter store
+     FI
+
+CASE counter value0:
+     IF durchgang > 1
+       THEN write dec value into file
+     FI
+
+CASE counter value1:
+     IF durchgang > 1
+       THEN process counter value
+     FI
+
+CASE u, d:
+     in index oder exponent INCR 1
+
+CASE e:
+     in index oder exponent DECR 1
+
+OTHERWISE
+     kommando index := 0; 
+     IF macro command and then process parameters (kommando)
+       THEN ersetze macro 
+     FI
+END SELECT.
+
+nur dateiende danach:
+  INT VAR diese zeile :: line no (ausgabe);
+  WHILE NOT eof (ausgabe) REP
+    read record (ausgabe, zeile);
+    IF length (zeile) > 1
+      THEN to line (ausgabe, diese zeile);
+           read record (ausgabe, zeile);
+           LEAVE nur dateiende danach WITH FALSE
+    FI;
+    down (ausgabe)
+  END REP;
+  to line (ausgabe, diese zeile);
+  read record (ausgabe, zeile);
+  TRUE.
+END PROC verarbeite kommando;
+
+(************************ Makro-Ersetzung **************************)
+ 
+PROC ersetze macro: 
+  INT VAR erste zeile :: line no (ausgabe);
+  hole texte um macro herum;
+  fuege macro zeilen ein;
+  fuege text nach macro an;
+  positioniere zurueck.
+
+hole texte um macro herum:
+  vor macro  := subtext (zeile, 1, kommando anfangs pos - 1);
+  nach macro := subtext (zeile, kommando ende pos + 1).
+
+fuege macro zeilen ein:
+  INT VAR anz :: 1;
+  WHILE anz < number macro lines REP 
+    get macro line (macro line);
+    IF anz = 1
+      THEN vor macro CAT macro line ;
+           write record (ausgabe, vor macro);
+      ELSE down (ausgabe);
+           insert record (ausgabe);
+           write record (ausgabe, macro line)
+    FI;
+    anz INCR 1
+  END REP.
+
+fuege text nach macro an: 
+  read record (ausgabe, zeile);
+  IF length (nach macro) <> 0
+    THEN zeile CAT nach macro
+  ELIF (zeile SUB length (zeile)) <> blank AND number macro lines > 2
+    THEN delete record (ausgabe);
+         read record (ausgabe, dummy);
+         zeile CAT dummy
+  FI;
+  IF subtext (zeile, length (zeile) - 1, length (zeile)) = "  "
+    THEN delete char (zeile, length (zeile))
+  FI;
+  write record (ausgabe, zeile). 
+
+positioniere zurueck:
+  to line (ausgabe, erste zeile);
+  read record (ausgabe, zeile);
+  IF in nullter seite
+    THEN zeile noch nicht verarbeitet := TRUE
+  FI;
+  kommando ende pos := kommando anfangs pos - 1. 
+END PROC ersetze macro; 
+ 
+(************************ Zeilenvorschub-Berechnung ****************)
+ 
+PROC berechne zeilenvorschub:
+  berechneter zeilenvorschub :=
+  int (real (type zeilenvorschub) * real eingestellter zeilenvorschub + 0.5);
+  IF real eingestellter zeilenvorschub >= 1.0
+    THEN max zeilenvorschub := max
+    (int (real (max type zeilenvorschub)*real eingestellter zeilenvorschub + 0.5),
+     berechneter zeilenvorschub)
+  ELIF berechneter zeilenvorschub > max zeilenvorschub
+    THEN max zeilenvorschub := berechneter zeilenvorschub
+  FI
+END PROC berechne zeilenvorschub;
+ 
+(**************************** counter processing **********************)
+
+PROC process counter:
+  dummy := "#";
+  dummy CAT par1;
+  dummy CAT "#";
+  IF pos (counter numbering store, dummy) = 0
+    THEN fehler (34, par1);
+         LEAVE process counter
+  FI;
+  get dec value (counter numbering store);
+  IF kommando index = counter2
+    THEN resize dec value to needed points
+  FI;
+  IF dec value was just initialized
+    THEN dec value := subtext (dec value, 2)
+  ELIF kommando index = counter1
+    THEN digit value := int (dec value);
+         digit value INCR 1;
+         dec value := text (digit value)
+    ELSE incr counter value
+  FI;
+  write dec value into file;
+  replace value in numbering store (dec value).
+
+resize dec value to needed points:
+  INT VAR needed points       :: int (par2),
+          begin of last digit :: 1;
+  WHILE needed points > 0 REP
+    IF next point pos = 0
+      THEN IF needed points = 1
+             THEN dec value CAT ".0"
+             ELSE dec value CAT ".1"
+           FI;
+           begin of last digit := length (dec value)
+      ELSE begin of last digit := next point pos + 1
+    FI;
+    needed points DECR 1
+  END REP;
+  INT VAR end of last digit := next point pos - 1;
+  IF end of last digit < 0
+    THEN end of last digit := length (dec value)
+  FI;
+  dec value := subtext (dec value, 1, end of last digit).
+
+next point pos:
+  pos (dec value, ".", begin of last digit).
+
+dec value was just initialized:
+  (dec value SUB 1) = "i".
+
+incr counter value:
+  INT VAR digit value :: int (
+               subtext (dec value, begin of last digit, end of last digit));
+  digit value INCR 1;
+  change (dec value, begin of last digit, end of last digit,
+                                                         text (digit value)).
+END PROC process counter;
+
+PROC process set counter:
+  dummy := "#";
+  dummy CAT par1;
+  dummy CAT "#";
+  IF pos (counter numbering store, dummy) <> 0
+    THEN warnung (15, par1);
+         replace value in numbering store (par2);
+         INT VAR begin pos :: pos (counter numbering store, dummy) + 1;
+         begin pos := pos (counter numbering store, "#", beginpos) + 1;
+         insert char (counter numbering store, "i", begin pos)
+    ELSE counter numbering store CAT dummy;
+         counter numbering store CAT "i";
+         counter numbering store CAT par2
+  FI.
+END PROC process set counter;
+
+PROC process counter store:
+  IF pos (counter reference store, par1) <> 0
+    THEN fehler (35, par1)
+    ELSE store it
+  FI.
+
+store it:
+  counter reference store CAT "#";
+  counter reference store CAT par1;
+  counter reference store CAT "#";
+  counter reference store CAT dec value
+END PROC process counter store;
+
+PROC process counter value:
+  dummy := "#";
+  dummy CAT par1;
+  dummy CAT "#";
+  IF pos (counter reference store, dummy) <> 0
+    THEN get dec value (counter reference store);
+         write dec value into file
+  ELIF durchgang = 3
+    THEN fehler (61, par1)
+  FI.
+END PROC process counter value;
+
+PROC replace value in numbering store (TEXT CONST val):
+  INT VAR begin pos :: pos (counter numbering store, dummy) + 1;
+  begin pos := pos (counter numbering store, "#", begin pos) + 1;
+  INT VAR end pos := pos (counter numbering store, "#", begin pos)-1;
+  IF end pos <= 0
+    THEN end pos := length (counter numbering store)
+  FI;
+  change (counter numbering store, begin pos, end pos, val)
+END PROC replace value in numbering store;
+
+PROC write dec value into file:
+  change (zeile, kommando anfangs pos, kommando ende pos, dec value);
+  kommando ende pos := kommando anfangs pos;
+  write record (ausgabe, zeile)
+END PROC write dec value into file;
+
+PROC get dec value (TEXT CONST store):
+  INT VAR value begin :: pos (store, dummy);
+  value begin := pos (store, "#", value begin + 1) + 1;
+  INT VAR value end :: pos (store, "#", value begin)-1;
+  IF value end < 0
+    THEN value end := length (store)
+  FI;
+  dec value := subtext (store, value begin, value end).
+END PROC get dec value;
+
+(************************** Zaehler routinen ('refer') ***************)
+ 
+PROC nummer und kennzeichen speichern (INT CONST number, TEXT VAR kennung):
+  ueberpruefe auf bereits vorhandenes kennzeichen;
+  anz refers INCR 1;
+  IF anz refers > max refers 
+    THEN errorstop ("Anzahl Referenzen zu gross") 
+  FI;
+  refer sammler [anz refers] . kennzeichen := kennung;
+  refer sammler [anz refers] . nummer      := number;
+  refer sammler [anz refers] . referenced  := FALSE.
+ 
+ueberpruefe auf bereits vorhandenes kennzeichen: 
+  INT VAR i;
+  FOR i FROM 1 UPTO anz refers REP 
+    IF refer sammler [i] . kennzeichen = kennung
+      THEN warnung (9, kennung);
+           LEAVE nummer und kennzeichen speichern
+    FI
+  END REP.
+END PROC nummer und kennzeichen speichern;
+ 
+PROC ggf gespeicherte nummer einsetzen (TEXT VAR kennung):
+  IF kennzeichen vorhanden
+    THEN change (zeile, kommando anfangs pos, kommando ende pos, textnummer);
+         refer sammler [i] . referenced := TRUE;
+         kommando ende pos := kommando anfangs pos;
+         write record (ausgabe, zeile)
+  ELIF durchgang = 3
+    THEN warnung (4, kennung)
+  FI. 
+ 
+textnummer:
+  text (refer sammler [i] . nummer).
+ 
+kennzeichen vorhanden: 
+INT VAR i;
+  FOR i FROM 1 UPTO anz refers REP 
+    IF refer sammler [i] . kennzeichen = kennung
+      THEN LEAVE kennzeichen vorhanden WITH TRUE
+    FI
+  END REP;
+  FALSE.
+END PROC ggf gespeicherte nummer einsetzen;
+
+(************************** free-Kommando *****************************) 
+ 
+PROC free kommando ausfuehren:
+INT CONST wert in y steps :: y step conversion (realparam);
+  IF bereich aufnehmen
+    THEN 
+  ELIF wert in y steps>=eingestellte seitenlaenge - seitenlaenge fester teil
+    THEN fehler (13, "")
+  ELIF erreichte seitenlaenge + wert in y steps > eingestellte seitenlaenge
+    THEN ende einer seite;
+         kommando index := fehler index
+    ELSE aktuelle seitenlaenge INCR wert in y steps
+  FI
+END PROC free kommando ausfuehren;
+ 
+(*************************** page-Kommando ******************************) 
+ 
+PROC page behandlung:
+TEXT VAR steuerzeichen;
+  page kommando entfernen;
+  IF aktuelle seitenlaenge <= 0
+    THEN IF line no (ausgabe) = 1
+           THEN zeile noch nicht verarbeitet := TRUE
+           ELSE up (ausgabe)
+         FI;
+         LEAVE page behandlung
+  FI;
+  IF interaktiv
+    THEN initialisiere bildschirm fuer page;
+         mit page interaktiv formatieren;
+         schreibe titelzeile;
+  FI;
+  BOOL CONST hilf :: pageblock on;
+  pageblock on := FALSE;
+  seitenende einbringen und zurueck;
+  pageblock on := hilf;
+  kommando index := page command0.
+ 
+page kommando entfernen:
+  IF kommando anfangs pos = 1
+    THEN delete record (ausgabe);
+         IF line no (ausgabe) = 1
+           THEN zeile noch nicht verarbeitet := TRUE
+         FI
+    ELSE zeile := subtext (zeile, 1, kommando anfangs pos - 1);
+         write record (ausgabe, zeile);
+         IF NOT only command line (zeile)
+           THEN aktuelle seitenlaenge INCR max zeilenvorschub
+         FI;
+         down (ausgabe)
+  FI.
+
+initialisiere bildschirm fuer page:
+  schreibe titelzeile
+  ("#page# bestaetigen: RETURN / loeschen: HOP RUBOUT / Abbruch: ESC");
+  line ; out (cleol);
+  put ("#page# nach");
+  put (y step conversion (erreichte seitenlaenge)); put ("cm");
+  schreibe bildschirm;
+  out (hop).
+
+mit page interaktiv formatieren:
+  REP
+     inchar (steuerzeichen);
+     IF steuerzeichen = return
+       THEN zeilenmitteilung loeschen;
+            LEAVE mit page interaktiv formatieren
+     ELIF steuerzeichen = rubout
+       THEN weitermachen
+     ELIF steuerzeichen = esc
+       THEN errorstop ("Abbruch mit ESC")
+     FI
+  END REP.
+ 
+weitermachen:
+  zeilenmitteilung loeschen;
+  up (ausgabe);
+  LEAVE page behandlung.
+ 
+zeilenmitteilung loeschen:
+  cursor (1, 2); out (cleol); line.
+END PROC page behandlung;
+
+PROC seite nochmal durchgehen:
+  zurueck bis seitenende;
+  kommandos wiederherstellen;
+  down (ausgabe);
+  IF count seitenzaehlung
+    THEN counter := 0
+  FI;
+  schreibe ggf kopf;
+  read record (ausgabe, zeile);
+  seitenlaenge initialisieren;
+  fussnoten loeschen;
+  bis seitenende lesen und kommandos verarbeiten;
+  schreibe ggf fuss;
+  initialisieren fuer neue seite.
+ 
+bis seitenende lesen und kommandos verarbeiten:
+  durchgang := 2;
+  zeilen und kommandos verarbeiten;
+  durchgang := 1.
+ 
+zeilen und kommandos verarbeiten:
+  anz textzeilen := 0;
+  WHILE NOT seitenende REP
+    IF mindestens ein kommando vorhanden
+      THEN IF NOT only command line (zeile)
+             THEN anz textzeilen INCR 1
+           FI;
+           kommandos verarbeiten und ggf zeile mitzaehlen;
+      ELSE aktuelle seitenlaenge INCR berechneter zeilenvorschub;
+           anz textzeilen INCR 1
+    FI;
+    naechste zeile lesen
+  END REP.
+ 
+initialisieren fuer neue seite:
+  kommandos aufheben;
+  fussnoten loeschen;
+  erhoehe seiten und spaltennr;
+  seitenlaenge initialisieren
+END PROC seite nochmal durchgehen;
+
+PROC seitenlaenge initialisieren: 
+  IF anz spalten > 1 AND laufende spaltennr > 1
+    THEN aktuelle seitenlaenge := text laenge vor columns
+    ELSE aktuelle seitenlaenge := 0;
+         verarbeite seitenkommandos
+  FI.
+
+verarbeite seitenkommandos:
+  IF kommando seitenspeicher <> ""
+    THEN zeile := kommando seitenspeicher;
+         kommando seitenspeicher := "";
+         INT CONST xx := durchgang;
+         durchgang := 4;
+         kommandos verarbeiten;
+         durchgang := xx
+  FI.
+END PROC seitenlaenge initialisieren; 
+ 
+PROC zurueck bis seitenende:
+  up (ausgabe, "#page##---", line no (ausgabe));
+  IF anz spalten > 1 AND laufende spaltennr > 1
+    THEN down (ausgabe);
+         schreibe free (text laenge vor columns + head laenge);
+         up (ausgabe)
+  FI;
+  read record (ausgabe, zeile);
+  cout (line no (ausgabe));
+END PROC zurueck bis seitenende;
+ 
+BOOL PROC seitenende:
+  pos (zeile, "#page#") = 1 AND pos (zeile, "-----", 8) = 8
+END PROC seitenende;
+
+(**************************** eigentliche seitenform-routine *********) 
+ 
+PROC seiten form:
+  enable stop;
+   datei assoziieren;
+   page form initialisieren;
+   to line (ausgabe, 1);
+   read record (ausgabe, zeile);
+   in nullter seite := TRUE;
+   nullte seite verarbeiten;
+   nullte seitengrenze einfuegen;
+   in nullter seite := FALSE;
+   formieren.
+ 
+nullte seite verarbeiten:
+  aktuelle seitenlaenge := 0;
+  WHILE only command line (zeile) REP
+    IF seitenende 
+      THEN errorstop ("Bitte Originaldatei bearbeiten (keine Druckdatei)")
+    FI;
+    kommandos verarbeiten; 
+    IF es war ein free kommando OR tabellen kommando
+      THEN LEAVE nullte seite verarbeiten
+    ELIF es war ein linefeed in der zeile
+      THEN berechne zeilenvorschub;
+           es war ein linefeed in der zeile := FALSE;
+           naechste zeile lesen
+    ELIF zeile noch nicht verarbeitet
+      THEN read record (ausgabe, zeile);
+           zeile noch nicht verarbeitet := FALSE
+      ELSE naechste zeile lesen
+    FI;
+    cout (line no (ausgabe))
+  ENDREP.
+ 
+es war ein free kommando:
+  aktuelle seitenlaenge <> 0.
+ 
+tabellen kommando:
+  kommando index >= 35 AND kommando index <= 44.
+
+nullte seitengrenze einfuegen:
+  laufende spaltennr := 0;
+  grenzmarkierung in dummy speichern;
+  record einfuegen (dummy);
+  read record (ausgabe, zeile);
+  kommandos aufheben;
+  aktuelle seitenlaenge := 0;
+  erhoehe seiten und spaltennr;
+  nummer erste seite := laufende seiten nr [1].
+
+formieren:
+   REP
+     cout (line no (ausgabe));
+     IF mindestens ein kommando vorhanden
+       THEN kommandos verarbeiten und ggf zeile mitzaehlen
+       ELSE aktuelle seitenlaenge INCR berechneter zeilenvorschub;
+     FI;
+     IF erreichte seitenlaenge > eingestellte seitenlaenge
+       THEN ende einer seite
+     FI;
+     IF eof (ausgabe)
+       THEN eof behandlung;
+            LEAVE formieren
+       ELSE down (ausgabe);
+            IF eof (ausgabe)
+              THEN eof behandlung;
+                   LEAVE formieren
+              ELSE read record (ausgabe, zeile)
+            FI
+     FI
+   END REP.
+END PROC seiten form;
+
+PROC eof behandlung:
+  grenzmarkierung in dummy speichern;
+  insert record (ausgabe);
+  write record (ausgabe, dummy);
+  nummer letzte seite := laufende seiten nr [1];
+  pageblock on := FALSE;
+  seite nochmal durchgehen;
+  IF anz refers <> 0 OR mindestens ein topage gewesen
+     OR counter reference store <> ""
+    THEN ausgabe datei nochmals durchgehen;
+         offene referenzen pruefen
+  FI. 
+ 
+ausgabe datei nochmals durchgehen: 
+  to line (ausgabe, 1); col (ausgabe, 1);
+  durchgang := 3; 
+  REP
+    down (ausgabe, "#", lines (ausgabe));
+    IF pattern found
+      THEN read record (ausgabe, zeile);
+           cout (line no (ausgabe));
+           kommandos verarbeiten;
+           IF eof (ausgabe)
+             THEN LEAVE ausgabe datei nochmals durchgehen
+             ELSE down (ausgabe); col (ausgabe, 1)
+           FI
+      ELSE LEAVE ausgabe datei nochmals durchgehen
+    FI
+  END REP.
+
+offene referenzen pruefen: 
+  INT VAR i;
+  FOR i FROM 1 UPTO anz refers REP 
+    IF NOT refer sammler [i] . referenced
+      THEN report text processing warning
+                  (3, 0, fehlerdummy, CONCR(refersammler) [i] . kennzeichen) 
+    FI 
+  END REP.
+END PROC eof behandlung;
+
+(************************** kommando verarbeitung **********)
+
+BOOL PROC mindestens ein kommando vorhanden:
+   pos (zeile, kommando zeichen) <> 0.
+END PROC mindestens ein kommando vorhanden;
+
+PROC kommandos verarbeiten:
+  kommando anfangs pos := pos (zeile, kommando zeichen);
+  WHILE kommando anfangs pos <> 0 REP
+    verarbeite kommando;
+    IF kommando index = end OR kommando index = page command0
+       OR kommando index = page command1 OR kommando index = fehler index
+      THEN LEAVE kommandos verarbeiten
+      ELSE kommando anfangs pos :=
+                 pos (zeile, kommando zeichen, kommando ende pos + 1)
+    FI
+  END REP. 
+END PROC kommandos verarbeiten;
+
+PROC kommandos verarbeiten und ggf zeile mitzaehlen:
+  max zeilenvorschub := berechneter zeilenvorschub;
+  max type zeilenvorschub := type zeilenvorschub;
+  kommandos verarbeiten;
+  in index oder exponent := 0;
+  zeile zur seitenlaenge ggf addieren;
+  IF es war ein linefeed in der zeile
+    THEN berechne zeilenvorschub;
+         es war ein linefeed in der zeile := FALSE
+  FI.
+
+zeile zur seitenlaenge ggf addieren:
+  IF only command line (zeile) OR
+     kommando index = end OR kommando index = page command0 OR
+     kommando index = page command1 OR kommando index = fehler index
+    THEN 
+    ELSE aktuelle seitenlaenge INCR max zeilenvorschub;
+  FI.
+END PROC kommandos verarbeiten und ggf zeile mitzaehlen;
+
+BOOL PROC keine zeichen ausser blank nach dem kommando:
+  IF kommando anfangs pos > 1 AND
+          pos (zeile, ""33"", ""255"", 1) = kommando anfangs pos
+    THEN warnung (13, kommando)
+  FI;
+  kommando ende pos = length (zeile) OR
+  pos (zeile, ""33"", ""254"", kommando ende pos + 1) = 0
+END PROC keine zeichen ausser blank nach dem kommando;
+
+BOOL PROC absatz zeile:
+  (zeile SUB length (zeile)) = blank
+END PROC absatz zeile;
+ 
+(********************** routinen fuers seitenende *************)
+
+INT PROC erreichte seitenlaenge:
+  aktuelle seitenlaenge + kopf oder fuss laenge [footnote] +
+        seitenlaenge fester teil
+END PROC erreichte seitenlaenge;
+ 
+INT PROC seitenlaenge fester teil:
+  head laenge + bottom laenge.
+ 
+bottom laenge: 
+  IF (NOT insert last bottom AND laufende seitennr [1] = nummer letzte seite)
+     OR ausgeschalteter bottom
+   THEN 0
+    ELSE kopf oder fuss laenge [fuss] +
+         bottom laenge fuer gerade oder ungerade seiten
+  FI. 
+
+bottom laenge fuer gerade oder ungerade seiten:
+  IF laufende seitennr [1] MOD 2 = 0
+    THEN kopf oder fuss laenge [fuss gerade]
+    ELSE kopf oder fuss laenge [fuss ungerade]
+  FI.
+END PROC seitenlaenge fester teil;
+
+INT PROC head laenge: 
+  IF (NOT insert first head AND laufende seitennr [1] = nummer erste seite)
+     OR ausgeschalteter head
+    THEN 0
+    ELSE kopf oder fuss laenge [kopf] + 
+         head laenge fuer gerade oder ungerade seiten 
+  FI. 
+ 
+head laenge fuer gerade oder ungerade seiten:
+  IF laufende seitennr [1] MOD 2 = 0
+    THEN kopf oder fuss laenge [koπ3Πφ&η6φζ�
+    ELSE kopf oder fuss laenge [kopf ungerade]
+  FI.
+END PROC head laenge;
+
+PROC ende einer seite:
+  IF interaktiv
+    THEN seitenende ggf verschieben
+    ELSE seitenende fuer autopageform ggf verschieben
+  FI;
+  seitenende einbringen und zurueck.
+ 
+seitenende ggf verschieben:
+  BOOL VAR veraenderungen in der seite :: FALSE;
+  formatiere ueber bildschirm (veraenderungen in der seite);
+  schreibe titelzeile;
+  IF veraenderungen in der seite
+    THEN zum seitenanfang zur erneuten bearbeitung;
+         LEAVE ende einer seite
+  FI.
+
+seitenende fuer autopageform ggf verschieben:
+INT VAR i, hier :: line no (ausgabe);
+  FOR i FROM 1 UPTO 4 REP
+    zeile zurueck lesen;
+    IF absatz zeile OR line no (ausgabe) <= 2
+      THEN ggf um leerzeilen nach oben lesen;
+           naechste zeile lesen;
+           LEAVE seitenende fuer autopageform ggf verschieben
+    FI
+  END REP;
+  to line (ausgabe, hier);
+  read record (ausgabe, zeile);
+  IF pageblock on
+    THEN FOR i FROM 1 UPTO 4 REP
+           IF absatz zeile OR eof (ausgabe) OR pos (zeile, "#foot") <> 0
+              OR pos (zeile, "#free") <> 0
+             THEN naechste zeile lesen;
+                  LEAVE seitenende fuer autopageform ggf verschieben
+           FI;
+           naechste zeile lesen
+         END REP;
+         to line (ausgabe, hier);
+         read record (ausgabe, zeile)
+  FI.
+
+ggf um leerzeilen nach oben lesen:
+  INT VAR ii := i;
+  WHILE zeile = " " AND pageblock on AND ii <= 4 REP
+    IF line no (ausgabe) <= 2
+      THEN LEAVE ggf um leerzeilen nach oben lesen
+    FI;
+    zeile zurueck lesen;
+    ii INCR 1
+  END REP.
+END PROC ende einer seite;
+
+PROC seitenende einbringen und zurueck:
+  letzte textzeile war mit absatz := letzte zeile;
+  down (ausgabe);
+  grenzmarkierung in dummy speichern;
+  record einfuegen (dummy);
+  up (ausgabe);
+  seite nochmal durchgehen.
+
+letzte zeile:
+  up (ausgabe);
+  read record (ausgabe, zeile);
+  absatz zeile.
+END PROC seitenende einbringen und zurueck;
+
+PROC zum seitenanfang zur erneuten bearbeitung:
+  zurueck bis seitenende; 
+  durchgang := 1;
+  aktuelle seitenlaenge := 0; 
+  fussnoten loeschen; 
+  kommandos wiederherstellen 
+END PROC zum seitenanfang zur erneuten bearbeitung; 
+ 
+(********************** positionierungs routinen ************)
+
+PROC naechste zeile lesen: 
+   down (ausgabe);
+   read record (ausgabe, zeile)
+END PROC naechste zeile lesen; 
+
+PROC zeile zurueck lesen: 
+   up (ausgabe);
+   read record (ausgabe, zeile);
+END PROC zeile zurueck lesen;
+
+(***************** seitenende interaktiv positionieren **********)
+
+PROC formatiere ueber bildschirm (BOOL VAR veraenderungen):
+  veraenderungen := FALSE;
+  anz zeilen nach oben := 0;
+  erste bildschirmzeile schreiben;
+  schreibe bildschirm;
+  REP
+     positioniere lfd satz nach steuerzeichen und ggf schirm schreiben
+  END REP.
+ 
+positioniere lfd satz nach steuerzeichen und ggf schirm schreiben:
+TEXT VAR steuerzeichen;
+   inchar (steuerzeichen);
+   IF steuerzeichen = upchar
+     THEN nach oben;
+          IF fussnoten ende
+            THEN ueberspringe fussnote nach oben;
+                 schreibe bildschirm
+          FI
+   ELIF steuerzeichen = downchar
+     THEN IF fussnoten anfang 
+            THEN ueberspringe fussnote nach unten;
+                 schreibe bildschirm
+            ELSE nach unten;
+                 IF fussnoten anfang 
+                   THEN ueberspringe fussnote nach unten;
+                        schreibe bildschirm
+                 FI
+          FI 
+   ELIF steuerzeichen = hop
+     THEN sprung oder leerzeilen veraenderung;
+          schreibe bildschirm;
+   ELIF steuerzeichen = return
+     THEN IF anz zeilen nach oben < 0
+            THEN down (ausgabe);
+                 read record (ausgabe, zeile)
+          FI;
+          IF zeile = "" OR zeile = " " 
+            THEN leerzeilen vor neuer seite loeschen
+          FI;
+          LEAVE formatiere ueber bildschirm
+  ELIF steuerzeichen = esc
+    THEN errorstop ("Abbruch mit ESC")
+   FI.
+
+fussnoten anfang:
+  pos (zeile, "#foot") <> 0 AND anz zeilen nach oben > 0.
+
+fussnoten ende:
+  pos (zeile, "#end") <> 0.
+
+nach oben:
+  IF anz zeilen nach oben < 0
+    THEN nach oben unterhalb der seitengrenze
+  ELIF eine zeile nach oben war moeglich
+    THEN IF fussnoten ende
+           THEN ueberspringe fussnote nach oben;
+                schreibe bildschirm
+         ELIF anz vertauschte zeilen < zeilen nach oben
+           THEN out (upchar); raus; out (upchar);
+                schreibe seitenbegrenzung auf bildschirm;
+                anz vertauschte zeilen INCR 1
+           ELSE schreibe bildschirm
+         FI
+  FI.
+
+nach oben unterhalb der seitengrenze:
+  IF anz zeilen nach oben = -1
+    THEN cursor (1, pos seitengrenze); out (cl eop);
+         schreibe seitenbegrenzung auf bildschirm;
+         cursor (1, pos seitengrenze);
+         schreibe untere zeilen;
+         anz zeilen nach oben := 0
+    ELSE INT VAR bildschirmzeile unterhalb ::
+                           pos seitengrenze + abs (anz zeilen nach oben) + 1;
+         cursor (1, bildschirmzeile unterhalb);
+         out (cl eol);
+         outsubtext (zeile, 1, 76);
+         anz zeilen nach oben INCR 1;
+         bildschirmzeile unterhalb DECR 1;
+         cursor (1, bildschirmzeile unterhalb);
+         schreibe seitenbegrenzung auf bildschirm;
+         zeile zurueck lesen;
+         cursor (1, pos seitengrenze)
+  FI.
+
+nach unten:
+  IF anz zeilen nach oben < -4
+    THEN
+  ELIF anz zeilen nach oben < 1
+    THEN ggf nach unten formatieren
+  ELIF anz vertauschte zeilen > 0
+    THEN out (upchar); raus; line ;
+         schreibe seitenbegrenzung auf bildschirm;
+         eine zeile nach unten wenn moeglich;
+         anz vertauschte zeilen DECR 1
+    ELSE eine zeile nach unten wenn moeglich;
+         IF fussnoten anfang
+           THEN ueberspringe fussnote nach unten;
+         FI;
+         schreibe bildschirm
+  FI.
+
+ggf nach unten formatieren:
+  IF pageblock on
+    THEN zeile nach unten ueber seitengrenze;
+         cursor (1, pos seitengrenze);
+  FI.
+
+zeile nach unten ueber seitengrenze:
+  IF eof (ausgabe) OR page oder free oder foot anweisung
+    THEN LEAVE zeile nach unten ueber seitengrenze
+    ELSE naechste zeile lesen;
+         IF eof (ausgabe) OR page oder free oder foot anweisung
+           THEN zeile zurueck lesen;
+                LEAVE zeile nach unten ueber seitengrenze
+         FI;
+         zeile zurueck lesen
+  FI;
+  IF anz zeilen nach oben = 0
+    THEN out (cl eol);
+         out (begin mark);
+         out ("Über Seitenende hinaus (Stauchung): UP/DOWN");
+         out (end mark);
+         cursor (1, pos seitengrenze + 1);
+         schreibe untere zeilen;
+    ELSE naechste zeile lesen;
+  FI;
+  cursor (1, pos seitengrenze + abs (anz zeilen nach oben) + 1);
+  out (cl eol);
+  outsubtext (zeile, 1, 76);
+  anz zeilen nach oben DECR 1;
+  cursor (1, pos seitengrenze + abs (anz zeilen nach oben) + 1);
+  schreibe seitenbegrenzung auf bildschirm.
+
+page oder free oder foot anweisung:
+  pos (zeile, "#page") <> 0 OR pos (zeile, "#free") <> 0
+  OR pos (zeile, "#foot") <> 0.
+
+sprung oder leerzeilen veraenderung:
+  INT VAR i :: 0;
+  REP
+    inchar (steuerzeichen);
+    IF steuerzeichen = upchar
+      THEN sprung nach oben
+    ELIF steuerzeichen = downchar
+      THEN sprung nach unten
+    ELIF steuerzeichen = rub out
+      THEN zeile loeschen;
+    ELIF steuerzeichen = rub in
+      THEN leerzeilen einfuegen;
+    FI
+  END REP.
+
+sprung nach oben:
+   WHILE eine zeile nach oben war moeglich REP
+      i INCR 1;
+      IF fussnoten ende
+        THEN ueberspringe fussnote nach oben;
+             LEAVE sprung oder leerzeilen veraenderung
+      FI
+   UNTIL i >= zeilen nach oben END REP;
+   LEAVE sprung oder leerzeilen veraenderung.
+
+sprung nach unten:
+   WHILE i < zeilen nach oben REP
+      IF fussnoten anfang
+        THEN ueberspringe fussnote nach unten;
+             LEAVE sprung oder leerzeilen veraenderung
+        ELSE eine zeile nach unten wenn moeglich;
+             i INCR 1;
+      FI;
+      IF fussnoten anfang
+        THEN ueberspringe fussnote nach unten;
+             LEAVE sprung oder leerzeilen veraenderung
+      FI
+   END REP;
+   LEAVE sprung oder leerzeilen veraenderung.
+
+zeile loeschen:
+  veraenderungen := TRUE;
+  up (ausgabe);
+  read record (ausgabe, zeile);
+  IF seiten ende
+    THEN down (ausgabe);
+    ELSE delete record (ausgabe);
+  FI;
+  LEAVE formatiere ueber bildschirm.
+
+leerzeilen einfuegen:
+  veraenderungen := TRUE;
+  out (cl eop);
+  REP
+    inchar (steuerzeichen);
+    IF steuerzeichen = return
+      THEN insert record (ausgabe);
+           zeile := " ";
+           write record (ausgabe, zeile);
+           out (upchar);
+           raus;
+           line
+    ELIF steuerzeichen = rubin
+      THEN LEAVE formatiere ueber bildschirm
+    FI
+  END REP.
+END PROC formatiere ueber bildschirm;
+
+PROC leerzeilen vor neuer seite loeschen:
+  WHILE zeile = "" OR zeile = " " REP
+    delete record (ausgabe);
+    IF eof (ausgabe)
+      THEN LEAVE leerzeilen vor neuer seite loeschen
+      ELSE read record (ausgabe, zeile)
+    FI
+  END REP.
+END PROC leerzeilen vor neuer seite loeschen;
+
+PROC ueberspringe fussnote nach oben:
+  WHILE eine zeile nach oben war moeglich REP
+    IF fussnoten anfang
+      THEN IF eine zeile nach oben war moeglich
+             THEN
+           FI;
+           LEAVE ueberspringe fussnote nach oben
+    FI
+  END REP.
+
+fussnoten anfang:
+  pos (zeile, "#foot#") <> 0.
+END PROC ueberspringe fussnote nach oben;
+
+PROC ueberspringe fussnote nach unten:
+  REP
+    eine zeile nach unten wenn moeglich;
+    IF fussnoten ende
+      THEN eine zeile nach unten wenn moeglich;
+           LEAVE ueberspringe fussnote nach unten
+    FI
+  END REP.
+
+fussnoten ende:
+  pos (zeile, "#end#") <> 0.
+END PROC ueberspringe fussnote nach unten;
+
+PROC schreibe free (INT CONST wert):
+REAL CONST wert in y steps :: y step conversion (wert);
+  dummy := "#free(";
+  IF wert in y steps < 1.0
+    THEN dummy CAT "0"; 
+  FI;
+  dummy CAT text (wert in y steps);
+  dummy CAT ")#";
+  record einfuegen (dummy);
+END PROC schreibe free;
+
+BOOL PROC eine zeile nach oben war moeglich:
+  IF line no (ausgabe) = 1
+    THEN FALSE
+    ELSE zeile zurueck lesen;
+         IF seitenende OR columns kommando in dieser zeile
+           THEN naechste zeile lesen;
+                FALSE
+           ELSE anz zeilen nach oben INCR 1;
+                TRUE
+         FI
+  FI.
+
+columns kommando in dieser zeile:
+  anz spalten > 1 AND pos (zeile, "#columns") <> 0.
+END PROC eine zeile nach oben war moeglich;
+
+PROC eine zeile nach unten wenn moeglich:
+   IF anz zeilen nach oben > 0
+     THEN naechste zeile lesen;
+          anz zeilen nach oben DECR 1
+   FI
+END PROC eine zeile nach unten wenn moeglich;
+
+PROC erste bildschirmzeile schreiben:
+  IF anz spalten > 1
+    THEN dummy := "Spalten"
+    ELSE dummy := "Seiten"
+  FI;
+  dummy CAT "ende verschieben: UP, DOWN / bestaetigen: RETURN / Abbruch: ESC";
+  schreibe titelzeile (dummy).
+END PROC erste bildschirmzeile schreiben;
+
+PROC schreibe bildschirm:
+  anz vertauschte zeilen := 0;
+  cursor (1, 3);
+  out (cl eop);
+  gehe zurueck;
+  wieder nach vorne und zeilen ausgeben;
+  cursor (1, pos seitengrenze);
+  schreibe seitenbegrenzung auf bildschirm;
+  cursor (1, pos seitengrenze);
+  schreibe untere zeilen.
+
+gehe zurueck:
+  INT VAR hier :: line no (ausgabe) -1;
+  to line (ausgabe, hier - zeilen nach oben + 1);
+  INT VAR anz read zeilen :: hier - line no (ausgabe) + 2.
+
+ wieder nach vorne und zeilen ausgeben:
+   IF line no (ausgabe) = 1
+     THEN ggf leerzeilen auf bildschirm schreiben;
+   FI;
+   WHILE line no (ausgabe) <= hier REP
+      read record (ausgabe, zeile);
+      raus;
+      down (ausgabe);
+   END REP;
+   read record (ausgabe, zeile).
+
+ggf leerzeilen auf bildschirm schreiben:
+   IF zeilen nach oben - anz read zeilen >= 0
+     THEN INT VAR i;
+          FOR i FROM 1 UPTO zeilen nach oben - anz read zeilen REP
+            line ; out (cl eol); out(" ")
+          END REP;
+          line ; out (cl eol);
+          out ("<< DATEI ANFANG >>"); out (return)
+   FI.
+END PROC schreibe bildschirm;
+
+PROC schreibe untere zeilen:
+  gehe weiter und gebe zeilen aus;
+  gehe wieder zurueck;
+  skip input;
+  cursor (1, pos seitengrenze).
+
+gehe weiter und gebe zeilen aus:
+INT VAR anz read zeilen :: 0,
+        i               :: line no (ausgabe);
+  WHILE anz read zeilen < zeilen nach unten REP
+    IF eof (ausgabe)
+       THEN line ; out (cleol); out ("<< DATEI ENDE >>");
+            LEAVE gehe weiter und gebe zeilen aus
+     FI;
+     raus;
+     naechste zeile lesen;
+     anz read zeilen INCR 1
+  END REP.
+
+gehe wieder zurueck:
+  to line (ausgabe, i);
+  read record (ausgabe, zeile).
+END PROC schreibe untere zeilen;
+
+(***************** schreib-routinen fuer den bildschirm ************)
+
+PROC schreibe seitenbegrenzung auf bildschirm:
+   out (cl eol); out (begin mark);
+   grenzmarkierung in dummy speichern;
+   out (dummy);
+   out (end mark);
+   out (return)
+END PROC schreibe seitenbegrenzung auf bildschirm;
+
+PROC raus:
+INT VAR xzeile, yspalte;
+   line ; out (cl eol);
+   outsubtext (zeile, 1, 76);
+   IF absatz zeile
+     THEN get cursor (yspalte, xzeile);
+          cursor (77, xzeile);
+          out (begin end mark)
+   FI;
+   out (return)
+END PROC raus;
+ 
+PROC schreibe titelzeile:
+  IF online
+    THEN schreibe
+  FI.
+
+schreibe:
+  out (hop); out (cleol);
+  put ("PAGEFORM"); put ("(für"); put (lines (ausgabe)); put ("Zeilen):");
+  put (name eingabe datei);
+  put ("->");
+  put (name druck datei);
+  cursor (1, 3).
+END PROC schreibe titelzeile;
+ 
+PROC schreibe titelzeile (TEXT CONST t):
+  IF online
+    THEN schreibe
+  FI.
+
+schreibe:
+  out (hop); out (cl eol);
+  out (begin mark);
+  out (t);
+  out (end mark)
+END PROC schreibe titelzeile; 
+ 
+(************************** initialisierungs-routine ************)
+
+PROC page form initialisieren:
+BOOL VAR exists;
+INT VAR i;
+  letzte textzeile war mit absatz   := TRUE;
+  letztes seitenende war mit absatz := TRUE;
+  pageblock on                      := FALSE;
+  zeile noch nicht verarbeitet      := FALSE;
+  bereich aufnehmen                 := FALSE;
+  count seitenzaehlung              := FALSE;
+  ausgeschalteter head              := FALSE;
+  ausgeschalteter bottom            := FALSE;
+  in tabelle                        := FALSE;
+  es war ein linefeed in der zeile  := FALSE;
+  letztes seitenende war in tabelle := FALSE;
+  mindestens ein topage gewesen     := FALSE;
+  in index oder exponent    := 0;
+  anz refers                := 0;
+  kommando index            := 0;
+  counter                   := 0;
+  laufende seitennr [1]     := 1;
+  durchgang                 := 1;
+  anz spalten               := 1;
+  modifikation              := "";
+  tab pos speicher          := "";
+  kommando seitenspeicher   := "";
+  counter numbering store   := "";
+  counter reference store   := "";
+  dec value                 := "";
+  seitenzeichen             := "%";
+  eingestelltes limit       := dina4 limit;
+  IF NOT file works
+    THEN font nr := 1;
+         eingestellter typ := font (1);
+         type zeilenvorschub :=
+                          font height (1) + font lead (1) + font depth (1);
+         eingestellte seitenlaenge := y step conversion (dina4 pagelength);
+         real eingestellter zeilenvorschub := 1.0
+  FI;
+  berechneter zeilenvorschub :=
+  int (real (type zeilenvorschub) * real eingestellter zeilenvorschub + 0.5);
+  max      zeilenvorschub := berechneter zeilenvorschub;
+  max type zeilenvorschub := type zeilenvorschub;
+  FOR i FROM 1 UPTO 7 REP
+     kopf oder fuss laenge [i]     := 0;
+     anz kopf oder fuss zeilen [i] := 0
+  END REP;
+  IF online
+    THEN page
+  FI;
+  IF command dialogue
+    THEN interaktiv := TRUE;
+    ELSE interaktiv := FALSE;
+  FI;
+  IF online
+    THEN page
+  FI;
+  schreibe titelzeile
+END PROC page form initialisieren;
+
+PROC central pagefo9ü̈NSγJr+�Cβ+̂γ��{s�β�KrΓλγb�#Τκ�ZK��
+  name eingabe datei := input;
+  name druck datei   := druck;
+  IF exists (druck)
+    THEN forget (druck, quiet)
+  FI;
+  disable stop;
+    ds := nilspace; 
+    refer sammler := ds;
+    seiten form;
+    forget(ds);
+    IF is error
+      THEN put error;
+           clear error; 
+           last param (name eingabe datei)
+      ELSE last param (name druck datei)
+    FI;
+  enable stop;
+  IF anything noted
+    THEN note edit (ausgabe)
+  FI.
+END PROC central pageform routine;
+
+PROC pageform (TEXT CONST input, druck):
+  file works := FALSE;
+  central pageform routine (input, druck).
+END PROC pageform;
+ 
+PROC pageform (TEXT CONST input):
+  file works := FALSE;
+  central pageform routine (input, input + ".p").
+END PROC pageform;
+
+PROC pageform:
+  file works := FALSE;
+  pageform (last param)
+END PROC pageform;
+ 
+PROC pageform (TEXT CONST input, REAL CONST lf, seitenlaenge):
+  file works                := TRUE;
+  eingestellte seitenlaenge := y step conversion (seitenlaenge);
+  real eingestellter zeilenvorschub := lf;
+  central pageform routine (input, input + ".p")
+END PROC pageform;
+
+PROC autopageform:
+  autopageform (last param)
+END PROC autopageform;
+
+PROC autopageform (TEXT CONST input):
+  command dialogue (false);
+  pageform (input);
+  command dialogue (true)
+END PROC autopageform;
+END PACKET seiten formatieren;
+(*
+REP
+  IF yes ("autopageform")
+    THEN autopageform ("pfehler")
+    ELSE pageform ("pfehler")
+  FI;
+  edit("pfehler.p");
+UNTIL yes ("ENDE") ENDREP;
+*)
+

@@ -1,0 +1,925 @@
+(**************************************************************************) 
+(*                                                                        *) 
+(*                        MPG - Graphik - System                          *) 
+(*                                                                        *) 
+(*                      Version 2.2 vom 23.09.1987                        *) 
+(*                                                                        *) 
+(*            (c) 1987 Beat Jegerlehner & Carsten Weinholz                *) 
+(*                unter Verwendung der Standard-Graphik                   *) 
+(*           "Graphik-Plotmanager" geschrieben von C.Weinholz             *) 
+(*                                                                        *) 
+(**************************************************************************) 
+(*                                                                        *)
+(*            Dieses Paket stellt den Multispool-Ausgabemanager           *)
+(*                            zur Verfuegung.                             *)
+(*                 Er wird in der Regel durch Aufruf von                  *)
+(*        'generate plot manager' in GRAPHIK in einer neuerzeugten        *)
+(*                      Sohntask 'PLOT' installiert.                      *)
+(*                                                                        *)
+(**************************************************************************)
+(*   Urversion  : 10.09.87                                                *)
+(*   Aenderungen: 23.09.87, Carsten Weinholz                              *)
+(*                Kommando 'spool control ("TEXT")' im Plot-Monitor       *)
+(*                Anzeige von 'order tasks' anderer Stationen             *)
+(*                11.1.88, Thomas Clermont                                *)
+(*                Fehler 'Zu viele DATASPACEs' und                        *)
+(*                Spooling von zwei gleichnamigen JOBs behoben.           *)
+(*   Fehler     : Keine bekannt.                                          *)
+(**************************************************************************)
+PACKET plot manager DEFINES plot manager ,
+                            plot server  :
+
+LET max spools  = 14,         (* Hinweis: max spools + dataspaces +      *)
+    max entries = 14,         (*          max spools * max entries < 250 *)
+ 
+    ack                 = 0,
+    second phase ack    = 5,
+    false code          = 6,
+    fetch code          = 11,
+    save  code          = 12,
+    existscode          = 13,
+    erase code          = 14,
+    list  code          = 15,
+    all   code          = 17,
+    first code          = 25,
+    start code          = 26,
+    stop  code          = 27,
+    halt code           = 28,
+    wait for halt  code = 29,
+    continue code       = 100,
+    picfiletype = 1102,
+
+    trenn       = "/",
+
+    MSG         = STRUCT (TEXT ds name, dev name, passwd, INT dev no),
+
+    JOB         = STRUCT (DATASPACE ds, TEXT ds name, TASK order task),
+ 
+    ENTRY       = STRUCT (JOB job, INT link), 
+ 
+    CHAIN       = STRUCT (ROW max entries ENTRY entry, INT first, last, empty), 
+ 
+    SERVER      = STRUCT (TASK task, wait for halt, REAL time,
+                          JOB current job, BOOL stopped, INT link);
+ 
+ROW max spools STRUCT (SERVER server, CHAIN chain) VAR device; 
+
+MSG VAR msg;
+
+INT VAR entry to erase, last created server, reply, current plotter;
+FILE VAR chain info;
+THESAURUS VAR managed plotter;
+BOUND THESAURUS VAR thesaurus msg;
+DATASPACE VAR reply ds;
+TASK VAR control task;
+
+(********************************* SPOOL ***********************************)
+
+PROC plot manager :
+   INT VAR act dev;
+   managed plotter := plotters LIKE (text (station (myself)) + any);
+   FOR act dev FROM 1 UPTO max devices REP
+      init device (act dev)
+   PER;
+   control task := niltask;
+   end global manager (FALSE);
+   global manager (PROC (DATASPACE VAR,INT CONST,INT CONST,TASK CONST)plot manager)
+END PROC plot manager;
+
+PROC plot manager (DATASPACE VAR ds, INT CONST order, phase, TASK CONST order task):
+   enable stop;
+   INT VAR act dev;
+   SELECT order OF 
+     CASE fetch code : y fetch 
+     CASE save code  : y save 
+     CASE exists code: y exists
+     CASE erase code : y erase 
+     CASE list code  : y list 
+     CASE all code   : y all 
+     OTHERWISE IF order >= continue code AND order task = supervisor
+                  THEN forget (ds);
+                       continue (order - continue code);
+                       spool monitor
+                  ELIF priv control op
+                       THEN SELECT order OF
+                              CASE first code : y first
+                              CASE start code : y start
+                              CASE stop code  : y stop
+                              CASE halt code  : y halt
+                              CASE wait for halt code : y halt
+                              OTHERWISE order error
+                            ENDSELECT
+                       ELSE order error
+               FI;
+   END SELECT;
+   BOOL VAR test;
+   FOR act dev FROM 1 UPTO max devices REP
+      test := server is active (act dev)
+   PER;
+   forget (ds).
+
+   priv control op:
+      (order task = father) OR (order task < supervisor) OR
+      spool control task.
+
+  spool control task:
+     NOT (order task = niltask) CAND
+     ((order task = control task) OR (order task < control task)).
+
+  y fetch: 
+     FOR act dev FROM 1 UPTO max devices REP 
+     UNTIL act server.task = order task  PER;
+     IF act dev > max devices
+        THEN order error 
+     ELIF chain is empty (act dev) OR act server.stopped
+        THEN end server (act dev);
+             IF exists (act server.wait for halt)
+                THEN send (act server.wait for halt, ack);
+                     act server.wait for halt := niltask
+             FI
+        ELSE transfer next job (act dev); 
+             send current job (act dev) 
+     FI.
+
+  y save: 
+     IF phase = 1 
+        THEN y save pre 
+        ELSE y save post 
+     FI. 
+ 
+     y save pre: 
+        link dev;
+        IF act dev = 0 
+           THEN device error
+        ELIF chain is full (act dev)
+           THEN errorstop ("SPOOL ist voll")
+           ELSE send (order task, second phase ack) 
+        FI. 
+ 
+     y save post: 
+        act dev := msg.dev no;
+        IF type (ds) <> picfile type 
+           THEN errorstop ("Datenraum hat falschen Typ") 
+           ELSE entry into chain (act dev, new job);
+                forget (ds);
+                IF NOT (server is active (act dev) OR act server.stopped)
+                   THEN create server (act dev)
+                FI;
+                send ack
+        FI.
+ 
+        new job: 
+           JOB : (ds, msg.ds name, order task).
+ 
+  y exists:
+     link dev;
+     IF find entry (msg.ds name,act dev,order task, priv control op) = 0
+        THEN send (order task, false code, ds)
+        ELSE send ack
+     FI.
+
+  y erase:
+     IF phase = 1
+        THEN link dev;
+             IF act dev > 0
+                THEN y erase pre
+                ELSE device error
+             FI
+        ELSE erase entry (act dev, entry to erase);
+             send ack
+     FI.
+
+     y erase pre: 
+        entry to erase := find entry (msg.ds name,act dev, order task, priv control op);
+        IF order not from job order task AND NOT priv control op
+           THEN errorstop ("Kein Zugriffsrecht auf Auftrag """ + msg.ds name + """")
+        ELIF entry to erase = 0
+           THEN manager message ("""" + msg.ds name + """ existiert nicht")
+           ELSE manager question (erase msg)
+        FI.
+
+        erase msg:
+           TASK VAR owner ::act chain.entry [entry to erase].job.order task;
+           owner id (owner) + "/ """ + msg.ds name +
+           """ in Spool """ + name (managed plotter, act dev) +
+           """ loeschen".
+
+        order not from job order task:
+           NOT (act chain.entry [entry to erase].job.order task = order task).
+
+  y list:
+     link dev;
+     create chain list (act dev);
+     send (order task, ack, reply ds).
+
+  y all:
+     link dev;
+     forget (reply ds);
+     reply ds := nilspace;
+     thesaurus msg := reply ds;
+     thesaurus msg := chain thesaurus (act dev, owner or priv task, FALSE);
+     send (order task, ack, reply ds).
+
+     owner or priv task:
+        IF priv control op
+           THEN niltask
+           ELSE order task
+        FI.
+
+  y start:
+     link dev;
+     IF act dev = 0
+        THEN FOR act dev FROM 1 UPTO max devices REP
+                 start (act dev)
+             PER
+        ELSE start (act dev)
+     FI;
+     send ack.
+     
+  y stop:
+     IF phase = 1
+        THEN y stop pre
+        ELSE y stop post
+     FI.
+
+  y stop pre:
+     link dev;
+     IF act dev > 0
+        THEN stop (act dev);
+             IF NOT is no job (act server.current job)
+                THEN manager question ("""" + act server.current job.ds name
+                     + """ neu eintragen")
+                ELSE send ack
+             FI
+        ELSE FOR act dev FROM 1 UPTO max devices REP
+                  stop (act dev)
+             PER;
+             send ack
+     FI.
+
+  y stop post:
+     act dev := msg.dev no;
+     entry into chain (act dev, act server.current job);
+     IF act chain.last > 1
+        THEN make new first (act dev, act chain.last)
+     FI;
+     send ack.
+
+  y halt:
+     link dev;
+     IF act dev = 0
+        THEN IF order <> halt code
+                THEN device error
+                ELSE FOR act dev FROM 1 UPTO max devices REP
+                         halt (act dev)
+                     PER;
+                     send ack
+             FI
+        ELSE halt (act dev);
+             IF order = halt code
+                THEN send ack;
+                     act server.wait for halt := niltask
+                ELSE act server.wait for halt := order task
+             FI
+     FI.
+
+  y first:
+     link dev;
+     IF act dev = 0
+        THEN device error
+        ELSE INT VAR new first entry :: find entry (msg.ds name,act dev,order task,TRUE);
+             IF new first entry = 0
+                THEN manager message ("""" + msg.ds name + """ existiert nicht")
+                ELSE make new first (act dev,new first entry);
+                     send ack
+             FI
+     FI.
+
+   act server:
+      device [act dev].server.
+
+   act chain:
+      device [act dev].chain.
+
+   send ack:
+      send (order task, ack).
+
+   link dev:
+      msg := ds;
+      act dev := msg.dev no.
+
+  order error:
+     errorstop ("Falscher Auftrag fuer Task """ + name (myself) + """").
+
+  device error:
+   disable stop;
+   IF plotter (msg.dev name) = no plotter
+     THEN clear error;   (* 'plotter(TEXT)' liefert evtl. bereits error *)
+          errorstop ("Kein Endgeraet eingestellt")
+     ELSE clear error;
+          errorstop ("Unbekanntes Endgeraet: """ + msg.dev name + """")
+   FI;
+   enable stop.
+END PROC plot manager;
+
+(****************************** Spool Monitor ******************************)
+
+INT VAR command index , params ;
+TEXT VAR command line, param 1, param 2 ;
+BOOL VAR is break;
+ 
+LET spool command list =
+"break:1.0start:2.0stop:3.0halt:4.0first:5.0killer:6.0listspool:7.0
+ clearspool:8.0selectplotter:9.0spoolcontrol:10.1";
+ 
+PROC spool monitor:
+  disable stop ;
+  current plotter := 0;
+  is break := FALSE;
+  select plotter ("");
+  REP command dialogue (TRUE) ;
+      get command (gib kommando, command line);
+      analyze command (spool command list, command line, 3, command index,
+                       params, param1, param2);
+      execute command;
+  UNTIL is break PER;
+  command dialogue (FALSE);
+  eumel must advertise;
+  break (quiet);
+  set autonom.
+
+  gib kommando:
+     IF actual plotter > 0
+        THEN plotter info (name(plotters,actual plotter),50)
+        ELSE "ALL-Plotter: "
+     FI
+END PROC spool monitor;
+
+PROC execute command:
+ enable stop;
+ SELECT command index OF 
+   CASE 1  :  is break := TRUE
+   CASE 2  :  start cmd
+   CASE 3  :  stop  cmd
+   CASE 4  :  halt  cmd
+   CASE 5  :  first cmd
+   CASE 6  :  killer cmd
+   CASE 7  :  show spool list
+   CASE 8  :  clear spool
+   CASE 9  :  select plotter cmd
+   CASE 10 :  set spool control
+   OTHERWISE  do (command line);
+              set current plotter
+ END SELECT.
+ 
+ set current plotter:
+   current plotter := link(managed plotter, name (plotters,actual plotter));
+   IF actual plotter > 0 AND current plotter = 0
+      THEN select plotter ("");
+           current plotter := 0;
+           errorstop ("Auf dieser Station unbekannt: """+name(plotter)+"""")
+   FI.
+
+   start cmd:
+    FOR act dev FROM curr dev UPTO top dev REP
+       start (act dev)
+    PER.
+
+ stop cmd:
+    FOR act dev FROM curr dev UPTO top dev REP
+       IF device [act dev].server.current job.ds name <> "" CAND
+          yes ("""" + device [act dev].server.current job.ds name +
+                """ neu eintragen")
+          THEN entry into chain (act dev, device [act dev].server.current job);
+               IF device [act dev].chain.last > 1
+                  THEN make new first (act dev, device [act dev].chain.last)
+               FI
+       FI;
+       stop (act dev)
+    PER.
+
+ halt cmd:
+    FOR act dev FROM curr dev UPTO top dev REP
+       halt (act dev)
+    PER.
+
+ first cmd:
+    IF current plotter = 0
+       THEN device error
+    FI;
+    TEXT VAR make to first :: one (chain thesaurus (current plotter,niltask,TRUE)
+                                   -first chain entry)
+   IF make to first <> ""
+       THEN INT VAR new first entry :: find entry (make to first,
+                                            current plotter, niltask, FALSE);
+            IF new first entry > 1
+               THEN make new first (current plotter, new first entry)
+            FI
+    FI.
+
+    first chain entry:
+       INT VAR first entry id :: device [current plotter].chain.first;
+       IF first entry id > 0
+          THEN device [current plotter].chain.entry[first entry id].job.ds name
+          ELSE ""
+       FI.
+
+ killer cmd:
+    IF current plotter = 0
+       THEN device error
+    FI;
+    THESAURUS VAR to erase :: chain thesaurus (current plotter,niltask,FALSE);
+    INT VAR index, act dev;
+    TEXT VAR name to erase;
+    FOR act dev FROM curr dev UPTO top dev REP
+       index := 0;
+       get (to erase, name to erase, index);
+       WHILE index > 0 REP
+          INT VAR entry to erase := find entry (name to erase, current plotter, niltask, TRUE);
+          IF (entry to erase > 0) CAND
+             yes ("""" + name to erase + """ loeschen")
+             THEN erase entry (current plotter, entry to erase)
+          FI;
+          get (to erase, name to erase, index)
+       PER
+    PER.
+
+ show spool list :
+    create chain list (current plotter);
+    show (chain info);
+    forget (reply ds).
+
+ clear spool:
+    FOR act dev FROM curr dev UPTO top dev REP
+        IF yes ("Spool """ + name (managed plotter, act dev) + """ initialisieren")
+           THEN BOOL VAR stopped :: device [act dev].server.stopped;
+                stop (act dev);
+                init device (act dev);
+                IF stopped
+                   THEN device [act dev].server.stopped := TRUE
+                   ELSE start (act dev)
+                FI
+        FI
+    PER.
+
+  set spool control:
+     control task := task (param 1).
+
+  select plotter cmd:
+    THESAURUS VAR plotter list :: empty thesaurus;
+    TEXT VAR plotter name;
+    get (managed plotter, plotter name, index);
+    WHILE index > 0 REP
+       insert (plotter list, plotter info (plotter name, 60));
+       get (managed plotter, plotter name, index)
+    PER;
+    select plotter (name (managed plotter,
+                    link (plotter list,one (plotter list))));
+    set current plotter.
+
+ curr dev:
+    IF current plotter = 0
+       THEN 1
+       ELSE current plotter
+    FI.
+
+ top dev:
+    IF current plotter = 0
+       THEN max devices
+       ELSE current plotter
+    FI.
+
+  device error:
+     errorstop ("Kein Endgeraet eingestellt")
+
+ENDPROC execute command ;
+
+(************************** SPOOL - Verwaltung *****************************)
+
+PROC entry into chain (INT CONST dev no, JOB CONST new job): 
+   INT VAR act entry := act chain.empty; 
+   act chain.empty := act chain.entry [act entry].link;
+   IF act chain.last > 0 
+      THEN act chain.entry [act chain.last].link := act entry 
+   FI; 
+   act chain.last := act entry; 
+   IF act chain.first = 0 
+      THEN act chain.first := act entry 
+   FI; 
+   init job (act chain.entry [act  entry].job);
+   act chain.entry [act entry] := ENTRY : (new job,0);
+   forget (new job.ds).
+ 
+   act chain : 
+      device [dev no].chain 
+END PROC entry into chain; 
+ 
+PROC erase entry (INT CONST dev no, to erase): 
+   INT VAR act entry;
+   to forward entry; 
+   IF act entry > 0 
+      THEN act chain.entry [act entry].link := act chain.entry [to erase].link 
+   FI; 
+   IF act chain.last = to erase 
+      THEN act chain.last := act entry 
+   FI; 
+   IF act chain.first = to erase 
+      THEN act chain.first := act chain.entry [to erase].link 
+   FI; 
+   init job (act chain.entry [to erase].job);
+   act chain.entry [to erase].link := act chain.empty; 
+   act chain.empty := to erase. 
+ 
+   to forward entry: 
+      FOR act entry FROM 1 UPTO max entries REP 
+      UNTIL act chain.entry [act entry].link = to erase PER; 
+      IF act entry > max entries 
+         THEN act entry := 0 
+     FI. 
+ 
+   act chain: 
+      device [dev no].chain 
+END PROC erase entry; 
+ 
+INT PROC find entry (TEXT CONST ds name, INT CONST dev, TASK CONST order task,BOOL CONST priviledged):
+   INT VAR act dev :: dev,act entry,last found :: 0;
+   IF act dev = 0
+      THEN FOR act dev FROM 1 UPTO max devices REP
+               find entry of order task
+           UNTIL act entry > 0 PER
+      ELSE find entry of order task
+    FI;
+    IF act entry = 0
+       THEN last found
+       ELSE act entry
+    FI.
+
+   find entry of order task:
+      BOOL VAR entry found;
+      act entry := act chain.first;
+      WHILE act entry > 0 REP
+         entry found := (act chain.entry [act entry].job.ds name = ds name);
+         IF entry found
+            THEN last found := act entry;
+                 entry found := (index (act chain.entry [act entry].job.order task) =
+                                 index (order task)) OR priviledged
+         FI;
+         IF NOT entry found
+            THEN act entry := act chain.entry [act entry].link
+         FI
+      UNTIL entry found PER.
+
+   act chain:
+      device [act dev].chain
+
+END PROC find entry;
+
+PROC make new first (INT CONST dev no, new first):
+   JOB VAR new first job :: act chain.entry [new first].job;
+   erase entry (dev no, new first);
+   INT VAR act entry := act chain.empty;
+   act chain.empty := act chain.entry [act entry].link;
+   act chain.entry [act entry] := ENTRY : (new first job, act chain.first);
+   init job (new first job);
+   act chain.first := act entry;
+   IF act chain.last = 0
+      THEN act chain.last := act entry
+   FI.
+
+   act chain:
+     device [dev no].chain
+
+END PROC make new first;
+
+THESAURUS PROC chain thesaurus (INT CONST dev no, TASK CONST order task,
+                                BOOL CONST double):
+   THESAURUS VAR list :: empty thesaurus;
+   INT VAR act dev := dev no,act entry;
+   IF act dev = 0 
+      THEN FOR act dev FROM 1 UPTO max devices REP 
+               list chain 
+           PER 
+      ELSE list chain 
+   FI; 
+   list.
+       
+   list chain: 
+      act entry := act chain.first; 
+      WHILE act entry > 0 REP 
+         IF (order task = niltask) OR
+            (act chain.entry [act entry].job.order task = order task)
+            THEN insert job name
+         FI;
+         act entry := act chain.entry [act entry].link 
+      PER.
+
+   insert job name:
+      TEXT VAR this job :: act chain.entry [act entry].job.ds name
+      IF double OR (NOT (list CONTAINS this job))
+         THEN insert (list, this job)
+      FI.
+
+   act chain: 
+      device [act dev].chain 
+ 
+END PROC chain thesaurus; 
+ 
+
+PROC create chain list (INT CONST dev no):
+   INT VAR act dev :: dev no, act entry; 
+   init chain info; 
+   IF act dev = 0
+      THEN FOR act dev FROM 1 UPTO max devices REP 
+             list chain 
+           PER 
+      ELSE list chain
+   FI.
+      
+   init chain info: 
+      forget (reply ds);
+      reply ds := nilspace;
+      chain info := sequential file (output, reply ds); 
+      headline (chain info,"GRAPHIK - Ausgabe um "+ time of day (clock (1)) + " Uhr :").
+
+ 
+   list chain: 
+      server head;
+      IF NOT server is active (act dev) OR is no job (act server.current job)
+         THEN put (chain info, "- Kein Auftrag in Bearbeitung") ;
+              IF act server.stopped
+                 THEN put (chain info, "  ( SERVER deaktiviert )")
+              FI;
+              line (chain info)
+         ELSE put (chain info, "- In Bearbeitung seit "+time of day (act server.time)+" Uhr :");
+              IF act server.stopped
+                 THEN put (chain info, " ( SERVER wird deaktiviert !)")
+              FI;
+              line (chain info, 2);
+              putline (chain info, job note (act server.current job))
+      FI; 
+      line (chain info);  
+      IF act chain.last = 0 
+         THEN putline (chain info, "- Keine Auftraege im SPOOL")
+         ELSE putline (chain info, "- Weitere Auftraege im SPOOL :"); 
+              line    (chain info); 
+              act entry := act chain.first; 
+              WHILE act entry > 0 REP 
+                    putline (chain info, job note (act chain.entry [act entry].job)); 
+                    act entry := act chain.entry [act entry].link 
+              PER 
+      FI; 
+      line (chain info, 2). 
+ 
+   server head:
+      TEXT VAR plotter name :: name (managed plotter,act dev);
+      INT VAR station :: int (plottername),
+              tp      :: pos (plottername,trenn)+1,
+              channel :: int (subtext (plottername,tp));
+      plotter name := subtext (plotter name, pos (plotter name, trenn, tp)+1);
+      putline (chain info, 77 * "-");
+      putline (chain info,
+               center (plotter name + (30-length(plotter name))*"." +
+                      "Kanal " + text (channel) +
+                      "/Station " + text (station)));
+      putline (chain info, 77 * "-");
+      line (chain info).
+
+   act chain: 
+      device [act dev].chain. 
+ 
+   act server: 
+      device [act dev].server 
+ 
+END PROC create chain list; 
+
+BOOL PROC chain is empty (INT CONST dev no):
+   device [dev no].chain.first = 0 OR device [dev no].chain.last = 0
+END PROC chain is empty;
+
+BOOL PROC chain is full (INT CONST dev no):
+   device [dev no].chain.empty = 0
+END PROC chain is full;
+
+PROC transfer next job (INT CONST dev no): 
+   INT VAR next chain entry := device [dev no].chain.first;
+   next server job (dev no, device [dev no].chain.entry [next chain entry].job); 
+   erase entry (dev no,next chain entry) 
+END PROC transfer next job; 
+ 
+(*************************** SERVER - Verwaltung ***************************)
+
+PROC next server job (INT CONST dev no,JOB CONST next job): 
+   act server.time := clock (1); 
+   init job (act server.current job);
+   act server.current job := next job. 
+ 
+   act server: 
+      device [dev no].server 
+END PROC next server job; 
+ 
+BOOL PROC server is active (INT CONST dev no):
+   exists (act server.task) CAND server alive or restarted.
+
+   server alive or restarted:
+      SELECT status (act server.task) OF
+        CASE 0 (* busy *) ,
+             4 (* busy-blocked *),
+             2 (* wait *),
+             6 (* wait-blocked *) : TRUE
+        CASE 1 (* i/o *),
+             5 (* i/o -blocked *): IF channel (act server.task) = 0
+                                     THEN restart
+                                     ELSE TRUE
+                                   FI
+        OTHERWISE restart
+      END SELECT.
+
+   restart:
+     end server (dev no);
+     IF NOT act server.stopped AND NOT chain is empty (dev no)
+        THEN create server (dev no)
+     FI;
+     NOT is niltask (act server.task).
+
+   act server:
+      device [dev no].server
+
+END PROC server is active;
+
+PROC create server (INT CONST dev no): 
+   init job (act server.current job);
+   act server.wait for halt := niltask;
+   act server.time := 0.0;
+   act server.stopped := FALSE;
+   last created server := dev no;
+   begin (PROC plot server, act server.task).
+
+   act server:
+      device [dev no].server
+END PROC create server; 
+ 
+PROC end server (INT CONST dev no): 
+   end (act server.task);
+   init job (act server.current job);
+   act server.task := niltask.
+
+   act server:
+     device [dev no].server
+
+END PROC end server; 
+ 
+PROC start (INT CONST dev no):
+   IF server is active (dev no)
+      THEN end server (dev no)
+   FI;
+   IF NOT chain is empty (dev no)
+      THEN create server (dev no)
+   FI;
+   device [dev no].server.stopped := FALSE
+END PROC start;
+
+PROC stop (INT CONST dev no):
+   device [dev no].server.stopped := TRUE;
+   IF exists (device [dev no].server.wait for halt)
+      THEN send (device [dev no].server.wait for halt,ack)
+   FI;
+   device [dev no].server.wait for halt := niltask;
+   IF server is active (dev no)
+      THEN end server (dev no)
+   FI
+END PROC stop;
+
+PROC halt (INT CONST dev no):
+   device [dev no].server.stopped := TRUE
+END PROC halt;
+
+PROC send current job (INT CONST dev no):
+   forget (reply ds);
+   reply ds := device [dev no].server.current job.ds;
+   send (device [dev no].server.task, ack,reply ds);
+END PROC send current job;
+
+(****************************** Hilfsprozeduren ****************************)
+
+PROC init device (INT CONST dev no): 
+   INT VAR act entry;
+   act server.task        := niltask; 
+   act server.time        := 0.0; 
+   init job (act server.current job); 
+   act server.stopped     := FALSE;
+   act chain.first        := 0; 
+   act chain.last         := 0; 
+   act chain.empty        := 1;
+   FOR act entry FROM 1 UPTO max entries-1 REP
+      init job (act chain.entry [act entry].job);
+      act chain.entry [act entry].link := act entry + 1
+   PER;
+   init job (act chain.entry [act entry].job);
+   act chain.entry [act entry].link := 0.
+
+   act server : 
+      device [dev no].server. 
+ 
+   act chain : 
+      device [dev no].chain 
+ 
+END PROC init device; 
+
+INT PROC max devices:
+   highest entry (managed plotter)
+END PROC max devices;
+
+OP := (MSG VAR dest, DATASPACE VAR source):
+   TEXT VAR ds name :: "", dev name :: "";
+   BOUND STRUCT (TEXT ds name, dev name, passwd) VAR msg in := source;
+   divide names;
+   dest := MSG : (ds name, dev name, msg in .passwd,
+                  link (managed plotter,dev name));
+   forget (source).
+
+   divide names:
+      INT VAR pps :: pos (msg in.ds name, ""0"");
+      WHILE pos (msg in.ds name, ""0"", pps+1) > 0 REP
+         pps := pos (msg in.ds name,""0"", pps+1)
+      PER;
+      IF pps > 0
+         THEN ds name  := subtext (msg in.ds name, 1, pps-1);
+      FI;
+      dev name := subtext (msg in.ds name, pps+1).
+
+END OP :=;
+
+TEXT PROC job note (JOB CONST job): 
+   "  - " + owner id (job.order task) + " : " + qrline (job.ds name, 30) +
+   " (" + text (storage (job.ds)) + " K)".
+END PROC job note; 
+
+TEXT PROC owner id (TASK CONST owner):
+    TEXT VAR test :: name (owner);
+    IF test <> ""
+       THEN text (station (owner)) + "/" + qrline (test,15)
+       ELSE "?????"
+    FI
+END PROC owner id;
+
+PROC init job (JOB VAR to initialize):
+   forget (to initialize.ds);
+   to initialize.ds name := "";
+   to initialize.order task := niltask
+END PROC init job;
+
+TEXT PROC qrline (TEXT CONST t,INT CONST len): 
+   IF length (t) > len-2 
+      THEN """" + text (t, len-5) + "...""" 
+      ELSE text ("""" + t + """", len) 
+   FI 
+END PROC qrline; 
+ 
+TEXT PROC center (TEXT CONST chars,INT CONST len):
+   len DIV 2 * " " + chars
+END PROC center;
+
+BOOL PROC is no job (JOB CONST job):
+   job.ds name = ""
+END PROC is no job;
+
+PROC send (TASK CONST task, INT CONST code):
+   DATASPACE VAR ds :: nilspace;
+   send (task, code, ds);
+   forget (ds)
+END PROC send;
+
+(**************************** Plot - Server ********************************)
+
+PROC plot server:
+   disable stop;
+   select plotter (name (managed plotter,last created server));
+   REP
+      error handling;
+      TEXT VAR dummy;
+      catinput (dummy, dummy);  (* evtl. Zeichen im Tastaturpuffer *)
+      PICFILE VAR pic :: next server job;
+      prepare;
+      plot (pic);
+   PER.
+
+   next server job:
+     forget (reply ds);
+     reply ds := nilspace;
+     REP
+       error handling;
+       call (father, fetch code, reply ds, reply)
+     UNTIL reply = ack PER;
+     reply ds.
+
+   error handling:
+    IF is error
+      THEN rename myself (error message);
+           clear error;
+           pause
+    FI.
+
+END PROC plot server;
+
+END PACKET plot manager
+

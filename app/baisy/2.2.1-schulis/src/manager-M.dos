@@ -1,0 +1,55 @@
+PACKET dosmanagermultiDEFINES providechannel,dosmanager:LET stdarchivechannel
+=31,ack=0,secondphaseack=5,falsecode=6,fetchcode=11,savecode=12,existscode=13
+,erasecode=14,listcode=15,allcode=17,clearcode=18,reservecode=19,freecode=20,
+checkreadcode=22,formatcode=23,logcode=78,quote="""";BOUND STRUCT (TEXT name,
+pass)VAR msg;TASK VAR ordertask;INT VAR doschannel;INT VAR fetchsavemodus;
+REAL VAR lastaccesstime:=0.0;TASK VAR diskowner:=niltask;TEXT VAR 
+savefilename;PROC providechannel(INT CONST channel):doschannel:=channelEND 
+PROC providechannel;IF hdversionTHEN providechannel(29)ELSE providechannel(
+stdarchivechannel)FI ;PROC dosmanager:dosmanager(doschannel)END PROC 
+dosmanager;PROC dosmanager(INT CONST channel):doschannel:=channel;
+taskpassword("-");globalmanager(PROC (DATASPACE VAR ,INT CONST ,INT CONST ,
+TASK CONST )dosmanager)END PROC dosmanager;PROC dosmanager(DATASPACE VAR ds,
+INT CONST ordercode,phase,TASK CONST fromtask):enablestop;ordertask:=fromtask
+;msg:=ds;IF NOT (ordertask=diskowner)AND ordercode<>freecodeAND ordercode<>
+reservecodeTHEN errorstop("DOS nicht angemeldet")FI ;IF ordertask=diskowner
+THEN lastaccesstime:=clock(1)FI ;SELECT ordercodeOF CASE fetchcode:fetchfile
+CASE savecode:savefileCASE erasecode:erasefileCASE clearcode:cleardiskCASE 
+existscode:existsfileCASE listcode:listdiskCASE allcode:deliverdirectoryCASE 
+reservecode:reserveCASE freecode:freeCASE checkreadcode:checkCASE formatcode:
+formatCASE logcode:sendlogOTHERWISE errorstop(
+"unbekannter Auftrag für Task: "+name(myself))END SELECT .fetchfile:fetch(
+dosname(msg.name,readmodus),ds,fetchsavemodus);managerok(ds).check:checkfile(
+dosname(msg.name,readmodus));managermessage(expandedname(msg.name,readmodus)+
+" ohne Fehler gelesen").format:IF phase=1THEN managerquestion(
+"Diskette formatieren")ELSE formatdosdisk(int(msg.name));managerok(ds)FI .
+savefile:IF phase=1THEN savefirstphaseELSE savesecondphaseFI .savefirstphase:
+savefilename:=dosname(msg.name,writemodus);IF dosfileexists(savefilename)
+THEN managerquestion(expandedname(msg.name,writemodus)+
+" auf der MS-DOS Disk ueberschreiben")ELSE send(ordertask,secondphaseack,ds)
+FI .savesecondphase:IF dosfileexists(savefilename)THEN erasedosfile(
+savefilename)FI ;save(savefilename,ds,fetchsavemodus);forget(ds);ds:=nilspace
+;managerok(ds).cleardisk:IF phase=1THEN managerquestion("Diskette loeschen")
+ELSE cleardosdisk;managerok(ds)FI .erasefile:IF dosfileexists(dosname(msg.
+name,readmodus))THEN IF phase=1THEN managerquestion(expandedname(msg.name,
+TRUE )+" auf der MS-DOS Disk loeschen")ELSE erasedosfile(dosname(msg.name,
+readmodus));managerok(ds)FI ELSE managermessage("die Datei "+expandedname(msg
+.name,TRUE )+" gibt es nicht auf der MS-DOS Disk")FI .existsfile:IF 
+dosfileexists(dosname(msg.name,readmodus))THEN managerok(ds)ELSE send(
+ordertask,falsecode,ds)FI .listdisk:doslist(ds);managerok(ds).sendlog:forget(
+ds);ds:=old("logbuch");managerok(ds).deliverdirectory:forget(ds);ds:=nilspace
+;BOUND THESAURUS VAR allnames:=ds;allnames:=alldosfiles;managerok(ds).reserve
+:IF reserveorfreepermittedTHEN continuechannel(doschannel);diskowner:=
+fromtask;fetchsavemodus:=savefetchmode(msg.name);opendosdisk(path(msg.name));
+forget("logbuch",quiet);managerok(ds)ELSE errorstop(
+"Archivlaufwerk wird von Task """+name(diskowner)+""" benutzt")FI .
+reserveorfreepermitted:fromtask=diskownerOR lastaccessmorethanfiveminutesago
+OR diskowner=niltaskOR NOT (exists(diskowner)OR station(diskowner)<>station(
+myself)).lastaccessmorethanfiveminutesago:abs(lastaccesstime-clock(1))>300.0.
+free:IF reserveorfreepermittedTHEN closedosdisk;diskowner:=niltask;break(
+quiet);managerok(ds)ELSE managermessage("DOS nicht angemeldet")FI .END PROC 
+dosmanager;PROC managerok(DATASPACE VAR ds):send(ordertask,ack,ds);
+lastaccesstime:=clock(1).END PROC managerok;TEXT PROC expandedname(TEXT 
+CONST name,BOOL CONST status):text(quote+dosname(name,status)+quote,14)END 
+PROC expandedname;END PACKET dosmanagermulti;
+

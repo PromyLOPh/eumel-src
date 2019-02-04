@@ -1,0 +1,93 @@
+PACKET digit conversion DEFINES bin,
+                                dec,
+                                hex :
+
+{ Rechnet Dezimalzahlen in Hexadezimalzahlen um und umgekehrt,
+  sowie Dezimalzahlen in Binärzahlen.
+
+  Autor              Version  Datum
+  Christian Lehmann  2        07.09.90                                     }
+
+LET hex letters = "123456789abcdef";
+
+TEXT CONST empty binary digit := 16 * "0",
+           empty hex digit    := "0000";
+
+ROW  4 INT CONST sedecimal powers := ROW  4 INT : (1, 16, 256, 4096);
+ROW 16 INT CONST binary powers    := ROW 16 INT :
+   (  1,   2,    4,    8,   16,   32,    64,    128,
+    256, 512, 1024, 2048, 4096, 8192, 16384, -32767-1);
+
+INT PROC dec (TEXT CONST hex text):
+  INT VAR stellen := LENGTH hex text;
+  IF stellen > 4 COR hex text > "7fff"
+     THEN errorstop ("Zahl zu groß")
+  FI;
+  INT VAR dec result := 0, stelle, hex digit;
+  TEXT VAR hex letter;
+  FOR stelle FROM 1 UPTO stellen REP
+    hex letter := hex text SUB (stellen - stelle + 1);
+    hex digit := pos (hex letters, hex letter);
+    IF hex digit <> 0
+       THEN dec result INCR hex digit * sedecimal powers [stelle]
+    ELIF hex letter <> "0"
+       THEN errorstop ("Hexadezimalzahl fehlerhaft")
+    FI
+  PER;
+  dec result
+END PROC dec;
+{ kann nicht durch `replace' zu Beginn verkleinert werden }
+
+TEXT PROC hex (INT CONST decimal int) :
+  INT VAR nibble no, nibble bit no, bit no := 16, hex digit;
+  TEXT VAR hex result := empty hex digit;
+  FOR nibble no FROM 4 DOWNTO 1 REP
+    hex digit := 0;
+    FOR nibble bit no FROM 4 DOWNTO 1 REP
+      IF (decimal int AND binary powers [bit no]) = binary powers [bit no]
+         THEN hex digit INCR binary powers [nibble bit no]
+      FI;
+      bit no DECR 1
+    PER;
+    IF hex digit <> 0
+       THEN replace (hex result, 5 - nibble no, (hex letters SUB hex digit))
+    FI
+  PER;
+  hex result
+END PROC hex;
+
+TEXT PROC bin (INT CONST dez) :
+  TEXT VAR bin result := empty binary digit;
+  INT VAR bit no;
+  FOR bit no FROM 16 DOWNTO 1 REP
+    IF (dez AND binary powers [bit no]) = binary powers [bit no]
+       THEN replace (bin result, 17 - bit no, "1")
+    FI
+  PER;
+  bin result
+END PROC bin;
+
+END PACKET digit conversion;
+
+(* Test *)
+(*
+
+INT VAR x, y;
+TEXT VAR z;
+page;
+putline ("Dezimalzahl oder Hexadezimalzahl (mit Kleinbuchstaben und `h' am Schluß)");
+putline ("Abbruch durch `0'");
+REP
+  line;
+  get cursor (x, y);
+  put ("Zahl:");
+  get (z);
+  cursor (x + 14, y);
+  put (":");
+  IF (z SUB LENGTH z) = "h"
+     THEN put (dec (subtext (z, 1, LENGTH z - 1)))
+     ELSE put (hex (z))
+  FI
+UNTIL z = "0" PER
+*)
+

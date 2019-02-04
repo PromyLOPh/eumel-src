@@ -1,0 +1,75 @@
+PACKET konsistenzpruefunginkursdatenDEFINES 
+konsistenzpruefunginkursdatenstarten,
+konsistenzpruefunginkursdatenprotokolldrucken:LET meldnrblankomeldung=343;
+LET protname="Protokoll zur Konsistenzprüfung";FILE VAR prot;LET schuljahr=
+"Schuljahr",schulhalbjahr="Schulhalbjahr",schulname="Schulname",schulort=
+"Schulort";LET ueberschrift="Konsistenzprüfung in Kursdaten",untertitel1=
+"Kursdaten zum Schuljahr ",texthalbjahr=". Halbjahr",untertitel2=
+"Prüfung am ",beginnderfehlerliste="      festgestellte Inkonsistenzen:";LET 
+strich="-",schraegstrich="/",blank=" ",kennzhell="#";TEXT VAR aktsj:="",akthj
+:="",gewsj:="",gewhj:="",bearbschuljahr;INT VAR ihalbjahr;LET maxhalbjahre=7;
+LET ersteshj="1";INT VAR jgst,gewjgst,jgstinkrement,startjgst;LET jgst10=10,
+jgst11=11,jgst13=13;TEXT VAR auszeile;TEXT VAR gueltigekurse,alleplanbloecke,
+allekursedesplanblocks,planblock,kurs;LET kennungkurse="K";LET 
+laengeplanblock=3,laengekurs=6,laengekursangaben=10;INT VAR posplanblock,
+poskurs;BOOL VAR keinfehleraufgetreten;PROC 
+konsistenzpruefunginkursdatenstarten:IF aktsj=""THEN aktsj:=schulkenndatum(
+schuljahr);akthj:=schulkenndatum(schulhalbjahr)FI ;gewsj:=aktsj;gewhj:=akthj;
+protokollvorbereiten;ausgabekopfaufbereiten;pruefunginkursdatendurchfuehren;
+zeigedatei(protname,"").protokollvorbereiten:forget(protname,quiet);prot:=
+sequentialfile(output,protname).ausgabekopfaufbereiten:putline(prot,
+schulkenndatum(schulname));putline(prot,schulkenndatum(schulort));line(prot,2
+);putline(prot,20*blank+ueberschrift);putline(prot,20*blank+length(
+ueberschrift)*strich);line(prot);auszeile:=untertitel1;auszeileCAT 
+aufberschuljahr;auszeileCAT ", ";auszeileCAT akthj;auszeileCAT texthalbjahr;
+putline(prot,auszeile);auszeile:=untertitel2;auszeileCAT date;auszeileCAT 
+blank;auszeileCAT timeofday;putline(prot,auszeile);line(prot,2).END PROC 
+konsistenzpruefunginkursdatenstarten;PROC pruefunginkursdatendurchfuehren:IF 
+akthj=ersteshjTHEN startjgst:=jgst11ELSE startjgst:=jgst10FI ;FOR jgstFROM 
+startjgstUPTO jgst13REP kurswahlserveraktualisieren(text(jgst),"","")#spr16.
+01.91#PER ;jgstinkrement:=0;FOR ihalbjahrFROM 1UPTO maxhalbjahreREP 
+gewhalbjahrbearbeiten;halbjahrerhoehenPER .halbjahrerhoehen:
+geplanteshjundsjberechnen(gewhj,gewsj);IF gewhj=ersteshjTHEN jgstinkrement
+INCR 1FI .gewhalbjahrbearbeiten:FOR jgstFROM startjgstUPTO jgst13REP gewjgst
+:=jgst+jgstinkrement;IF gewjgst<=13THEN kurswahlinitialisieren(text(jgst),
+text(gewjgst),gewhj,"",bearbschuljahr);IF istkurswahlbasisvorhandenTHEN 
+bearbeiteFI ;FI ;PER .bearbeite:kontrollmeldungausgeben;
+datenmeldunginprotokollausgeben;fehlerschalterinitialisieren;IF 
+aktuellesodergeplanteshalbjahrTHEN INT VAR fehlerstatus;kurswahlbasisholen(
+fehlerstatus);pruefeplanblockschemamitkursen;kurswahl1sichern(fehlerstatus)
+FI ;fehlerschalterauswerten.aktuellesodergeplanteshalbjahr:ihalbjahr=1COR 
+ihalbjahr=2.kontrollmeldungausgeben:auszeile:="Daten zu Jgst. ";auszeileCAT 
+text(gewjgst);auszeileCAT ".";auszeileCAT gewhj;auszeileCAT " in ";auszeile
+CAT aufberschuljahr;auszeileCAT " werden geprüft.";auszeileCAT kennzhell;
+standardmeldung(meldnrblankomeldung,auszeile).datenmeldunginprotokollausgeben
+:auszeile:="Wahldaten für Schüler der Jgst. ";auszeileCAT text(jgst);auszeile
+CAT ": Schuljahr ";auszeileCAT aufberschuljahr;auszeileCAT " Jgst. ";auszeile
+CAT text(gewjgst);auszeileCAT ".";auszeileCAT gewhj;putline(prot,auszeile).
+fehlerschalterinitialisieren:keinfehleraufgetreten:=TRUE .
+fehlerschalterauswerten:IF keinfehleraufgetretenTHEN putline(prot,
+beginnderfehlerliste+" keine")FI ;line(prot,2).pruefeplanblockschemamitkursen
+:gueltigekurse:=allekurse;alleplanbloecke:=alleplanblockbezeichner;
+posplanblock:=1;WHILE posplanblock<length(alleplanbloecke)REP planblock:=
+subtext(alleplanbloecke,posplanblock,posplanblock+laengeplanblock-1);
+allekursedesplanblocks:=planblockdaten(planblock,kennungkurse);poskurs:=1;
+WHILE poskurs<length(allekursedesplanblocks)REP kurs:=subtext(
+allekursedesplanblocks,poskurs,poskurs+laengekurs-1);IF suchpos(gueltigekurse
+,kurs,laengekursangaben)=0THEN planbloeckezumkurseintragen(kurs,"","");
+fehlerprotokollierenFI ;poskursINCR laengekursPER ;posplanblockINCR 
+laengeplanblockPER .fehlerprotokollieren:IF keinfehleraufgetretenTHEN 
+keinfehleraufgetreten:=FALSE ;putline(prot,beginnderfehlerliste)FI ;
+fehlerzeileschreiben.fehlerzeileschreiben:auszeile:="Kurs ";auszeileCAT text(
+gewjgst);auszeileCAT blank;auszeileCAT subtext(kurs,1,2);auszeileCAT blank;
+auszeileCAT subtext(kurs,3);auszeileCAT 
+" : Bezeichnung ungültig, wurde aus der Blockung gelöscht";putline(prot,
+auszeile).END PROC pruefunginkursdatendurchfuehren;TEXT PROC aufberschuljahr:
+TEXT VAR aufbersj:=subtext(gewsj,1,2);aufbersjCAT schraegstrich;aufbersjCAT 
+subtext(gewsj,3,4);aufbersjEND PROC aufberschuljahr;PROC 
+konsistenzpruefunginkursdatenprotokolldrucken(BOOL CONST drucken):IF drucken
+THEN print(protname)FI ;forget(protname,quiet);enter(2)END PROC 
+konsistenzpruefunginkursdatenprotokolldrucken;INT PROC suchpos(TEXT CONST 
+quelle,suchtext,INT CONST laenge):INT VAR findpos:=pos(quelle,suchtext);
+WHILE findpos>0REP IF findposMOD laenge=1THEN LEAVE suchposWITH findposELSE 
+findpos:=pos(quelle,suchtext,findpos+1);FI PER ;findposEND PROC suchpos;END 
+PACKET konsistenzpruefunginkursdaten
+

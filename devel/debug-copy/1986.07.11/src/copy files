@@ -1,0 +1,2977 @@
+PACKET copy worker DEFINES                    (* Copyright (C) 1986 *)
+                                              (* Frank Klapper      *)
+  copy worker,                                (* 11.07.86           *)
+  ds page nr feld,
+  block nr feld,
+  anzahl feld,
+  size feld,
+  check pointer feld,
+  check vektor start feld,
+  check vektor laenge:
+
+LET continue channel code = 200,
+    archive blocks   code = 201,
+    format disk      code = 202,
+    read             code = 203,
+    write            code = 204,
+    check read       code = 205,
+    init rerun test  code = 206;
+
+INT CONST ds page nr         feld :: 1,
+          block   nr         feld :: 2,
+          anzahl             feld :: 3,
+          size               feld :: 4,
+          check pointer      feld :: 9,
+          check vektor start feld :: 10,
+
+          check vektor laenge :: 19;
+
+LET ack       = 0;
+
+BOUND ROW 252 INT VAR align;
+
+BOUND STRUCT (ALIGN dummy, ROW 256 INT check row) VAR check struct;
+DATASPACE VAR check ds;
+INITFLAG VAR check ds initialisiert := FALSE;
+
+INT VAR old session;
+
+PROC copy worker:
+  access catalogue;
+  global manager (PROC (DATASPACE VAR, INT CONST, INT CONST, TASK CONST) copy worker)
+
+END PROC copy worker;
+
+PROC copy worker (DATASPACE VAR ds, INT CONST order, phase, TASK CONST order task):
+  enable stop;
+  INT VAR dummy; dummy := phase; (* so schalte ich eine warnung ab *)
+  ueberpruefe zugriffsberechtigung von order task;
+  SELECT order OF
+    CASE continue channel code: do continue channel (ds, order task)
+    CASE archive blocks   code: do archive blocks (ds, order task)
+    CASE format disk      code: do format disk (ds, order task)
+    CASE read             code: do read (ds, order task)
+    CASE write            code: do write (ds, order task)
+    CASE check read       code: do check read (ds, order task)
+    CASE init rerun test  code: do init rerun test (ds, order task)
+    OTHERWISE error stop ("falscher Auftrag")
+  END SELECT.
+
+ueberpruefe zugriffsberechtigung von order task:
+  IF NOT (order task = father (myself))
+    THEN error stop ("Unerlaubter Zugriff")
+  FI.
+
+END PROC copy worker;
+
+PROC do continue channel (DATASPACE VAR ds, TASK CONST order task):
+  BOUND INT VAR channel nr := ds;
+  continue channel (channel nr + 0);  (* + 0 --> keine Seiteneffekte *)
+  send (order task, ack, ds).
+
+END PROC do continue channel;
+
+PROC do archive blocks (DATASPACE VAR ds, TASK CONST order task):
+  enable stop;
+  check rerun;
+  BOUND INT VAR archive size := ds;
+  archive size := size (archive size);
+  send (order task, ack, ds).
+
+END PROC do archive blocks;
+
+PROC do init rerun test (DATASPACE VAR ds, TASK CONST order task):
+  old session := session;
+  send (order task, ack, ds).
+
+END PROC do init rerun test;
+
+PROC do format disk (DATASPACE VAR ds, TASK CONST order task):
+  enable stop;
+  check rerun;
+  BOUND INT VAR format code := ds;
+  format archive (format code);
+  send (order task, ack, ds).
+
+END PROC do format disk;
+
+PROC do read (DATASPACE VAR ds, TASK CONST order task):
+  enable stop;
+  align := ds;
+  INT CONST ds   start :: align [ds page nr feld],
+            disk start :: align [block   nr feld],
+            anzahl     :: align [anzahl     feld];
+  INT VAR return code, index;
+  FOR index FROM 0 UPTO anzahl - 1 REP
+    check rerun;
+    read block (ds, ds page nr, disk block nr, return code);
+    pruefe ob lesefehler
+  PER;
+  send (order task, ack, ds).
+
+pruefe ob lesefehler:
+  IF return code <> 0
+    THEN fehler melden
+  FI.
+
+fehler melden:
+  SELECT return code OF
+    CASE 1: errorstop ("Laufwerk nicht betriebsbereit") 
+    CASE 2: errorstop ("Lesefehler bei Block " + text (disk block nr)) 
+    CASE 3: errorstop ("Blocknummer zu hoch " + text (disk block nr)) 
+    CASE 4: errorstop ("Block nicht lesbar " + text (disk block nr))
+    OTHERWISE errorstop ("Lesefehler " + text (return code))
+  END SELECT. 
+
+ds page nr:
+  ds start + index.
+
+disk block nr:
+  disk start + index.
+
+END PROC do read;
+
+PROC do write (DATASPACE VAR ds, TASK CONST order task):
+  enable stop;
+  align := ds;
+  INT CONST ds   start :: align [ds page nr feld],
+            disk start :: align [block   nr feld],
+            anzahl     :: align [anzahl     feld];
+  INT VAR return code, index;
+  FOR index FROM 0 UPTO anzahl - 1 REP
+    check rerun;
+    write block (ds, ds page nr, 0, disk block nr, return code);
+    pruefe ob schreibfehler
+  PER;
+  send (order task, ack, ds).
+
+pruefe ob schreibfehler:
+  IF return code <> 0
+    THEN fehler melden
+  FI.
+
+fehler melden:
+  SELECT return code OF
+    CASE 1: errorstop ("Laufwerk nicht betriebsbereit") 
+    CASE 2: errorstop ("Schreibfehler bei Block " + text (disk block nr)) 
+    CASE 3: errorstop ("Blocknummer zu hoch " + text (disk block nr)) 
+    OTHERWISE errorstop ("Schreibfehler " + text (return code))
+  END SELECT. 
+
+ds page nr:
+  ds start + index.
+
+disk block nr:
+  disk start + index.
+
+END PROC do write;
+
+PROC do check read (DATASPACE VAR ds, TASK CONST order task):
+  enable stop;
+  IF NOT initialized (check ds initialisiert)
+    THEN check ds := nilspace;
+         check struct := check ds
+  FI;
+  align := ds;
+  INT CONST disk start :: align [block   nr feld],
+            anzahl     :: align [anzahl     feld];
+  INT VAR index;
+  INT VAR return code;
+  FOR index FROM 0 UPTO anzahl - 1 REP
+    check rerun;
+    read block (check ds, 2, disk block nr, return code);
+    pruefe ob lesefehler;
+    do check block
+  PER;
+  send (order task, ack, ds).
+
+pruefe ob lesefehler:
+  IF return code <> 0
+    THEN fehler melden
+  FI.
+
+fehler melden:
+  SELECT return code OF
+    CASE 1: errorstop ("Laufwerk nicht betriebsbereit") 
+    CASE 2: errorstop ("Lesefehler bei Block " + text (disk block nr)) 
+    CASE 3: errorstop ("Blocknummer zu hoch " + text (disk block nr)) 
+    CASE 4: errorstop ("Block nicht lesbar " + text (disk block nr))
+    OTHERWISE errorstop ("Lesefehler " + text (return code))
+  END SELECT. 
+
+disk block nr:
+  disk start + index.
+
+do check block:
+  INT VAR block index;
+  FOR block index FROM 1 UPTO 256 REP
+    check vektor eintrag := check vektor eintrag XOR block eintrag;
+    incr check vektor pointer
+  PER.
+
+check vektor eintrag:
+  align [check vektor start feld + check pointer].
+
+check pointer:
+  align [check pointer feld].
+
+block eintrag:
+  check struct.check row [block index].
+
+incr check vektor pointer:
+  check pointer INCR 1;
+  IF check pointer = check vektor laenge
+    THEN check pointer := 0
+  FI.
+
+END PROC do check read;
+
+PROC check rerun:
+  IF session <> old session
+    THEN error stop ("Abbruch wegen RERUN")
+  FI.
+
+END PROC check rerun;
+
+END PACKET copy worker;
+PACKET copy io interface DEFINES              (* Copyright (C) 1986 *)
+                                              (* Frank Klapper      *)
+                                              (* 21.11.86           *)
+  copy channel,
+  start copy worker,
+  initialisiere rerun test,
+  initialisiere diskettenzugriff,
+  formatiere diskette,
+  read,
+  check read,
+  write,
+  stop  copy worker:
+
+LET ack       = 0,
+    error nak = 2,
+    free code = 20;
+
+LET continue channel code = 200,
+    archive blocks   code = 201,
+    format disk      code = 202,
+    read             code = 203,
+    write            code = 204,
+    check read       code = 205,
+    init rerun test  code = 206;
+
+INT VAR reply;
+DATASPACE VAR ds := nilspace; forget (ds);
+
+BOUND ROW 252 INT VAR align;
+
+TASK VAR worker := niltask;
+INT VAR worker channel := 31;
+
+INT PROC copy channel:
+  worker channel
+
+END PROC copy channel;
+
+PROC copy channel (INT CONST channel nr):
+  worker channel := channel nr
+
+END PROC copy channel;
+
+PROC initialisiere rerun test:
+  forget (ds);
+  ds := nilspace;
+  call (worker, init rerun test code, ds, reply);
+  forget (ds).
+
+END PROC initialisiere rerun test;
+
+PROC start copy worker:
+  stop copy worker;
+  bestimme worker name;
+  starte worker;
+  kopple worker an kanal.
+
+bestimme worker name:
+  TEXT VAR worker name := "copy worker";
+  access catalogue;
+  BOUND THESAURUS CONST system catalogue :: syscat;
+  WHILE system catalogue CONTAINS worker name REP
+    worker name CAT "."
+  PER.
+
+starte worker:
+  begin (worker name, PROC copy worker, worker).
+
+kopple worker an kanal:
+  kanal freigeben falls diese task copy channel belegt;
+  forget (ds);
+  ds := nilspace;
+  BOUND INT VAR nr := ds;
+  nr := worker channel;
+  call (worker, continue channel code, ds, reply);
+  IF reply = error nak
+    THEN end (worker);
+         worker := niltask;
+         show error (ds)
+   ELIF reply <> ack
+    THEN end (worker);
+         worker := niltask;
+         forget (ds);
+         error stop ("copy worker nicht an Kanal " + text (worker channel) +
+                     " ankoppelbar")
+  FI;
+  forget (ds).
+
+kanal freigeben falls diese task copy channel belegt:
+  TASK CONST channel owner := task (copy channel);
+  IF NOT is niltask (channel owner) AND NOT (myself = channel owner)
+    THEN forget (ds); 
+         ds := nilspace; 
+         pingpong (channel owner, free code, ds, reply);
+         forget (ds)
+  FI.
+
+END PROC start copy worker;
+
+PROC initialisiere diskettenzugriff:
+  INT VAR dummy;
+  initialisiere diskettenzugriff (dummy)
+
+END PROC initialisiere diskettenzugriff;
+
+PROC initialisiere diskettenzugriff (INT VAR size):
+  initialisiere diskettenzugriff (0, size)
+
+END PROC initialisiere diskettenzugriff;
+
+PROC initialisiere diskettenzugriff (INT CONST mode, INT VAR size):
+  enable stop;
+  size := 0;
+  forget (ds);
+  ds := nilspace;
+  BOUND INT VAR i := ds;
+  i := mode;
+  call (worker, archive blocks code, ds, reply);
+  IF reply = error nak
+    THEN show error (ds)
+   ELSE i := ds;
+        size := i
+  FI;
+  forget (ds).
+
+END PROC initialisiere diskettenzugriff;
+
+PROC formatiere diskette (INT CONST modus):
+  enable stop;
+  forget (ds);
+  ds := nilspace;
+  BOUND INT VAR format param := ds;
+  format param := modus;
+  call (worker, format disk code, ds, reply);
+  IF reply = error nak
+    THEN show error (ds)
+  FI;
+  forget (ds).
+
+
+END PROC formatiere diskette;
+
+PROC read (DATASPACE VAR in ds, INT CONST erste ds seite, erster disk block,
+                                          anzahl bloecke):
+  enable stop;
+  align := in ds;
+  align [ds page nr feld] := erste ds seite;
+  align [block   nr feld] := erster disk block;
+  align [anzahl     feld] := anzahl bloecke;
+  call (worker, read code, in ds, reply);
+  IF reply = error nak
+    THEN show error (in ds)
+  FI.
+
+END PROC read;
+
+PROC write (DATASPACE VAR aus ds, INT CONST erste ds seite, erster disk block,
+                                            anzahl bloecke):
+  enable stop;
+  align := aus ds;
+  align [ds page nr feld] := erste ds seite;
+  align [block   nr feld] := erster disk block;
+  align [anzahl     feld] := anzahl bloecke;
+  call (worker, write code, aus ds, reply);
+  IF reply = error nak
+    THEN show error (aus ds)
+  FI.
+
+END PROC write;
+
+PROC check read (DATASPACE VAR in ds, INT CONST erster disk block,
+                                                anzahl bloecke):
+  enable stop;
+  align := in ds;
+  align [block   nr feld] := erster disk block;
+  align [anzahl     feld] := anzahl bloecke;
+  call (worker, check read code, in ds, reply);
+  IF reply = error nak
+    THEN show error (in ds)
+  FI.
+
+END PROC check read;
+
+PROC stop copy worker:
+  IF NOT (worker = niltask)
+    THEN disable stop;
+         end (worker);
+         worker := niltask;
+         clear error
+  FI.
+
+END PROC stop copy worker;
+
+PROC show error (DATASPACE CONST error ds):
+  BOUND TEXT VAR error msg := error ds;
+  error stop (error msg).
+
+END PROC show error;
+
+END PACKET copy io interface;
+PACKET copy utilities DEFINES                 (* Copyright (C) 1986 *)
+                                              (* Frank Klapper      *)
+                                              (* 21.11.86           *)
+  ds start,
+  hg type,
+  disk type,
+  urlader type,
+  diskette anfordern,
+  disketten groesse zeigen,
+  ds name eingabe,
+  initialisiere check read,
+  check summe abspeichern,
+  check summen vergleichen, 
+  some,
+  list,
+  evtl diskette formatieren,
+  read and retry,
+  write and retry,
+  check read and retry:
+
+INT CONST hg type       :: 801,
+          disk type     :: 802,
+          urlader type  :: 803;
+
+INT CONST ds start :: 2;
+
+DATASPACE VAR list ds := nilspace; forget (list ds);
+DATASPACE VAR save ds := nilspace; forget (save ds);
+
+PROC diskette anfordern (TEXT CONST prompt):
+  WHILE NOT online REP pause (20) PER;
+  command dialogue (TRUE);
+  IF no (prompt)
+    THEN error stop ("Diskette nicht eingelegt")
+  FI;
+  line.
+
+END PROC diskette anfordern;
+
+PROC disketten groesse zeigen (INT CONST blocks):
+  putline ("die eingelegte Diskette enthält " + text (blocks DIV 2) + " KB");
+  line.
+
+END PROC disketten groesse zeigen;
+
+PROC ds name eingabe (TEXT VAR name, TEXT CONST name pre,
+                      BOOL CONST soll existieren, 
+                      TEXT CONST type vektor): 
+  enable stop;
+  IF soll existieren
+    THEN name eines existierenden ds bestimmen
+    ELSE name eines neuen ds bestimmen
+  FI.
+
+name eines existierenden ds bestimmen:
+  IF NOT name gueltig
+    THEN name := name pre
+  FI;
+  editget (name);
+  line;
+  WHILE NOT name gueltig REP
+    fehler zeigen;
+    IF yes ("neuen Namen angeben (sonst Abbruch)")
+      THEN put ("Eingabe:");
+           editget (name);
+           line
+      ELSE errorstop ("Abbruch, da Name fehlerhaft")
+    FI;
+  PER.
+
+name gueltig:
+  (name <> "") CAND (exists (name)) CAND type ok.
+
+type ok:
+  IF LENGTH type vektor = 0
+    THEN TRUE
+    ELSE INT CONST ds type := type (old (name));
+         INT VAR p;
+         FOR p FROM 1 UPTO length (type vektor) DIV 2 REP
+           IF ds type = (type vektor ISUB p)
+             THEN LEAVE type ok WITH TRUE
+           FI
+         PER;
+         FALSE
+  FI.
+
+fehler zeigen:
+  IF name = ""
+    THEN putline ("Kein Name angegeben")
+   ELIF NOT exists (name)
+    THEN putline ("""" + name + """ gibt es nicht")
+    ELSE putline ("""" + name + """ hat falschen Typ")
+  FI.
+
+name eines neuen ds bestimmen:
+  name := name pre;
+  editget (name);
+  line;
+  WHILE exists (name) OR (name = "") REP
+    IF name = ""
+      THEN put ("Kein Name eingegeben, Eingabe:");
+           editget (name);
+           line
+     ELIF yes ("alten Datenraum """ + name + """ löschen")
+      THEN forget (name, quiet)
+     ELIF yes ("neuen Namen angeben (sonst Abbruch)")
+      THEN put ("bitte Datenraumnamen angeben:");
+           editget (name);
+           line
+     ELSE error stop ("""" + name + """ existiert schon")
+     FI
+  PER.
+
+END PROC ds name eingabe;
+
+PROC initialisiere check read (DATASPACE VAR check read ds):
+  enable stop;
+  BOUND ROW 252 INT VAR align;
+  align := check read ds;
+  align [check pointer feld] := check vektor start feld;
+  INT VAR i;
+  FOR i FROM 0 UPTO check vektor laenge - 1 REP
+    align [check vektor start feld + i] := i
+  PER.
+
+END PROC initialisiere check read;
+
+PROC check summe abspeichern (TEXT CONST file name, DATASPACE CONST ds):
+  BOUND ROW 252 INT VAR align := ds;
+  FILE VAR f := sequential file (output, file name);
+  putline (f, "Prüfsumme");
+  INT VAR i;
+  FOR i FROM 0 UPTO check vektor laenge - 1 REP
+    putline (f, text (align [check vektor start feld + i]))
+  PER.
+
+END PROC check summe abspeichern;
+
+TEXT VAR edit type vektor := "  "; replace (edit type vektor, 1, 1003);
+
+PROC check summen vergleichen:
+  enable stop;
+  datei namen erfragen;
+  dateien vergleichen.
+
+datei namen erfragen:
+  TEXT VAR name1 := "prüf.",
+           name2 := "prüf.";
+  put ("Bitte Dateinamen der ersten  Prüfsummendatei eingeben:");
+  ds name eingabe (name1, "prüf.", TRUE, edit type vektor);
+  line;
+  put ("Bitte Dateinamen der zweiten Prüfsummendatei eingeben:");
+  ds name eingabe (name2, "prüf.", TRUE, edit type vektor);
+  line.
+
+dateien vergleichen:
+  FILE VAR f1 := sequential file (modify, name1);
+  FILE VAR f2 := sequential file (modify, name2);
+  INT VAR i;
+  FOR i FROM 1 UPTO check vektor laenge + 1 REP
+    vergleiche zeilen
+  PER;
+  putline ("Die Prüfsummen stimmen überein").
+
+vergleiche zeilen:
+  TEXT VAR zeile1, zeile2;
+  to line (f1, i);
+  to line (f2, i);
+  read record (f1, zeile1);
+  read record (f2, zeile2);
+  IF zeile1 <> zeile2
+    THEN putline (""7"FEHLER: UNTERSCHIEDLICHE PRÜFSUMMEN");
+         LEAVE check summen vergleichen
+  FI.
+
+END PROC check summen vergleichen;
+
+THESAURUS PROC some (THESAURUS CONST ur, INT CONST ds type):
+  THESAURUS VAR ziel := empty thesaurus;
+  TEXT VAR name;
+  INT VAR index := 0;
+  get (ur, name, index);
+  WHILE index > 0 REP
+    IF type (old (name)) = ds type
+      THEN insert (ziel, name)
+    FI;
+    get (ur, name, index);
+  PER;
+  ziel.
+
+END PROC some;
+
+PROC list (THESAURUS CONST list thes, TEXT CONST head text):
+  disable stop;
+  forget (list ds);
+  list ds := nilspace;
+  FILE VAR list file := sequential file (output, list ds);
+  headline (list file, head text);
+  INT VAR index := 0;
+  TEXT VAR name;
+  get (list thes, name, index);
+  WHILE index > 0 REP
+    putline (list file, name);
+    get (list thes, name, index);
+  PER;
+  show (list file);
+  forget (list ds).
+
+END PROC list;
+
+PROC read and retry (DATASPACE VAR in ds, INT CONST erste ds seite, erster disk block,
+                                                    anzahl bloecke):
+  disable stop;
+  forget (save ds);
+  save ds := in ds;
+  read (in ds, erste ds seite, erster disk block, anzahl bloecke);
+  WHILE is error REP
+    putline (""4"" + error message);
+    forget (in ds);
+    in ds := save ds;
+    IF yes ("noch ein Versuch")
+      THEN clear error;
+           read (in ds, erste ds seite, erster disk block, anzahl bloecke);
+      ELSE forget (save ds); enable stop
+    FI;
+    line
+  PER;
+  forget (save ds).
+
+
+END PROC read and retry;
+
+PROC write and retry (DATASPACE VAR out ds, INT CONST erste ds seite, erster disk block,
+                                                    anzahl bloecke):
+  disable stop;
+  forget (save ds);
+  save ds := out ds;
+  write (out ds, erste ds seite, erster disk block, anzahl bloecke);
+  WHILE is error REP
+    putline (""4"" + error message);
+    forget (out ds);
+    out ds := save ds;
+    IF yes ("noch ein Versuch")
+      THEN clear error;
+           write (out ds, erste ds seite, erster disk block, anzahl bloecke);
+      ELSE forget (save ds); enable stop
+    FI;
+    line
+  PER;
+  forget (save ds).
+
+END PROC write and retry;
+
+PROC check read and retry (DATASPACE VAR in ds, INT CONST erster disk block,
+                                                          anzahl bloecke):
+  disable stop;
+  forget (save ds);
+  save ds := in ds;
+  check read (in ds, erster disk block, anzahl bloecke);
+  WHILE is error REP
+    putline (""4"" + error message);
+    forget (in ds);
+    in ds := save ds;
+    IF yes ("noch ein Versuch")
+      THEN clear error;
+           check read (in ds, erster disk block, anzahl bloecke);
+      ELSE enable stop
+    FI;
+    line
+  PER.
+
+END PROC check read and retry;
+
+TEXT VAR formatierschluessel := "0";
+
+PROC evtl diskette formatieren:
+  command dialogue (TRUE);
+  IF yes ("Diskette zuerst formatieren")
+    THEN disable stop;
+         put ("Formatiercode:"); edit get (formatierschluessel);
+         formatiere diskette (int (formatierschluessel));
+         line;
+         WHILE is error REP
+           putline (""4"" + error message);
+           IF yes ("noch ein Versuch")
+             THEN clear error;
+                  put ("Formatiercode:"); edit get (formatierschluessel);
+                  formatiere diskette (int (formatierschluessel));
+                  line
+             ELSE enable stop
+           FI;
+         PER;
+         enable stop;
+  FI;
+  line.
+
+END PROC evtl diskette formatieren;
+
+END PACKET copy utilities;
+PACKET info DEFINES                           (* Copyright (C) 1986 *)
+                                              (* Frank Klapper      *)
+                                              (* 20.08.86           *)
+  informationen ausgeben,
+  urlader informationen von diskette ausgeben,
+  urlader informationen von datenraum ausgeben,
+  hg informationen von diskette ausgeben,
+  hg informationen von datenraum ausgeben:
+
+TEXT VAR hg vektor := "  "; replace (hg vektor, 1, hg type);
+
+TEXT VAR hg urlader vektor := "    "; replace (hg urlader vektor, 1, hg type);
+                                      replace (hg urlader vektor, 2, urlader type);
+
+
+BOUND STRUCT (ROW 252 INT align, ROW 10240 INT row) VAR ds struct;
+DATASPACE VAR ds work := nilspace; forget (ds work);
+
+INT VAR disk size;
+
+TEXT VAR versions nr;
+
+TEXT CONST eumel kennzeichen :: "EUMEL-";
+INT  CONST eumel kennzeichen wort 0 :: eumel kennzeichen ISUB 1,
+           eumel kennzeichen wort 1 :: eumel kennzeichen ISUB 2,
+           eumel kennzeichen wort 2 :: (eumel kennzeichen ISUB 3) AND 255;
+
+TEXT VAR ds name := "";
+
+PROC hg informationen von diskette ausgeben:
+  disable stop;
+  enable hg informationen von diskette ausgeben;
+  forget (ds work).
+
+END PROC hg informationen von diskette ausgeben;
+
+PROC enable hg informationen von diskette ausgeben:
+  enable stop;
+  initialisiere rerun test;
+  ds work := nilspace;
+  erste diskette anfordern;
+  relevante bloecke lesen;
+  informationen ausgeben (ds work, TRUE, TRUE).
+
+erste diskette anfordern:
+  command dialogue (TRUE);
+  diskette anfordern ("erste Hintergrunddiskette eingelegt");
+  cursor (1, 19); out (""4"").
+
+relevante bloecke lesen:
+  initialisiere disketten zugriff (0, disk size);
+  read (ds work, ds start, 0, 1);
+  read (ds work, ds start + 10, 10, 1).
+
+END PROC enable hg informationen von diskette ausgeben;
+
+PROC urlader informationen von diskette ausgeben:
+  disable stop;
+  enable urlader informationen von diskette ausgeben;
+  forget (ds work).
+
+END PROC urlader informationen von diskette ausgeben;
+
+PROC enable urlader informationen von diskette ausgeben:
+  enable stop;
+  initialisiere rerun test;
+  ds work := nilspace;
+  erste diskette anfordern;
+  relevante bloecke lesen;
+  informationen ausgeben (ds work, FALSE, TRUE).
+
+erste diskette anfordern:
+  diskette anfordern ("Urlader-Diskette eingelegt");
+  cursor (1, 19); out (""4"").
+
+relevante bloecke lesen:
+  initialisiere disketten zugriff (0, disk size);
+  read (ds work, ds start + 10, 10, 1).
+
+END PROC enable urlader informationen von diskette ausgeben;
+
+PROC hg informationen von datenraum ausgeben:
+  disable stop;
+  hg ds namen bestimmen;
+  ds work := old (ds name);
+  informationen ausgeben (ds work, TRUE, TRUE);
+  forget (ds work).
+
+hg ds namen bestimmen:
+  put ("Bitte Datenraumnamen eingeben:");
+  ds name eingabe (ds name, "HG", TRUE, hg vektor);
+  cursor (1, 19); out (""4"").
+
+END PROC hg informationen von datenraum ausgeben;
+
+PROC urlader informationen von datenraum ausgeben:
+  disable stop;
+  urlader ds namen bestimmen;
+  ds work := old (ds name);
+  informationen ausgeben (ds work, FALSE, TRUE);
+  forget (ds work).
+
+urlader ds namen bestimmen:
+  put ("Bitte Datenraumnamen eingeben:");
+  ds name eingabe (ds name, "", TRUE, hg urlader vektor);
+  cursor (1, 19); out (""4"").
+
+END PROC urlader informationen von datenraum ausgeben;
+
+PROC informationen ausgeben (DATASPACE CONST ds, 
+                             BOOL CONST hg info, urlader info): 
+  enable stop;
+  ds struct := ds;
+  IF hg info
+    THEN hg info ausgeben
+  FI;
+  IF urlader info
+    THEN urlader info ausgeben
+  FI.
+
+hg info ausgeben:
+  teste eumelkennzeichen;
+  versionsnummer ausgeben;
+  hg groesse ausgeben.
+
+teste eumelkennzeichen:
+  IF (eumelkennzeichen wort 0 <> ds struct.row [1]) OR
+     (eumelkennzeichen wort 1 <> ds struct.row [2]) OR
+     (eumelkennzeichen wort 2 <> (ds struct.row [3] AND 255)) OR
+     (NOT no plus hg AND (ds struct.row [43] <> 0))
+     (* ds struct.row [43]  <--> Sequenznummer *)
+    THEN error stop ("die Diskette ist nicht die erste Diskette eines EUMEL Hintergrundes")
+  FI.
+
+versionsnummer ausgeben:
+  versions nr := 6 * " ";
+  replace (versions nr, 1, ds struct.row [4]);
+  replace (versions nr, 2, ds struct.row [5]);
+  replace (versions nr, 3, ds struct.row [6]);
+  put ("EUMEL Hintergrund-Versionsnummer: " + versions nr);
+  IF NOT no plus hg
+    THEN put ("  (grosse Speicherverwaltung)");
+  FI;
+  line.
+
+hg groesse ausgeben:
+  IF no plus hg
+    THEN putline ("      Hintergrund-Größe:          " + text (4 * ds struct.row [19]) + " KB")
+    ELSE putline ("      Hintergrund-Größe:          " + text ((ds struct.row [41] + 1) DIV 2) + " KB")
+  FI.
+
+no plus hg:
+  (ds struct.row [41] = 1) AND (ds struct.row [42] = 0).
+
+urladerinfo ausgeben:
+  IF diskette enthaelt urlader
+    THEN urlader informationen vorhanden
+   ELIF hg info
+    THEN putline ("Diskette enthält keinen Urlader")
+    ELSE error stop ("Diskette enthält keinen Urlader")
+  FI.
+
+diskette enthaelt urlader:
+  (eumelkennzeichen wort 0 =  ds struct.row [2561]) AND
+  (eumelkennzeichen wort 1 =  ds struct.row [2562]) AND
+  (eumelkennzeichen wort 2 = (ds struct.row [2563] AND 255)).
+
+urlader informationen vorhanden:
+  urlader format bestimmen;
+  put ("      Urladerversion:  "); put (urlader version);   line;
+  put ("      Urlader-CPU-Type:"); put (cpu type);          line;
+  put ("      SHardversion min:"); put (shard version min); line;
+  put ("      SHardversion max:"); put (shard version max);
+  put ("            ").
+
+urladerformat bestimmen:
+  BOOL VAR motorola format := (ds struct.row [2571] = 1024).
+
+urlader version:
+  INT VAR dummy := ds struct.row [2572];
+  TEXT VAR ur ver := "";
+  IF motorola format
+    THEN rotate (dummy, 8);
+         INT CONST monate :: dummy DIV 100,
+                   tag    :: dummy MOD 100;
+         ur ver := text (tag);
+         ur ver CAT ".";
+         ur ver CAT text (m68000 monat);
+         ur ver CAT ".";
+         ur ver CAT text (84 + (monate - 1) DIV 12)
+    ELSE ur ver := "#" + text (dummy)
+  FI;
+  ur ver.
+
+m68000 monat:
+  IF monate MOD 12 = 0
+    THEN 12
+    ELSE monate MOD 12
+  FI.
+
+shard version min:
+  IF motorola format
+    THEN dummy := ds struct.row [2573];
+         rotate (dummy, 8)
+    ELSE dummy := ds struct.row [2574];
+  FI;
+  dummy.
+
+shard version max:
+  IF motorola format
+    THEN dummy := ds struct.row [2574];
+         rotate (dummy, 8)
+    ELSE dummy := ds struct.row [2575];
+  FI;
+  dummy.
+
+cpu type:
+  INT CONST cpu int :: ds struct.row [2571];
+  IF cpu int = 1
+    THEN "Z 80"
+   ELIF cpu int = 3
+    THEN "INTEL 8086 / 8088"
+   ELIF cpu int = 1024
+    THEN "Motorola 68000"
+    ELSE text (cpu int)
+  FI.
+
+END PROC informationen ausgeben;
+
+END PACKET info;
+PACKET gigads DEFINES                         (* Copyright (C) 1986 *)
+                                              (* Frank Klapper      *)
+  GIGADS,                                     (* 11.07.86           *)
+
+  giga ds size,
+  :=,
+  old zuweisen,
+  main,
+  forget,
+  copy,
+  read and retry,
+  write and retry,
+  informationen ausgeben,
+  type:
+ 
+LET max ds no = 10;
+
+TYPE GIGADS = ROW max ds no DATASPACE;
+
+INT VAR xgigads size;
+
+PROC gigads size (INT CONST max block no):
+  xgigads size := max block no
+
+END PROC giga ds size;
+
+INT PROC last used ds:
+  (xgigads size DIV 2000) + 1
+
+END PROC last used ds;
+
+INT PROC ds no (INT CONST page no):
+  (page no DIV 2000) + 1.
+
+END PROC ds no;
+
+INT PROC ds page no (INT CONST page no):
+  IF ds no (page no) = 1
+    THEN page no
+    ELSE (page no MOD 2000) + 2
+  FI.
+
+END PROC ds page no;
+
+TEXT PROC name (TEXT CONST pre, INT CONST no):
+  IF no = 1
+    THEN pre
+    ELSE pre + ".hintergrund datenraum extension nummer " + text (no - 1)
+  FI.
+
+END PROC name;
+
+OP := (GIGADS VAR gig, DATASPACE CONST ds):
+  gig [1] := ds;
+  INT VAR count;
+  FOR count FROM 2 UPTO max ds no REP
+    gig [count] := nilspace
+  PER
+
+END OP :=;
+
+DATASPACE PROC main (GIGADS CONST gig):
+  gig [1]
+
+END PROC main;
+
+PROC type (GIGADS VAR gig, INT CONST value):
+  INT VAR count;
+  FOR count FROM 1 UPTO max ds no REP
+    type (gig [count], value)
+  PER.
+
+END PROC type;
+
+INT PROC type (GIGADS CONST gig):
+  INT CONST value :: type (gig [1]);
+  INT VAR count;
+  FOR count FROM 2 UPTO max ds no REP
+    IF type (gig [count]) <> value
+      THEN error stop ("GIGADS inconsistent")
+    FI
+  PER;
+  value.
+
+END PROC type;
+
+PROC forget (GIGADS VAR gig):
+  INT VAR count;
+  FOR count FROM 1 UPTO max ds no REP
+    forget (gig [count])
+  PER.
+
+END PROC forget;
+
+PROC copy (GIGADS CONST gig, TEXT CONST name0):
+  IF exists (name 0)
+    THEN error stop ("""" + name0 + """ existiert schon")
+  FI;
+  INT VAR count;
+  FOR count FROM 1 UPTO last used ds REP
+    forget (name (name 0, count), quiet);
+    copy (gig [count], name (name 0, count))
+  PER
+
+END PROC copy;
+
+PROC old zuweisen (GIGADS VAR gig, TEXT CONST name0):
+  gig [1] := old (name0);
+  INT VAR count;
+  FOR count FROM 2 UPTO max ds no REP
+    IF exists (name (name0, count))
+      THEN gig [count] := old (name (name0, count))
+      ELSE gig [count] := nilspace
+    FI
+  PER.
+
+END PROC old zuweisen;
+
+PROC read and retry (GIGADS VAR gig,
+                     INT CONST erste ds seite, erster disk block, anzahl bloecke):
+  INT CONST no1 :: ds no (erste ds seite),
+            no2 :: ds no (erste ds seite + anzahl bloecke - 1);
+  IF no1 = no2
+    THEN read and retry (gig [no1], ds page no (erste ds seite),
+                         erster disk block, anzahl bloecke)
+    ELSE INT VAR count;
+         FOR count FROM 0 UPTO anzahl bloecke - 1 REP
+           read and retry (gig [ds no (erste ds seite + count)],
+                           ds page no (erste ds seite + count),
+                           erster disk block + count, 1);
+         PER
+  FI.
+
+END PROC read and retry;
+
+PROC write and retry (GIGADS VAR gig, INT CONST erste ds seite, erster disk block,
+                                      anzahl bloecke):
+  INT CONST no1 :: ds no (erste ds seite),
+            no2 :: ds no (erste ds seite + anzahl bloecke - 1);
+  IF no1 = no2
+    THEN write and retry (gig [no1], ds page no (erste ds seite),
+               erster disk block, anzahl bloecke)
+    ELSE INT VAR count;
+         FOR count FROM 0 UPTO anzahl bloecke - 1 REP
+           write and retry (gig [ds no (erste ds seite + count)],
+                 ds page no (erste ds seite + count),
+                 erster disk block + count, 1)
+         PER
+  FI.
+
+END PROC write and retry;
+
+PROC informationen ausgeben (GIGADS CONST gig, BOOL CONST b1, b2):
+  informationen ausgeben (gig [1], b1, b2)
+
+END PROC informationen ausgeben;
+
+END PACKET gigads;
+
+PACKET copy hg DEFINES                        (* Copyright (C) 1986 *)
+                                              (* Frank Klapper      *)
+  hg lesen,                                   (* 11.07.86           *)
+  hg schreiben,
+  hg check sum:
+
+TEXT VAR hg vektor := "  "; replace (hg vektor, 1, hg type);
+
+TEXT VAR ds name := "";
+
+INT VAR disk size,
+        hg   bloecke verarbeitet,
+        hg   bloecke zu verarbeiten,
+        disk bloecke verarbeitet;
+
+BOUND STRUCT (ROW 252 INT align, ROW 10240 INT row) VAR ds work struct;
+GIGADS VAR ds work := nilspace; forget (ds work);
+
+DATASPACE VAR check ds := nilspace; forget (check ds);
+
+PROC hg lesen: 
+  disable stop;
+  enable hg lesen;
+  forget (ds work).
+
+END PROC hg lesen;
+
+PROC enable hg lesen:
+  enable stop;
+  initialisiere rerun test;
+  ds work := nilspace;
+  ds work struct := main (ds work);
+  type (ds work, hg type);
+  diskette anfordern ("erste zu lesende Hintergrunddiskette eingelegt");
+  initialisiere disketten zugriff (0, disk size);
+  header bloecke lesen;
+  informationen ausgeben (ds work, TRUE, TRUE);
+  line (2);
+  ds work namen bestimmen;
+  IF plus version
+    THEN hintergrund rest lesen plus version
+    ELSE hintergrundrest lesen no plus version
+  FI;
+  copy (ds work, ds name).
+
+header bloecke lesen:
+  read and retry (ds work, ds start, 0, 1);
+  read and retry (ds work, ds start + 10, 10, 1);
+  hg   bloecke verarbeitet := 1;
+  disk bloecke verarbeitet := 1.
+
+ds work namen bestimmen:
+  put ("bitte Datenraumnamen angeben:");
+  ds name eingabe (ds name, "HG", FALSE, "");
+  line.
+
+plus version:
+  NOT ((ds work struct.row [41] = 1) AND (ds work struct.row [42] = 0)).
+
+END PROC enable hg lesen;
+
+PROC hintergrund rest lesen no plus version:
+  disketten groesse zeigen (disk size);
+  hg bloecke zu verarbeiten := 8 * ds work struct.row [19];
+  giga ds size (hg bloecke zu verarbeiten + ds start);
+  status zeigen;
+  WHILE hg bloecke verarbeitet < hg bloecke zu verarbeiten REP
+    IF disk bloecke verarbeitet = disk size
+      THEN neue diskette anfordern
+    FI;
+    naechsten satz bloecke lesen;
+    status zeigen
+  PER.
+
+neue diskette anfordern:
+  diskette anfordern (""4"nächste zu lesende Hintergrunddiskette eingelegt");
+  initialisiere disketten zugriff (0, disk size);
+  line;
+  disketten groesse zeigen (disk size);
+  disk bloecke verarbeitet := 0.
+
+naechsten satz bloecke lesen:
+  bestimme anzahl zu lesender bloecke;
+  read and retry (ds work, ds start + hg bloecke verarbeitet,
+                  disk bloecke verarbeitet, anzahl zu lesender bloecke);
+  hg   bloecke verarbeitet INCR anzahl zu lesender bloecke;
+  disk bloecke verarbeitet INCR anzahl zu lesender bloecke.
+
+bestimme anzahl zu lesender bloecke:
+  INT CONST anzahl zulesender bloecke :: min (moegliche hg bloecke auf disk, 20).
+
+moegliche hg bloecke auf disk:
+  min (hg bloecke zu verarbeiten - hg bloecke verarbeitet,
+       disk size - disk bloecke verarbeitet).
+
+status zeigen:
+  IF online
+    THEN out (""13"");
+         putline ("Hintergrund:       " + text (hg bloecke verarbeitet DIV 2, 4) + " KB gelesen");
+         putline ("aktuelle Diskette: " + text (disk bloecke verarbeitet DIV 2, 4) + " KB gelesen");
+         out (""3""3""13"")
+  FI.
+
+END PROC hintergrund rest lesen no plus version;
+
+PROC hintergrundrest lesen plus version:
+  BOOL VAR letzte diskette gelesen;
+  TEXT VAR sequenz nr map := 100 * " ";
+  INT VAR letzte sequenz nr;
+  hg bloecke zu verarbeiten := ds work struct.row [41] + 1;
+  giga ds size (hg bloecke zu verarbeiten + ds start);
+  hg bloecke verarbeitet := 1;
+  hg etikett merken;
+  lies diskette;
+  WHILE NOT ganzer hg gelesen REP
+    naechste diskette anfordern;
+    lies diskette
+  PER;
+  hg etikett herstellen.
+
+hg etikett merken:
+  TEXT VAR null etikett := 512 * " ";
+  INT VAR i;
+  FOR i FROM 1 UPTO 256 REP
+    replace (null etikett, i, ds work struct.row [i])
+  PER.
+
+hg etikett herstellen:
+  FOR i FROM 1 UPTO 256 REP
+    ds work struct.row [i] := null etikett ISUB i
+  PER.
+
+ganzer hg gelesen:
+  letzte diskette gelesen CAND
+  (subtext (sequenz nr map, 1, letzte sequenz nr) = (letzte sequenz nr * "R")).
+
+naechste diskette anfordern:
+  diskette anfordern (""4"naechste zu lesende Hintergrunddiskette eingelegt");
+  initialisiere diskettenzugriff (0, disk size);
+  line;
+  IF NOT etikett kompatibel zu null etikett
+    THEN error stop ("Diskette gehoert nicht zu dem bisher verarbeiteten Hintergrund")
+  FI.
+
+etikett kompatibel zu null etikett:
+  read and retry (ds work, ds start, 0, 1);
+  FOR i FROM 1 UPTO 40 REP
+    IF ds work struct.row [i] <> (null etikett ISUB i)
+      THEN LEAVE etikett kompatibel zu null etikett WITH FALSE
+    FI
+  PER;
+  FOR i FROM 46 UPTO 256 REP
+    IF ds work struct.row [i] <> (null etikett ISUB i)
+      THEN LEAVE etikett kompatibel zu null etikett WITH FALSE
+    FI
+  PER;
+  TRUE.
+
+lies diskette:
+  disketten groesse zeigen (disk size);
+  disk bloecke verarbeitet := 1;
+  INT CONST verschiebung :: ds work struct.row [44];
+  INT CONST letzter disk block :: min (disk size - 1, hg bloecke zu verarbeiten - verschiebung - 1);
+  status zeigen;
+  WHILE disk bloecke verarbeitet <= letzter disk block REP
+    naechsten satz bloecke lesen;
+    status zeigen
+  PER;
+  INT CONST sequenz nr := ds work struct.row [43];
+  replace (sequenz nr map, sequenz nr, "R");
+  IF verschiebung + letzter disk block + 1 = hg bloecke zu verarbeiten
+    THEN letzte diskette gelesen := TRUE;
+         letzte sequenz nr := sequenz nr
+  FI.
+
+naechsten satz bloecke lesen:
+  read and retry (ds work, ds start + verschiebung + disk bloecke verarbeitet,
+                  disk bloecke verarbeitet, anzahl zu lesender bloecke);
+  hg bloecke verarbeitet INCR anzahl zu lesender bloecke;
+  disk bloecke verarbeitet INCR anzahl zu lesender bloecke.
+
+anzahl zu lesender bloecke:
+  min (letzter disk block - disk bloecke verarbeitet + 1, 20).
+
+status zeigen:
+  IF online
+    THEN out (""13"");
+         putline ("Hintergrund:       " + text (hg bloecke verarbeitet DIV 2, 4) + " KB gelesen");
+         putline ("aktuelle Diskette: " + text (disk bloecke verarbeitet DIV 2, 4) + " KB gelesen");
+         out (""3""3""13"")
+  FI.
+
+END PROC hintergrund rest lesen plus version;
+
+PROC hg schreiben:
+  disable stop;
+  enable hg schreiben;
+  forget (ds work).
+
+END PROC hg schreiben;
+
+PROC enable hg schreiben:
+  enable stop;
+  initialisiere rerun test;
+  hg ds namen bestimmen;
+  old zuweisen (ds work, ds name);
+  ds work struct := main (ds work);
+  BOOL CONST plus version :: NOT ((ds work struct.row [41] = 1) AND (ds work struct.row [42] = 0));
+  informationen ausgeben (ds work, TRUE, TRUE);
+  line (2);
+  diskette anfordern ("erste zu beschreibende Diskette eingelegt");
+  evtl diskette formatieren;
+  initialisiere diskettenzugriff (0, disk size);
+  disketten groesse zeigen (disk size);
+  hintergrund schreiben;
+  bei plus version ersten hg block restaurieren.
+
+bei plus version ersten hg block restaurieren:
+  ds work struct.row [43] := 0;
+  ds work struct.row [44] := 0;
+  ds work struct.row [45] := 0.
+
+hg ds namen bestimmen:
+  put ("Bitte Datenraumnamen eingeben:");
+  ds name eingabe (ds name, "HG", TRUE, hg vektor);
+  line.
+
+hintergrund schreiben:
+  INT VAR sequenz nr := 0;
+  hg   bloecke verarbeitet := 0;
+  disk bloecke verarbeitet := 0;
+  IF plus version
+    THEN hg bloecke zu verarbeiten := ds work struct.row [41] + 1
+    ELSE hg bloecke zu verarbeiten := 8 * ds work struct.row [19]
+  FI;
+  giga ds size (hg bloecke zu verarbeiten + ds start);
+  status zeigen;
+  WHILE hg bloecke verarbeitet < hg bloecke zu verarbeiten REP
+    IF disk bloecke verarbeitet = disk size
+      THEN neue diskette anfordern;
+           bei plus version etikett schreiben
+    FI;
+    naechsten satz bloecke schreiben;
+    status zeigen
+  PER.
+
+neue diskette anfordern:
+  diskette anfordern (""4"nächste zu beschreibende Diskette eingelegt");
+  evtl diskette formatieren;
+  initialisiere disketten zugriff (0, disk size);
+  disketten groesse zeigen (disk size);
+  disk bloecke verarbeitet := 0.
+
+bei plus version etikett schreiben:
+  IF plus version
+    THEN sequenz nr INCR 1;
+         ds work struct.row [43] := sequenz nr;
+         ds work struct.row [44] := hg bloecke verarbeitet - 1;
+         ds work struct.row [45] := 0;
+         write and retry (ds work, ds start, 0, 1);
+         disk bloecke verarbeitet := 1
+  FI.
+
+naechsten satz bloecke schreiben:
+  bestimme anzahl zu schreibender bloecke;
+  write and retry (ds work, ds start + hg bloecke verarbeitet,
+                   disk bloecke verarbeitet, anzahl zu schreibender bloecke);
+  hg   bloecke verarbeitet INCR anzahl zu schreibender bloecke;
+  disk bloecke verarbeitet INCR anzahl zu schreibender bloecke.
+
+bestimme anzahl zu schreibender bloecke:
+  INT CONST anzahl zuschreibender bloecke :: min (moegliche hg bloecke auf disk, 20).
+
+moegliche hg bloecke auf disk:
+  min (hg bloecke zu verarbeiten - hg bloecke verarbeitet,
+       disk size - disk bloecke verarbeitet).
+
+status zeigen:
+  IF online
+    THEN out (""13"");
+         putline ("Hintergrund:       " + text (hg bloecke verarbeitet DIV 2, 4) + " KB geschrieben");
+         putline ("aktuelle Diskette: " + text (disk bloecke verarbeitet DIV 2, 4) + " KB geschrieben");
+         out (""3""3""13"")
+  FI.
+
+END PROC enable hg schreiben;
+
+PROC hg check sum:
+  disable stop;
+  enable hg check sum;
+  forget (check ds).
+
+END PROC hg check sum;
+
+PROC enable hg check sum:
+  enable stop;
+  initialisiere rerun test;
+  check ds := nilspace;
+  ds work struct := check ds;
+  diskette anfordern ("erste Hintergrunddiskette eingelegt");
+  initialisiere disketten zugriff (0, disk size);
+  relevante bloecke lesen;
+  hg etikett merken;
+  informationen ausgeben (check ds, TRUE, TRUE);
+  line (2);
+  check sum namen bestimmen;
+  hintergrund check sum berechnen;
+  check summe abspeichern (ds name, check ds).
+
+relevante bloecke lesen:
+  read and retry (check ds, ds start, 0, 1);
+  read and retry (check ds, ds start + 10, 10, 1).
+
+hg etikett merken:
+  TEXT VAR null etikett := 512 * " ";
+  INT VAR i;
+  FOR i FROM 1 UPTO 256 REP
+    replace (null etikett, i, ds work struct.row [i])
+  PER.
+
+check sum namen bestimmen:
+  putline ("bitte Dateinamen zum abspeichern der Prüf-Summe angeben:");
+  ds name eingabe (ds name, "prüf.HG", FALSE, "");
+  line.
+
+hintergrund check sum berechnen:
+  BOOL CONST plus version :: NOT ((ds work struct.row [41] = 1) AND (ds work struct.row [42] = 0));
+  IF plus version
+    THEN hg bloecke zu verarbeiten := ds work struct.row [41] + 1
+    ELSE hg bloecke zu verarbeiten := 8 * ds work struct.row [19]
+  FI;
+  INT VAR sequenz nr := 0;
+  hg   bloecke verarbeitet := 0;
+  disk bloecke verarbeitet := 0;
+  initialisiere check read (check ds);
+  disketten groesse zeigen (disk size);
+  status zeigen;
+  WHILE hg bloecke verarbeitet < hg bloecke zu verarbeiten REP
+    IF disk bloecke verarbeitet = disk size
+      THEN neue diskette anfordern
+    FI;
+    naechsten satz bloecke lesen;
+    status zeigen
+  PER.
+
+neue diskette anfordern:
+  diskette anfordern (""4"nächste Hintergrunddiskette eingelegt");
+  initialisiere disketten zugriff (0, disk size);
+  line;
+  disketten groesse zeigen (disk size);
+  sequenz nr INCR 1;
+  IF plus version
+    THEN disk bloecke verarbeitet := 1;
+         read and retry (check ds, ds start, 0, 1);
+         IF NOT etikett kompatibel zu null etikett
+           THEN error stop ("Diskette gehoert nicht zu dem bisher verarbeiteten Hintergrund")
+         FI;
+         IF ds work struct.row [43] <> sequenz nr
+           THEN error stop ("Falsche Reihenfolge der HG Disketten")
+         FI
+    ELSE disk bloecke verarbeitet := 0
+  FI.
+
+etikett kompatibel zu null etikett:
+  read and retry (check ds, ds start, 0, 1);
+  FOR i FROM 1 UPTO 40 REP
+    IF ds work struct.row [i] <> (null etikett ISUB i)
+      THEN LEAVE etikett kompatibel zu null etikett WITH FALSE
+    FI
+  PER;
+  FOR i FROM 46 UPTO 256 REP
+    IF ds work struct.row [i] <> (null etikett ISUB i)
+      THEN LEAVE etikett kompatibel zu null etikett WITH FALSE
+    FI
+  PER;
+  TRUE.
+
+naechsten satz bloecke lesen:
+  bestimme anzahl zu lesender bloecke;
+  check read and retry (check ds, disk bloecke verarbeitet, anzahl zu lesender bloecke);
+  hg   bloecke verarbeitet INCR anzahl zu lesender bloecke;
+  disk bloecke verarbeitet INCR anzahl zu lesender bloecke.
+
+bestimme anzahl zu lesender bloecke:
+  INT CONST anzahl zulesender bloecke :: min (moegliche hg bloecke auf disk, 20).
+
+moegliche hg bloecke auf disk:
+  min (hg bloecke zu verarbeiten - hg bloecke verarbeitet,
+       disk size - disk bloecke verarbeitet).
+
+status zeigen:
+  IF online
+    THEN out (""13"");
+         putline ("Hintergrund:       " + text (hg bloecke verarbeitet DIV 2, 4) + " KB verarbeitet");
+         putline ("aktuelle Diskette: " + text (disk bloecke verarbeitet DIV 2, 4) + " KB verarbeitet");
+         out (""3""3""13"")
+  FI.
+
+END PROC enable hg check sum;
+
+END PACKET copy hg;
+PACKET urlader copy DEFINES                   (* Copyright (C) 1986 *)
+                                              (* Frank Klapper      *)
+                                              (* 22.08.86           *)
+  urlader check sum,
+  urlader von datenraum auf leere diskette schreiben,
+  urlader von datenraum auf hg diskette schreiben,
+  urlader von diskette in hg datenraum lesen,
+  urlader von diskette in leeren datenraum lesen:
+
+TEXT VAR ds name := "";
+
+TEXT VAR hg urlader vektor := "    "; replace (hg urlader vektor, 1, hg type);
+                                      replace (hg urlader vektor, 2, urlader type);
+
+INT VAR disk size;
+
+BOUND STRUCT (ROW 252 INT align, ROW 10240 INT row) VAR ds struct;
+DATASPACE VAR ds work := nilspace; forget (ds work);
+DATASPACE VAR ds test := nilspace; forget (ds test);
+         
+PROC urlader von diskette in hg datenraum lesen:
+  urlader lesen (FALSE)
+
+END PROC urlader von diskette in hg datenraum lesen;
+
+PROC urlader von diskette in leeren datenraum lesen:
+  urlader lesen (TRUE)
+
+END PROC urlader von diskette in leeren datenraum lesen;
+
+PROC urlader lesen (BOOL CONST in leeren ds):
+  disable stop;
+  enable urlader lesen (in leeren ds);
+  forget (ds work).
+
+END PROC urlader lesen;
+
+PROC enable urlader lesen (BOOL CONST in leeren ds):
+  enable stop;
+  initialisiere rerun test;
+  diskette anfordern ("Urlader-Diskette eingelegt");
+  ersten urlader block lesen;
+  informationen ausgeben (ds work, FALSE, TRUE);
+  INT VAR urlader blocks := ds struct.row [2569];
+  IF motorola format
+    THEN rotate (urlader blocks, 8)
+  FI;
+  line (2);
+  ds work namen bestimmen;
+  ds work neu initialisieren;
+  urlader rest lesen;
+  IF exists (ds name) THEN forget (ds name, quiet) FI;
+  copy (ds work, ds name).
+
+ersten urlader block lesen:
+  ds work := nilspace;
+  ds struct := ds work;
+  initialisiere disketten zugriff (0, disk size);
+  read (ds work, ds start + 10, 10, 1).
+
+motorola format:
+  ds struct.row [2571] = 1024.
+
+ds work namen bestimmen:
+  put ("bitte Datenraumnamen angeben:");
+  IF in leeren ds
+    THEN ds name eingabe (ds name, "URLADER", FALSE, "")
+    ELSE ds name eingabe (ds name, "", TRUE, hg urlader vektor)
+  FI;
+  line.
+
+ds work neu initialisieren:
+  IF NOT in leeren ds
+    THEN forget (ds work);
+         ds work := old (ds name);
+         ds struct := ds work;
+         INT VAR space := ds struct.row [2569];
+         IF motorola format
+           THEN rotate (space, 8)
+         FI;
+         IF space < urlader blocks
+           THEN error stop ("Lücke für Urlader im Datenraum zu klein")
+         FI
+    ELSE type (ds work, urlader type)
+  FI.
+
+urlader rest lesen:
+  INT VAR urlader bloecke verarbeitet := 0;
+  status zeigen;
+  WHILE urlader bloecke verarbeitet < urlader blocks REP
+    naechsten satz bloecke lesen;
+    status zeigen
+  PER.
+
+naechsten satz bloecke lesen:
+  read and retry (ds work, ds start + 10 + urlader bloecke verarbeitet,
+                  10 + urlader bloecke verarbeitet, anzahl zu lesender bloecke);
+  urlader bloecke verarbeitet INCR anzahl zu lesender bloecke.
+
+anzahl zu lesender bloecke:
+  min (urlader blocks - urlader bloecke verarbeitet, 20).
+
+status zeigen:
+  IF online
+    THEN out (""13"");
+         putline (text (urlader bloecke verarbeitet DIV 2, 4) + " KB gelesen");
+         out (""3""13"")
+  FI.
+
+END PROC enable urlader lesen;
+
+PROC urlader von datenraum auf leere diskette schreiben:
+  urlader schreiben (TRUE)
+
+END PROC urlader von datenraum auf leere diskette schreiben;
+
+PROC urlader von datenraum auf hg diskette schreiben:
+  urlader schreiben (FALSE)
+
+END PROC urlader von datenraum auf hg diskette schreiben;
+
+PROC urlader schreiben (BOOL CONST auf leere disk):
+  disable stop;
+  enable urlader schreiben (auf leere disk);
+  forget (ds test);
+  forget (ds work).
+
+END PROC urlader schreiben;
+
+PROC enable urlader schreiben (BOOL CONST auf leere disk):
+  enable stop;
+  initialisiere rerun test;
+  urlader ds namen bestimmen;
+  ds work := old (ds name);
+  ds struct := ds work;
+  INT VAR urlader blocks := ds struct.row [2569];
+  IF motorola format
+    THEN rotate (urlader blocks, 8)
+  FI;
+  informationen ausgeben (ds work, FALSE, TRUE);
+  line (2);
+  diskette anfordern ("zu beschreibende Diskette eingelegt");
+  IF auf leere disk
+    THEN evtl diskette formatieren;
+         initialisiere diskettenzugriff (0, disk size)
+    ELSE initialisiere diskettenzugriff (0, disk size);
+         platz fuer urlader ueberpruefen
+  FI;
+  urlader schreiben.
+
+urlader ds namen bestimmen:
+  put ("Bitte Datenraumnamen eingeben:");
+  ds name eingabe (ds name, "", TRUE, hg urlader vektor);
+  line.
+
+motorola format:
+  ds struct.row [2571] = 1024.
+
+platz fuer urlader ueberpruefen:
+  TEXT CONST eumel kennzeichen :: "EUMEL-";
+  INT  CONST eumel kennzeichen wort 0 :: eumel kennzeichen ISUB 1,
+             eumel kennzeichen wort 1 :: eumel kennzeichen ISUB 2,
+             eumel kennzeichen wort 2 :: (eumel kennzeichen ISUB 3) AND 255;
+  ds test := nilspace;
+  ds struct := ds test;
+  read and retry (ds test, 2, 0, 1);
+  IF plus hg CAND sequenznummer falsch
+    THEN error stop ("Die eingelegte Diskette ist nicht erste Diskette eines Hintergrundes")
+  FI;
+  read and retry (ds test, 2, 10, 1);
+  IF NOT diskette enthaelt urlader COR luecke zu klein
+    THEN error stop ("Nicht genug Platz auf der Diskette; Urlader kann nicht geschrieben werden.")
+  FI.
+
+plus hg:
+  NOT ((ds struct.row [41] = 1) AND (ds struct.row [42] = 0)).
+
+sequenznummer falsch:
+  ds struct.row [43] <> 0.
+
+diskette enthaelt urlader:
+  (eumelkennzeichen wort 0 =  ds struct.row [1]) AND
+  (eumelkennzeichen wort 1 =  ds struct.row [2]) AND
+  (eumelkennzeichen wort 2 = (ds struct.row [3] AND 255)).
+
+luecke zu klein:
+  urlader blocks > ds struct.row [9].
+
+urlader schreiben:
+  INT VAR urlader bloecke verarbeitet := 0;
+  status zeigen;
+  WHILE urlader bloecke verarbeitet < urlader blocks REP
+    naechsten satz bloecke schreiben;
+    status zeigen
+  PER.
+
+naechsten satz bloecke schreiben:
+  write and retry (ds work, ds start + 10 + urlader bloecke verarbeitet,
+                   10 + urlader bloecke verarbeitet, anzahl zu schreibender bloecke);
+ 
+  urlader bloecke verarbeitet INCR anzahl zu schreibender bloecke.
+
+anzahl zu schreibender bloecke:
+  min (urlader blocks - urlader bloecke verarbeitet, 20).
+
+status zeigen:
+  IF online
+    THEN out (""13"");
+         putline (text (urlader bloecke verarbeitet DIV 2, 4) + " KB geschrieben");
+         out (""3""13"")
+  FI.
+
+END PROC enable urlader schreiben;
+
+PROC urlader check sum:
+  disable stop;
+  enable urlader check sum;
+  forget (ds work).
+
+END PROC urlader check sum;
+
+PROC enable urlader check sum:
+  enable stop;
+  initialisiere rerun test;
+  ds work := nilspace;
+  ds struct := ds work;
+  diskette anfordern ("zu überprüfende Diskette eingelegt");
+  relevante bloecke lesen;
+  INT VAR urlader blocks := ds struct.row [2569];
+  IF motorola format
+    THEN rotate (urlader blocks, 8)
+  FI;
+  informationen ausgeben (ds work, FALSE, TRUE);
+  line (2);
+  check sum namen bestimmen;
+  urlader check sum berechnen;
+  check summe abspeichern (ds name, ds work).
+
+motorola format:
+  ds struct.row [2571] = 1024.
+
+relevante bloecke lesen:
+  initialisiere disketten zugriff (0, disk size);
+  read (ds work, ds start + 10, 10, 1).
+
+check sum namen bestimmen:
+  putline ("bitte Dateinamen zum abspeichern der Prüf-Summe angeben:");
+  ds name eingabe (ds name, "prüf.URLADER", FALSE, "").
+
+urlader check sum berechnen:
+  line;
+  INT VAR urlader bloecke verarbeitet := 0;
+  initialisiere check read (ds work);
+  status zeigen;
+  WHILE urlader bloecke verarbeitet < urlader blocks REP
+    naechsten satz bloecke lesen;
+    status zeigen
+  PER.
+
+naechsten satz bloecke lesen:
+  check read and retry (ds work, 10 + urlader bloecke verarbeitet,
+                        anzahl zu lesender bloecke);
+  urlader bloecke verarbeitet INCR anzahl zu lesender bloecke.
+
+anzahl zu lesender bloecke:
+  min (urlader blocks - urlader bloecke verarbeitet, 20).
+
+status zeigen:
+  IF online
+    THEN out (""13"");
+         putline (text (urlader bloecke verarbeitet DIV 2, 4) + " KB gelesen");
+         out (""3""13"")
+  FI.
+
+END PROC enable urlader check sum;
+
+END PACKET urlader copy;
+PACKET copy dump DEFINES                      (* Copyright (C) 1986 *)
+                                              (* Frank Klapper      *)
+  show blocks:                                (* 11.07.86           *)
+
+TYPE BLOCK = BOUND STRUCT (ALIGN dummy, ROW 64 REAL block row);
+ 
+BLOCK VAR block; 
+ 
+DATASPACE VAR block ds; 
+ 
+TEXT VAR line text := 16 * "*";
+
+INITFLAG VAR this packet := FALSE;
+
+INT VAR disk size;
+
+INT VAR block nr;
+
+TEXT VAR command;
+
+PROC show blocks:
+  enable stop;
+  initialisiere rerun test;
+  access block space; 
+  block nr := 0;
+  diskette anfordern ("Diskette eingelegt");
+  initialisiere diskettenzugriff (0, disk size);
+  disketten groesse zeigen (disk size);
+  REP get command;
+      execute command
+  UNTIL end command
+  PER.
+
+access block space:
+  IF NOT initialized (this packet)
+    THEN block ds := nilspace
+  FI.
+
+get command:
+  line;
+  putline ("'+'  nächsten Block zeigen         'q'  Dump-Modus verlassen");
+  putline ("'-'  vorhergehenden Block zeigen   <nr> Block <nr> zeigen");
+  put (">"); 
+  get (command);
+  command := compress (command);
+  line.
+
+end command:
+  ((command SUB 1) = "q") OR ((command SUB 1) = "Q").
+
+execute command:
+  IF (command SUB 1) = "+"
+    THEN block nr INCR 1;
+         block zeigen
+   ELIF (command SUB 1) = "-"
+    THEN block nr DECR 1;
+         block zeigen;
+   ELIF (command SUB 1) = "q" OR (command SUB 1) = "Q"
+    THEN (* no op *)
+    ELSE INT VAR dummy := int (command);
+         IF last conversion ok
+           THEN block nr := dummy;
+                block zeigen
+           ELSE putline ("unzulässiges Kommando");
+                line
+         FI
+   FI.
+
+END PROC show blocks;
+
+PROC block zeigen:
+  block nr ueberpruefen;
+  block lesen;
+  CONCR (block) := block ds;
+  INT VAR zeile;
+  FOR zeile FROM 0 UPTO 31 REP
+    zeile zeigen
+  PER.
+
+block nr ueberpruefen:
+  IF block nr >= disk size
+    THEN putline ("Blocknummer zu hoch (maximal " + text (disk size -1) + ")");
+         block nr := disk size - 1;
+         LEAVE block zeigen
+   ELIF block nr < 0
+    THEN putline ("negative Blocknummer ist nicht erlaubt");
+         block nr := 0;
+         LEAVE block zeigen
+  FI.
+
+block lesen:
+  read and retry (block ds, 2, block nr, 1).
+
+zeile zeigen:
+  replace (line text, 1, block.block row [2 * zeile + 1]);
+  replace (line text, 2, block.block row [2 * zeile + 2]);  
+  TEXT VAR dump line := text (block nr, 4) + ":" + text (zeile * 16, 3) + "  ";
+  TEXT VAR char line := ""; 
+  INT VAR spalte;
+  FOR spalte FROM 1 UPTO 8 REP
+    cat char;
+    dump line CAT " "
+  PER;
+  dump line CAT " ";
+  FOR spalte FROM 9 UPTO 16 REP
+    cat char;
+    dump line CAT " "
+  PER;
+  dump line CAT " ";
+  dump line CAT charline;
+  IF incharety = ""27""
+    THEN LEAVE block zeigen
+  FI;
+  putline (dump line).
+
+cat char:
+  INT CONST char code := code (char);
+  LET hex chars = "0123456789ABCDEF";
+  dumpline CAT (hex chars SUB (char code DIV 16 + 1));
+  dumpline CAT (hex chars SUB (char code MOD 16 + 1));
+  charline CAT show char.
+
+show char:
+  IF (char code > 31 AND char code < 127)
+    THEN code (char code) 
+    ELSE "." 
+  FI.
+
+char:
+  line text SUB spalte.
+
+END PROC block zeigen;
+
+END PACKET copy dump;
+PACKET copy diskette DEFINES                  (* Copyright (C) 1986 *)
+                                              (* Frank Klapper      *)
+  diskette lesen,                             (* 11.07.86           *)
+  diskette schreiben,
+  diskette check sum:
+
+TEXT VAR disk type vektor := "  "; replace (disk type vektor, 1, disk type);
+
+TEXT VAR ds name := "";
+
+INT VAR disk size;
+
+BOUND ROW 252 INT VAR ds work row;
+DATASPACE VAR ds work := nilspace; forget (ds work);
+
+PROC diskette lesen:
+  disable stop;
+  enable diskette lesen;
+  forget (ds work).
+
+END PROC diskette lesen;
+
+PROC enable diskette lesen:
+  enable stop;
+  initialisiere rerun test;
+  ds work := nilspace;
+  ds work row := ds work;
+  type (ds work, disk type);
+  diskette anfordern ("zu lesende Diskette eingelegt");
+  initialisiere disketten zugriff (0, disk size);
+  disketten groesse zeigen (disk size);
+  ds work namen bestimmen;
+  diskette lesen;
+  size feld schreiben;
+  copy (ds work, ds name).
+
+size feld schreiben:
+  ds work row := ds work;
+  ds work row [size feld] := disk size.
+
+ds work namen bestimmen:
+  ds name := "";
+  put ("bitte Datenraumnamen angeben:");
+  ds name eingabe (ds name, "", FALSE, "");
+  line.
+
+diskette lesen:
+  INT VAR disk bloecke verarbeitet := 0;
+  status zeigen;
+  WHILE disk bloecke verarbeitet < disk size REP
+    naechsten satz bloecke lesen;
+    status zeigen
+  PER.
+
+naechsten satz bloecke lesen:
+  read and retry (ds work, ds start + disk bloecke verarbeitet, disk bloecke verarbeitet,
+        anzahl zu lesender bloecke);
+  disk bloecke verarbeitet INCR anzahl zu lesender bloecke.
+
+anzahl zu lesender bloecke:
+  min (disk size - disk bloecke verarbeitet, 20).
+
+status zeigen:
+  IF online
+    THEN out (""13"");
+         putline (text (disk bloecke verarbeitet DIV 2, 4) + " KB gelesen");
+         out (""3""13"")
+  FI.
+
+END PROC enable diskette lesen;
+
+PROC diskette schreiben:
+  disable stop;
+  enable diskette schreiben;
+  forget (ds work).
+
+END PROC diskette schreiben;
+
+PROC enable diskette schreiben:
+  enable stop;
+  initialisiere rerun test;
+  disk ds namen bestimmen;
+  ds work := old (ds name);
+  ds work row := ds work;
+  diskette anfordern ("zu beschreibende Diskette eingelegt");
+  evtl diskette formatieren;
+  initialisiere diskettenzugriff (0, disk size);
+  disketten groesse zeigen (disk size);
+  diskettengroesse ueberpruefen;
+  diskette schreiben.
+
+disk ds namen bestimmen:
+  put ("Bitte Datenraumnamen eingeben:");
+  ds name eingabe (ds name, "", TRUE, disk type vektor);
+  line.
+
+diskettengroesse ueberpruefen:
+  IF ds work row [size feld] <> disk size
+    THEN putline (""7"ERROR: Datenraum enthält nicht genau eine Diskette");
+         putline ("       evtl. Menuepunkt 'Teil einer Diskette kopieren' verwenden");
+         pause (30);
+         error stop ("Datenraum enthält nicht genau eine Diskette")
+  FI.
+
+diskette schreiben:
+  INT VAR disk bloecke verarbeitet := 0;
+  status zeigen;
+  WHILE disk bloecke verarbeitet <  ds work row [size feld] REP
+    naechsten satz bloecke schreiben;
+    status zeigen
+  PER.
+
+naechsten satz bloecke schreiben:
+  write and retry (ds work, ds start + disk bloecke verarbeitet, disk bloecke verarbeitet,
+                   anzahl zu schreibender bloecke);
+  disk bloecke verarbeitet INCR anzahl zu schreibender bloecke.
+
+anzahl zu schreibender bloecke:
+  min (ds work row [size feld] - disk bloecke verarbeitet, 20).
+
+status zeigen:
+  IF online
+    THEN out (""13"");
+         putline (text (disk bloecke verarbeitet DIV 2, 4) + " KB geschrieben");
+         out (""3""13"")
+  FI.
+
+END PROC enable diskette schreiben;
+
+PROC diskette check sum:
+  disable stop;
+  enable diskette check sum;
+  forget (ds work).
+
+END PROC diskette check sum;
+
+PROC enable diskette check sum:
+  enable stop;
+  ds work := nilspace;
+  ds work row := ds work;
+  TEXT VAR name := "";
+  initialisiere rerun test;
+  diskette anfordern ("zu überprüfende Diskette eingelegt");
+  check sum namen bestimmen;
+  initialisiere diskettenzugriff (0, disk size);
+  disketten groesse zeigen (disk size);
+  check summe berechnen;
+  check summe abspeichern (name, ds work).
+
+check sum namen bestimmen:
+  putline ("bitte Dateinamen zum abspeichern der Prüfsumme angeben:");
+  ds name eingabe (name, "prüf.", FALSE, "");
+  line.
+
+check summe berechnen:
+  INT VAR disk bloecke verarbeitet := 0;
+  status zeigen;
+  initialisiere check read (ds work);
+  WHILE disk bloecke verarbeitet < disk size REP
+    naechsten satz bloecke lesen;
+    status zeigen
+  PER.
+
+naechsten satz bloecke lesen:
+  check read and retry (ds work, disk bloecke verarbeitet, anzahl zu lesender bloecke);
+  disk bloecke verarbeitet INCR anzahl zu lesender bloecke.
+
+anzahl zu lesender bloecke:
+  min (disk size - disk bloecke verarbeitet, 20).
+
+status zeigen:
+  IF online
+    THEN out (""13"");
+         putline (text (disk bloecke verarbeitet DIV 2, 4) + " KB verarbeitet");
+         out (""3""13"")
+  FI.
+
+END PROC enable diskette check sum;
+
+END PACKET copy diskette;
+PACKET copy disk part DEFINES                 (* Copyright (C) 1986 *)
+                                              (* Frank Klapper      *)
+  disk part lesen,                            (* 31.07.86           *)
+  disk part schreiben,
+  disk part check sum:
+
+TEXT VAR disk type vektor := "  "; replace (disk type vektor, 1, disk type);
+
+TEXT VAR ds name := "";
+
+INT VAR disk size;
+INT VAR von sektor, bis sektor;
+
+BOUND ROW 252 INT VAR ds work row;
+DATASPACE VAR ds work := nilspace; forget (ds work);
+
+PROC disk part lesen:
+  disable stop;
+  enable disk part lesen;
+  forget (ds work).
+
+END PROC disk part lesen;
+
+PROC enable disk part lesen:
+  enable stop;
+  initialisiere rerun test;
+  ds work := nilspace;
+  ds work row := ds work;
+  type (ds work, disk type);
+  diskette anfordern ("zu lesende Diskette eingelegt");
+  initialisiere disketten zugriff (0, disk size);
+  disketten groesse zeigen (disk size);
+  grenzen bestimmen (disk size);
+  ds work namen bestimmen;
+  disk part lesen;
+  size feld schreiben;
+  copy (ds work, ds name).
+
+ds work namen bestimmen:
+  ds name := "";
+  put ("bitte Datenraumnamen angeben:");
+  ds name eingabe (ds name, "", FALSE, "");
+  line.
+
+size feld schreiben:
+  ds work row := ds work;
+  ds work row [size feld] := bis sektor - von sektor + 1.
+
+disk part lesen:
+  INT VAR disk bloecke verarbeitet := 0;
+  status zeigen;
+  WHILE disk bloecke verarbeitet < bis sektor - von sektor + 1 REP
+    naechsten satz bloecke lesen;
+    status zeigen
+  PER.
+
+naechsten satz bloecke lesen:
+  read and retry (ds work, ds start + disk bloecke verarbeitet, von sektor + disk bloecke verarbeitet,
+                  anzahl zu lesender bloecke);
+  disk bloecke verarbeitet INCR anzahl zu lesender bloecke.
+
+anzahl zu lesender bloecke:
+  min (bis sektor - von sektor + 1 - disk bloecke verarbeitet, 20).
+
+status zeigen:
+  IF online
+    THEN out (""13"");
+         putline (text (disk bloecke verarbeitet, 4) + " Sektoren gelesen");
+         out (""3""13"")
+  FI.
+
+END PROC enable disk part lesen;
+
+PROC disk part schreiben:
+  disable stop;
+  enable disk part schreiben;
+  forget (ds work).
+
+END PROC disk part schreiben;
+
+PROC enable disk part schreiben:
+  enable stop;
+  initialisiere rerun test;
+  disk ds namen bestimmen;
+  ds work := old (ds name);
+  ds work row := ds work;
+  diskette anfordern ("zu beschreibende Diskette eingelegt");
+  evtl diskette formatieren;
+  initialisiere diskettenzugriff (0, disk size);
+  disketten groesse zeigen (disk size);
+  grenzen bestimmen (ds work row [size feld]);
+  disk part schreiben.
+
+disk ds namen bestimmen:
+  put ("Bitte Datenraumnamen eingeben:");
+  ds name eingabe (ds name, "", TRUE, disk type vektor);
+  line.
+
+disk part schreiben:
+  INT VAR disk bloecke verarbeitet := 0;
+  INT CONST disk bloecke zu verarbeiten :: bis sektor - von sektor + 1;
+  status zeigen;
+  WHILE disk bloecke verarbeitet < disk bloecke zu verarbeiten REP
+    naechsten satz bloecke schreiben;
+    status zeigen
+  PER.
+
+naechsten satz bloecke schreiben:
+  write and retry (ds work, ds start + disk bloecke verarbeitet, von sektor + disk bloecke verarbeitet,
+                   anzahl zu schreibender bloecke);
+  disk bloecke verarbeitet INCR anzahl zu schreibender bloecke.
+
+anzahl zu schreibender bloecke:
+  min (disk bloecke zu verarbeiten - disk bloecke verarbeitet, 20).
+
+status zeigen:
+  IF online
+    THEN out (""13"");
+         putline (text (disk bloecke verarbeitet, 4) + " Sektoren geschrieben");
+         out (""3""13"")
+  FI.
+
+END PROC enable disk part schreiben;
+
+PROC disk part check sum:
+  disable stop;
+  enable disk part check sum;
+  forget (ds work).
+
+END PROC disk part check sum;
+
+PROC enable disk part check sum:
+  enable stop;
+  initialisiere rerun test;
+  ds work := nilspace;
+  diskette anfordern ("zu überprüfende Diskette eingelegt");
+  initialisiere disketten zugriff (0, disk size);
+  disketten groesse zeigen (disk size);
+  grenzen bestimmen (disk size);
+  check sum namen bestimmen;
+  check sum berechnen;
+  check summe abspeichern (ds name, ds work).
+
+check sum namen bestimmen:
+  putline ("bitte Dateinamen zum abspeichern der Prüf-Summe angeben:");
+  ds name eingabe (ds name, "prüf.", FALSE, "");
+  line.
+
+check sum berechnen:
+  INT VAR disk bloecke verarbeitet := 0;
+  initialisiere check read (ds work);
+  status zeigen;
+  WHILE disk bloecke verarbeitet < bis sektor - von sektor + 1 REP
+    naechsten satz bloecke lesen;
+    status zeigen
+  PER.
+
+naechsten satz bloecke lesen:
+  check read and retry (ds work, von sektor + disk bloecke verarbeitet, anzahl zu lesender bloecke);
+  disk bloecke verarbeitet INCR anzahl zu lesender bloecke.
+
+anzahl zu lesender bloecke:
+  min (bis sektor - von sektor + 1 - disk bloecke verarbeitet, 20).
+
+status zeigen:
+  IF online
+    THEN out (""13"");
+         putline (text (disk bloecke verarbeitet, 4) + " Sektoren gelesen");
+         out (""3""13"")
+  FI.
+
+END PROC enable disk part check sum;
+
+PROC disketten groesse zeigen (INT CONST blocks):
+  putline ("die eingelegte Diskette enthält die Sektoren 0 bis " + text (blocks - 1));
+  line.
+
+END PROC disketten groesse  zeigen;
+
+PROC grenzen bestimmen (INT CONST max anz bloecke):
+  INT VAR x,y;
+  REP
+    TEXT VAR ein := "0";
+    put ("erster Sektor:");
+    get cursor (x, y);
+    editget (ein);
+    von sektor := max (0, int (ein));
+    cursor (x, y);
+    out (""5"");
+    put (von sektor);
+    line;
+    put ("letzter Sektor:");
+    get cursor (x, y);
+    ein := text (min (disk size - 1, von sektor + max anz bloecke - 1));
+    editget (ein);
+(**)bis sektor := min (von sektor + max anz bloecke - 1, int (ein));
+(**)bis sektor := min (disk size - 1, bis sektor);
+    cursor (x, y);
+    out (""5"");
+    put (bis sektor);
+    line
+  UNTIL yes ("Eingaben richtig")
+  PER;
+  line.
+
+END PROC grenzen bestimmen;
+
+END PACKET copy disk part;
+PACKET menu handler DEFINES                        (* Autor: J.Liedtke *) 
+                                                   (*        R.Ruland  *) 
+                                                   (* Stand: 13.05.86  *)
+       menu monitor ,                              
+       menu out , 
+       next menu , 
+       menu param , 
+       set menu param , 
+       additional param , 
+       clear free lines , 
+       show key functions : 
+ 
+ 
+LET    menu width      = 77 , 
+       date pos        = 50 ,
+       time pos        = 63 ,
+       menu indent     = 6 , 
+       separate line   = 18 ,
+       first free line = 19 , 
+       max number of menu cases = 17 , 
+ 
+       blank = " " , 
+       left  = ""8"" ,
+       up    = ""3"" , 
+       down  = ""10"" , 
+       return= ""13"" , 
+       hop   = ""1"" , 
+       bell  = ""7"" , 
+       quote = """" , 
+       clear to end of line = ""5"" , 
+       clear to end of page = ""4"" ; 
+ 
+TEXT VAR param 1 := "" , param 2 , 
+         menu case list := "" , 
+         menu case := "", char := "",
+         last date := "";
+ 
+BOOL VAR screen changed, show keys ; 
+ 
+ 
+PROC next menu : 
+ 
+  screen changed := TRUE 
+ 
+ENDPROC next menu ; 
+ 
+PROC next menu (TEXT CONST key list) : 
+ 
+  next menu (key list, "") 
+ 
+ENDPROC next menu ; 
+ 
+PROC next menu (TEXT CONST key list, std case) : 
+ 
+  IF pos (key list, code (33), code (255), 1) > 0 
+     OR pos (key list, code (0), code (31), 1) > 0 
+     THEN menu case list := subtext (key list, 1, max number of menu cases) ; 
+  FI;
+  menu case := std case ; 
+  screen changed := TRUE ;
+ 
+ENDPROC next menu ; 
+ 
+ 
+PROC clear free lines : 
+ 
+  cursor (1, first free line) ; 
+  out (clear to end of page) . 
+ 
+ENDPROC clear free lines;
+ 
+ 
+PROC show key functions : 
+ 
+  show keys := TRUE; 
+ 
+END PROC show key functions; 
+ 
+ 
+PROC menu monitor (PROC (TEXT CONST) board , 
+                   PROC (TEXT CONST) execute , 
+                   TEXT CONST escape char) : 
+ 
+  disable stop ; 
+  page ; 
+  next menu ; 
+  show key functions;
+  REP 
+    show menu (PROC (TEXT CONST) board) ; 
+    screen changed := FALSE ;
+    show keys := FALSE;
+    select menu case (escape char) ; 
+    clear free lines ; 
+    IF is valid menu case AND char <> hop
+      THEN menu execute (PROC (TEXT CONST) execute) 
+    FI 
+  UNTIL menu escape occurred PER . 
+ 
+is valid menu case :    pos (menu case list, menu case) > 0 . 
+ 
+menu escape occurred :  menu case = escape char . 
+ 
+ENDPROC menu monitor ; 
+ 
+ 
+PROC show menu (PROC (TEXT CONST) board) : 
+ 
+  IF is error 
+    THEN show error ; 
+         clear error 
+  FI ; 
+  IF screen changed 
+    THEN show menu cases 
+  FI ; 
+  IF show keys
+     THEN explain keys; 
+  FI . 
+ 
+show error : 
+  IF less than three lines left 
+    THEN screen changed := TRUE 
+  FI ; 
+  clear free lines ;
+  put error .
+ 
+less than three lines left : 
+  INT VAR x, y; 
+  get cursor (x, y) ; 
+  y >= 22 . 
+ 
+show menu cases : 
+  clear board ; 
+  INT VAR i ; 
+  FOR i FROM 1 UPTO LENGTH menu case list REP 
+    cursor (menu indent, i) ; 
+    IF (menu case list SUB i) <> " " THEN board (menu case list SUB i) FI;
+  PER ;
+  out (hop) ;
+  4 TIMESOUT " " .
+ 
+clear board : 
+  out (hop) ; 
+  FOR i FROM 1 UPTO max number of menu cases REP 
+    out (clear to end of line) ; 
+    out (down) 
+  PER ; 
+  cursor (1, separate line);
+  out (clear to end of line) ; 
+  menu width TIMESOUT "-" ;
+  put date ;
+  put time . 
+ 
+ENDPROC show menu ; 
+ 
+PROC menu out (TEXT CONST menu line) : 
+ 
+  tab cursor ; 
+  INT VAR from := 1, to := pos (menu line, quote) - 1 ; 
+  IF param 1 <> ""
+     THEN WHILE to >= 0 REP 
+            menu outsubtext (menu line, from, to) ; 
+            menu outsubtext (quote, 1, 1) ; 
+            menu outsubtext (param 1, 1, LENGTH param 1) ; 
+            menu outsubtext (quote, 1, 1) ; 
+            from := to + 2 ; 
+            to := pos (menu line, quote, from) - 1 
+          PER ; 
+  FI;
+  menu outsubtext (menu line, from, LENGTH menu line) ; 
+  out (blank) . 
+ 
+tab cursor : 
+  INT VAR x, y; 
+  get cursor (x, y) ; 
+  IF x > menu indent AND x < menu width - 15 
+    THEN cursor ( (x-menu indent+14) DIV 15 * 15 + menu indent, y) 
+  FI . 
+ 
+ENDPROC menu out ; 
+ 
+PROC menu outsubtext (TEXT CONST t, INT CONST from, to) : 
+ 
+  outsubtext (t, from, min (menu width-cursor x, to-from) + from) . 
+ 
+cursor x : 
+  INT VAR x, y ; 
+  get cursor (x, y) ; 
+  x . 
+ 
+ENDPROC menu outsubtext ; 
+
+PROC put date :
+
+  INT VAR x, y;
+  get cursor (x, y);
+  cursor (date pos, separate line);
+  last date := date;
+  out (" ");
+  out (date);
+  out (" ");
+  cursor (x, y);
+
+END PROC put date;
+
+PROC put time :
+
+  INT VAR x, y;
+  get cursor (x, y);
+  cursor (time pos, separate line);
+  out (" ");
+  out (time of day);
+  out (" ");
+  IF last date <> date THEN put date FI;
+  cursor (x, y);
+
+END PROC put time;
+ 
+PROC select menu case (TEXT CONST escape char) : 
+ 
+  enable stop;
+  INT VAR menu index := pos (menu case list, menu case);
+  get default menu case ; 
+  REP 
+    REP UNTIL incharety = "" PER;
+    point to case ;
+    get char ;
+    IF   char = blank OR char = down    THEN menu down 
+    ELIF char = up                      THEN menu up 
+    ELIF char = return                  THEN leave and execute 
+    ELIF char = hop                     THEN leave and show new board 
+    ELIF char = escape char OR 
+         pos (menu case list, char) > 0 THEN menu index := 
+                                                  pos (menu case list, char); 
+                                             menu case := char ; 
+                                             leave and execute 
+    ELSE not allowed key 
+    FI 
+  PER . 
+ 
+get default menu case : 
+  IF LENGTH menu case <> 1 OR menu case = " " OR menu index = 0
+    THEN menu index := 0; 
+         WHILE menu index < LENGTH menu case list 
+         REP menu index INCR 1; 
+             menu case := menu case list SUB menu index; 
+             IF menu case <> " " THEN LEAVE get default menu case FI; 
+         PER; 
+  FI . 
+ 
+get char :
+  REP char := incharety (600) ;
+      put time ;
+  UNTIL char <> "" PER .
+
+menu down : 
+  REP menu index := menu index MOD cases + 1; 
+      menu case  := menu case list SUB menu index; 
+  UNTIL menu case <> " " PER . 
+ 
+menu up : 
+  REP menu index := (menu index - 2) MOD cases + 1; 
+      menu case  := menu case list SUB menu index; 
+  UNTIL menu case <> " " PER . 
+ 
+cases :        LENGTH menu case list . 
+ 
+point to case :
+  4 TIMESOUT left ; 4 TIMESOUT blank ;
+  cursor (menu indent-4, menu index) ; 
+  out ("--> ") .
+ 
+leave and execute : 
+  point to case ;
+  cursor (menu indent, first free line) ; 
+  LEAVE select menu case . 
+ 
+leave and show new board : 
+  next menu ; 
+  show key functions;
+  LEAVE select menu case . 
+ 
+not allowed key : 
+  out (bell) ; 
+  explain keys . 
+ 
+ENDPROC select menu case ; 
+ 
+ 
+PROC explain keys : 
+  clear free lines;
+  putline ("""-->"" - Funktion ausfuehren :      <RETURN>") ; 
+  putline ("andere Funktion anwaehlen :        <UP>  <DOWN>  <BLANK>") ; 
+  out     ("direkt anwaehlen und ausfuehren :") ; 
+  show menu case list ; 
+  putline ("Menutafel neu aufbauen :           <HOP>") ;
+  out (hop) ;
+  4 TIMESOUT " " .
+ 
+show menu case list : 
+  INT VAR i, j := 0; 
+  FOR i FROM 1 UPTO LENGTH menu case list REP 
+    IF j = 8 
+      THEN line ; 33 TIMESOUT blank; j INCR 1;
+    FI ; 
+    show one menu case 
+  PER ; 
+  line . 
+ 
+show one menu case : 
+  IF (menu case list SUB i) > " " 
+    THEN out ("  <") ; out (menu case list SUB i) ; out (">") ; j INCR 1 
+  FI . 
+ 
+END PROC explain keys; 
+ 
+ 
+PROC menu execute (PROC (TEXT CONST) execute) : 
+ 
+  enable stop ; 
+  execute (menu case) 
+ 
+ENDPROC menu execute ; 
+ 
+ 
+TEXT PROC menu param : 
+ 
+  param 1 
+ 
+ENDPROC menu param ; 
+ 
+PROC set menu param (TEXT CONST param) : 
+ 
+  param 1 := param 
+ 
+ENDPROC set menu param ; 
+ 
+TEXT PROC menu param (TEXT CONST prompt) : 
+ 
+  get param (prompt, param 1) ; 
+  param 1 
+ 
+ENDPROC menu param ; 
+ 
+TEXT PROC additional param (TEXT CONST prompt) : 
+ 
+  param 2 := "" ; 
+  get param (prompt, param 2) ; 
+  param 2 
+ 
+ENDPROC additional param ; 
+ 
+PROC additional param (TEXT CONST prompt, TEXT VAR param) : 
+ 
+  get param (prompt, param) ; 
+  param 2 := param;
+ 
+ENDPROC additional param ; 
+ 
+PROC get param (TEXT CONST prompt, TEXT VAR param) : 
+ 
+  cursor (menu indent, first free line) ; 
+  out prompt ; 
+  out (blank) ; 
+  in param ; 
+  cursor (menu indent, first free line) ; 
+  out (clear to end of line) . 
+ 
+out prompt : 
+  INT CONST 
+  prompt length := min (LENGTH prompt, menu width DIV 2 - menu indent) ; 
+  outsubtext (prompt, 1, prompt length) . 
+ 
+in param : 
+  editget (param, 255, menu width - menu indent - prompt length - 2) . 
+ 
+ENDPROC get param ; 
+ 
+ENDPACKET menu handler ; 
+PACKET copy menu DEFINES copy:                (* Copyright (C) 1986 *)
+                                              (* Frank Klapper      *)
+LET haupt menu          = 1,                  (* 11.07.86           *)
+    copy hg menu        = 2,
+    disk copy menu      = 3,
+    disk part copy menu = 4,
+    urlader copy menu   = 5;
+
+LET MENU = STRUCT (TEXT board keys, board);
+ 
+ROW 5 MENU VAR menu;
+
+menu [haupt menu]          := MENU: ("hudtDke"9"",   "  hu dt D k e "9" ");
+menu [copy hg menu]        := MENU: ("lspPLiI"9"",   "  ls pP L iI  "9" ");
+menu [urlader copy menu]   := MENU: ("lLsSpPziI"9"", " lL sS pP z iI "9"");
+menu [disk copy menu]      := MENU: ("lspPL"9"",     "    ls pP L   "9" ");
+menu [disk part copy menu] := MENU: ("lspPL"9"",     "    ls pP L   "9" ");
+
+INT VAR board index;
+
+TEXT VAR kommando := "";
+
+PROC copy:
+  enable stop;
+  start copy worker;
+  board index := haupt menu;
+  next menu (menu [board index].board, "h");
+  menu monitor (PROC (TEXT CONST) menu board,
+                PROC (TEXT CONST) menu operations, ""9"").
+ 
+END PROC copy;
+
+PROC menu board (TEXT CONST input key):
+  SELECT board index OF
+    CASE haupt menu         : main menu board (input key)
+    CASE urlader copy menu  : urlader copy menu board (input key)
+    CASE copy hg menu       : copy hg menu board (input key)
+    CASE disk copy menu     : disk copy menu board (input key)
+    CASE disk part copy menu: disk part copy menu board (input key)
+    OTHERWISE
+  END SELECT.
+
+END PROC menu board;
+ 
+PROC main menu board (TEXT CONST input key):
+  SELECT pos (menu [board index].board keys, input key) OF
+    CASE 1: menu out ("h       EUMEL-Hintergrund kopieren")
+    CASE 2: menu out ("u       EUMEL-Urlader kopieren")
+    CASE 3: menu out ("d       Diskette kopieren")
+    CASE 4: menu out ("t       Teil einer Diskette kopieren")
+    CASE 5: menu out ("D       Diskette dumpen")
+    CASE 6: menu out ("k       Kopierkanal einstellen (zur Zeit " + text (copy channel) + ")")
+    CASE 7: menu out ("e       beliebiges EUMEL-Kommando ausführen")
+    CASE 8: menu out ("TAB     Kopiermenu verlassen")
+    OTHERWISE
+  END SELECT.
+
+END PROC main menu board;
+
+PROC copy hg menu board (TEXT CONST input key):
+  SELECT pos (menu [board index].board keys, input key) OF
+    CASE 1: menu out ("l       EUMEL-Hintergrund von Diskette in Datenraum lesen")
+    CASE 2: menu out ("s       EUMEL-Hintergrund vom Datenraum auf Diskette schreiben")
+    CASE 3: menu out ("p       Prüfsumme über EUMEL-Hintergrunddisketten bilden")
+    CASE 4: menu out ("P       Prüfsummen vergleichen")
+    CASE 5: menu out ("L       Liste der Datenräume, die einen EUMEL-Hintergrund enthalten")
+    CASE 6: menu out ("i       Informationen über EUMEL-Hintergrund auf Diskette")
+    CASE 7: menu out ("I       Informationen über EUMEL-Hintergrund im Datenraum")
+    CASE 8: menu out ("TAB     Hintergrund-Kopiermenu verlassen")
+    OTHERWISE
+  END SELECT.
+
+END PROC copy hg menu board;
+
+PROC urlader copy menu board (TEXT CONST input key):
+  SELECT pos (menu [board index].board keys, input key) OF
+    CASE 1: menu out ("l       Urlader von Diskette in LEEREN Datenraum lesen")
+    CASE 2: menu out ("L       Urlader von Diskette in Datenraum mit EUMEL-HG lesen")
+    CASE 3: menu out ("s       Urlader vom Datenraum auf LEERE Diskette schreiben")
+    CASE 4: menu out ("S       Urlader vom Datenraum auf Diskette mit EUMEL-HG schreiben")
+    CASE 5: menu out ("p       Prüfsumme über Urlader auf Diskette bilden")
+    CASE 6: menu out ("P       Prüfsummen vergleichen")
+    CASE 7: menu out ("z       Liste der Datenräume, die einen EUMEL-Urlader enthalten")
+    CASE 8: menu out ("i       Informationen über EUMEL-Urlader auf Diskette")
+    CASE 9: menu out ("I       Informationen über EUMEL-Urlader im Datenraum")
+    CASE10: menu out ("TAB     Urlader-Kopiermenu verlassen")
+    OTHERWISE
+  END SELECT.
+
+END PROC urlader copy menu board;
+
+PROC disk copy menu board (TEXT CONST input key):
+  SELECT pos (menu [board index].board keys, input key) OF
+    CASE 1: menu out ("l       Diskette in Datenraum lesen")
+    CASE 2: menu out ("s       Datenraum auf Diskette schreiben")
+    CASE 3: menu out ("p       Prüfsumme über Diskette bilden")
+    CASE 4: menu out ("P       Prüfsummen vergleichen")
+    CASE 5: menu out ("L       Liste der Datenräume, die einen Disketteninhalt enthalten können")
+    CASE 6: menu out ("TAB     Disketten-Kopiermenu verlassen")
+    OTHERWISE
+  END SELECT.
+
+END PROC disk copy menu board;
+
+PROC disk part copy menu board (TEXT CONST input key):
+  SELECT pos (menu [board index].board keys, input key) OF
+    CASE 1: menu out ("l       Diskettenbereich in Datenraum lesen")
+    CASE 2: menu out ("s       Datenraum in Diskettenbereich schreiben")
+    CASE 3: menu out ("p       Prüfsumme über Diskettenbereich bilden")
+    CASE 4: menu out ("P       Prüfsummen vergleichen")
+    CASE 5: menu out ("L       Liste der Datenräume, die einen Diskettenbereich enthalten")
+    CASE 6: menu out ("TAB     Disketten-Kopiermenu verlassen")
+    OTHERWISE
+  END SELECT.
+
+END PROC disk part copy menu board;
+
+PROC menu operations (TEXT CONST input key):
+  SELECT board index OF
+    CASE haupt menu         : main menu operations (input key)
+    CASE urlader copy menu  : urlader copy operations (input key)
+    CASE copy hg menu       : copy hg menu operations (input key)
+    CASE disk copy menu     : disk copy menu operations (input key)
+    CASE disk part copy menu: disk part copy menu operations (input key)
+    OTHERWISE
+  END SELECT.
+
+END PROC menu operations;
+ 
+PROC main menu operations (TEXT CONST input key):
+  SELECT pos (menu [board index].board keys, input key) OF
+    CASE 1: copy hg menu aufrufen
+    CASE 2: urlader copy menu aufrufen
+    CASE 3: disk copy menu aufrufen
+    CASE 4: disk part copy menu aufrufen
+    CASE 5: disable stop; show blocks; refresh
+    CASE 6: kopier kanal einstellen
+    CASE 7: eumel kommando ausfuehren
+    CASE 8: stop copy worker
+    OTHERWISE error stop ("noch nicht implementiert")
+  END SELECT.
+
+copy hg menu aufrufen:
+  board index := copy hg menu;
+  next menu (menu [board index].board, "L").
+
+urlader copy menu aufrufen:
+  board index := urlader copy menu;
+  next menu (menu [board index].board, "z").
+
+disk copy menu aufrufen:
+  board index := disk copy menu;
+  next menu (menu [board index].board, "L").
+
+disk part copy menu aufrufen:
+  board index := disk part copy menu;
+  next menu (menu [board index].board, "L").
+
+kopier kanal einstellen:
+  enable stop;
+  TEXT VAR kanal := text (copy channel);
+  put ("Kanalnummer für den Diskettenzugriff:");
+  editget (kanal);
+  IF int (kanal) <> copy channel
+    THEN disable stop;
+         stop copy worker;
+         copy channel (int (kanal));
+         start copy worker;
+         IF is error
+           THEN push (""9"");
+                line;
+                putline (""7"ERROR: " + error message);
+                clear error;
+                pause (100);
+                copy channel (31)
+           ELSE refresh
+         FI;
+         enable stop
+  FI.
+
+eumel kommando ausfuehren:
+  putline ("gib kommando:");
+  editget (kommando);
+  line;
+  do (kommando);
+  IF NOT is error
+    THEN kommando := ""
+  FI;
+  next menu.
+
+END PROC main menu operations;
+
+PROC copy hg menu operations (TEXT CONST input key):
+  SELECT pos (menu [board index].board keys, input key) OF
+    CASE 1: disable stop; hg lesen; refresh
+    CASE 2: disable stop; hg schreiben; refresh
+    CASE 3: disable stop; hg check sum; refresh
+    CASE 4: check summen vergleichen
+    CASE 5: list (some (all, hg type), "EUMEL-Hintergrund-Datenräume"); refresh
+    CASE 6: hg informationen von diskette ausgeben
+    CASE 7: hg informationen von datenraum ausgeben
+    CASE 8: menu verlassen
+    OTHERWISE
+  END SELECT.
+
+menu verlassen:
+  board index := haupt menu;
+  next menu (menu [board index].board, "h").
+
+END PROC copy hg menu operations;
+
+PROC urlader copy operations (TEXT CONST input key):
+  SELECT pos (menu [board index].board keys, input key) OF
+    CASE 1: disable stop; urlader von diskette in leeren datenraum lesen; refresh
+    CASE 2: disable stop; urlader von diskette in hg datenraum lesen; refresh
+    CASE 3: disable stop; urlader von datenraum auf leere diskette schreiben; refresh
+    CASE 4: disable stop; urlader von datenraum auf hg diskette schreiben; refresh
+    CASE 5: disable stop; urlader check sum; refresh
+    CASE 6: check summen vergleichen
+    CASE 7: list (some (all, hg type) + some (all, urlader type), "EUMEL-Urlader-Datenräume"); refresh
+    CASE 8: urlader informationen von diskette ausgeben
+    CASE 9: urlader informationen von datenraum ausgeben
+    CASE10: menu verlassen
+    OTHERWISE
+  END SELECT.
+
+menu verlassen:
+  board index := haupt menu;
+  next menu (menu [board index].board, "u").
+
+END PROC urlader copy operations;
+
+PROC disk copy menu operations (TEXT CONST input key):
+  SELECT pos (menu [board index].board keys, input key) OF
+    CASE 1: disable stop; diskette lesen; refresh
+    CASE 2: disable stop; diskette schreiben; refresh
+    CASE 3: disable stop; diskette check sum; refresh
+    CASE 4: check summen vergleichen
+    CASE 5: list (some (all, disk type), "Datenräume mit Disketteninhalt"); refresh
+    CASE 6: menu verlassen
+    OTHERWISE
+  END SELECT.
+
+menu verlassen:
+  board index := haupt menu;
+  next menu (menu [board index].board, "d").
+
+END PROC disk copy menu operations;
+
+PROC disk part copy menu operations (TEXT CONST input key):
+  SELECT pos (menu [board index].board keys, input key) OF
+    CASE 1: disable stop; disk part lesen; refresh
+    CASE 2: disable stop; disk part schreiben; refresh
+    CASE 3: disable stop; disk part check sum; refresh
+    CASE 4: check summen vergleichen
+    CASE 5: list (some (all, disk type), "Datenräume mit Disketteninhalt"); refresh
+    CASE 6: menu verlassen
+    OTHERWISE
+  END SELECT.
+
+menu verlassen:
+  board index := haupt menu;
+  next menu (menu [board index].board, "t").
+
+END PROC disk part copy menu operations;
+
+PROC refresh:
+  clear free lines;
+  next menu.
+
+END PROC refresh;
+
+END PACKET copy menu;
+
+

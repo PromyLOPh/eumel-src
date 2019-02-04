@@ -1,0 +1,143 @@
+PACKET lisp               (* Autor: J.Durchholz , P. Heyderhoff *)
+                          (* Datum: 09.05.1984  *)
+    DEFINES               (* Version 1.7.2      *)
+                          (* Änderung: notebook                       *)
+                          (*    13.3.86  I. Ley                       *)
+                          (* Änderung: start lisp system              *)
+                          (*    25.3.86  I. Ley                       *)
+                          (* Anpassung an ELAN-Compiler Version 1.7.5 *)
+                          (*     8.4.86  I. Ley                       *)
+  start lisp system,
+  lisp heap,
+  insert lisp,
+  run lisp,
+  run lisp again,
+  lisp,
+  break lisp:
+ 
+SYM VAR run again pointer :: nil;
+DATASPACE VAR insert heap :: nil space;
+ 
+PROC start lisp system (DATASPACE CONST heap):
+  enable stop;
+  initialize lisp system (heap);
+  forget (insert heap);
+  insert heap := heap
+END PROC start lisp system;
+ 
+ 
+PROC start lisp system (DATASPACE CONST heap, FILE VAR f):
+  enable stop;
+  create lisp system (f, heap);
+  forget (insert heap);
+  insert heap := heap
+END PROC start lisp system;
+ 
+ 
+PROC start lisp system (FILE VAR f):
+  create lisp system (f, insert heap)
+END PROC start lisp system;
+ 
+ 
+DATASPACE PROC lisp heap:
+  insert heap
+END PROC lisp heap;
+ 
+ 
+DATASPACE VAR run heap :: nil space;
+ 
+ 
+PROC insert lisp:
+  insert lisp (last param)
+END PROC insert lisp;
+ 
+ 
+PROC insert lisp (TEXT CONST file name):
+  interpret (insert heap, file name)
+END PROC insert lisp;
+ 
+ 
+PROC run lisp:
+  run lisp (last param)
+END PROC run lisp;
+ 
+ 
+PROC run lisp (TEXT CONST file name):
+  forget (run heap);
+  run heap := insert heap;
+  interpret (run heap, file name)
+END PROC run lisp;
+ 
+ 
+PROC interpret (DATASPACE CONST heap, TEXT CONST file name):
+  enable stop;
+  FILE VAR f :: sequential file (input, file name);
+  interpret (heap, f)
+END PROC interpret;
+ 
+ 
+PROC interpret (DATASPACE CONST heap, FILE VAR f):
+  initialize lisp system (heap);
+  get (f, run again pointer);
+  add property (new atom ("program"), new atom ("APVAL"), run again pointer);
+  put (evalquote (run again pointer))
+END PROC interpret;
+ 
+PROC run lisp again:
+  put (evalquote (run again pointer))
+END PROC run lisp again;
+ 
+ 
+PROC get ausdruck:
+  enable stop; get (ausdruck)
+END PROC get ausdruck;
+ 
+SYM VAR ausdruck; 
+ 
+PROC lisp:
+ 
+(* HAUPT TESTPROGRAMM FUER LISP      Heyderhoff    25.1.83   *)
+IF NOT exists ("LISP HEAP") THEN 
+  FILE VAR bootstrap :: sequential file (input, "lisp.bootstrap"); 
+  create lisp system (bootstrap, new ("LISP HEAP")); 
+  verbose lisp output (TRUE);
+FI; 
+SYM VAR work;
+command dialogue(FALSE); forget ("LISP INPUT"); command dialogue(TRUE);
+(* bildlaenge(23); *) (* EUMEL 1.65 *)
+disable stop; 
+REP 
+  get (ausdruck); 
+  IF is error THEN 
+    handle error 
+  ELSE 
+    work := evalquote (ausdruck);
+    IF is error THEN  handle error 
+    ELSE note (work)
+    FI 
+  FI 
+PER .
+ 
+handle error: 
+  IF text (error message, 18) = "halt from terminal" THEN 
+    enable stop 
+  ELSE 
+    note (error message);
+    put (     error message); pause(20);
+    clear error; 
+  FI .
+END PROC lisp;
+ 
+PROC break lisp:
+  break; 
+  page; 
+  quit;
+  FILE VAR in  :: sequential file (modify, "LISP INPUT"), 
+           out :: notefile; modify (out);
+  headline (out,"LISP OUTPUT");
+  headline (in, "LISP INPUT");
+  noteedit (in);
+END PROC break lisp
+ 
+END PACKET lisp;
+

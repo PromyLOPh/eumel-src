@@ -1,0 +1,162 @@
+PACKET ispidacheckDEFINES fehlerinformular,formfehlermelden,
+fehlerindruckvariable,ausdruckwardruckvariable:LET okkenner="k",kennnormal=
+"+",kennauffaellig="#",linkeklammer="<",rechteklammer=">";FILE VAR formtext;
+TEXT VAR zeile:="",blockstruktur:="",zugriffsreihenfolge:="";INT VAR errormld
+:=0,errorline:=0;BOOL VAR fehlerfrei;LET mldplatzhalter=230,mldschachtelung=
+231,mldtextkosmetik=232,mldnichtverfuegbar=233,mldregelunbekannt=234,
+mldvarunbekannt=235,mldfeldunbekannt=236,mlddateiunbekannt=237,
+mldmussleitobjekt=238,laengeblockkey=6,kzkosmetik="#";LET mldkeinevar=239,
+mldvarfehler=240,mldkeinbegrenzer=241,mldtypkonflikt=242,mldkeinezeichenkette
+=243,mldrestunbekannt=244,mldklammerfehlt=245;LET parametergrenze="%",
+parametertrennzeichen="#",otherwise="*",textbegrenzer="""";BOOL VAR 
+wardruckvar:=TRUE ;PROC fehlersetzen(INT CONST nr):errormld:=nr;errorline:=
+max(lineno(formtext)-1,1);fehlerfrei:=FALSE ;ENDPROC fehlersetzen;PROC 
+formfehlermelden:TEXT VAR zusatz:=" in Zeile ";IF errormld>0THEN zusatzCAT 
+text(errorline);standardmeldung(errormld,zusatz+kennnormal+" <CR> "+
+kennauffaellig);pause;FI ;errormld:=0ENDPROC formfehlermelden;PROC 
+zugriffmerken(INT CONST objklasse):INT CONST dnr:=dateinr(getobjektklasse(
+objklasse));IF dnr=0THEN fehlersetzen(mlddateiunbekannt)ELSE 
+zugriffsreihenfolgeCAT "!"+text(dnr)+"!"FI ENDPROC zugriffmerken;BOOL PROC 
+dateischonimzugriff(INT CONST datei):pos(zugriffsreihenfolge,"!"+text(datei)+
+"!")>0ENDPROC dateischonimzugriff;TEXT PROC blockkey(INT CONST objklasse,
+regel):"!"+text(objklasse,2)+text(regel,2)+"!"ENDPROC blockkey;BOOL PROC 
+blockschliessen(INT CONST objklasse,regel):INT CONST p:=pos(blockstruktur,
+blockkey(objklasse,regel));IF p>0CAND fehlerfreiTHEN 
+pruefeobregelmehrfachauftritt;IF fehlerfreiTHEN pruefeobrichtiggeklammertFI 
+FI ;p>0.pruefeobregelmehrfachauftritt:IF pos(subtext(blockstruktur,p+
+laengeblockkey),blockkey(objklasse,regel))>0THEN fehlersetzen(mldschachtelung
+)FI .pruefeobrichtiggeklammert:TEXT VAR bs:=subtext(blockstruktur,p+
+laengeblockkey),kr:="";INT VAR pp;WHILE length(bs)>1REP kr:=text(bs,
+laengeblockkey);bs:=subtext(bs,laengeblockkey+1);pp:=pos(bs,kr);IF pp=0THEN 
+fehlersetzen(mldschachtelung);LEAVE pruefeobrichtiggeklammertELSE change(bs,
+pp,pp+laengeblockkey-1,"")FI PER .ENDPROC blockschliessen;PROC 
+pruefeaufdisjunkteobjektklassen(INT CONST objkl):TEXT VAR bs:=blockstruktur,
+kr:="";TEXT CONST objklkey:="!"+text(objkl,2);INT VAR p:=pos(bs,objklkey);
+WHILE p>0REP kr:=subtext(bs,p,p+laengeblockkey-1);change(bs,p,p+
+laengeblockkey-1,"");p:=pos(bs,kr);IF p=0THEN fehlersetzen(mldschachtelung);
+LEAVE pruefeaufdisjunkteobjektklassenELSE change(bs,p,p+laengeblockkey-1,"");
+p:=pos(bs,objklkey)FI PER ENDPROC pruefeaufdisjunkteobjektklassen;PROC 
+pruefeobverbundfelderverfuegbar(INT CONST regelnummer):INT VAR i,fnr,datei;
+TEXT VAR vglwert:="";FOR iFROM 1UPTO getanzahlregelfelder(regelnummer)REP 
+vglwert:=getvergleichswert(regelnummer,i);IF feldnameTHEN fnr:=feldnr(vglwert
+);IF fnr=0THEN fehlersetzen(mldfeldunbekannt);LEAVE 
+pruefeobverbundfelderverfuegbarFI ;datei:=dateinrzufeld(fnr);IF NOT 
+dateischonimzugriff(datei)THEN fehlersetzen(mldnichtverfuegbar);LEAVE 
+pruefeobverbundfelderverfuegbarFI FI PER .feldname:(vglwertSUB 1)<>"""".
+ENDPROC pruefeobverbundfelderverfuegbar;PROC pruefeobdatenbereitsverfuegbar(
+TEXT CONST ausdruck):LET parametergrenze="%";TEXT VAR evtlfeldname:=ausdruck;
+INT VAR fnr,dnr;IF pos(evtlfeldname,parametergrenze)>0THEN evtlfeldname:=text
+(evtlfeldname,pos(evtlfeldname,parametergrenze)-1);FI ;fnr:=feldnr(
+evtlfeldname);IF fnr>0THEN dnr:=dateinrzufeld(fnr);IF NOT dateischonimzugriff
+(dnr)THEN fehlersetzen(mldnichtverfuegbar);FI FI ENDPROC 
+pruefeobdatenbereitsverfuegbar;PROC blockkeymerken(INT CONST objklasse,regel)
+:IF blockstruktur=""CAND objklasse<>1CAND fehlerfreiTHEN fehlersetzen(
+mldmussleitobjekt)ELSE blockstrukturCAT blockkey(objklasse,regel);FI ENDPROC 
+blockkeymerken;BOOL PROC textkommando(TEXT CONST ausdruck):TEXT VAR parameter
+:="";IF pos("!page!head!bottom!end!","!"+ausdruck+"!")>0THEN LEAVE 
+textkommandoWITH TRUE FI ;IF pos(ausdruck,"on")=1THEN parameter:=compress(
+subtext(ausdruck,3));pruefeparameterELIF pos(ausdruck,"off")=1THEN parameter
+:=compress(subtext(ausdruck,4));pruefeparameterELSE FALSE FI .pruefeparameter
+:IF text(parameter,2)<>"("""COR subtext(parameter,length(parameter)-1)<>""")"
+THEN LEAVE pruefeparameterWITH FALSE FI ;parameter:=subtext(parameter,3,
+length(parameter)-2);pos("!bold!b!underline!u!","!"+parameter+"!")>0.ENDPROC 
+textkommando;PROC zeileueberpruefen(TEXT CONST zeile):TEXT VAR textzeile:=
+zeile,ausdruck:="";INT VAR vonp,bisp,stcodenr,ausglaenge;BOOL VAR rbuendig,
+druckvar;IF fehlerfreiTHEN druckvariablenpruefen;textkosmetikpruefenFI .
+druckvariablenpruefen:vonp:=pos(textzeile,linkeklammer);WHILE vonp>0REP bisp
+:=pos(textzeile,rechteklammer,vonp+1);IF bisp=0THEN fehlersetzen(
+mldplatzhalter);LEAVE zeileueberpruefenFI ;disablestop;stcodenr:=int(subtext(
+textzeile,vonp+1,bisp-1));clearerror;enablestop;getsteuercode(stcodenr,
+ausdruck,ausglaenge,rbuendig,druckvar);IF ausdruck=""COR NOT lastconversionok
+THEN fehlersetzen(mldvarunbekannt);LEAVE zeileueberpruefenELSE 
+pruefeobdatenbereitsverfuegbar(ausdruck);FI ;change(textzeile,vonp,bisp,"");
+vonp:=pos(textzeile,linkeklammer);PER .textkosmetikpruefen:textzeile:=zeile;
+vonp:=pos(textzeile,kzkosmetik);WHILE vonp>0REP bisp:=pos(textzeile,
+kzkosmetik,vonp+1);IF bisp=0THEN fehlersetzen(mldtextkosmetik);LEAVE 
+zeileueberpruefenFI ;ausdruck:=compress(subtext(textzeile,vonp+1,bisp-1));IF 
+NOT textkommando(ausdruck)THEN fehlersetzen(mldtextkosmetik);LEAVE 
+zeileueberpruefenFI ;change(textzeile,vonp,bisp,"");vonp:=pos(textzeile,
+kzkosmetik);PER .ENDPROC zeileueberpruefen;PROC bearbeiteblock:INT VAR p,bis,
+objklasse,regel;BOOL VAR eoformtext:=FALSE ;WHILE NOT eoformtextCAND 
+fehlerfreiREP IF zugriffsregelgefundenTHEN okundregelbestimmen;IF 
+blockschliessen(objklasse,regel)THEN blockkeymerken(objklasse,regel);LEAVE 
+bearbeiteblockELSE pruefeaufdisjunkteobjektklassen(objklasse);IF NOT 
+fehlerfreiTHEN LEAVE bearbeiteblockFI ;IF objklasse>1CAND fehlerfreiTHEN 
+pruefeobverbundfelderverfuegbar(getregelnummer(objklasse,regel));FI ;
+blockkeymerken(objklasse,regel);zugriffmerken(objklasse);IF NOT fehlerfrei
+THEN LEAVE bearbeiteblockFI ;IF compress(zeile)=""CAND NOT eoformtextTHEN 
+getline(formtext,zeile);FI ;bearbeiteblockFI ;ELSE zeileueberpruefen(zeile)
+FI ;IF eof(formtext)THEN eoformtext:=TRUE ELSE getline(formtext,zeile);FI ;
+PER ;.zugriffsregelgefunden:p:=pos(zeile,linkeklammer+okkenner);p>0.
+okundregelbestimmen:bis:=p+2;objklasse:=int(zeileSUB bis);bisINCR 1;IF 
+istziffer(zeileSUB bis)THEN objklasse:=objklasse*10+int(zeileSUB bis);bis
+INCR 1;FI ;IF objklasse<1COR objklasse>10THEN fehlersetzen(mldplatzhalter);
+LEAVE bearbeiteblockFI ;IF (zeileSUB bis)=rechteklammerTHEN regel:=1ELSE 
+regel:=int(zeileSUB bis+1);bisINCR 2;IF istziffer(zeileSUB bis)THEN regel:=
+regel*10+int(zeileSUB bis);bisINCR 1;FI ;FI ;change(zeile,p,bis,"");IF 
+objklasse>1CAND getregelnummer(objklasse,regel)=0THEN fehlersetzen(
+mldregelunbekannt);LEAVE bearbeiteblockFI ;.ENDPROC bearbeiteblock;BOOL PROC 
+fehlerinformular:#openformular(nr);#fehlerfrei:=TRUE ;stopbeifalschemnamen(
+FALSE );blockstruktur:="";zugriffsreihenfolge:="";zeile:="";errormld:=0;
+errorline:=0;formtext:=sequentialfile(input,getformtextname);IF NOT eof(
+formtext)THEN getline(formtext,zeile)FI ;IF eof(formtext)CAND zeile=""THEN 
+ELSE bearbeiteblockFI ;IF fehlerfreiCAND length(blockstruktur)<=
+laengeblockkeyTHEN fehlersetzen(mldschachtelung)FI ;stopbeifalschemnamen(
+TRUE );NOT fehlerfreiENDPROC fehlerinformular;BOOL PROC istziffer(TEXT CONST 
+t):pos("0123456789",t)>0END PROC istziffer;BOOL PROC istsonderfunktion(TEXT 
+CONST ausdruck):TEXT CONST liste:="#tagesdatum#tag#monat#jahr#zeit#tt#mm#jj#"
+;pos(liste,"#"+ausdruck+"#")>0ENDPROC istsonderfunktion;BOOL PROC istdbfeld(
+TEXT CONST feldname):feldnr(feldname)>0ENDPROC istdbfeld;BOOL PROC 
+falscherdenotertyp(TEXT CONST vglswert,INT CONST aktfeldtyp):BOOL VAR fehler
+:=FALSE ;INT VAR i;REAL VAR r;disablestop;IF aktfeldtyp=intfeldTHEN i:=int(
+vglswert);fehler:=NOT lastconversionokCOR iserrorELIF aktfeldtyp=realfeld
+THEN r:=real(vglswert);fehler:=NOT lastconversionokCOR iserrorELIF aktfeldtyp
+=datumfeldTHEN r:=date(vglswert);fehler:=iserrorFI ;clearerror;enablestop;
+fehlerEND PROC falscherdenotertyp;BOOL PROC ausdruckwardruckvariable:
+wardruckvarENDPROC ausdruckwardruckvariable;BOOL PROC fehlerindruckvariable(
+TEXT CONST origausdruck):BOOL VAR fehlerhaft:=FALSE ;INT VAR p;TEXT VAR 
+ausdruck:=compress(origausdruck),feldname:="";stopbeifalschemnamen(FALSE );
+wardruckvar:=TRUE ;liesfeldname;IF NOT istdbfeld(feldname)THEN IF 
+istsonderfunktion(feldname)THEN IF ausdruck=""THEN wardruckvar:=FALSE ELSE 
+standardmeldung(mldvarfehler,ausdruck);fehlerhaft:=TRUE ;FI ELSE 
+standardmeldung(mldkeinevar,feldname);fehlerhaft:=TRUE ;FI ;leaveprocFI ;IF 
+ausdruck>""THEN fehlerhaft:=zusammengesetzterausdruck(feldname,ausdruck)FI ;
+stopbeifalschemnamen(TRUE );fehlerhaft.liesfeldname:p:=pos(ausdruck,
+parametergrenze);IF p>0THEN feldname:=text(ausdruck,p-1);ausdruck:=subtext(
+ausdruck,p+1)ELSE feldname:=ausdruck;ausdruck:=""FI .leaveproc:
+stopbeifalschemnamen(TRUE );LEAVE fehlerindruckvariableWITH fehlerhaft.
+ENDPROC fehlerindruckvariable;BOOL PROC zusammengesetzterausdruck(TEXT CONST 
+aktfeld,TEXT VAR ausdruck):TEXT VAR feldname:="",vglswert:="";INT CONST 
+aktfeldtyp:=feldtyp(feldnr(aktfeld));INT VAR p;BOOL VAR fehlerhaft:=FALSE ;
+WHILE ausdruck>""CAND (ausdruckSUB 1)<>rechteklammerREP 
+pruefefallunterscheidung;PER ;fehlerhaft.pruefefallunterscheidung:p:=pos(
+ausdruck,parametertrennzeichen);IF p=0THEN standardmeldung(mldkeinbegrenzer,
+ausdruck);LEAVE zusammengesetzterausdruckWITH TRUE FI ;vglswert:=text(
+ausdruck,p-1);ausdruck:=subtext(ausdruck,p+1);IF falscherdenotertyp(vglswert,
+aktfeldtyp)THEN standardmeldung(mldtypkonflikt,vglswert);LEAVE 
+zusammengesetzterausdruckWITH TRUE FI ;pruefesequenz;IF (ausdruckSUB 1)=
+otherwiseTHEN deletechar(ausdruck,1);pruefesequenzELIF (ausdruckSUB 1)=
+parametertrennzeichenTHEN deletechar(ausdruck,1)ELIF ausdruck>""THEN IF (
+ausdruckSUB 1)=parametertrennzeichenTHEN ELIF (ausdruckSUB 1)=rechteklammer
+THEN deletechar(ausdruck,1);LEAVE zusammengesetzterausdruckWITH fehlerhaft
+ELSE standardmeldung(mldrestunbekannt,ausdruck);LEAVE 
+zusammengesetzterausdruckWITH TRUE FI FI .pruefesequenz:
+zeichenketteueberlesen;IF (ausdruckSUB 1)=linkeklammerTHEN deletechar(
+ausdruck,1);IF postext(ausdruck,rechteklammer,1)=0THEN standardmeldung(
+mldklammerfehlt,ausdruck);LEAVE zusammengesetzterausdruckWITH TRUE FI ;
+liesfeldname;IF (ausdruckSUB 1)=parametergrenzeTHEN deletechar(ausdruck,1);
+fehlerhaft:=zusammengesetzterausdruck(feldname,ausdruck);IF fehlerhaftTHEN 
+LEAVE zusammengesetzterausdruckWITH TRUE FI ;ELSE deletechar(ausdruck,1);FI 
+FI .liesfeldname:p:=1;WHILE (ausdruckSUB p)<>rechteklammerCAND (ausdruckSUB p
+)<>parametergrenzeREP pINCR 1PER ;feldname:=text(ausdruck,p-1);ausdruck:=
+subtext(ausdruck,p);IF NOT istdbfeld(feldname)THEN standardmeldung(
+mldfeldunbekannt,feldname);LEAVE zusammengesetzterausdruckWITH TRUE FI .
+zeichenketteueberlesen:IF (ausdruckSUB 1)<>textbegrenzerTHEN standardmeldung(
+mldkeinezeichenkette,ausdruck);LEAVE zusammengesetzterausdruckWITH TRUE FI ;p
+:=2;WHILE (ausdruckSUB p)<>textbegrenzerREP pINCR 1;IF (ausdruckSUB p)=
+textbegrenzerCAND (ausdruckSUB p+1)=textbegrenzerTHEN pINCR 2;FI ;UNTIL p>
+length(ausdruck)PER ;IF p>length(ausdruck)THEN standardmeldung(
+mldkeinezeichenkette,ausdruck);LEAVE zusammengesetzterausdruckWITH TRUE FI ;
+ausdruck:=compress(subtext(ausdruck,p+1)).ENDPROC zusammengesetzterausdruck;
+END PACKET ispidacheck
+

@@ -1,0 +1,34 @@
+PACKET formdbDEFINES putform,getform,delform,formexists,formdbstatus:LET 
+putdatacode=10,puttextcode=11,getdatacodeno=12,gettextcodeno=13,
+getdatacodename=19,gettextcodename=20,initializeserver=18,delcodeno=14,
+existscodeno=15,delcodename=16,existscodename=17,errornak=2,ok=0,
+cformtextname="FORMTEXT.",cformdataname="FORMDATA.";DATASPACE VAR ds;INT VAR 
+formnr,replycode;TASK VAR formdbserver:=/"ida server";BOUND TEXT VAR 
+boundinhalt;TEXT VAR id,formname;BOUND FORMULAR VAR form;TEXT PROC 
+formtextname:cformtextname+text(getformularindex)ENDPROC formtextname;TEXT 
+PROC formdataname:cformdataname+text(getformularindex)ENDPROC formdataname;
+TEXT PROC formtextname(INT CONST formnr):cformtextname+text(formnr)ENDPROC 
+formtextname;TEXT PROC formdataname(INT CONST formnr):cformdataname+text(
+formnr)ENDPROC formdataname;PROC formdbstatus(INT CONST newcode):replycode:=
+newcode;ENDPROC formdbstatus;INT PROC formdbstatus:replycodeENDPROC 
+formdbstatus;PROC putform:forget(ds);formnr:=getformularindex;ds:=old(
+formdataname);c(formdbserver,putdatacode,ds,replycode);IF replycode=okTHEN 
+forget(ds);ds:=old(formtextname(formnr));type(ds,formnr);c(formdbserver,
+puttextcode,ds,replycode);forget(ds)FI ENDPROC putform;PROC getform(INT 
+CONST formnr):call(text(formnr),getdatacodeno);receive(replycode)ENDPROC 
+getform;PROC getform(TEXT CONST formname):call(formname,getdatacodename);
+receive(replycode);ENDPROC getform;PROC receive(INT CONST replycode):IF 
+replycode=okTHEN putformular(ds);formnr:=getformularindex;forget(formdataname
+,quiet);copy(ds,formdataname);call(text(formnr),gettextcodeno);forget(
+formtextname(formnr),quiet);type(ds,1003);copy(ds,formtextname(formnr));
+forget(ds)FI ENDPROC receive;PROC delform(INT CONST formnr):call(text(formnr)
+,delcodeno)ENDPROC delform;PROC delform(TEXT CONST formname):call(formname,
+delcodename)ENDPROC delform;BOOL PROC formexists(INT CONST formnr):call(text(
+formnr),existscodeno);replycode=okENDPROC formexists;BOOL PROC formexists(
+TEXT CONST formname):call(text(formnr),existscodename);replycode=okENDPROC 
+formexists;PROC call(TEXT CONST inhalt,INT CONST ordercode):forget(ds);ds:=
+nilspace;boundinhalt:=ds;boundinhalt:=inhalt;c(formdbserver,ordercode,ds,
+replycode);ENDPROC call;PROC c(TASK CONST t,INT CONST i,DATASPACE VAR d,INT 
+VAR r):call(t,i,d,r);IF r=errornakTHEN boundinhalt:=ds;errorstop(
+"IDA-MANAGER-Fehler: "+boundinhalt);FI ENDPROC c;ENDPACKET formdb;
+

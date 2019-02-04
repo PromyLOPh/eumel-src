@@ -1,0 +1,113 @@
+PACKET einzelstdpllehrerDEFINES einzelstdpllehrereingang,
+einzelstdpllehrerstarten,einzelstdpllehrersonderwerte,
+einzelstdpllehrermultistop,einzelstdpllehrerdruckdateibauen:LET swanrede=511,
+swlehrername=512,swschuljahr=514,swhalbjahr=515,swtagesstunde=520,
+swklassenleitungen=540,swstellvleitungen=541,swaufsichtszeit=542,
+swaufsichtsort=543,dateimitvordruck1="vordruck1 einzelstdpl lehrer",
+dateimitvordruck2="vordruck2 einzelstdpl raeume",dateimitvordruck3=
+"vordruck2 einzelstdpl lehrer",dateimitvordruck4=
+"vordruck3 einzelstdpl lehrer";TASK VAR vordruckserver;LET 
+maxzeichenimvordruck=79;TEXT VAR hj,sj,paraphe:="",anrede,klassenleitung:="",
+stellvleitung:="",l:="",r:="",p:="",geplantezeiten;LET maske=
+"ms einzelstdpl lehrer eingang",fnr2paraphe=2,fnr3akthj=3,fnr4ausgabebs=4,
+fnr5ausgabedr=5,blank=" ",null=0,niltext="",
+meldnrkeinestundenplandatenvorhanden=366,meldnrungueltigeparaphe=344,
+meldnrkeinelehrerdaten=337,meldnrauswahlunsinnig=56,meldnrbittewarten=69;INT 
+CONST swzweitezeile:=6,erstestd:=1,letztestd:=12,maxwochstdn:=66,maxwochtage
+:=6;BOOL VAR anschreibenaufbszeigen:=TRUE ,einzelanschreiben:=TRUE ,
+aktuelleshjgewaehlt:=TRUE ;INT VAR eingabestatus,x,meldnr;PROC 
+einzelstdpllehrereingang:standardvproc(maske)END PROC 
+einzelstdpllehrereingang;PROC einzelstdpllehrerstarten:vordruckserver:=/
+"anschreiben server";IF maskenwerteokTHEN IF stundenplanokTHEN 
+startenausfuehrenELSE meldnr:=meldnrkeinestundenplandatenvorhanden;
+meldedenfehler;zurueckzumdialog;FI ;ELSE meldedenfehler;zurueckzumdialogFI ;.
+meldedenfehler:standardmeldung(meldnr,niltext).zurueckzumdialog:return(1).
+startenausfuehren:forget(dateimitvordruck1,quiet);forget(dateimitvordruck2,
+quiet);forget(dateimitvordruck3,quiet);forget(dateimitvordruck4,quiet);fetch(
+dateimitvordruck1,vordruckserver);fetch(dateimitvordruck2,vordruckserver);
+fetch(dateimitvordruck3,vordruckserver);fetch(dateimitvordruck4,
+vordruckserver);inittupel(dnrlehrer);putwert(fnrlparaphe,paraphe);
+standardmeldung(meldnrbittewarten,niltext);zusammengesetztesanschreiben(
+dnrlehrer,anschreibenaufbszeigen,einzelanschreiben,BOOL PROC 
+einzelstdpllehrersonderwerte,BOOL PROC einzelstdpllehrermultistop,TEXT PROC 
+einzelstdpllehrerdruckdateibauen);END PROC einzelstdpllehrerstarten;BOOL 
+PROC stundenplanok:sj:=schulkenndatum("Schuljahr");hj:=schulkenndatum(
+"Schulhalbjahr");IF NOT (aktuelleshjgewaehlt)THEN geplanteshjundsjberechnen(
+hj,sj)FI ;stundenplanhalbjahrsetzen(hj,sj);
+stundenplanbasisundstundenplanholen(eingabestatus);eingabestatus=0OR 
+eingabestatus=8END PROC stundenplanok;BOOL PROC maskenwerteok:BOOL VAR ok:=
+FALSE ;standardpruefe(5,fnr4ausgabebs,fnr5ausgabedr,null,niltext,
+eingabestatus);IF eingabestatus<>0THEN meldnr:=meldnrauswahlunsinnig;infeld(
+fnr4ausgabebs);ok:=FALSE ELSE anschreibenaufbszeigen:=standardmaskenfeld(
+fnr5ausgabedr)=niltext;einzelanschreiben:=standardmaskenfeld(fnr2paraphe)<>
+niltext;aktuelleshjgewaehlt:=standardmaskenfeld(fnr3akthj)<>niltext;IF 
+einzelanschreibenTHEN IF gueltigeparapheTHEN paraphe:=wert(fnrlparaphe);ok:=
+TRUE ELSE meldnr:=meldnrungueltigeparaphe;infeld(fnr2paraphe);ok:=FALSE FI ;
+ELSE IF dateilehrerleerTHEN meldnr:=meldnrkeinelehrerdaten;infeld(fnr3akthj);
+ok:=FALSE ELSE ok:=TRUE FI ;FI ;FI ;okEND PROC maskenwerteok;BOOL PROC 
+gueltigeparaphe:inittupel(dnrlehrer);putwert(fnrlparaphe,standardmaskenfeld(
+fnr2paraphe));search(dnrlehrer,TRUE );dbstatus=0END PROC gueltigeparaphe;
+BOOL PROC dateilehrerleer:inittupel(dnrlehrer);search(dnrlehrer);dbstatus<>0
+END PROC dateilehrerleer;BOOL PROC einzelstdpllehrersonderwerte:INT VAR 
+gemerkterdbstatus;paraphe:=wert(fnrlparaphe);initialisieresonderwerte;IF wert
+(fnrlgeschlecht)="m"THEN anrede:="Herrn"ELSE anrede:="Frau"FI ;adressat(wert(
+fnrlfamname));setzesonderwert(swschuljahr,subtext(sj,1,2)+"/"+subtext(sj,3,4)
+);setzesonderwert(swhalbjahr,hj);setzesonderwert(swanrede,anrede);
+setzesonderwert(swlehrername,wert(fnrlfamname));gemerkterdbstatus:=dbstatus;
+inittupel(dnraktschuelergruppen);putwert(fnrsgrpsj,sj);putwert(fnrsgrphj,hj);
+search(dnraktschuelergruppen);klassenleitung:=niltext;stellvleitung:=niltext;
+WHILE (dbstatus=0AND wert(fnrsgrphj)=hj)REP IF wert(fnrsgrplehrer)=wert(
+fnrlparaphe)THEN klassenleitungCAT (wert(fnrsgrpjgst)+wert(fnrsgrpkennung)+
+blank)FI ;IF wert(fnrsgrpstellvlehrer)=wert(fnrlparaphe)THEN stellvleitung
+CAT (wert(fnrsgrpjgst)+wert(fnrsgrpkennung)+blank)FI ;succ(
+dnraktschuelergruppen);PER ;setzesonderwert(swklassenleitungen,klassenleitung
+);setzesonderwert(swstellvleitungen,stellvleitung);dbstatus(gemerkterdbstatus
+);TRUE END PROC einzelstdpllehrersonderwerte;BOOL PROC 
+einzelstdpllehrermultistop:BOOL VAR b;IF einzelanschreibenTHEN b:=wert(
+fnrlparaphe)=parapheELSE b:=dbstatus=0FI ;bENDPROC einzelstdpllehrermultistop
+;TEXT PROC einzelstdpllehrerdruckdateibauen:INT VAR dbstatusintern;LET 
+stddruckdatei="liste.1",hilfsdatei="hilfsdatei";FILE VAR f;TEXT VAR zeile:=""
+,druckdatei:="Lehrer-Einzelplan";TEXT CONST teil1:="---+",teil2:=
+"-----------+",teil3:="-----------: ",teil4:="-------------------",
+normaletrennlinie:=teil1+5*teil2+teil3,abschlusslinie:=4*teil4+blank;
+setzemitseitennummern(TRUE );druckvorbereiten;setzeanzahlderzeichenprozeile(
+maxzeichenimvordruck);briefalternative(dateimitvordruck1,hilfsdatei);
+zeilenweisehilfsdateiindruckdatei(hilfsdatei);forget(hilfsdatei,quiet);
+geplantezeiten:=allezeitenvon("P",paraphe);FOR xFROM erstestdUPTO letztestd
+REP datendeszweitenvordrucksindruckdateiPER ;briefalternative(
+dateimitvordruck3,hilfsdatei);zeilenweisehilfsdateiindruckdatei(hilfsdatei);
+forget(hilfsdatei,quiet);inittupel(dnraufsichtsplan);putwert(fnrapsj,sj);
+putwert(fnraphj,hj);putwert(fnrapparaphe,paraphe);search(ixappar,TRUE );
+WHILE dbstatus=0AND wert(fnrapsj)=sjAND wert(fnraphj)=hjAND wert(fnrapparaphe
+)=parapheREP setzesonderwert(swaufsichtsort,wert(fnrapaufsichtsort));
+dbstatusintern:=dbstatus;inittupel(dnraufsichtszeiten);putwert(fnrazsj,sj);
+putwert(fnrazhj,hj);putwert(fnrapaufsichtszeit,wert(fnrapaufsichtszeit));
+search(dnraufsichtszeiten,TRUE );IF dbstatus=0THEN setzesonderwert(
+swaufsichtszeit,wert(fnrazbezeichnung))ELSE setzesonderwert(swaufsichtszeit,
+blank)FI ;briefalternative(dateimitvordruck4,hilfsdatei);
+zeilenweisehilfsdateiindruckdatei(hilfsdatei);forget(hilfsdatei,quiet);
+dbstatus(dbstatusintern);succ(ixappar);PER ;drucknachbereitenohneausdrucken;
+rename(stddruckdatei,druckdatei);f:=sequentialfile(modify,druckdatei);toline(
+f,1);input(f);druckdatei.datendeszweitenvordrucksindruckdatei:setzesonderwert
+(swtagesstunde,text(x,2));
+planeintraegeprowochenstdenlesenundsonderwertesetzen(x);briefalternative(
+dateimitvordruck2,hilfsdatei);zeilenweisehilfsdateiindruckdatei(hilfsdatei);
+IF x<>letztestdTHEN zeile:=normaletrennlinieELSE zeile:=abschlusslinieFI ;
+druckzeileschreiben(zeile);forget(hilfsdatei,quiet);END PROC 
+einzelstdpllehrerdruckdateibauen;PROC zeilenweisehilfsdateiindruckdatei(TEXT 
+CONST hilfsdatei):INT VAR i;TEXT VAR zeile:="";FILE VAR f;f:=sequentialfile(
+input,hilfsdatei);FOR iFROM 1UPTO lines(f)REP getline(f,zeile);
+druckzeileschreiben(zeile)PER ;END PROC zeilenweisehilfsdateiindruckdatei;
+PROC planeintraegeprowochenstdenlesenundsonderwertesetzen(INT CONST std):INT 
+VAR i,wochenstd:=std,sonderwert:=521;TEXT VAR ausgabe;FOR iFROM 1UPTO 
+maxwochtageREP IF (geplantezeitenSUB wochenstd)="1"THEN planeintraglesen(
+wochenstd,"P",paraphe,l,r,p);IF wochenstd<=maxwochstdnTHEN ausgabe:=subtext(l
+,1,2);ausgabeCAT blank;ausgabeCAT subtext(l,3,4);ausgabeCAT blank;ausgabeCAT 
+subtext(l,5,8);setzesonderwert(sonderwert,ausgabe);setzesonderwert(sonderwert
++swzweitezeile,r);ELSE setzesonderwert(sonderwert,blank);setzesonderwert(
+sonderwert+swzweitezeile,blank);FI ;ELSE setzesonderwert(sonderwert,blank);
+setzesonderwert(sonderwert+swzweitezeile,blank);FI ;ausgabe:=niltext;
+sonderwertINCR 1;wochenstdINCR letztestd;PER ;END PROC 
+planeintraegeprowochenstdenlesenundsonderwertesetzen;END PACKET 
+einzelstdpllehrer
+

@@ -1,0 +1,391 @@
+(* ------------------- VERSION 3     06.03.86 ------------------- *)
+PACKET text DEFINES
+ 
+            max text length ,
+            SUB ,
+            subtext ,
+            text ,
+            length , LENGTH ,
+            CAT ,
+            + ,
+            * ,
+            replace ,
+            change ,
+            change all ,
+            compress ,
+            pos ,
+            code ,
+            ISUB ,
+            RSUB ,
+            delete char ,
+            insert char ,
+            delete int ,
+            insert int ,
+            heap size ,
+            collect heap garbage ,
+            stranalyze ,
+            LEXEQUAL ,
+            LEXGREATER ,
+            LEXGREATEREQUAL :
+
+ 
+ 
+TEXT VAR text buffer , tail buffer ;
+ 
+INT CONST max text length := 32000 ;
+ 
+TEXT OP SUB (TEXT CONST text, INT CONST pos ) :
+ EXTERNAL 48
+END OP SUB ;
+ 
+TEXT PROC subtext (TEXT CONST source, INT CONST from, to ):
+ EXTERNAL 49 
+ENDPROC subtext ;
+ 
+TEXT PROC subtext (TEXT CONST source, INT CONST from ) : 
+ EXTERNAL 50 
+ENDPROC subtext ; 
+ 
+INT PROC code (TEXT CONST text) :
+ EXTERNAL 46
+END PROC code ;
+ 
+TEXT PROC code (INT CONST code) :
+ EXTERNAL 47 
+ENDPROC code ;
+
+INT OP ISUB (TEXT CONST text, INT CONST index) :
+ EXTERNAL 44
+ENDOP ISUB ;
+ 
+PROC replace (TEXT VAR text, INT CONST index, value) :
+ EXTERNAL 45
+ENDPROC replace ;
+
+REAL OP RSUB (TEXT CONST text, INT CONST index) :
+ EXTERNAL 100
+ENDOP RSUB ;
+
+PROC replace (TEXT VAR text, INT CONST index, REAL CONST code) :
+ EXTERNAL 101
+ENDPROC replace ;
+ 
+ 
+PROC replace (TEXT VAR dest, INT CONST pos, TEXT CONST source) : 
+ EXTERNAL 51 
+ENDPROC replace ; 
+ 
+TEXT PROC text (TEXT CONST source, INT CONST length ) : 
+
+  IF length < LENGTH source 
+     THEN text buffer := subtext (source,1,length) 
+     ELSE text buffer := source ;
+          mit blanks auffuellen 
+  FI ; 
+  text buffer .
+ 
+mit blanks auffuellen : 
+  INT VAR i ;
+  FOR i FROM 1 UPTO length - LENGTH source REP
+    text buffer CAT " "
+  PER .
+
+ENDPROC text ; 
+ 
+TEXT PROC text (TEXT CONST source, INT CONST length, from) : 
+  text ( subtext (source, from) , length ) 
+ENDPROC text ; 
+ 
+OP CAT (TEXT VAR right, TEXT CONST left ) :
+ EXTERNAL 52 
+ENDOP CAT ;
+ 
+TEXT OP + (TEXT CONST left, right) : 
+ text buffer := left ;
+ text buffer CAT right ; 
+ text buffer
+ENDOP + ; 
+ 
+TEXT OP * (INT CONST times, TEXT CONST source ) : 
+
+  text buffer := "" ;
+  INT VAR i ;
+  FOR i FROM 1 UPTO times REP
+    text buffer CAT source
+  PER ;
+  text buffer
+
+ENDOP * ;
+ 
+INT PROC length (TEXT CONST text ) : 
+ EXTERNAL 53 
+ENDPROC length ; 
+ 
+INT OP LENGTH (TEXT CONST text ) : 
+ EXTERNAL 53 
+ENDOP LENGTH ;
+ 
+INT PROC pos (TEXT CONST source, pattern) : 
+ EXTERNAL 54 
+ENDPROC pos ; 
+ 
+INT PROC pos (TEXT CONST source, pattern, INT CONST from) : 
+ EXTERNAL 55 
+ENDPROC pos ;
+
+INT PROC pos (TEXT CONST source, pattern, INT CONST from, to) :
+ EXTERNAL 56 
+ENDPROC pos ;
+ 
+INT PROC pos (TEXT CONST source, low, high, INT CONST from) :
+ EXTERNAL 58
+ENDPROC pos ;
+
+TEXT PROC compress (TEXT CONST text) : 
+ 
+  INT VAR begin, end ;
+ 
+  search first non blank ;
+  search last non blank ;
+  text buffer := subtext (text, begin, end) ;
+  text buffer .
+ 
+search first non blank : 
+  begin := 1 ;
+  WHILE (text SUB begin) = " " REP
+    begin INCR 1
+  PER .
+ 
+search last non blank : 
+  end := LENGTH text ;
+  WHILE (text SUB end) = " " REP
+    end DECR 1
+  PER .
+ 
+ENDPROC compress ;
+ 
+PROC change (TEXT VAR destination, INT CONST from, to, TEXT CONST new) :
+ 
+  IF LENGTH new = to - from + 1 AND to <= LENGTH destination
+    THEN replace (destination, from, new)
+    ELSE change via buffer
+  FI .
+
+change via buffer :
+  text buffer := subtext (destination, 1, from-1) ;
+  text buffer CAT new ;
+  tail buffer := subtext (destination, to + 1) ;
+  text buffer CAT tail buffer ;
+  destination := text buffer
+ 
+ENDPROC change ;
+ 
+PROC change (TEXT VAR destination, TEXT CONST old, new) :
+ 
+  INT CONST position := pos (destination, old) ;
+  IF position > 0
+    THEN change (destination, position, position + LENGTH old -1, new)
+  FI
+ 
+ENDPROC change ;
+ 
+PROC change all (TEXT VAR destination, TEXT CONST old, new) :
+ 
+  INT VAR position := pos (destination, old) ;
+  IF LENGTH old = LENGTH new
+    THEN change by replace
+    ELSE change by change
+  FI .
+
+change by replace :
+  WHILE position > 0 REP
+    replace (destination, position, new) ;
+    position := pos (destination, old, position + LENGTH new)
+  PER .
+
+change by change :
+  WHILE position > 0 REP
+    change (destination, position, position + LENGTH old - 1 , new) ;
+    position := pos (destination, old, position + LENGTH new)
+  PER .
+ 
+ENDPROC change all ;
+ 
+PROC delete char (TEXT VAR string, INT CONST delete pos) : 
+ 
+  IF delete pos > 0
+    THEN tail buffer := subtext (string, delete pos + 1) ;
+         string := subtext (string, 1, delete pos - 1) ;
+         string CAT tail buffer
+  FI
+ 
+END PROC delete char ; 
+ 
+PROC insert char (TEXT VAR string, TEXT CONST char,
+                  INT CONST insert pos) : 
+ 
+  IF insert pos > 0 AND insert pos <= LENGTH string + 1
+    THEN tail buffer := subtext (string, insert pos) ;
+         string := subtext (string, 1, insert pos - 1) ;
+         string CAT char ;
+         string CAT tail buffer
+  FI
+ 
+END PROC insert char ; 
+ 
+INT PROC heap size :
+  EXTERNAL 93
+ENDPROC heap size ;
+
+PROC collect heap garbage :
+  EXTERNAL 94
+ENDPROC collect heap garbage ;
+
+PROC stranalyze (ROW 256 INT CONST table, INT VAR sum, INT CONST max sum,
+                 TEXT CONST string, INT VAR index, INT CONST to,
+                 INT VAR exit code) :
+  EXTERNAL 57
+ENDPROC stranalyze ;
+
+(*******************************************************************)
+(* lexikographische Vergleiche                                     *)
+(* Nach DIN 5007, Abschnitt 1 und Abschnitt 3.2 (Bindestrich)      *)
+(* Autor: Rainer Hahn, Jochen Liedtke                              *)
+(* Stand: 1.7.4 (Jan. 1985)                                        *)
+(*******************************************************************)
+LET first umlaut = ""214"" ,
+    umlauts      = ""214""215""216""217""218""219""251"" ;
+
+ 
+TEXT VAR left letter, right letter; 
+ 
+BOOL OP LEXEQUAL (TEXT CONST left, right) : 
+ 
+  compare (left, right) ; 
+  left letter = right letter 
+ 
+ENDOP LEXEQUAL ; 
+ 
+BOOL OP LEXGREATER (TEXT CONST left, right) : 
+ 
+  compare (left, right) ; 
+  left letter > right letter 
+ 
+ENDOP LEXGREATER ; 
+ 
+BOOL OP LEXGREATEREQUAL (TEXT CONST left, right) : 
+ 
+  compare (left, right) ; 
+  left letter >= right letter 
+ 
+ENDOP LEXGREATEREQUAL ; 
+ 
+PROC compare (TEXT CONST left, right) :
+ 
+  to begin of lex relevant text ; 
+  REP 
+    get left letter ; 
+    get right letter 
+  UNTIL NOT letter match OR both ended PER . 
+ 
+to begin of lex relevant text : 
+  INT VAR 
+  left pos  := pos (left, ""65"",""254"", 1) , 
+  right pos := pos (right,""65"",""254"", 1) ;
+  IF left pos = 0
+    THEN left pos := LENGTH left + 1
+  FI ;
+  IF right pos = 0
+    THEN right pos := LENGTH right + 1
+  FI .
+
+get left letter :
+  left letter := left SUB left pos ;
+  left pos INCR 1 .
+
+get right letter :
+  right letter := right SUB right pos ;
+  right pos INCR 1 .
+
+letter match :
+  IF left letter = right letter
+    THEN TRUE
+    ELSE dine (left, left letter, left pos) ;
+         dine (right, right letter, right pos) ;
+         IF exactly one letter is double letter
+           THEN expand other letter
+         FI ;
+         left letter = right letter
+  FI .
+
+exactly one letter is double letter :
+  LENGTH left letter <> LENGTH right letter.
+
+expand other letter :
+  IF LENGTH left letter = 1
+    THEN left letter CAT (left SUB left pos) ;
+         left pos INCR 1
+    ELSE right letter CAT (right SUB right pos) ;
+         right pos INCR 1
+  FI .
+
+both ended : left letter = "" .
+
+ENDPROC compare ;
+
+PROC dine (TEXT CONST string, TEXT VAR char, INT VAR string pos) :
+
+  skip non letter chars ;
+  IF is capital letter
+    THEN translate to small letter
+  ELIF char >= first umlaut
+    THEN translate umlaut
+  FI .
+
+skip non letter chars :
+  WHILE NOT (is letter OR end of string) REP
+    char := string SUB string pos ;
+    string pos INCR 1
+  PER .
+
+translate to small letter :
+  char := code (code (char) + 32) .
+
+translate umlaut :
+  SELECT pos (umlauts, char) OF
+    CASE 1,4 : char := "ae"
+    CASE 2,5 : char := "oe"
+    CASE 3,6 : char := "ue"
+    CASE 7   : char := "ss"
+  ENDSELECT .
+
+is capital letter : 
+  INT VAR char code := code (char) ;
+  65 <= char code AND char code <= 90 .
+
+is letter :
+  char code := code (char) OR 32 ;
+  (97 <= char code AND char code <= 122)  OR  char code >= 128 .
+
+end of string : char = "" .
+
+ENDPROC dine ;
+
+OP CAT (TEXT VAR result, INT CONST number) :
+    result CAT "  ";
+    replace (result, LENGTH result DIV 2, number);
+END OP CAT;
+ 
+PROC insert int (TEXT VAR result, INT CONST insert pos, number) :
+    INT VAR pos := insert pos * 2 - 1; 
+    change  (result, pos, pos - 1, "  ");
+    replace (result, insert pos, number);
+END PROC insert int;
+ 
+PROC delete int (TEXT VAR result, INT CONST delete pos) :
+    INT VAR pos := delete pos * 2;
+    change  (result, pos - 1, pos, "")
+END PROC delete int; 
+ 
+ENDPACKET text ;
+

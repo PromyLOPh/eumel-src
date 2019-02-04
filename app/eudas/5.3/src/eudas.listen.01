@@ -1,0 +1,276 @@
+PACKET eudas std listen
+
+(*************************************************************************)
+(*                                                                       *)
+(*     Drucken von Standardlisten ohne Druckmuster                       *)
+(*                                                                       *)
+(*     Version 01                                                        *)
+(*                                                                       *)
+(*     Autor: Thomas Berlage                                             *)
+(*     Stand: 06.02.89                                                   *)
+(*                                                                       *)
+(*************************************************************************)
+ 
+  DEFINES
+
+  drucke standardlisten,
+  std listenbreite,
+  std listenlaenge,
+  std listenfont :
+
+
+LET
+  listendruckmuster = "******* Listendruckmuster *******";
+
+FILE VAR f;
+
+TEXT VAR puffer, feldname;
+
+TEXT VAR std font := "";
+
+INT VAR
+  std breite := 70,
+  std laenge := 60;
+
+
+
+PROC std listenbreite (INT CONST breite) :
+  std breite := breite
+END PROC std listenbreite;
+
+INT PROC std listenbreite :
+  std breite
+END PROC std listenbreite;
+
+PROC std listenlaenge (INT CONST laenge) :
+  std laenge := laenge
+END PROC std listenlaenge;
+
+INT PROC std listenlaenge :
+  std laenge
+END PROC std listenlaenge;
+
+PROC std listenfont (TEXT CONST font) :
+  std font := font
+END PROC std listenfont;
+
+TEXT PROC std listenfont :
+  std font
+END PROC std listenfont;
+
+PROC drucke standardlisten (INT CONST listenform, TEXT CONST feldliste) :
+
+  forget (listendruckmuster, quiet);
+  f := sequential file (output, listendruckmuster);
+  maxlinelength (f, std breite);
+  IF kommaliste THEN
+    generiere komma druckmuster (feldliste)
+  ELSE
+    generiere spalten druckmuster (feldliste)
+  END IF;
+  TEXT CONST last := std;
+  drucke (listendruckmuster);
+  forget (listendruckmuster, quiet);
+  last param (last) .
+
+kommaliste :
+  listenform = 2 .
+
+END PROC drucke standardlisten;
+
+ROW 100 INT VAR feld max;
+
+INT VAR
+  zeilen pro satz,
+  zeilenlaenge,
+  feldlaenge,
+  druckfelder,
+  ges max;
+
+PROC generiere listenkopf :
+
+  IF std font <> "" THEN
+    putline (f, "#type(" + textdarstellung (std font) + ")#")
+  END IF;
+  putline (f, "% GRUPPE 1 seitennummer");
+  putline (f, "% VOR");
+  put (f, date); put (f, time of day); put (f, "Uhr:");
+  put (f, eudas dateiname (1));
+  write (f, (std breite - length (eudas dateiname (1)) - 25) * " ");
+  putline (f, "&&-S");
+  line (f)
+
+END PROC generiere listenkopf;
+
+PROC generiere seitenvorschub :
+
+  putline (f, "% NACH");
+  putline (f, "#page#");
+  putline (f, "% ABK");
+  putline (f, "&? : lfd nr .");
+  putline (f, "&-S : seitennummer .");
+  putline (f, "seitennummer :");
+  putline (f, "  text (int (lfd nr) DIV saetze pro seite + 1) .");
+  write (f, "saetze pro seite : ");
+  put (f, (std laenge - 2) DIV zeilen pro satz - 1);
+  putline (f, ".")
+
+END PROC generiere seitenvorschub;
+
+PROC generiere komma druckmuster (TEXT CONST feldliste) :
+
+  generiere listenkopf;
+  generiere feldueberschriften;
+  generiere wiederholungsteil;
+  generiere seitenvorschub .
+
+generiere feldueberschriften :
+  write (f, "Nr. ");
+  FOR i FROM 1 UPTO length (feldliste) REP
+    feldnamen lesen (code (feldliste SUB i), feldname);
+    IF i < length (feldliste) THEN
+      write (f, feldname + ", ")
+    ELSE
+      write (f, feldname)
+    END IF
+  END REP;
+  line (f);
+  putline (f, maxlinelength (f) * "-");
+  zeilen pro satz := 1 .
+
+generiere wiederholungsteil :
+  putline (f, "% WDH");
+  INT CONST max alt := maxlinelength (f);
+  INT VAR i;
+  maxlinelength (f, 10000);
+  write (f, "&&? ");
+  FOR i FROM 1 UPTO length (feldliste) REP
+    ein feldname als muster
+  END REP;
+  line (f);
+  maxlinelength (f, max alt) .
+
+ein feldname als muster :
+  write (f, "%<");
+  feldnamen lesen (code (feldliste SUB i), feldname);
+  write (f, feldname);
+  write (f, ">");
+  IF i < length (feldliste) THEN write (f, ", ") END IF .
+
+END PROC generiere komma druckmuster;
+
+PROC maxima suchen (TEXT CONST feldliste) :
+
+  INT VAR i;
+  maxima initialisieren;
+  auf satz (1);
+  INT VAR modus;
+  IF markierte saetze > 0 THEN
+    modus := 3;
+    IF NOT satz markiert THEN weiter (3) END IF
+  ELSE
+    modus := 2;
+    IF NOT satz ausgewaehlt THEN weiter (2) END IF
+  END IF;
+
+  WHILE NOT dateiende REP
+    einen satz testen;
+    weiter (modus)
+  END REP .
+
+maxima initialisieren :
+  druckfelder := length (feldliste);
+  FOR i FROM 1 UPTO druckfelder REP
+    feld max (i) := 2
+  END REP;
+  ges max := 0 .
+
+einen satz testen :
+  INT VAR gesamt := 0;
+  FOR i FROM 1 UPTO druckfelder REP
+    feld bearbeiten (code (feldliste SUB i),
+                     PROC (TEXT CONST, INT CONST, INT CONST) fl);
+    IF feldlaenge > feld max (i) THEN feld max (i) := feldlaenge END IF;
+    gesamt INCR feldlaenge
+  END REP;
+  IF gesamt > ges max THEN ges max := gesamt END IF .
+
+END PROC maxima suchen;
+
+PROC fl (TEXT CONST satz, INT CONST von, bis) :
+  feldlaenge := bis - von + 1
+END PROC fl;
+
+PROC generiere spalten druckmuster (TEXT CONST feldliste) :
+
+  maxima suchen (feldliste);
+  generiere listenkopf;
+  generiere feldueberschriften;
+  generiere wiederholungsteil;
+  generiere abkuerzungen;
+  generiere seitenvorschub .
+
+generiere feldueberschriften :
+  TEXT VAR abk felder := "";
+  INT VAR i;
+  zeilenlaenge := 4;
+  zeilen pro satz := 1;
+  write (f, "Nr. ");
+  FOR i FROM 1 UPTO length (feldliste) REP
+    feldnamen lesen (code (feldliste SUB i), feldname);
+    IF length (feldname) + 2 >= feld max (i) THEN
+      abkuerzung einfuehren
+    END IF;
+    zeilenlaenge INCR feld max (i) + 1;
+    IF zeilenlaenge > std breite THEN
+      line (f); zeilenlaenge := feld max (i) + 1; zeilen pro satz INCR 1
+    END IF;
+    write (f, text (feldname, feld max (i) + 1))
+  END REP;
+  line (f);
+  putline (f, maxlinelength (f) * "-") .
+
+abkuerzung einfuehren :
+  abk felder CAT (feldliste SUB i) .
+
+generiere wiederholungsteil :
+  putline (f, "% WDH");
+  write (f, "&&? ");
+  FOR i FROM 1 UPTO length (feldliste) REP
+    ein feldmuster erzeugen
+  END REP;
+  line (f) .
+
+ein feldmuster erzeugen :
+  INT CONST abk pos := pos (abk felder, feldliste SUB i);
+  puffer := "&";
+  IF abk pos > 0 THEN
+    puffer CAT text (code (abk pos + 64), feld max (i))
+  ELSE
+    feldnamen lesen (code (feldliste SUB i), feldname);
+    puffer CAT text ("<" + feldname + ">", feld max (i))
+  END IF;
+  write (f, puffer) .
+
+generiere abkuerzungen :
+  IF abk felder <> "" THEN
+    putline (f, "% ABK");
+    FOR i FROM 1 UPTO length (abk felder) REP
+      eine abkuerzung generieren
+    END REP
+  END IF .
+
+eine abkuerzung generieren :
+  write (f, "&");
+  write (f, code (i + 64));
+  write (f, " : ");
+  write (f, "f (");
+  feldnamen lesen (code (abk felder SUB i), feldname);
+  write (f, textdarstellung (feldname));
+  putline (f, ") .") .
+
+END PROC generiere spalten druckmuster;
+
+
+END PACKET eudas std listen;
+

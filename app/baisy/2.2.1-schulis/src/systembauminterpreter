@@ -1,0 +1,390 @@
+PACKET systembauminterpreterDEFINES startebaisy,starteschulis,starteanwendung
+,startbaisy:LET esctaste="�",#crtaste="",#obentaste="�",untentaste="
+",
+rechtstaste="�",hoptaste="�",ausrufezeichen="!",#leertaste=" ",#stufentrenner
+=".",berechttrenner="/",codefuerziffernull=48,codefuerzifferneun=57,
+titelfeldnr=2,felderanzahlbishistoriebeginn=2,historiebeginn=3,maxhknoten=4,
+felderanzahlbismenuebeginn=6,historieende=6,menuebeginn=7,maxmenuepunkte=20,
+felderpromenuepunkt=1,felderimanwahlmenue=18,fcursor=">",fcursorweg=" ",
+laengedescursors=2,offenermenuepunkt="noch nicht realisiert",menuemaskenname=
+"mb anwahlmenue",wartezeit=30,wegtext="  Ihr Weg durch das Menü:",stern="*",
+strich="-",if="Systemfehler ",zeile=" Zeile: ",fortsetzung=
+"Weiterarbeiten ist möglich. Fehlermeldung wird gedruckt!",POINTER =STRUCT (
+INT xpointer,ypointer);KNOTEN VAR k;ROW maxmenuepunkteKNOTEN VAR ktab;ROW 
+maxmenuepunkteBOOL VAR menuepunktanwaehlbar;ROW maxmenuepunktePOINTER VAR 
+pointer;TEXT VAR benutzerberechtigung:="";INT VAR aktfeldnr:=menuebeginn;
+TEXT VAR vpname,npname;BOOL VAR menuemaske:=FALSE ,cursorbewegungmithop:=
+FALSE ;LET zeilenzahlbildschirm=24,spaltenzahlbildschirm=79,
+rahmenzusatzzeilen=4,spaltendesmenuerands=10,maxmenuetextlaenge=60,
+tastenlaenge=4,zeichenblankstern=" *";TEXT VAR ueberschrift:="";INT VAR x1:=1
+,y1:=1,aktuellezeile,spaltendesmenuerahmens,zeilenzahldesfktmenues,
+anzblankstern,textlaenge,cursorx,cursory;KNOTEN VAR 
+knotenfuerbildschirmausdruck,knotenfuerauskunftserteilung;LET 
+knotennamefuerbildschirmausdruck="hardcopy",knotennamefuerauskunftserteilung=
+"auskunft",tastefuerbildschirmausdruck="o",tastefuerauskunftserteilung="?";
+PROC vpausfuehren(PROC (INT CONST ,BOOL CONST ,TEXT CONST )call):INT VAR 
+prozedurindex;prozedurindex:=knotenaufrufindex(k);enablestop;call(
+prozedurindex,TRUE ,vpname)END PROC vpausfuehren;PROC npausfuehren(PROC (INT 
+CONST ,BOOL CONST ,TEXT CONST )call):INT VAR prozedurindex;prozedurindex:=
+knotenaufrufindex(k);enablestop;call(prozedurindex,FALSE ,npname)END PROC 
+npausfuehren;BOOL PROC vpvorhanden:NOT ((vpname)="")END PROC vpvorhanden;
+BOOL PROC npvorhanden:NOT ((npname)="")END PROC npvorhanden;PROC 
+bereitemenuemaskenausgabevor:page;loeschetastendruckEND PROC 
+bereitemenuemaskenausgabevor;PROC tasteholen:TEXT VAR zwischentaste;inchar(
+zwischentaste);setzetastendruck(zwischentaste)END PROC tasteholen;PROC 
+gedaechtnisloeschen:TEXT VAR t:=" ";WHILE t<>""REP t:=incharetyPER END PROC 
+gedaechtnisloeschen;PROC setzeschalterfuermenueausgabenachfunktionstaste:IF (
+tastendruck=ausrufezeichen)OR (tastendruck="")THEN 
+setzeschalterfuermenueausgabe(TRUE )ELSE setzeschalterfuermenueausgabe(FALSE 
+)FI .END PROC setzeschalterfuermenueausgabenachfunktionstaste;BOOL PROC 
+anderermenuepunkt:IF nachobenoderuntenTHEN cursorbewegungmithop:=FALSE ;TRUE 
+ELIF tastendruck=hoptasteTHEN tasteholen;IF nachobenoderuntenTHEN 
+cursorbewegungmithop:=TRUE ;TRUE ELIF tastendruck=hoptasteTHEN 
+cursorbewegungmithop:=TRUE ;setzetastendruck(obentaste);TRUE ELSE FALSE FI 
+ELSE FALSE FI .nachobenoderunten:(tastendruck=obentaste)OR (tastendruck=
+untentaste).END PROC anderermenuepunkt;BOOL PROC 
+knotenwechselbeiprozedurausfuehrung:NOT (k=vergleichsknoten)END PROC 
+knotenwechselbeiprozedurausfuehrung;PROC menuetextzusammensetzen(INT CONST 
+mpkt,TEXT CONST stufennum,TEXT VAR menuetext):TEXT VAR kts,ktx;BOOL VAR 
+berechtigt:=FALSE ;IF ktab(mpkt)=nilknotenTHEN ktx:=offenermenuepunkt;
+behandlemenuepunkt(menuetext,mpkt,kts,ktx,FALSE )ELSE ktx:=text(ktab(mpkt));
+berechtigungspruefung(stufennum,mpkt,berechtigt);behandlemenuepunkt(menuetext
+,mpkt,kts,ktx,berechtigt)FI .END PROC menuetextzusammensetzen;PROC 
+behandlemenuepunkt(TEXT VAR menuetextaufber,INT CONST menuepunkt,TEXT CONST 
+ktaste,ktext,BOOL CONST berechtigt):IF berechtigtTHEN menuetextaufber:=""+
+text(menuepunktMOD 10,1)+" "+ktextELSE menuetextaufber:="    "+ktextFI ;
+setzemenuepunktzugang(menuepunkt+maxhknoten,berechtigt).END PROC 
+behandlemenuepunkt;PROC setzemenuepunktzugang(INT CONST feldnr,BOOL CONST 
+wahrwert):menuepunktanwaehlbar(feldnr):=wahrwertEND PROC 
+setzemenuepunktzugang;BOOL PROC zugangerlaubt(INT CONST feldnr):
+menuepunktanwaehlbar(feldnr)END PROC zugangerlaubt;PROC fehlerbehandeln:
+cursor(1,23);TEXT VAR fehlerzeile:=if+errormessage+zeile+text(errorline);put(
+""+fehlerzeile+"�");line;put(fortsetzung+"�");clearerror;#FILE VAR f:=
+sequentialfile(output,if);line(f);putline(f,date+"  "+timeofday);line(f);
+putline(f,text(vergleichsknoten));line(f);putline(f,fehlerzeile);print(if);
+forget(if,quiet)#END PROC fehlerbehandeln;PROC zeige(TEXT VAR te,INT CONST 
+start1,start2,schluss):INT VAR zeile2:=start1+1;cursor(1,start1);out(te);INT 
+CONST ende:=length(te),anfang:=pos(te,stern);INT CONST stellen:=ende-anfang+2
+;historiemalen;trennungslinie;restmalen.historiemalen:cursor(anfang,zeile2);
+out(stern);out(wegtext);cursor(ende,zeile2);out(stern);INT VAR i;FOR iFROM 
+zeile2+1UPTO start2-2REP zeilerausPER .trennungslinie:cursor(anfang,start2-1)
+;out(stern);(stellen-3)TIMESOUT strich;out(stern).restmalen:FOR iFROM start2
+UPTO schluss-1REP zeilerausPER ;cursor(1,schluss);out(te).zeileraus:cursor(
+anfang,i);out(stern);cursor(ende,i);out(stern).END PROC zeige;PROC 
+getposition(INT VAR x,y,INT CONST feldnr):POINTER CONST p:=pointer(feldnr);x
+:=p.xpointer;y:=p.ypointer;END PROC getposition;PROC putposition(TAG VAR t,
+INT CONST feldnr):POINTER VAR p;INT VAR x,y;getcursor(x,y);p.xpointer:=x-
+length(t,feldnr)-laengedescursors;p.ypointer:=y;pointer(feldnr):=pEND PROC 
+putposition;PROC ermittlegrenzwertedesmenuerahmens(INT CONST sohnanz,BOOL 
+CONST nichtvorhandenetaste):INT CONST mindestlaengewegenfehlermeldung:=31;
+ueberschrift:=text(k);spaltendesmenuerahmens:=maxtextlaenge+
+spaltendesmenuerands;IF geradespaltenanzahlTHEN spaltendesmenuerahmensINCR 1;
+textlaengeINCR 1FI ;bestimmezeilenzahldesfktmenues;legeeckpunktefest.
+geradespaltenanzahl:(spaltendesmenuerahmensMOD 2)=0.maxtextlaenge:INT VAR 
+menuepkt;IF nichtvorhandenetasteTHEN textlaenge:=
+mindestlaengewegenfehlermeldungELSE textlaenge:=0FI ;textlaenge:=max(
+textlaenge,length(ueberschrift));FOR menuepktFROM 1UPTO sohnanzREP textlaenge
+:=max(textlaenge,length(text(ktab(menuepkt))))PER ;textlaenge:=min(textlaenge
+,maxmenuetextlaenge);textlaenge.bestimmezeilenzahldesfktmenues:IF 
+nichtvorhandenetasteTHEN zeilenzahldesfktmenues:=sohnanz+rahmenzusatzzeilen+1
+ELSE zeilenzahldesfktmenues:=sohnanz+rahmenzusatzzeilenFI .legeeckpunktefest:
+bestimmepositionfuerfktmenueauscursorpos(x1,y1);
+veraenderex1fallshaelftedesbsnichtausreicht;
+veraenderey1fallshaelftedesbsnichtausreicht;aktuellezeile:=y1;anzblankstern:=
+spaltendesmenuerahmensDIV 2.veraenderex1fallshaelftedesbsnichtausreicht:IF (
+x1+spaltendesmenuerahmens)>spaltenzahlbildschirmTHEN x1:=
+spaltenzahlbildschirm-spaltendesmenuerahmensFI .
+veraenderey1fallshaelftedesbsnichtausreicht:IF (y1+zeilenzahldesfktmenues)>
+zeilenzahlbildschirmTHEN y1:=zeilenzahlbildschirm-zeilenzahldesfktmenuesFI .
+END PROC ermittlegrenzwertedesmenuerahmens;PROC 
+bestimmepositionfuerfktmenueauscursorpos(INT VAR xwert,ywert):
+bestimmecursorposition;bestimmeeckpunktlinksoben.bestimmecursorposition:
+getcursor(cursorx,cursory).bestimmeeckpunktlinksoben:IF vierterquadrantTHEN 
+xwert:=1;ywert:=1;ELIF dritterquadrantTHEN xwert:=40;ywert:=1;ELIF 
+zweiterquadrantTHEN xwert:=1;ywert:=13;ELIF ersterquadrantTHEN xwert:=40;
+ywert:=13;FI .ersterquadrant:(cursorx<40)CAND (cursory<13).zweiterquadrant:(
+cursorx>39)CAND (cursory<13).dritterquadrant:(cursorx<40)CAND (cursory>12).
+vierterquadrant:(cursorx>39)CAND (cursory>12).END PROC 
+bestimmepositionfuerfktmenueauscursorpos;PROC 
+zeigefunktionenmenueaufdembildschirm(INT CONST sohnanz,BOOL VAR 
+nichtvorhandenetaste):TEXT CONST meldungungueltigefkttaste:=
+"Diese Funktion gibt es nicht. ";zeigemenuekopfzeile;zeigeueberschriftzeile
+;zeigemenueteil;zeigemenueabschlusszeile.zeigemenuekopfzeile:
+setzecursoraufausgabeanfangsposition;zeichnesternzeile.
+setzecursoraufausgabeanfangsposition:cursor(x1,aktuellezeile).
+zeichnesternzeile:put("*"+(anzblankstern*zeichenblankstern)).
+zeigeueberschriftzeile:setzecursoraufnaechstenzeilenanfang;put("*  "+
+zentrierteueberschrift+"  *").zentrierteueberschrift:TEXT VAR zwtext:=
+zentriert(ueberschrift,textlaenge+tastenlaenge);IF length(zwtext)<(textlaenge
++tastenlaenge)THEN zwtextCAT " "FI ;zwtext.zeigemenueabschlusszeile:
+setzecursoraufnaechstenzeilenanfang;IF nichtvorhandenetasteTHEN 
+gebehinweisaufungueltigefkttaste;setzeschalterzurueck;
+setzecursoraufnaechstenzeilenanfangFI ;zeichnesternzeile.
+gebehinweisaufungueltigefkttaste:put("*  "+eingepasstemeldung+"  *").
+eingepasstemeldung:zwtext:=zentriert(meldungungueltigefkttaste,textlaenge+
+tastenlaenge);IF length(zwtext)<(textlaenge+tastenlaenge)THEN zwtextCAT " "
+FI ;zwtext.setzeschalterzurueck:nichtvorhandenetaste:=FALSE .
+setzecursoraufnaechstenzeilenanfang:aktuellezeileINCR 1;cursor(x1,
+aktuellezeile).zeigemenueteil:zeigeleerzeile;zeigemenuezeilen;zeigeleerzeile.
+zeigeleerzeile:setzecursoraufnaechstenzeilenanfang;leerzeile.leerzeile:put(
+"*"+((spaltendesmenuerahmens-2)*" ")+"*").zeigemenuezeilen:INT VAR menuepkt:=
+0;FOR menuepktFROM 1UPTO sohnanzREP zeigemenuezeilePER .zeigemenuezeile:
+setzecursoraufnaechstenzeilenanfang;put(anfangundfkttaste+aufbereitetertext+
+zeichenblankstern).anfangundfkttaste:"*   "+fkttaste+" ".fkttaste:TEXT VAR 
+aufbertaste:=taste(ktab(menuepkt));IF aufbertaste<>""THEN aufbertasteELSE " "
+FI .aufbereitetertext:IF menuetextzulangTHEN subtext(text(ktab(menuepkt)),1,
+textlaenge)ELSE text(ktab(menuepkt))+restblanksFI .menuetextzulang:length(
+text(ktab(menuepkt)))>textlaenge.restblanks:(textlaenge-length(text(ktab(
+menuepkt))))*" ".END PROC zeigefunktionenmenueaufdembildschirm;TEXT PROC 
+zentriert(TEXT CONST text,INT CONST breite):TEXT CONST blank:=" ";TEXT CONST 
+blanks:=blankausgleich;blanks+text+blanks.blankausgleich:((breite-length(text
+))DIV 2)*blank.END PROC zentriert;PROC einzelknotenfuerfunktionenmenueholen(
+BOOL CONST verteilteanwendung):BOOL VAR ok;IF verteilteanwendungTHEN 
+einzelknotenholen(tastefuerbildschirmausdruck,knotenfuerbildschirmausdruck,ok
+);einzelknotenholen(tastefuerauskunftserteilung,knotenfuerauskunftserteilung,
+ok)ELSE einzelknotenholen(knotennamefuerbildschirmausdruck,
+knotenfuerbildschirmausdruck,ok);einzelknotenholen(
+knotennamefuerauskunftserteilung,knotenfuerauskunftserteilung,ok)FI .END 
+PROC einzelknotenfuerfunktionenmenueholen;PROC startbaisy(TEXT CONST kn,PROC 
+(INT CONST ,BOOL CONST ,TEXT CONST )call):BOOL VAR menuepunktgefunden,
+anwahleineshistoriepunktes:=FALSE ,gueltigetasteimmenue:=FALSE ,
+anderemenueebene:=FALSE ,zurueckuebercursortaste:=FALSE ,nichtvorhandenetaste
+:=FALSE ,ebenenwechsel:=FALSE ,programmeinstiegnachmenueanwahl,#
+benutzerberechtigt:=FALSE ,#druckenkommtimfktmenuevor:=FALSE ,
+auskunftkommtimfktmenuevor:=FALSE ;TAG VAR t,men;TEXT VAR te,stufennummer:=""
+;INT VAR start1,start2,schluss,koordx;TEXT VAR anfangsknotenname;ROW 
+maxhknotenTEXT VAR histtexttab;ROW maxhknotenINT VAR histanwahlpos;INT VAR 
+sohnanzahl,mpkt,letztemenueanwahlpos:=menuebeginn,aktmaxmenuepunkte,x,y;
+KNOTEN VAR sk;KNOTENMENGE VAR ksoehne;initialisierenzumanfang;
+holenamedesanfangsknotens;fortlaufendeknotenbehandlung.
+fortlaufendeknotenbehandlung:REP behandleknotenPER .initialisierenzumanfang:
+IF kn<>""THEN initmaske(men,menuemaskenname);schluss:=ysize(men)FI ;ksoehne:=
+leeremenge;bildschirmwiederholspeichereinschalten.holenamedesanfangsknotens:
+anfangsknotenname:=text(k);.behandleknoten:setzevergleichsknoten(k);
+programmeinstiegnachmenueanwahl:=menuemaske;schaueobmaskediemenuemaskeist;IF 
+vpgewaehltTHEN vpname:=vorprozedur(k);IF vpvorhandenTHEN clearerror;
+disablestop;vpausfuehren(PROC (INT CONST ,BOOL CONST ,TEXT CONST )call);IF 
+programmendeTHEN LEAVE fortlaufendeknotenbehandlungFI ;IF iserrorTHEN 
+fehlerbehandeln;clearerrorFI ;enablestop;IF 
+knotenwechselbeiprozedurausfuehrungTHEN vaterknotenalsneuenknotennehmen;
+ebenenwechsel:=TRUE ;LEAVE behandleknotenFI ;holefunktionstaste;ELSE 
+bereitemenuemaskenausgabevorFI ;ELSE IF npgewaehltTHEN npname:=nachprozedur(k
+);IF npvorhandenTHEN clearerror;disablestop;npausfuehren(PROC (INT CONST ,
+BOOL CONST ,TEXT CONST )call);IF programmendeTHEN LEAVE 
+fortlaufendeknotenbehandlungFI ;IF iserrorTHEN fehlerbehandeln;clearerrorFI ;
+enablestop;IF knotenwechselbeiprozedurausfuehrungTHEN 
+vaterknotenalsneuenknotennehmen;ebenenwechsel:=TRUE ;LEAVE behandleknotenFI ;
+holefunktionstaste;ELSE bereitemenuemaskenausgabevorFI ;ELSE 
+bereitemenuemaskenausgabevorFI FI ;holeberechtigungswert(benutzerberechtigung
+);holeallesohnknoten;setzeschalterfuermenueausgabenachfunktionstaste;IF 
+bittedasmenuezeigenTHEN anwahluebermenueELSE direktefunktionstaste;IF 
+nichtvorhandenetasteTHEN setzeschalterfuermenueausgabe(TRUE );
+anwahluebermenueFI ;FI ;holenaechstenknoten.schaueobmaskediemenuemaskeist:
+menuemaske:=nachprozedur(k)="".direktefunktionstaste:menuepunktgefunden:=
+FALSE ;IF sohnanzahl>0THEN 
+pruefetasteundliefereknotenodermenuepunktnichtgefundenFI ;IF NOT 
+menuepunktgefundenTHEN IF tastendruck=tastefuerbildschirmausdruckTHEN sk:=
+knotenfuerbildschirmausdruck;merkeknotenalsgefundenenmenuepunktELIF 
+tastendruck=tastefuerauskunftserteilungTHEN sk:=knotenfuerauskunftserteilung;
+merkeknotenalsgefundenenmenuepunktELSE nichtvorhandenetaste:=TRUE FI FI .
+pruefetasteundliefereknotenodermenuepunktnichtgefunden:menuepunkt:=0;sk:=
+erster(ksoehne);WHILE weitere(sk,ksoehne)AND NOT menuepunktgefundenREP IF (
+NOT isopen(sk))CAND gesuchtetastegefundenTHEN 
+merkeknotenalsgefundenenmenuepunktFI ;naechster(sk)PER .
+merkeknotenalsgefundenenmenuepunkt:menuepunktgefunden:=TRUE ;menuepunktINCR 1
+;ktab(menuepunkt):=sk.gesuchtetastegefunden:taste(sk)=tastendruck.
+holeallesohnknoten:mengedernachfolger(k,ksoehne);sohnanzahl:=zahlderelemente(
+ksoehne).holefunktionstaste:IF NOT gesetztdurcheditorTHEN IF menuemaskeTHEN 
+loeschetastendruckELSE setzetastendruck(incharety(wartezeit))FI FI .
+anwahluebermenue:bildschirmwiederholspeicherausschalten;IF menuemaskeTHEN 
+maskeaufbauen;maskekomplettausgeben;menueanwahlbestimmen;
+setzeschalterfuermenueausgabe(FALSE )ELSE fktmenueaufbauenundausgeben;
+fktmenueanwahlbestimmenFI .fktmenueaufbauenundausgeben:
+holeallesohnknotenfuerfktmenue;ermittlegrenzwertedesmenuerahmens(sohnanzahl,
+nichtvorhandenetaste);zeigefunktionenmenueaufdembildschirm(sohnanzahl,
+nichtvorhandenetaste).holeallesohnknotenfuerfktmenue:menuepunkt:=0;
+druckenkommtimfktmenuevor:=FALSE ;auskunftkommtimfktmenuevor:=FALSE ;sk:=
+erster(ksoehne);REP knotentabfuellenUNTIL (menuepunkt>=sohnanzahl)OR (
+menuepunkt>=maxmenuepunkte)PER ;IF (NOT druckenkommtimfktmenuevor)CAND 
+sohnanzahl<maxmenuepunkteTHEN sohnanzahlINCR 1;ktab(sohnanzahl):=
+knotenfuerbildschirmausdruckFI ;IF (NOT auskunftkommtimfktmenuevor)CAND 
+sohnanzahl<maxmenuepunkteTHEN sohnanzahlINCR 1;ktab(sohnanzahl):=
+knotenfuerauskunftserteilungFI ;aktmaxmenuepunkte:=sohnanzahl.
+knotentabfuellen:menuepunktINCR 1;IF isopen(sk)THEN ktab(menuepunkt):=
+nilknotenELSE ktab(menuepunkt):=sk;IF taste(sk)=tastefuerbildschirmausdruck
+THEN druckenkommtimfktmenuevor:=TRUE ELIF taste(sk)=
+tastefuerauskunftserteilungTHEN auskunftkommtimfktmenuevor:=TRUE FI ;FI ;
+naechster(sk).fktmenueanwahlbestimmen:
+eventuellefehlermeldungimfktmenueausgeben;
+setzecursoraufeinleseanfangsposition;tasteholen;anderemenueebene:=FALSE ;REP 
+tastendruckimfktmenueUNTIL anderemenueebenePER ;
+bildschirmwiederholspeichereinschalten.
+eventuellefehlermeldungimfktmenueausgeben:.
+setzecursoraufeinleseanfangsposition:x:=x1+2;INT VAR yanfang:=y1+3;INT VAR 
+yende:=yanfang+sohnanzahl-1;y:=yanfang;fktcursorzeigen.tastendruckimfktmenue:
+IF anderermenuepunktTHEN fktcursorloeschen;neuenfktmenuepunktbestimmen;
+fktcursorzeigen;tasteholen;ELSE pruefefkttastezudiesemmenue;IF NOT 
+anderemenueebeneTHEN tasteholenFI FI .fktcursorloeschen:cursor(x,y);out(" ").
+fktcursorzeigen:cursor(x,y);out(">");cursor(x,y).pruefefkttastezudiesemmenue:
+IF tastendruck=rechtstasteTHEN anderemenueebene:=TRUE ;
+wandleypositioninmenuepunktnummerum;fktcursorloeschenELIF tastendruck=
+esctasteTHEN anderemenueebene:=TRUE ;funktionenmenueloeschenELSE 
+vergleichetastemitgueltigenfkttasten;IF gueltigetasteimmenueTHEN 
+anderemenueebene:=TRUE ;fktcursorloeschen;wandlemenuepunktnummerinypositionum
+;fktcursorzeigen;fktcursorloeschenFI FI .wandleypositioninmenuepunktnummerum:
+getcursor(x,y);menuepunkt:=y-yanfang+1.wandlemenuepunktnummerinypositionum:y
+:=yanfang+menuepunkt-1.funktionenmenueloeschen:
+schalterzurueckuebercursortasteein;IF vpvorhandenTHEN IF NOT 
+gesetztdurcheditorTHEN reorganizescreen;cursor(cursorx,cursory);
+setlasteditvalues;setzeschalterfuermenueausgabe(FALSE )FI ;return(0)ELSE 
+enter(1)FI .vergleichetastemitgueltigenfkttasten:gueltigetasteimmenue:=FALSE 
+;menuepunkt:=0;WHILE (NOT gueltigetasteimmenue)AND menuepunkt<
+aktmaxmenuepunkteREP menuepunktINCR 1;IF tastendruck=taste(ktab(menuepunkt))
+THEN gueltigetasteimmenue:=TRUE FI PER .neuenfktmenuepunktbestimmen:IF 
+cursorbewegungmithopTHEN aktuellerstenoderletztenfktmenuepunktbestimmenELSE 
+naechstenfktmenuepunktbestimmenFI .
+aktuellerstenoderletztenfktmenuepunktbestimmen:cursorbewegungmithop:=FALSE ;
+IF tastendruck=obentasteTHEN y:=yanfangELSE y:=yendeFI .
+naechstenfktmenuepunktbestimmen:IF tastendruck=obentasteTHEN IF y>yanfang
+THEN yDECR 1ELIF y=yanfangTHEN y:=yendeFI ELIF tastendruck=untentasteTHEN IF 
+y<yendeTHEN yINCR 1ELIF y=yendeTHEN y:=yanfangFI FI .maskeaufbauen:
+holemaskedesknotens;fuellemaske.holemaskedesknotens:t:=men.fuellemaske:
+fuelletitel;fuelletextederhistorie;fuelletextedersoehne.fuelletitel:put(t,
+text(k),titelfeldnr);getcursor(koordx,start2).fuelletextederhistorie:INT VAR 
+hknr,tabzeiger,histmpkt;menuefeldnr:=historieende;FOR hknrFROM 1UPTO 
+maxhknotenREP holehistorietext(menuetext,histmpkt,hknr);tabzeiger:=
+menuefeldnr-felderanzahlbishistoriebeginn;IF menuetext=""THEN 
+setzemenuepunktzugang(tabzeiger,FALSE );menuetext:=" "ELSE 
+setzemenuepunktzugang(tabzeiger,TRUE );histtexttab(hknr):=menuetext;
+histanwahlpos(hknr):=histmpkt;menuetext:=tabzeiger*" "+menuetext;put(t,
+menuetext,menuefeldnr);putposition(t,menuefeldnr);FI ;menuefeldnrDECR 1PER ;
+getposition(koordx,start1,historieende);start1:=start1-maxhknoten-1;te:=
+formline(men,start1);zeige(te,start1,start2,schluss).fuelletextedersoehne:
+TEXT VAR menuetext;INT VAR menuepunkt:=0,menuefeldnr;menuefeldnr:=menuebeginn
+;sk:=erster(ksoehne);WHILE (menuefeldnr<=felderimanwahlmenue)REP menuepunkt
+INCR 1;IF menuepunkt>sohnanzahlTHEN keinenmenuetext;ELSE IF isopen(sk)THEN 
+ktab(menuepunkt):=nilknotenELSE ktab(menuepunkt):=skFI ;
+menuetextzusammensetzen(menuepunkt,stufennummer,menuetext);naechster(sk);put(
+t,menuetext,menuefeldnr);putposition(t,menuefeldnr)FI ;menuefeldnrINCR 1PER ;
+aktmaxmenuepunkte:=menuepunkt.keinenmenuetext:menuetext:=" ";mpkt:=menuepunkt
++maxhknoten;setzemenuepunktzugang(mpkt,FALSE ).maskekomplettausgeben:
+eventuellefehlermeldungausgeben;erstenmenuepunktbestimmen;
+cursorpositionerrechnen;cursorzeigen;tasteholen;anderemenueebene:=FALSE ;REP 
+tastendruckindiesemmenueUNTIL anderemenueebenePER ;cursorloeschen;
+bildschirmwiederholspeichereinschalten.eventuellefehlermeldungausgeben:.
+erstenmenuepunktbestimmen:IF ebenenwechselTHEN ebenenwechsel:=FALSE ;
+aktfeldnr:=letztemenueanwahlposFI ;mpkt:=aktfeldnr-
+felderanzahlbishistoriebeginn;IF NOT zugangerlaubt(mpkt)THEN setzetastendruck
+(untentaste);neuenmenuepunktbestimmenFI ;mpkt:=aktfeldnr-
+felderanzahlbishistoriebeginn;IF (NOT zugangerlaubt(mpkt))AND menuemaskeTHEN 
+aktfeldnr:=historieendeFI .cursorpositionerrechnen:getposition(x,y,aktfeldnr)
+.cursorzeigen:cursor(x,y);out(fcursor);xDECR 1;cursor(x,y);out(" ").
+cursorloeschen:cursorvormenuepunktloeschen.cursorvormenuepunktloeschen:
+getcursor(x,y);cursor(x,y);out(fcursorweg).tastendruckindiesemmenue:IF 
+anderermenuepunktTHEN cursorloeschen;neuenmenuepunktbestimmen;
+cursorpositionerrechnen;cursorzeigen;tasteholenELSE 
+pruefetastendruckzudiesemmenue;IF NOT anderemenueebeneTHEN tasteholenFI FI .
+pruefetastendruckzudiesemmenue:IF tastendruck=rechtstasteTHEN 
+anderemenueebene:=TRUE ELIF code(tastendruck)>=codefuerziffernullAND code(
+tastendruck)<=codefuerzifferneunTHEN IF code(tastendruck)=codefuerziffernull
+THEN mpkt:=10ELSE mpkt:=code(tastendruck)-codefuerziffernullFI ;IF sohnanzahl
+<mpktTHEN gedaechtnisloeschen;out("�");cursor(x+1,y)ELIF NOT zugangerlaubt(
+mpkt+maxhknoten)THEN gedaechtnisloeschen;out("�");cursor(x+1,y)ELSE 
+anderemenueebene:=TRUE ;cursorloeschen;aktfeldnr:=menuebeginn+(mpkt-1)*
+felderpromenuepunkt;setzetastendruck(rechtstaste);cursorpositionerrechnen;
+cursorzeigenFI FI .neuenmenuepunktbestimmen:IF cursorbewegungmithopTHEN 
+aktuellerstenoderletztenmenuepunktbestimmenELSE naechstenmenuepunktbestimmen
+FI .aktuellerstenoderletztenmenuepunktbestimmen:BOOL VAR 
+erstenoderletztenmenuepunktgefunden:=FALSE ;WHILE NOT 
+erstenoderletztenmenuepunktgefundenREP naechstenmenuepunktbestimmen;IF 
+savefeldnr=aktfeldnrTHEN erstenoderletztenmenuepunktgefunden:=TRUE FI ;PER ;
+cursorbewegungmithop:=FALSE .naechstenmenuepunktbestimmen:BOOL VAR 
+neuenmenuepunktgefunden:=FALSE ;INT VAR savefeldnr:=aktfeldnr;REP 
+sucheneuenmenuepunktUNTIL neuenmenuepunktgefundenPER .sucheneuenmenuepunkt:
+IF tastendruck=obentasteTHEN aktfeldnrDECR felderpromenuepunktELIF 
+tastendruck=untentasteTHEN aktfeldnrINCR felderpromenuepunktFI ;IF 
+cursorbewegungmithopTHEN IF aktfeldnr<historiebeginnOR aktfeldnr>
+felderimanwahlmenueTHEN aktfeldnr:=savefeldnr;neuenmenuepunktgefunden:=TRUE ;
+LEAVE sucheneuenmenuepunktFI ELSE IF aktfeldnr<historiebeginnTHEN aktfeldnr:=
+fields(t)-felderpromenuepunkt+1ELIF aktfeldnr>fields(t)THEN aktfeldnr:=
+historiebeginnFI FI ;IF feldvorhandenTHEN mpkt:=aktfeldnr-
+felderanzahlbishistoriebeginn;IF zugangerlaubt(mpkt)THEN 
+neuenmenuepunktgefunden:=TRUE FI ;FI .feldvorhanden:fieldexists(t,aktfeldnr).
+bildschirmwiederholspeicherausschalten:store(FALSE ).
+bildschirmwiederholspeichereinschalten:store(TRUE ).menueanwahlbestimmen:IF 
+menuemaskeTHEN IF aktfeldnr<menuebeginnTHEN letztemenueanwahlpos:=menuebeginn
+ELSE letztemenueanwahlpos:=aktfeldnrFI ;FI ;IF tastendruck=rechtstasteTHEN 
+bestimmemenuepunktfuernaechstesmenueELSE schalterzurueckuebercursortasteein;
+IF vpvorhandenTHEN IF NOT gesetztdurcheditorTHEN reorganizescreenFI ;return(0
+)ELSE enter(1)FI ;FI .bestimmemenuepunktfuernaechstesmenue:IF aktfeldnr>=
+menuebeginnTHEN aktfeldnrDECR felderanzahlbismenuebeginnELSE aktfeldnrDECR 
+felderanzahlbishistoriebeginn;anwahleineshistoriepunktes:=TRUE FI ;menuepunkt
+:=aktfeldnr.holenaechstenknoten:setzeeditorschalterzurueck;IF 
+zurueckuebercursortasteTHEN schalterzurueckuebercursortasteaus;
+vaterknotenalsneuenknotennehmenELIF historiepunktangewaehltTHEN 
+anwahleineshistoriepunktes:=FALSE ;textdeshistoriepunktesbestimmen;
+historieknotenalsneuenknotennehmenELSE knotenaufstackablegen(k);IF 
+aktuellerhistorieknotenTHEN legehistorieknotenab(text(k),menuepunkt)FI ;
+sohnknotenalsneuenknotennehmenFI .historiepunktangewaehlt:
+anwahleineshistoriepunktes.textdeshistoriepunktesbestimmen:TEXT VAR histtext;
+hknr:=maxhknoten+1-menuepunkt;histtext:=histtexttab(hknr);aktfeldnr:=
+historieende+histanwahlpos(hknr).historieknotenalsneuenknotennehmen:REP enter
+(1);vaterknotenalsneuenknotennehmenUNTIL text(k)=histtextPER .
+reduzierestufennummer:INT VAR lstufnr:=length(stufennummer);IF lstufnr<=3
+THEN stufennummer:=""ELSE IF subtext(stufennummer,lstufnr-1,lstufnr-1)=
+stufentrennerTHEN stufennummer:=subtext(stufennummer,1,lstufnr-2)ELSE 
+stufennummer:=subtext(stufennummer,1,lstufnr-3)FI ;FI .
+aktuellerhistorieknoten:menuemaskeOR (text(k)=anfangsknotenname).
+vaterknotenalsneuenknotennehmen:k:=vergleichsknoten;IF nachprozedur(k)=""
+THEN reduzierestufennummerFI .sohnknotenalsneuenknotennehmen:KNOTEN VAR 
+tabknoten:=ktab(menuepunkt);IF reinlokaleoperationTHEN k:=tabknoten;IF 
+menuemaskeTHEN erweiterestufennummerFI ;aktfeldnr:=menuebeginnELSE 
+fuehreknotenwechselmittaskwechseldurch;ebenenwechsel:=TRUE FI ;vpwunsch.
+reinlokaleoperation:TEXT CONST knotentask:=task(tabknoten);knotentask="".
+fuehreknotenwechselmittaskwechseldurch:INT VAR statustaskwechsel:=0;
+umgebungswechsel(tabknoten,knotentask,statustaskwechsel);k:=
+altermenueknotenaufstack;IF statustaskwechsel=1THEN cursor(1,23);put(
+"Verzweigung ist nicht möglich");pauseELIF statustaskwechsel=2THEN cursor(1,
+23);put("es wird bereits innerhalb dieser Anwendungen gearbeitet");pauseFI .
+altermenueknotenaufstack:enter(1);vergleichsknoten.erweiterestufennummer:IF 
+stufennummer=""THEN stufennummer:=berechttrenner+text(menuepunkt)ELSE 
+stufennummer:=stufennummer+stufentrenner+text(menuepunkt)FI .
+schalterzurueckuebercursortasteein:zurueckuebercursortaste:=TRUE .
+schalterzurueckuebercursortasteaus:zurueckuebercursortaste:=FALSE .END PROC 
+startbaisy;PROC berechtigungspruefung(TEXT CONST altnr,INT CONST neunr,BOOL 
+VAR berechtigt):IF NOT menuemaskeTHEN berechtigt:=TRUE ;LEAVE 
+berechtigungspruefungFI ;TEXT VAR berechtstring:=benutzerberechtigung;IF 
+keineberechtigungzugeteiltTHEN berechtigt:=FALSE ;LEAVE berechtigungspruefung
+FI ;berechtigt:=FALSE ;zupruefendestufennummeraufbauen;berechtigungholen;
+WHILE NOT berechtigtAND nocheineberechtigungdaREP IF 
+berechtistpraefixvonpruefnrOR pruefnristpraefixvonberechtTHEN berechtigt:=
+TRUE FI ;berechtigungholenPER .keineberechtigungzugeteilt:berechtstring="".
+nocheineberechtigungda:berecht<>"".zupruefendestufennummeraufbauen:TEXT VAR 
+pruefnr;IF altnr=""THEN pruefnr:=berechttrenner+text(neunr)ELSE pruefnr:=
+altnr+stufentrenner+text(neunr)FI ;pruefnrCAT stufentrenner.berechtigungholen
+:TEXT VAR berecht;IF berechtstringabgearbeitetTHEN berecht:=""ELSE 
+imberechtstringweitereberechtsuchen;IF nurnocheineberechtigungTHEN berecht:=
+berechtstring;berechtstring:=""ELSE berecht:=subtext(berechtstring,1,
+postrennz-1);berechtstring:=subtext(berechtstring,postrennz)FI ;berechtCAT 
+stufentrenner;FI .imberechtstringweitereberechtsuchen:INT VAR postrennz:=pos(
+berechtstring,berechttrenner,2).nurnocheineberechtigung:postrennz=0.
+berechtstringabgearbeitet:berechtstring="".berechtistpraefixvonpruefnr:pos(
+pruefnr,berecht)<>0.pruefnristpraefixvonberecht:pos(berecht,pruefnr)<>0.END 
+PROC berechtigungspruefung;PROC dummycall(INT CONST i,BOOL CONST b,TEXT 
+CONST knotenproc):do(knotenproc)END PROC dummycall;PROC startebaisy(TEXT 
+CONST kn):initsybifunktionen;BOOL VAR knotenda;anfangsknotenholen(kn,k,
+knotenda);holenamedesanfangsknotens;vpwunsch;IF NOT knotendaTHEN put(
+"kein knoten da");pause(50);setzeprogrammende(TRUE )ELIF isopen(k)THEN put(
+"knoten da, aber offen");pause(50);setzeprogrammende(TRUE )FI ;
+setzeanfangsknotennamefuerbenutzerbestand(kn);
+einzelknotenfuerfunktionenmenueholen(verteilt);monitorbehandlungundstart.
+holenamedesanfangsknotens:TEXT VAR anfangsknotenname;anfangsknotenname:=text(
+k);page.verteilt:anfangsknotenname="".monitorbehandlungundstart:putline(
+"Das System "+kn+" wird gestartet.");initmeldungsfunktionen;startbaisy(kn,
+PROC dummycall)END PROC startebaisy;PROC starteanwendung:BOOL VAR knotenda;
+anfangsknotenholen("",k,knotenda);vpwunsch;
+einzelknotenfuerfunktionenmenueholen(TRUE );setzeverteilteanwendung;
+startbaisy("",PROC dummycall)END PROC starteanwendung;PROC startebaisy:
+startebaisy("baisy")END PROC startebaisy;PROC starteschulis:startebaisy(
+"schulis")END PROC starteschulis;END PACKET systembauminterpreter;
+

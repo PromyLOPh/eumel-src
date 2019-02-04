@@ -1,0 +1,126 @@
+PACKET ispmonitorsicherungstaskDEFINES ispmonitorsicherungstask,sndbaisyfiles
+,rcvbaisyfiles,sndidafiles,rcvidafiles,ida,statistik,:LET initcode=25,
+listcode=26,checkcode=27,formatcode=40,logonarchivecode=45,logoffarchivecode=
+46,dbvomserver=47,dbzumserver=48,dbaufdisk=49,dbvondisk=50,dddrucken=51,ack=0
+,errornak=2,nak=1,continuecode=100,endcode=37,savedbcode=38,restoredbcode=39,
+maxthesaurusentry=252;LET showcode=12,mlddbnichtda=
+"Keine vollständige DB bei Sicherungstask!",formfilename=
+"Namen der Formulare",statistikserver="statistik server",#25.09.90#
+statistikbasis="STATISTIK.basis";BOOL VAR idasicherung:=FALSE ,
+statistiksicherung:=FALSE ;#25.09.90#FILE VAR formfile;TEXT VAR nameoftask:=
+"",formname:="";LET stundenplanserver="stundenplan server";LET 
+stundenplanpraefix="Stundenplan-*";TASK VAR stundenplanservertask;LET 
+kurswahlserver="kurswahl server";LET kurswahlpraefix="Kurswahl-*";TASK VAR 
+kurswahlservertask;BOUND TEXT VAR message;DATASPACE VAR ds;INT VAR replycode;
+PROC ispmonitorsicherungstask(TEXT CONST sicherungstask):nameoftask:=
+sicherungstask;globalmanager(PROC (DATASPACE VAR ,INT CONST ,INT CONST ,TASK 
+CONST )ispmonitor)ENDPROC ispmonitorsicherungstask;PROC ispmonitor(DATASPACE 
+VAR dsp,INT CONST orderp,phasep,TASK CONST ordertaskp):INT VAR replycode;
+TASK VAR begintask;IF orderp>=continuecodeAND ordertaskp=supervisorTHEN 
+forget(dsp);spoolcommand(orderp)ELSE enablestop;ordertask(ordertaskp);SELECT 
+orderpOF CASE initcode:cleararchive;CASE listcode:listarchive;CASE 
+dbvomserver:forget(ALL myself-schulisdbname#17.10.88#-baisydbname);IF ida
+THEN rcvidafiles#25.09.90#ELIF statistikTHEN rcvstatfilesELSE fetchdb(
+nameoftask);IF baisyTHEN rcvbaisyfilesELSE receivestundenplan;
+receivekurswahldatenFI ;FI CASE dbzumserver:IF idaTHEN sndidafiles#25.09.90#
+ELIF statistikTHEN sndstatfilesELSE restoredb(nameoftask);IF baisyTHEN 
+sndbaisyfilesELSE sendstundenplan;sendkurswahldatenFI FI CASE dbaufdisk:IF 
+ida#25.09.90#THEN savetoarchive(all-schulisdbname)ELIF NOT statistikCAND 
+dbnichtkomplettTHEN errorstop(mlddbnichtda)ELSE savetoarchive(all)FI CASE 
+dbvondisk:forget(ALL myself-schulisdbname#17.10.88#-baisydbname);
+fetchfromarchive;IF idaTHEN sndidafiles#25.09.90#ELIF statistikTHEN 
+sndstatfilesELSE restoredb(nameoftask);IF baisyTHEN sndbaisyfilesELSE 
+sendstundenplan;sendkurswahldatenFI ;FI CASE formatcode:formatarchive(
+nameoftask)CASE checkcode:checkarchiveCASE logonarchivecode:logonarchiveCASE 
+logoffarchivecode:logoffarchiveCASE dddrucken:datadirdruckenOTHERWISE :
+errorstop("Falscher Auftrag!")ENDSELECT ;endemeldungFI .dbnichtkomplett:IF 
+NOT exists(nameoftask)COR (nameoftask="EUMELbase.baisy"CAND (NOT exists(
+"BAISY-0")COR NOT exists("BAISY-1")COR NOT exists("BAISY-2")COR NOT exists(
+"BAISY-3")))THEN TRUE ELSE FALSE FI .endemeldung:send(ordertaskp,ack,dsp).
+datadirdrucken:servereinrichten;out("Datenbankverzeichnis wird erstellt!");
+serverwecken.servereinrichten:begin("-",PROC servermonitor,begintask).
+serverwecken:call(begintask,dddrucken,dsp,replycode);IF replycode=errornak
+THEN message:=dsp;errorstop(message)ELSE send(ordertaskp,showcode,dsp)FI .
+ENDPROC ispmonitor;PROC servermonitor:TASK VAR fathertask;INT VAR ordercode;
+DATASPACE VAR ds;disablestop;wait(ds,ordercode,fathertask);postfix("");
+fetchdd(nameoftask);IF dbopen(nameoftask)THEN ddinfo("X")ELSE errorstop(
+"Drucken nicht möglich!")FI ;IF iserrorTHEN forget(ds);ds:=nilspace;message:=
+ds;message:=errormessage;ordercode:=errornakELSE forget(ds);ds:=old("X.dd")
+FI ;send(fathertask,ordercode,ds);end(myself)ENDPROC servermonitor;PROC 
+spoolcommand(INT CONST order):TEXT VAR commandline:="";enablestop;break(quiet
+);continue(order-continuecode);disablestop;REP #commanddialogue(TRUE );#
+getcommand(name(myself)+"-Monitor:",commandline);do(commandline)UNTIL NOT 
+onlinePER ;#commanddialogue(FALSE );#break(quiet);setautonomEND PROC 
+spoolcommand;ROW maxthesaurusentryDATASPACE VAR receiveddb;BOUND THESAURUS 
+VAR thesau;THESAURUS VAR dbthesaurus:=emptythesaurus;TASK VAR sourcetask:=
+niltask#,baisyserver:=/"baisy server"#;PROC rcvbaisyfiles:out(
+"BAISY-Files werden übertragen!");fetchfast(name(baisyserver));ENDPROC 
+rcvbaisyfiles;PROC sndbaisyfiles:THESAURUS VAR theo:=ALL myself,theodb:=
+emptythesaurus;LET baisyconst="BAISY-";TEXT VAR fname;INT VAR tindex:=0,l:=1;
+forget(ds);ds:=nilspace;thesau:=ds;thesau:=emptythesaurus;modifytheo;
+sendthesaurusandrcvok;senddb.modifytheo:get(theo,fname,tindex);WHILE tindex>0
+REP IF pos(fname,baisyconst)=1THEN insert(theodb,fname)FI ;get(theo,fname,
+tindex)PER ;thesau:=theodb.sendthesaurusandrcvok:REP call(baisyserver,
+restoredbcode,ds,replycode)UNTIL replycode=restoredbcodePER ;.senddb:tindex:=
+0;l:=1;get(theodb,fname,tindex);WHILE tindex>0REP sendfile;get(theodb,fname,
+tindex)PER ;sendend.sendfile:pause(10);forget(ds);ds:=old(fname);out(fname+
+" wird übertragen!");lINCR 1;send(baisyserver,restoredbcode,ds);.sendend:
+pause(10);ds:=nilspace;send(baisyserver,endcode,ds).ENDPROC sndbaisyfiles;
+PROC rcvidafiles:initformfile;first(dnrida);WHILE dbstatus=okREP IF 
+formexists(intwert(fnridanummer))THEN out("Formular "+wert(fnridanummer)+
+" gesichert!");getform(intwert(fnridanummer));formname:="";savetupel(dnrida,
+formname);putline(formfile,formname)FI ;succ(dnrida)PER .initformfile:forget(
+ALL myself-schulisdbname);formfile:=sequentialfile(output,formfilename).
+ENDPROC rcvidafiles;PROC sndidafiles:IF NOT exists(formfilename)THEN 
+errorstop("Druckausgaben nicht vollständig!")ELSE rueckspeichernFI .
+formdateienda:exists("FORMDATA."+wert(fnridanummer))CAND exists("FORMTEXT."+
+wert(fnridanummer)).rueckspeichern:formfile:=sequentialfile(input,
+formfilename);IF lines(formfile)>0THEN eigentlichesrueckspeichernFI .
+eigentlichesrueckspeichern:clearfile(dnrida);WHILE NOT eof(formfile)REP 
+getline(formfile,formname);restoretupel(dnrida,formname);IF formdateienda
+THEN openformular(intwert(fnridanummer));putform;out("Formular "+wert(
+fnridanummer)+" rückgesichert!");insert(dnrida)FI PER .ENDPROC sndidafiles;
+PROC rcvstatfiles:TASK CONST statserver:=task(statistikserver);THESAURUS VAR 
+stats:=ALL statserver;TEXT VAR name;INT VAR index:=0;sicheredatenbasis;get(
+stats,name,index);WHILE index>0REP out(name+" gesichert!");fetch(name,
+statserver);get(stats,name,index);PER ;pause(20).sicheredatenbasis:IF stats
+CONTAINS statistikbasisTHEN out("Statistik Datenbasis gesichert!");fetch(
+statistikbasis,statserver);stats:=stats-statistikbasis;FI .END PROC 
+rcvstatfiles;PROC sndstatfiles:THESAURUS CONST alle:=ALL myself;TASK CONST 
+statserver:=task(statistikserver);TEXT VAR name;INT VAR index:=0;IF 
+highestentry(alle)=0THEN errorstop("Keine Statistiken vorhanden!");ELSE 
+allesloeschen;rueckspeichern;pause(20);FI .allesloeschen:BOOL VAR 
+dialogschalter:=commanddialogue;commanddialogue(FALSE );erase(ALL statserver,
+statserver);commanddialogue(dialogschalter).rueckspeichern:get(alle,name,
+index);WHILE index>0REP IF name=statistikbasisTHEN out(
+"Statistik Datenbasis rückgesichert!");ELSE out(name+" rückgesichert!");FI ;
+save(name,statserver);get(alle,name,index);PER .END PROC sndstatfiles;PROC 
+receivestundenplan:disablestop;stundenplanservertask:=task(stundenplanserver)
+;IF iserrorTHEN clearerror;ELSE loeschestundenplandsintask;fetchall(
+stundenplanservertask);FI ;enablestop.loeschestundenplandsintask:BOOL VAR 
+dialogschalter:=commanddialogue;commanddialogue(FALSE );forget(allLIKE 
+stundenplanpraefix);commanddialogue(dialogschalter).END PROC 
+receivestundenplan;PROC sendstundenplan:disablestop;stundenplanservertask:=
+task(stundenplanserver);IF iserrorTHEN clearerror;ELSE 
+loeschestundenplandsinservertask;save(allLIKE stundenplanpraefix,
+stundenplanservertask);FI ;enablestop.loeschestundenplandsinservertask:BOOL 
+VAR dialogschalter:=commanddialogue;commanddialogue(FALSE );erase(ALL 
+stundenplanservertask,stundenplanservertask);commanddialogue(dialogschalter).
+END PROC sendstundenplan;PROC receivekurswahldaten:disablestop;
+kurswahlservertask:=task(kurswahlserver);IF iserrorTHEN clearerror;ELSE 
+loeschekurswahldsintask;fetch((ALL kurswahlservertask)LIKE kurswahlpraefix,
+kurswahlservertask);FI ;enablestop.loeschekurswahldsintask:BOOL VAR 
+dialogschalter:=commanddialogue;commanddialogue(FALSE );forget(allLIKE 
+kurswahlpraefix);commanddialogue(dialogschalter).END PROC 
+receivekurswahldaten;PROC sendkurswahldaten:disablestop;kurswahlservertask:=
+task(kurswahlserver);IF iserrorTHEN clearerror;ELSE 
+loeschekurswahldsinservertask;save(allLIKE kurswahlpraefix,kurswahlservertask
+);FI ;enablestop.loeschekurswahldsinservertask:BOOL VAR dialogschalter:=
+commanddialogue;commanddialogue(FALSE );erase(ALL kurswahlservertask,
+kurswahlservertask);commanddialogue(dialogschalter).END PROC 
+sendkurswahldaten;BOOL PROC baisy:nameoftask="EUMELbase.baisy"ENDPROC baisy;
+BOOL PROC ida:idasicherungENDPROC ida;PROC ida(BOOL CONST idas):idasicherung
+:=idasENDPROC ida;BOOL PROC statistik:statistiksicherungEND PROC statistik;
+PROC statistik(BOOL CONST stats):statistiksicherung:=statsEND PROC statistik;
+ENDPACKET ispmonitorsicherungstask
+

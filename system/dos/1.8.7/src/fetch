@@ -1,0 +1,371 @@
+PACKET fetch DEFINES                   (* Copyright (C) 1985, 86, 87 *)
+                                       (* Frank Klapper              *)
+                                       (* 27.04.87                   *) 
+  fetch,
+  check file:
+
+LET ascii             = 1,
+    ascii german      = 2,
+    transparent       = 3,
+    row text          = 5,
+    ds                = 6,
+    dump              = 7,
+    atari st          = 10,
+    ibm               = 11,
+
+  (*line end chars    = ""10""12""13"",*)
+    min line end char = ""10"",
+    max line end char = ""13"",
+    lf                = ""10"",
+    cr                = ""13"",
+    tab code          = 9,
+    lf  code          = 10,
+    ff  code          = 12,
+    cr  code          = 13,
+    ctrl z            = ""26"", 
+
+    page cmd          = "#page#",
+
+    row text length   = 4000,
+    row text type     = 1000;
+
+BOUND STRUCT (INT size,
+              ROW row text length TEXT cluster row) VAR cluster struct;
+
+FILE VAR file;
+
+TEXT VAR buffer;
+INT VAR buffer length;
+
+PROC fetch (TEXT CONST name, DATASPACE VAR file ds, INT CONST mode):
+
+  SELECT mode OF 
+    CASE ascii, ascii german, atari st, ibm, transparent:
+                      fetch filemode (file ds, name, mode)
+    CASE row text   : fetch row textmode (file ds, name)
+    CASE ds         : fetch dsmode       (file ds, name)
+    CASE dump       : fetch dumpmode     (file ds, name)
+    OTHERWISE error stop ("Unzulässige Betriebsart")
+  END SELECT.
+
+END PROC fetch;
+
+PROC fetch filemode (DATASPACE VAR file space, TEXT CONST name,
+                     INT CONST code type):
+  enable stop;
+  initialize fetch filemode;
+  open fetch dos file (name);
+  WHILE NOT was last fetch cluster REP
+    get text of cluster;
+    write lines;
+(***************************************)
+    IF lines (file) > 3900
+      THEN putline (file, ">>> FREMDDATEI FUER EUMEL ZU LANG. ES KÖNNEN DATEN FEHLEN <<<");
+           LEAVE fetch filemode
+    FI;
+(***************************************)
+  UNTIL file end via ctrl z
+  PER;
+  write last line if necessary; 
+  close fetch dos file.
+ 
+initialize fetch filemode:
+  buffer := "";
+  buffer length := 0;
+  forget (file space);
+  file space := nilspace;
+  file := sequential file (output, file space);
+  BOOL VAR file end via ctrl z := FALSE.
+ 
+get text of cluster:
+  cat next fetch dos cluster (buffer);
+  IF ascii code
+    THEN ctrl z is buffer end
+  FI;
+  adapt code (buffer, buffer length + 1, code type);
+  buffer length := length (buffer).
+
+ascii code:
+  (code type = ascii) OR (code type = ascii german).
+
+ctrl z is buffer end:
+  INT  CONST ctrl z pos :: pos (buffer, ctrl z, buffer length + 1);
+  file end via ctrl z := ctrl z pos > 0;
+  IF file end via ctrl z
+    THEN buffer := subtext (buffer, 1, ctrl z pos - 1);
+         buffer length := length (buffer)
+  FI.
+
+write lines:
+  INT VAR line begin pos := 1, line end pos;
+  compute line end pos;
+  WHILE line end pos > 0 REP
+    putline (file, subtext (buffer, line begin pos, line end pos));
+    exec (PROC (TEXT CONST, INT CONST) control char conversion, file, code type);
+    line begin pos := line end pos + 1;
+    compute line end pos
+  PER;
+  buffer := subtext (buffer, line begin pos);
+  buffer length := length (buffer);
+  IF buffer length > 5 000
+    THEN putline (file, buffer);
+         exec (PROC (TEXT CONST, INT CONST) control char conversion, file, code type);
+         buffer := "";
+         buffer length := 0
+  FI.
+
+compute line end pos:
+  line end pos := line begin pos;
+  REP
+    line end pos := pos (buffer, min line end char, max line end char, line end pos);
+    INT CONST line end code :: code (buffer SUB line end pos);
+    SELECT line end code OF
+      CASE lf code: look for cr
+      CASE 11     : line end pos INCR 1
+      CASE cr code: look for lf
+    END SELECT
+  UNTIL line end code <> 11
+  PER.
+
+look for cr:
+  IF line end pos = buffer length
+    THEN line end pos := 0
+  ELIF (buffer SUB line end pos + 1) = cr
+    THEN line end pos INCR 1
+  FI.
+
+look for lf:
+  IF line end pos = buffer length
+    THEN line end pos := 0
+  ELIF (buffer SUB line end pos + 1) = lf
+    THEN line end pos INCR 1
+  FI.
+
+write last line if necessary:
+  IF buffer length > 0
+    THEN putline (file, buffer);
+         exec (PROC (TEXT CONST, INT CONST) control char conversion, file, code type);
+  FI.
+
+END PROC fetch filemode;
+
+PROC adapt code (TEXT VAR text buffer, INT CONST start pos, code type):
+  SELECT code type OF
+    CASE ascii       : cancel bit 8
+    CASE ascii german: cancel bit 8; ascii german adaption
+    CASE atari st    : atari st adaption
+    CASE ibm         : ibm adaption
+  (*CASE transparent : do nothing *)
+  END SELECT.
+
+cancel bit 8:
+  INT VAR set pos := pos (text buffer, ""128"", ""255"", start pos);
+  WHILE set pos > 0 REP
+    replace (text buffer, set pos, seven bit char);
+    set pos := pos (text buffer, ""128"", ""255"", set pos + 1)
+  PER.
+
+seven bit char:
+  code (code (text buffer SUB set pos) AND 127).
+
+ascii german adaption:
+  change all by replace (text buffer, start pos, "[", "Ä");
+  change all by replace (text buffer, start pos, "\", "Ö");
+  change all by replace (text buffer, start pos, "]", "Ü");
+  change all by replace (text buffer, start pos, "{", "ä");
+  change all by replace (text buffer, start pos, "|", "ö");
+  change all by replace (text buffer, start pos, "}", "ü");
+  change all by replace (text buffer, start pos, "~", "ß").
+
+atari st adaption:
+  change all by replace (text buffer, start pos, ""142"", "Ä");
+  change all by replace (text buffer, start pos, ""153"", "Ö");
+  change all by replace (text buffer, start pos, ""154"", "Ü");
+  change all by replace (text buffer, start pos, ""132"", "ä");
+  change all by replace (text buffer, start pos, ""148"", "ö");
+  change all by replace (text buffer, start pos, ""129"", "ü");
+  change all by replace (text buffer, start pos, ""158"", "ß").
+
+ibm adaption:
+  change all by replace (text buffer, start pos, ""142"", "Ä");
+  change all by replace (text buffer, start pos, ""153"", "Ö");
+  change all by replace (text buffer, start pos, ""154"", "Ü");
+  change all by replace (text buffer, start pos, ""132"", "ä");
+  change all by replace (text buffer, start pos, ""148"", "ö");
+  change all by replace (text buffer, start pos, ""129"", "ü");
+  change all by replace (text buffer, start pos, ""225"", "ß").
+
+END PROC adapt code;
+
+PROC change all by replace (TEXT VAR string, INT CONST begin pos,
+                            TEXT CONST old, new):
+
+  INT VAR p := pos (string, old, begin pos);
+  WHILE p > 0 REP
+    replace (string, p, new);
+    p := pos (string, old, p + 1)
+  PER.
+
+END PROC change all by replace;
+
+PROC control char conversion (TEXT VAR string, INT CONST code type):
+
+  IF code type <> transparent
+    THEN code conversion
+  FI.
+
+code conversion:
+  INT VAR p := pos (string, ""0"", ""31"", 1);
+  WHILE p > 0 REP
+    convert char;
+    p := pos (string, ""0"", ""31"", p)
+  PER.
+
+convert char:
+  INT CONST char code := code (string SUB p);
+  SELECT char code OF
+    CASE tab code: expand tab
+    CASE lf  code: change (string, p, p, "")
+    CASE ff  code: change (string, p, p, page cmd)
+    CASE cr  code: change (string, p, p, "")
+    OTHERWISE ersatzdarstellung
+  END SELECT.
+
+expand tab:
+  change (string, p, p, (8 - (p - 1) MOD 8) * " ").
+
+ersatzdarstellung:
+  TEXT CONST t := text (char code);
+  change (string, p, p, "#" + (3 - length (t)) * "0" + t + "#").
+
+END PROC control char conversion;
+
+PROC fetch rowtextmode (DATASPACE VAR file space,
+                        TEXT CONST name):
+  enable stop; 
+  open fetch dos file (name);
+  initialize fetch rowtext mode;
+  WHILE NOT was last fetch cluster REP
+    cluster struct.size INCR 1;
+    cluster struct.cluster row [cluster struct.size] := "";
+    cat next fetch dos cluster (cluster struct.cluster row [cluster struct.size])
+  PER; 
+  close fetch dos file.
+ 
+initialize fetch row text mode:
+  forget (file space);
+  file space := nilspace;
+  cluster struct := file space;
+  type (file space, row text type);
+  cluster struct.size := 0.
+
+END PROC fetch rowtext mode;
+
+PROC fetch ds mode (DATASPACE VAR in ds, TEXT CONST name):
+  enable stop;
+  open fetch dos file (name);
+  init fetch dsmode;
+  WHILE NOT was last fetch cluster REP
+    read next fetch dos cluster (in ds, ds block no);
+  PER; 
+  close fetch dos file.
+ 
+init fetch dsmode:
+  forget (in ds);
+  in ds := nilspace;
+  INT VAR ds block no := 2.
+
+END PROC fetch ds mode;
+
+PROC fetch dumpmode (DATASPACE VAR file space, TEXT CONST name):
+  enable stop; 
+  open fetch dos file (name);
+  initialize fetch dumpmode;
+  WHILE NOT was last fetch cluster REP
+    TEXT VAR cluster buffer := "";
+    cat next fetch dos cluster (cluster buffer);
+    dump cluster
+    UNTIL offset > 50 000.0
+  PER; 
+  close fetch dos file.
+ 
+initialize fetch dump mode:
+  BOOL VAR fertig := FALSE;
+  REAL VAR offset := 0.0;
+  forget (file space);
+  file space := nilspace;
+  file := sequential file (output, file space).
+
+dump cluster:
+  TEXT VAR dump line;
+  INT VAR line, column;
+  FOR line FROM 0 UPTO (cluster size DIV 16) - 1 REP
+    build dump line;
+    putline (file, dump line);
+    offset INCR 16.0
+  UNTIL fertig
+  PER.
+
+build dump line:
+  TEXT VAR char line := "";
+  dump line := text (offset, 6, 0);
+  dump line := subtext (dump line, 1, 5);
+  dump line CAT "   ";
+  FOR column FROM 0 UPTO 7 REP
+    convert char;
+    dump line CAT " "
+  PER;
+  dump line CAT " ";
+  FOR column FROM 8 UPTO 15 REP
+    convert char;
+    dump line CAT " "
+  PER;
+  dump line CAT "  ";
+  dump line CAT char line.
+
+convert char:
+  TEXT CONST char :: cluster buffer SUB (line * 16 + column + 1);
+  IF char = ""
+    THEN fertig := TRUE;
+         dump line CAT "  ";
+         LEAVE convert char
+  FI;
+  INT CONST char code := code (char);
+  LET hex chars = "0123456789ABCDEF";
+  dump line CAT (hex chars SUB (char code DIV 16 + 1));
+  dump line CAT (hex chars SUB (char code MOD 16 + 1));
+  charline CAT show char.
+
+show char:
+  IF (char code > 31 AND char code < 127)
+    THEN char
+    ELSE "." 
+  FI.
+
+END PROC fetch dump mode;
+
+PROC check file (TEXT CONST name):
+  disable stop;
+  DATASPACE VAR test ds := nilspace;
+  enable check file (name, test ds);
+  forget (test ds);
+  IF is error
+    THEN clear error;
+         error stop ("Fehler beim Prüflesen der Datei """ + name + """")
+  FI.
+
+END PROC check file;
+
+PROC enable check file (TEXT CONST name, DATASPACE VAR test ds):
+  enable stop;
+  open fetch dos file (name);
+  WHILE NOT was last fetch cluster REP
+    INT VAR dummy := 2;
+    read next fetch dos cluster (test ds, dummy)
+  PER; 
+  close fetch dos file.
+ 
+END PROC enable check file;
+
+END PACKET fetch;
+

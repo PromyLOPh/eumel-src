@@ -1,0 +1,376 @@
+PACKET rts
+ DEFINES constant, vdt, get pltper, get prtper, was print,
+         println, print output, plot output, print line,
+         sys page, pagefeed necessary, print suppressed output, asterisk,
+         protokoll, default, set pagelength, run time system, b stop request,
+         scroll, run card :
+ (* Runtime - System *)
+ (* Autor : R. Keil                                             *)
+ (* Datum : 12.07.83     Aenderung: 19.06.84   D. Craemer       *)
+ (*                    2.Aenderung:  6.05.85   D. Craemer       *)
+ (* Änderung auf 1.8.2: Z. 288, Christian Szymanski, 10.08.88   *)
+ (* In der 2. Aenderung wurde dyn.const in zzdyn.const umbenannt*)
+ (* und alle Konstanten-Datenraeume bekommen ".const" angehaengt*)
+ (* Wird im rts das Kommando   run name  gegeben, so wird der   *)
+ (* augenblickliche Konstanten-Datenraum gerettet im Datenraum  *)
+ (* mit dem Namen:            "name.const"                      *)
+
+
+ 
+    LET esc           = ""27"",
+    max tab size  = 50,
+    bold          = 1,
+    number        = 2,
+    delimiter     = 3;
+
+TYPE CONSTANT = STRUCT (ROW max tab size TEXT name,
+                        ROW max tab size REAL value,
+                        INT tab size);
+
+BOUND CONSTANT VAR constants;
+
+FILE VAR sysout;
+TEXT VAR print buf, asterisk buffer, sym, const name,
+         const space name::"zzdyn.const";
+REAL VAR dt, length, prtper, pltper;
+INT VAR line no, page no, max pagelength, type;
+
+BOOL VAR vdt on, print, protocoll, terminal stop, is scroll,
+         is not first, run specified;
+
+ 
+default;
+ 
+PROC default :
+ protocoll      := FALSE;
+ max pagelength := 23;
+ is scroll      := TRUE;
+ run specified  := FALSE
+END PROC default;
+ 
+PROC set pagelength (INT CONST i) :
+ max pagelength := i
+END PROC set pagelength;
+ 
+PROC run card (TEXT CONST run name) :
+ IF exists (actual constants)
+  THEN constants := old (actual constants)
+  ELIF run name="zzdyn"
+  THEN constants := new (actual constants);
+       CONCR (constants).tab size := 0
+  ELSE copy (const space name, actual constants); 
+       constants := old (actual constants)
+ FI;
+ const space name := actual constants.
+
+ actual constants:
+    run name + ".const".
+
+END PROC run card;
+ 
+REAL PROC constant (TEXT CONST name, REAL CONST val) :
+ REAL VAR value;
+ INT VAR tab pos;
+ value := actual value;
+ set system consts.
+
+ actual value :
+  search constant (name, tab pos);
+  IF tab pos > 0
+   THEN CONCR (constants).value (tab pos)
+   ELSE new constant (name, val);
+        val
+  FI.
+
+ set system consts :
+  SELECT pos ("dt length prtper pltper ", name + " ") OF
+   CASE 1  : dt     := value
+   CASE 4  : length := value
+   CASE 11 : prtper := value
+   CASE 18 : pltper := value
+  END SELECT;
+  value.
+END PROC constant;
+ 
+PROC new constant (TEXT CONST name, REAL CONST val) :
+ CONCR (constants).tab size INCR 1;
+ IF CONCR (constants).tab size > max tab size
+  THEN errorstop ("ZUVIELE KONSTANTEN")
+ FI;
+ CONCR (constants).name  (CONCR (constants).tab size) := name;
+ CONCR (constants).value (CONCR (constants).tab size) := val
+END PROC new constant;
+
+PROC search constant (TEXT CONST name, INT VAR tab pos) :
+ INT VAR i;
+ FOR i FROM 1 UPTO CONCR (constants).tab size REP
+  IF name = CONCR (constants).name (i)
+   THEN tab pos := i;
+        LEAVE search constant
+  FI
+ END REP;
+ tab pos := 0
+END PROC search constant;
+
+REAL PROC get pltper :  (* Reicht 'pltper' (Plotperiode) heraus *)
+ pltper
+END PROC get pltper;
+ 
+REAL PROC get prtper :  (* Reicht 'prtper' (Printperiode) heraus *)
+ prtper 
+END PROC get prtper;
+ 
+PROC scroll (BOOL CONST b) :
+ is scroll := b
+END PROC scroll;
+ 
+PROC next sym :
+ next sym (sym, type)
+END PROC next sym;
+
+PROC rts err (TEXT CONST err mess) :
+ outline ("FEHLER BEI >>>" + sym + "<<< : " + err mess)
+END PROC rts err;
+
+PROC run time system (PROC target program) :
+ IF protocoll
+  THEN kill ("dyn.out");
+       sysout := sequential file (output, "dyn.out")
+ FI;
+ init rts;
+ REP
+  get command;
+  execute command
+ END REP.
+ 
+ get command :
+  TEXT VAR command;
+  print suppressed output;
+  line;
+  putline ("      dynamo runtime system :");
+  shift;
+  getline (command);
+  printline (command).
+
+ execute command :
+  scanner (command);
+  next sym;
+  TEXT VAR start := sym;
+  skip blanks;
+  SELECT pos ("run rerun quit help c ? EOL ", start + " ") OF
+   CASE 1, 5 : run
+   CASE 11   : quit
+   CASE 16   : show ("dyn.help")
+   CASE 21   : const equ
+   CASE 23   : dump consts
+   CASE 25   :
+   OTHERWISE : rts err ("KOMMANDO UNBEKANNT")
+  END SELECT.
+
+ run :
+  init rts;
+  IF type = bold OR type = delimiter
+   THEN run card (sym)
+  FI;
+  target program.
+
+ quit :
+  IF const space name = "zzdyn.const"
+   THEN kill (const space name)
+  FI;
+  LEAVE runtime system.
+
+ skip blanks :
+  REP
+   next sym
+  UNTIL sym <> " " END REP.
+
+ const equ :
+  REAL VAR value, dummy;
+  INT VAR tab pos;
+  REP
+   analyze constant equ;
+   search constant (const name, tab pos);
+   IF tab pos = 0
+    THEN sym := const name;
+         rts err ("KONSTANTE NICHT DEFINIERT")
+    ELSE CONCR (constants).value (tab pos) := value
+   FI
+  UNTIL end of constants END REP.
+
+ analyze constant equ :
+  IF type <> bold
+   THEN rts err ("NAME ERWARTET")
+  FI;
+  const name := sym;
+  next sym;
+  IF sym <> "="
+   THEN rts err ("^=^ ERWARTET")
+  FI;
+  get constant.
+
+ end of constants :
+  next sym;
+  IF sym = "/" OR sym = ","
+   THEN next sym; FALSE
+   ELSE TRUE
+  FI.
+
+ get constant :
+  next sym;
+  value := 1.0;
+  IF sym = "-" 
+   THEN value := -1.0; next sym
+  ELIF sym = "+"
+   THEN next sym
+  FI;
+  IF type = number
+   THEN value := value * real (sym)
+   ELSE rts err ("ZAHL ERWARTET")
+  FI.
+
+ dump consts :
+  INT VAR i;
+  FOR i FROM 1 UPTO CONCR (constants).tab size REP
+   IF (i MOD 2) = 1
+    THEN line; shift
+   FI;
+   out (text (CONCR (constants).name (i), 14),  " = ",
+        text (text (CONCR (constants).value (i)), 13))
+  END REP;
+  line.
+END PROC run time system;
+ 
+PROC shift :
+ out ("      ")
+END PROC shift;
+
+PROC init rts :
+ line no         := 0;
+ page no         := 0;
+ asterisk buffer := "";
+ print buf       := "";
+ print           := FALSE;
+ terminal stop   := FALSE;
+ is not first    := FALSE;
+ vdt on          := TRUE
+END PROC init rts;
+
+PROC protokoll (BOOL CONST b) :
+ protocoll := b
+END PROC protokoll;
+ 
+PROC print line :
+ BOOL VAR b := print;         (* Druckt Ausgabe - Puffer und *)
+ println (print buf);         (* loescht anschliessend den Inhalt *)
+ print buf := "";
+ print := b
+END PROC print line;
+ 
+PROC print suppressed output :
+ IF print buf <> ""           (* Druckt Ausgabe - Puffer, *)
+  THEN println (print buf);   (* falls gefuellt *)
+       print buf := ""
+ FI
+END PROC print suppressed output;
+ 
+PROC print output (TEXT CONST t) :
+ print buf CAT t;             (* Fuellt Ausgabe - Puffer *)
+ print buf CAT " "
+END PROC print output;
+ 
+PROC println (TEXT CONST t) :
+ print := TRUE;               (* Verteilt Ausgabe auf Bildschirm *)
+ line no INCR 1;              (* und Datei *)
+ outline (t);
+ IF line no = max page length
+  THEN line no := 0
+ FI;
+ IF is getcharety (esc)          (* bis einschl. 1.8.1: 'is incharety' *)
+  THEN terminal stop := TRUE 
+ FI.
+END PROC println;
+
+PROC outline (TEXT CONST t) :
+ printline (t);
+ putline (actual line).
+
+ actual line :
+  IF LENGTH (t) > 78
+   THEN text (t, 78)
+   ELSE t
+  FI.
+END PROC outline;
+
+PROC printline (TEXT CONST t) :
+ IF protocoll
+  THEN putline (sysout, t)
+ FI
+END PROC print line;
+
+PROC sys page :               (* Seitenvorschub auf Bildschirm und Datei *)
+ IF vdt on AND NOT is scroll AND is not first
+  THEN page
+  ELSE is not first := TRUE
+ FI;
+ IF protocoll
+  THEN putline (sysout, "#page#")
+ FI;
+ IF asterisk buffer <> ""
+  THEN page no INCR 1;
+       println ("PAGE " + text (page no, 3) + "  : " + asterisk buffer);
+ FI;
+ line no := 0
+END PROC sys page;
+ 
+BOOL PROC pagefeed necessary :
+ line no = 0                  (* Liefert TRUE, wenn Seitenende erreicht *)
+END PROC pagefeed necessary;  (* ist *)
+ 
+PROC plot output (TEXT CONST t) :
+ println (t);                 (* Ausgabeprozedur fuer das Plot - Programm *)
+ print := FALSE
+END PROC plot output;
+ 
+BOOL PROC b stop request :      (* Liefert TRUE, wenn 'End'-Kommando im VDT *)
+ terminal stop                  (* - Modus gegeben wird *)
+END PROC b stop request;
+ 
+BOOL PROC was print :         (* Liefert TRUE, falls Druckerprogramm *)
+ print.                       (* vorher eine Zeile gedruckt hat *)
+END PROC was print;
+ 
+PROC vdt :
+ IF vdt on AND is not first   (* VDT = Video Data Termination *)
+  THEN do vdt                 (* Verhindert Scrolling des Bildschirms *)
+ FI.
+ 
+ do vdt :
+  TEXT VAR t;
+  out ("TIPPEN SIE : '+'; 'o'; 'e' : ");
+  inchar (t);
+  out (t);
+  IF t = "+"                  (* '+' = Seitenvorschub *)
+   THEN
+   ELIF t = "o"               (* 'o' = Off; VDT wird abgeschaltet *)
+    THEN vdt on := FALSE
+   ELIF t = "e"               (* 'e' = End; Programm wird abgebrochen *)
+    THEN terminal stop := TRUE
+   ELSE out (""13""); vdt
+  FI;
+  line.
+END PROC vdt;
+ 
+PROC asterisk (TEXT CONST t) :
+ asterisk buffer := t
+END PROC asterisk;
+
+PROC out(TEXT CONST a,b,c) :
+ out(a);
+ out(b);
+ out(c)
+END PROC out;
+
+
+END PACKET rts;
+

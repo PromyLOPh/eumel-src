@@ -1,0 +1,423 @@
+PACKET longint    DEFINES LONGINT,        (* Autoren: S.Baumann,A.Bentrup *)
+                          :=,             (*          T.Sillke *)
+                          <,              (* Stand:   17.03.81 *)
+                          >, 
+                          <=,
+                          >=,
+                          <>,
+                          =,
+                          -,
+                          +,
+                          *,
+                          **,
+                          ABS,
+                          abs,
+                          DECR,
+                          DIV,
+                          get,
+                          INCR,
+                          int,
+                        (*last rest,*)
+                          longint,
+                          max,
+                          max longint,
+                          min,
+                          MOD,
+                          put,
+                          random,
+                          SIGN,
+                          sign,
+                          text,
+                          zero:
+ 
+TYPE LONGINT = TEXT;
+ 
+LONGINT VAR   result,aleft,aright;
+TEXT    VAR   ergebnis,x,y,z,h;
+INT     VAR   v byte,slr,sll;
+INT     CONST snull    :: code("0"), mtl :: 300 ;
+TEXT    CONST negativ  :: code(127),max digit :: code(99),null :: code(0),
+              overflow :: "LONGINT overflow",eins :: code(1); 
+BOOL    VAR   vorl,vorr,vleft,vright;
+
+OP := (LONGINT VAR left, LONGINT CONST right) :
+   CONCR(left) := CONCR(right)
+END OP :=;
+ 
+BOOL OP <  (LONGINT CONST left,right) :
+   slr := sign(right)*length(right);
+   sll := sign(left )*length(left );
+   IF slr <> sll THEN
+      IF slr > sll THEN TRUE ELSE FALSE FI
+   ELSE IF slr>0
+        THEN CONCR(left) < CONCR(right)
+        ELSE CONCR(left) > CONCR(right) FI
+   FI
+END  OP < ;
+ 
+BOOL OP >  (LONGINT CONST left,right) :
+   slr := sign(right)*length(right);
+   sll := sign(left )*length(left );
+   IF slr <> sll THEN
+      IF slr < sll THEN TRUE ELSE FALSE FI
+   ELSE IF slr>0
+        THEN CONCR(left) > CONCR(right)
+        ELSE CONCR(left) < CONCR(right) FI
+   FI
+END  OP > ;
+ 
+BOOL OP <= (LONGINT CONST left,right) :
+   NOT (left > right)
+END  OP <=;
+ 
+BOOL OP >= (LONGINT CONST left,right) :
+   NOT (left < right)
+END  OP >=;
+ 
+BOOL OP <> (LONGINT CONST left,right) :
+   CONCR (left) <> CONCR (right)
+END OP  <>;
+ 
+BOOL OP =  (LONGINT CONST left,right) :
+   CONCR (left) =  CONCR (right)
+END  OP = ;
+ 
+LONGINT OP - (LONGINT CONST arg) : 
+   SELECT  code(CONCR(arg)SUB1)  OF
+     CASE 0  : zero
+     CASE 127: LONGINT : (subtext(CONCR(arg),2))
+     OTHERWISE LONGINT : (negativ + CONCR(arg))
+   END SELECT
+END OP -;
+ 
+LONGINT OP + (LONGINT CONST arg) :   arg  END OP +;
+ 
+LONGINT OP - (LONGINT CONST left,right) :
+   IF   CONCR(left ) = null       THEN LEAVE - WITH -right
+   ELIF CONCR(right) = null       THEN LEAVE - WITH   left
+   ELIF sign(left) <> sign(right) THEN LEAVE - WITH left + (-right) FI;
+   betrag(left,right);
+   BOOL CONST betrag max :: aleft > aright;
+   IF   betrag max
+        THEN result := LONGINT : (CONCR(aleft ) SUB CONCR(aright))
+        ELSE result := LONGINT : (CONCR(aright) SUB CONCR(aleft )) FI;
+        kuerze fuehrende nullen(CONCR(result),null);
+   IF   vleft  XOR  betrag max  THEN -result ELSE result FI
+END OP -;
+ 
+LONGINT OP + (LONGINT CONST left,right) :
+   IF   sign(left) <> sign(right) THEN LEAVE + WITH left - (-right) FI;
+   betrag(left,right);
+   IF aleft > aright
+      THEN result := LONGINT : (CONCR(aleft ) ADD CONCR(aright))
+      ELSE result := LONGINT : (CONCR(aright) ADD CONCR(aleft )) FI;
+   IF vleft THEN result ELSE -result FI
+END OP +;
+ 
+LONGINT OP * (LONGINT CONST left,right) :
+   IF   CONCR(left) = null OR CONCR(right) = null THEN LEAVE * WITH zero
+   ELIF length(left) + length(right) > mtl THEN errorstop (overflow) FI;
+   betrag(left,right);
+   IF   aleft < aright 
+        THEN result := LONGINT : (CONCR(aright) MUL CONCR(aleft ))
+        ELSE result := LONGINT : (CONCR(aleft ) MUL CONCR(aright))  FI;
+   IF   length(CONCR(result)) = mtl  THEN errorstop(overflow) FI;
+   IF   vleft XOR vright THEN -result ELSE result FI
+END OP *;
+ 
+LONGINT OP ** (LONGINT CONST arg,exp) :
+   IF exp > longint(max int) THEN errorstop (overflow) FI;
+   arg ** int(exp)
+END OP **;
+ 
+LONGINT OP ** (LONGINT CONST arg,INT CONST exp) :
+   IF   exp < 0 THEN errorstop ("LONGINT OP ** : negativ exp")
+   ELIF CONCR(arg)=null AND exp=0 THEN errorstop(text(0 ** 0)) FI;
+   IF   exp = 0  THEN one
+   ELIF exp = 1  THEN arg
+   ELIF sign(arg) = -1 AND exp MOD 2 <> 0
+        THEN -LONGINT:(CONCR(abs(arg))EXPexp) 
+        ELSE  LONGINT:(CONCR(abs(arg))EXPexp) FI
+END OP **; 
+ 
+LONGINT OP ABS (LONGINT CONST arg) : abs(arg) END OP ABS;
+ 
+LONGINT PROC abs (LONGINT CONST a) : 
+ IF (CONCR(a)SUB1)=negativ THEN LONGINT:(subtext(CONCR(a),2)) ELSE a FI
+END PROC abs;
+ 
+OP DECR (LONGINT VAR result,LONGINT CONST ab) :
+   result := result - ab;
+END OP DECR;
+ 
+LONGINT OP DIV (LONGINT CONST left,right) :
+   IF CONCR(right) = null THEN error stop("LONGINT OP DIV by zero") FI;
+   betrag(left,right);        h    := CONCR(aright);
+   y := null + CONCR(aleft ); vorl := vleft;
+   z := null + CONCR(aright); vorr := vright;
+   IF aleft < aright THEN y:=CONCR(aleft); LEAVE DIV WITH zero FI;
+   INT  VAR try,i,cr1 :: code(z SUB 2),cr2,cr3,zw;
+   BOOL VAR sh :: length(z) <> 2;
+   IF sh THEN cr3:=code(zSUB3); cr2:=10*cr1+cr3DIV10; cr3:=100*cr1+cr3 FI;
+   CONCR(result) := "";
+   FOR i FROM 0 UPTO length(y)-length(z) REP
+      laufe eine abschaetzung durch; 
+      CONCR (result) CAT code(try)
+   PER;  kuerze fuehrende nullen(y,null);
+   IF(CONCR(result)SUB1)=nullTHEN CONCR(result):=subtext(CONCR(result),2)FI;
+   IF vleft XOR vright THEN -result ELSE result FI.
+ 
+   laufe eine abschaetzung durch :
+      zw := 100*code(y SUB i+1) + code(y SUB i+2);
+      IF zw < 3276 AND sh THEN IF zw < 327
+      THEN try := min((100*zw + code(ySUBi+3))     DIV cr3, 99)
+      ELSE try := min(( 10*zw + code(ySUBi+3)DIV10)DIV cr2, 99) FI
+      ELSE try := min(     zw                      DIV cr1, 99) FI;
+       x := z MUL code(try); 
+      WHILE x > subtext(y,i+1,i+length(x)) REP
+            try DECR 1;   x := x SUB z     PER;
+      replace(y,i + 1,subtext(y,i + 1,i + length(x)) SUB x) 
+END OP DIV;
+ 
+PROC get (LONGINT VAR result) : 
+   get (ergebnis);
+   result := longint(ergebnis);
+END PROC get;
+ 
+PROC get (FILE VAR file,LONGINT VAR result) :
+   get(file,ergebnis);
+   result := longint(ergebnis);
+END PROC get;
+ 
+OP INCR (LONGINT VAR result,LONGINT CONST dazu) : 
+   result := result + dazu;
+END OP INCR;
+ 
+INT PROC int (LONGINT CONST longint) :
+   IF length(longint) > 3 
+      THEN max int + 1
+      ELSE ergebnis := (3-length(longint))*null + CONCR(abs(longint));
+           (code(ergebnis SUB 1)  * 10000 +
+            code(ergebnis SUB 2)  * 100   +
+            code(ergebnis SUB 3)) * sign(longint)
+   FI
+END PROC int;
+ 
+LONGINT PROC longint (INT CONST int) :
+   CONCR(result) :=  code( abs(int)            DIV 10000) +
+                     code((abs(int) MOD 10000) DIV 100)   +
+                     code( abs(int) MOD 100);
+   kuerze fuehrende nullen (CONCR(result),null);
+   IF int < 1 THEN -result ELSE result FI
+END PROC longint;
+ 
+LONGINT PROC longint (TEXT CONST text) :
+   INT  VAR i;
+   ergebnis := compress(text);
+   BOOL VAR minus :: (ergebnisSUB1) = "-"; 
+   IF (ergebnisSUB1)="+" OR minus THEN ergebnis:=subtext(ergebnis,2) FI;
+   kuerze fuehrende nullen(ergebnis,"0");
+   kuerze die unzulaessigen zeichen aus ergebnis;
+   schreibe ergebnis im hundertersystem in result;
+   result mit vorzeichen.
+
+   kuerze die unzulaessigen zeichen aus ergebnis :
+      ergebnis := subtext(ergebnis,1,letztes zulaessiges zeichen).
+   letztes zulaessiges zeichen :
+      FOR i FROM 1 UPTO length(ergebnis) REP 
+      UNTIL pos("0123456789", ergebnis SUB i) = 0 PER;
+      i - 1.
+   schreibe ergebnis im hundertersystem in result :
+      sll := length(ergebnis);
+      IF sll MOD 2 <> 0 THEN ergebnis := "0"+ergebnis; sll INCR 1 FI; 
+      i := 1; CONCR(result) := "";
+      REP schreibe ein zeichen im hundertersystem in result;
+          i INCR 2
+      UNTIL i >= sll PER.
+   schreibe ein zeichen im hundertersystem in result :
+      CONCR(result) CAT code((code(ergebnis SUB i    ) - snull) * 10 +
+                              code(ergebnis SUB i + 1) - snull).
+   result mit vorzeichen : 
+      IF ergebnis="" THEN zero ELIF minus THEN -result ELSE result FI
+END PROC longint;
+ 
+LONGINT PROC max (LONGINT CONST left,right) :
+   IF left > right THEN left ELSE right FI
+END PROC max;
+ 
+LONGINT PROC max longint :
+   LONGINT : ((mtl - 1) * max digit)
+END PROC max longint;
+ 
+LONGINT PROC min (LONGINT CONST left,right) :
+   IF left < right THEN left ELSE right FI
+END PROC min;
+ 
+LONGINT OP MOD (LONGINT CONST left,right) :
+   IF CONCR(right) = null THEN errorstop("LONGINT OP MOD by zero") FI;
+   result := left DIV right; last rest 
+END OP MOD;
+ 
+PROC put (LONGINT CONST longint) :
+   INT  VAR i :: 1,zwei ziffern;
+   IF sign(longint) = -1 THEN out("-"); i:=2 FI;
+   out(text(code(CONCR(longint) SUB i)));
+   FOR i FROM i + 1 UPTO length(CONCR(longint)) REP
+       zwei ziffern := code(CONCR(longint) SUB i);
+       out(code(zwei ziffern DIV 10 + snull));
+       out(code(zwei ziffern MOD 10 + snull));
+   PER;out(" ")
+END PROC put;
+ 
+PROC put (FILE VAR file,LONGINT CONST longint) :
+   put(file,text(longint));
+END PROC put;
+ 
+LONGINT PROC random (LONGINT CONST lower bound,upper bound) :
+   INT VAR i; x := CONCR(upper bound - lower bound - one); y := "";
+   FOR i FROM 1 UPTO length(x) REP y CAT code(random(0,99)) PER;
+   upper bound - (LONGINT : (y) MOD LONGINT : (x)) 
+END PROC random;
+ 
+INT OP SIGN (LONGINT CONST arg) : sign(arg) END OP SIGN;
+ 
+INT PROC sign (LONGINT CONST arg) :
+   SELECT code(CONCR(arg) SUB 1) OF
+      CASE 0   :  0
+      CASE 127 : -1
+      OTHERWISE   1
+   END SELECT
+END PROC sign;
+ 
+TEXT PROC text (LONGINT CONST longint) :
+   INT  VAR i::1,zwei ziffern; ergebnis := "";
+   IF sign(longint) = -1 THEN ergebnis := "-"; i:=2  FI;
+   ergebnis CAT text (code (CONCR (longint) SUB i ) ) ;
+   FOR i FROM i+1 UPTO length(CONCR(longint)) REP
+      zwei ziffern := code(CONCR(longint) SUB i);
+      ergebnis CAT code(zwei ziffern DIV 10 + snull);
+      ergebnis CAT code(zwei ziffern MOD 10 + snull) 
+   PER;   ergebnis
+END PROC text;
+ 
+TEXT PROC text (LONGINT CONST longint,INT CONST length) :
+   x := text(longint); sll := LENGTH x;
+   IF sll > length THEN length * "*" ELSE (length - sll)*" " + x FI
+END PROC text; 
+
+LONGINT PROC last rest :
+  IF y=null THEN LEAVE last rest WITH zero FI; 
+  IF vorl XOR vorr THEN y := h SUB y; kuerze fuehrende nullen(y,null);
+                        vorl := TRUE FI;
+  IF NOTvorr THEN y:=negativ+y; vorr := TRUE FI; LONGINT:(y) 
+END PROC last rest;
+ 
+LONGINT PROC zero :   LONGINT : (null)   END PROC zero;
+LONGINT PROC one  :   LONGINT : (""1"")  END PROC one;
+ 
+ 
+(* ----------------------- INTERNE HILFSPROZEDUREN ----------------------- *)
+ 
+TEXT OP ADD (TEXT CONST left,right) :
+   INT  VAR   carrybit :: 0,i,dif :: length(left) - length(right);
+   ergebnis := left; 
+   FOR i FROM length(left) DOWNTO dif + 1 REP
+      replace(ergebnis,i,das result der addition)
+   PER;
+   IF carrybit = 1 THEN addiere den uebertrag  FI; 
+   ergebnis.
+ 
+   das result der addition :
+      v byte := (code(left SUB i) + code(right SUB i - dif) + carrybit);
+      IF v byte > 99 
+         THEN carrybit := 1; code(v byte - 100)
+         ELSE carrybit := 0; code(v byte)
+      FI. 
+   addiere den uebertrag :
+      FOR i FROM i DOWNTO 1
+          WHILE (ergebnis SUB i) >= max digit REP
+          replace(ergebnis,i,null) 
+      PER;
+      IF (ergebnis SUB 1) = null  OR  dif = 0
+         THEN pruefe auf longint overflow 
+         ELSE replace(ergebnis,i,code(code(ergebnis SUB i) + 1))
+      FI.
+   pruefe auf longint overflow :
+      IF length(ergebnis) = mtl - 1 THEN errorstop(overflow) FI;
+      ergebnis := eins + ergebnis
+END OP ADD;
+ 
+PROC betrag (LONGINT CONST a, b) :
+   vleft := (CONCR(a)SUB1)<>negativ; vright := (CONCR(b)SUB1)<>negativ;
+   IF vleft  THEN aleft :=a ELSE CONCR(aleft ):=subtext(CONCR(a),2) FI;
+   IF vright THEN aright:=b ELSE CONCR(aright):=subtext(CONCR(b),2) FI
+END PROC betrag;
+
+TEXT OP EXP (TEXT CONST arg,INT CONST exp) :
+   INT VAR zaehler :: exp;
+   x := arg; z := eins;
+   REP  IF zaehler MOD 2 = 1 THEN z := z MUL x FI; 
+        zaehler := zaehler DIV 2; x := x MUL x 
+   UNTIL zaehler = 1 PER;
+    x MUL z 
+END OP EXP;
+ 
+PROC kuerze fuehrende nullen ( TEXT VAR text,TEXT CONST snull) :
+   INT VAR i;
+   text := subtext(text,erste nicht snull).
+ 
+   erste nicht snull :
+   FOR i FROM 1 UPTO length (text) - 1 REP
+   UNTIL (text SUB i) <> snull PER;
+   i
+END PROC kuerze fuehrende nullen;
+ 
+INT PROC length (LONGINT CONST a) : 
+  IF (CONCR(a)SUB1)=negativ THEN length(CONCR(a))-1 ELSE length(CONCR(a)) FI
+END PROC length;
+ 
+TEXT OP MUL (TEXT CONST left,right) :
+   INT VAR i,j,carrybit,v,w;
+   ergebnis := (length(left) + length(right) - 1) * null;
+   FOR i FROM length(ergebnis) DOWNTO length(left) REP
+       v := i - length(left); w := length(right) - length(ergebnis) + i;
+       carrybit := 0;
+      FOR j FROM length(left) DOWNTO 1 REP
+            replace(ergebnis,v + j,result der addition)
+      PER;
+       replace(ergebnis,v,code(code(ergebnis SUB v) + carrybit));
+   PER;
+   IF carrybit = 0 THEN ergebnis ELSE code(carrybit) + ergebnis FI.
+
+   result der addition :
+      v byte := code(right    SUB w) * code(left SUB j) + carrybit +
+                code(ergebnis SUB v + j);
+      carrybit := v byte DIV 100;
+      code(v byte MOD 100)
+END OP MUL;
+ 
+TEXT OP SUB (TEXT CONST left,right) : 
+   INT  VAR   carrybit :: 0,i,dif :: length(left) - length(right);
+   ergebnis := left;
+   FOR i FROM length(left) DOWNTO dif + 1 REP 
+       replace(ergebnis,i,das result der subtraktion);
+   PER;
+   IF carrybit = 1 THEN subtrahiere den uebertrag FI;
+   ergebnis.
+ 
+   das result der subtraktion :
+      v byte := (code(left SUB i) - code(right SUB i - dif) - carrybit);
+      IF v byte < 0 
+         THEN carrybit := 1;code(v byte + 100)
+         ELSE carrybit := 0;code(v byte)
+      FI.
+   subtrahiere den uebertrag :
+      FOR i FROM i DOWNTO 2 
+          WHILE (ergebnis SUB i) = null REP
+          replace(ergebnis,i,max digit)
+      PER;
+      replace(ergebnis,i,code(code(ergebnis SUB i) - 1))
+END OP SUB;
+ 
+END PACKET longint;
+

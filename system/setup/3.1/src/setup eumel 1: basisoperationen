@@ -1,0 +1,1071 @@
+
+(**************************************************************************)
+(***** Grundoperationen für den Setup-Eumel (Modul-SHard) *****************)
+(***** Copyright (c) 1985 - 1988 by                       *****************)
+(***** Martin Schönbeck, Spenge / Lutz Prechelt, Karlsruhe ****************)
+(**************************************************************************)
+
+(* Fünf Pakete :
+   1. setup eumel basisoperationen
+         Handhabung von 16-Bit unsigned Werten in INTs und Editierfunktionen
+   2. splitting
+         Worttrennung von REALs und Bytetrennung von INTs
+   3. basic block io
+         blockin und blockout auf Datenräume mit retrys und Fehlermeldungen
+   4. write file
+         Direktes Schreiben/Lesen eines Datenraums in/aus eine(r) Partition
+   5. thesaurus utilities
+         ONE,CERTAIN,certain  zum Aussuchen aus Thesauri ohne Editor
+*)
+
+
+PACKET setup eumel basisoperationen   (* (C) 1987 Lutz Prechelt, Karlsruhe *)
+DEFINES editget, editgetchar,         (* Stand: 08.04.88   Version 1.1     *)
+        yes, no,                      (* Eumel 1.8.0                       *)
+        direction, reset direction,
+        data error, write head,
+        LIST, list, CAT, emptylist,
+        (*UNSIGNED,*) unsigned, int, text,
+        RANGE, range, everywhere,
+        ANDXOR, andxor,
+        dec, hex, bin,
+        IN,
+        := ,
+        put :
+ 
+(* Dieses Paket stellt die Basisfunktionen für den Elanteil des Setup-SHard 
+   zur Verfügung. 
+   Es ist dies im Wesentlichen die Handhabung von INT-Werten auch in Binär- 
+   und Hexdarstellung, sowie die Plausibilitätsprüfung mit Fehleranzeigen. 
+*) 
+ 
+TYPE    LIST     = TEXT,    (* TEXT aus mehreren UNSIGNEDen (replace/ISUB) *)
+        RANGE    = STRUCT (UNSIGNED low, high), 
+        ANDXOR   = STRUCT (UNSIGNED and mask, xor mask);
+
+LET     UNSIGNED   = INT;     (* 16 bit *)
+
+TYPE    REPRESENTATION = INT;
+
+REPRESENTATION CONST dec :: REPRESENTATION : (10),
+                     hex :: REPRESENTATION : (16), 
+                     bin :: REPRESENTATION :  (2);
+
+(* Diese Typen dienen zur Wertprüfung bei der Eingabe. *) 
+ 
+LET    up      = ""3"",
+       down    = ""10"",
+       right   = ""2"",
+       error   = ""0"";  (* fuer current direction *)
+
+TEXT VAR current direction :: ""; (* enthaelt up oder down oder "" *)
+BOOL VAR direction valid :: FALSE;
+
+TEXT CONST hex digits :: "0123456789abcdef"; 
+ 
+(********************* Zuweisungen *************************************) 
+
+OP := (LIST VAR a, LIST CONST b) : 
+  CONCR (a) := CONCR (b) 
+END OP := ; 
+ 
+OP := (RANGE VAR a, RANGE CONST b) : 
+  a.low  := b.low; 
+  a.high := b.high
+END OP := ; 
+
+OP := (ANDXOR VAR a, ANDXOR CONST b) : 
+  a.and mask := b.and mask;
+  a.xor mask := b.xor mask
+END OP := ; 
+ 
+OP := (REPRESENTATION VAR a, REPRESENTATION CONST b) : 
+  CONCR (a) := CONCR (b) 
+END OP := ; 
+ 
+(************************** IN ******************************************) 
+ 
+BOOL OP IN (UNSIGNED CONST a, LIST CONST l) : 
+  INT CONST p :: pos (CONCR (l), textform (a)); 
+  p > 0 AND p MOD 2 = 1  (* enthalten und word-aligned *) 
+END OP IN; 
+ 
+BOOL OP IN (UNSIGNED CONST a, RANGE CONST b) : 
+  (* RANGES sind inklusiv ihrer Grenzen *)
+  reverse (textform (a)) <= reverse (textform (b.high)) AND 
+  reverse (textform (a)) >= reverse (textform (b.low)) 
+END OP IN;
+ 
+BOOL OP IN (UNSIGNED CONST a, ANDXOR CONST mask) : 
+  (* Es muss (Bitweise) (a AND andmask) XOR xormask = 0 sein *)
+  ((a AND mask.and mask) XOR mask.xor mask) = 0 
+END OP IN;
+
+(************************* Konstruktoren ********************************) 
+ 
+LIST CONST emptylist :: LIST : (""); 
+ 
+LIST PROC list (TEXT CONST list text) :
+  (* Konstruiert aus einer in Textform gegebenen Liste von Unsigneds eine
+     LIST. Die einzelnen Werte sind durch Komma getrennt und dürfen in
+     dezimaler, sedezimaler oder binärer Darstellung notiert sein. 
+  *)
+  TEXT VAR t :: compress (list text);
+  IF t = "" THEN emptylist
+  ELSE TEXT VAR result :: ""; 
+       REPEAT 
+         INT VAR first comma pos :: pos (t, ","); 
+         IF first comma pos = 0 THEN first comma pos := LENGTH t + 1  FI; 
+         result CAT textform (unsigned (subtext (t, 1, first comma pos - 1)));
+         t := subtext (t, first comma pos + 1) 
+       UNTIL t = ""  PER;
+       LIST : (result)
+  FI 
+END PROC list;
+
+(*UNSIGNED PROC unsigned (INT CONST sixteen bits) :
+  sixteen bits
+END PROC unsigned;*)
+
+UNSIGNED PROC unsigned (TEXT CONST number) : 
+  INT  VAR result :: 0, i;
+  TEXT VAR t :: compress (to lower (number)), type :: t SUB LENGTH t; 
+  IF pos ("hb" + hex digits, type) = 0 
+  THEN set conversion (FALSE); 
+       LEAVE unsigned WITH 0 
+  FI; 
+  IF type = "h" 
+  THEN convert hex 
+  ELIF type = "b" 
+  THEN convert binary
+  ELSE convert decimal  FI;
+  result. 
+ 
+convert hex : 
+  FOR i FROM 1 UPTO LENGTH t - 1 REP
+    TEXT CONST c :: t SUB i;
+    IF pos (hex digits, c) = 0
+    THEN set conversion (FALSE);
+         LEAVE unsigned WITH 0
+    FI;
+    rotate (result, 4);
+    result INCR pos (hex digits, c) - 1
+  PER.
+
+convert binary :
+  FOR i FROM 1 UPTO LENGTH t - 1 REP
+    TEXT CONST bit :: t SUB i;
+    IF bit <> "0" AND bit <> "1"
+    THEN set conversion (FALSE);
+         LEAVE unsigned WITH 0
+    FI;
+    rotate (result, 1);
+    result INCR int (bit)
+  PER.
+
+convert decimal :
+  REAL VAR x :: real (t);
+  IF NOT last conversion ok THEN LEAVE unsigned WITH 0  FI;
+  IF x < 32768.0
+  THEN result := int (x)
+  ELSE result := int (x - 65536.0)  FI.
+END PROC unsigned; 
+ 
+RANGE CONST everywhere :: RANGE : (0, -1); 
+ 
+RANGE PROC range (UNSIGNED CONST low, high) : 
+  RANGE : (low, high) 
+END PROC range; 
+ 
+ANDXOR PROC andxor (UNSIGNED CONST and mask, xor mask) : 
+  ANDXOR : (and mask, xor mask) 
+ENDPROC andxor; 
+ 
+
+(******* weitere Operationen für UNSIGNED, LIST, RANGE, ANDXOR **************)
+ 
+INT PROC int (UNSIGNED CONST a) : 
+  (* falls jemand noch exotische Dinge damit tun will *)
+  a 
+END PROC int;
+
+OP CAT (LIST VAR l, UNSIGNED CONST a) : 
+  (* Liste nachtraeglich erweitern *)
+  CONCR (l) CAT textform (a) 
+END OP CAT; 
+ 
+(********************* editget(char), yes, no *****************************) 
+
+PROC editget (INT CONST spalte, zeile, TEXT CONST prompt, INT VAR i) : 
+  cursor (spalte, zeile);
+  editget (prompt, i)
+END PROC editget; 
+ 
+PROC editget (INT CONST spalte, zeile, TEXT CONST prompt, UNSIGNED VAR a,
+              REPRESENTATION CONST r) :
+  cursor (spalte, zeile);
+  editget (prompt, a, r)
+END PROC editget; 
+ 
+PROC editget (TEXT CONST prompt, INT VAR i) : 
+  TEXT VAR t :: text (i);
+  test up or down (prompt, t);
+  IF current direction <> "" THEN LEAVE editget  FI;
+  editget (t,7,7);
+  i := int (t);
+  IF NOT last conversion ok
+  THEN data error ("Eingabe unerlaubt als Zahl")  FI
+END PROC editget; 
+ 
+PROC editget (TEXT CONST prompt, UNSIGNED VAR a, REPRESENTATION CONST r) : 
+  TEXT VAR t :: text (a, r);
+  test up or down (prompt, t);
+  IF current direction <> "" THEN LEAVE editget  FI;
+  editget (t,18,18);
+  a := unsigned (t);
+  IF NOT last conversion ok
+  THEN data error ("Eingabe unerlaubt")  FI
+END PROC editget; 
+ 
+BOOL PROC yes (TEXT CONST frage, BOOL CONST std antwort) : 
+  (* Achtung: hierdrin kann nicht die alte "yes" Prozedur benutzt werden, da
+              diese kein getchar benutzt.
+     Die alten yes/no werden unten durch Resultatlose ueberdeckt.
+  *)
+  LET allowed = "NnJj";
+  INT VAR x,y; get cursor (x,y);
+  IF NOT command dialogue THEN LEAVE yes WITH std antwort  FI;
+  REP UNTIL getcharety = "" PER;
+  REP
+    cursor (x,y);
+    test up or down (frage + " ? (j/n)", standard antwort text);
+    IF current direction <> "" THEN LEAVE yes WITH std antwort  FI;
+    TEXT VAR t;
+    getchar (t);
+    IF t = ""13""
+    THEN t := standard antwort text  FI;
+    IF pos (allowed, t) = 0
+    THEN out (""7"") ELSE out (t); out (""13""10"")  FI
+  UNTIL pos (allowed, t) <> 0  PER;
+  t = "j" OR t = "J".
+
+standard antwort text:
+  IF std antwort
+    THEN "j"
+    ELSE "n"
+  FI.
+END PROC yes; 
+
+BOOL PROC yes (INT CONST spalte, zeile, TEXT CONST frage,
+               BOOL CONST std antwort) :
+  cursor (spalte, zeile);
+  yes (frage, std antwort).
+END PROC yes;
+
+PROC yes (TEXT CONST dummy): END PROC yes;
+
+PROC no  (TEXT CONST dummy): END PROC no;
+
+PROC editgetchar (INT CONST spalte, zeile,  TEXT CONST prompt, allowed,
+                  UNSIGNED VAR a) :
+  cursor (spalte, zeile);
+  editgetchar (prompt, allowed, a)
+END PROC editgetchar;
+
+PROC editgetchar (TEXT CONST prompt, allowed, UNSIGNED VAR a) :
+  (* Bietet Zeichen an (nehmen mit RETURN), nimmt nur die in allowed.
+     obere 8 Bit der Vorbesetzung werden abgeschnitten.
+  *)
+  TEXT VAR t;
+  test up or down (prompt, perhaps a);
+  a := a MOD 256;
+  IF current direction <> "" THEN LEAVE editgetchar  FI;
+  getchar (t);
+  IF t = ""13""
+  THEN (* Vorbesetzung behalten *)
+       out (right)
+  ELIF pos (allowed, t) <> 0
+  THEN a := code (t);
+       out (t)
+  ELSE out (t);
+       data error ("unzulässiges Zeichen")
+  FI.
+
+perhaps a:
+  IF a > 31 THEN code (a) ELSE ""  FI.
+END PROC editgetchar;
+
+(********* data error, write head, (reset) direction *********************)
+
+PROC data error (TEXT CONST fehlermeldung) :
+  cursor (1, 24);
+  out (""7"Fehler : " + fehlermeldung + "    (Bitte Taste) ");
+  REP UNTIL incharety (2) = "" PER; pause;
+  cursor (1, 24); out (""4"");
+  current direction := error
+END PROC data error;
+
+PROC write head (TEXT CONST headtext) :
+  TEXT CONST text :: subtext (headtext, 1, 77);
+  INT CONST luecke :: (79 - LENGTH text) DIV 2 - 1;
+  out (""1""4""15"");
+  luecke TIMESOUT " ";
+  out (text);
+  luecke TIMESOUT " ";
+  out (""14""13""10""10"").
+END PROC write head;
+
+TEXT PROC direction :
+  current direction
+END PROC direction;
+
+PROC reset direction (BOOL CONST manouvres possible) :
+  (* Hiermit kann die letzte Manövrierbewegung nach der Auswertung gelöscht
+     werden. Mit NOT manouvres possible wird der ganze Manövriermechanismus
+     außer Betrieb gesetzt.
+  *)
+  direction valid := manouvres possible;
+  current direction := ""
+END PROC reset direction;
+
+(*********************** put *******************************************) 
+ 
+PROC put (INT CONST spalte, zeile, UNSIGNED CONST a, REPRESENTATION CONST r):
+  cursor (spalte, zeile);
+  put (a, r)
+END PROC put;
+
+PROC put (INT CONST spalte, zeile, LIST CONST l, REPRESENTATION CONST r):
+  cursor (spalte, zeile);
+  put (l, r)
+END PROC put;
+
+PROC put (INT CONST spalte, zeile, RANGE CONST a, REPRESENTATION CONST r):
+  cursor (spalte, zeile);
+  put (a, r)
+END PROC put;
+
+PROC put (UNSIGNED CONST a, REPRESENTATION CONST r) : 
+  put (text (a, r)) 
+END PROC put; 
+ 
+PROC put (LIST CONST a, REPRESENTATION CONST r) : 
+  INT VAR i, l :: LENGTH CONCR (a) DIV 2;
+  write ("(");
+  FOR i FROM 1 UPTO l REP 
+    put (text (CONCR (a) ISUB i, r)); 
+    IF i < l THEN put (",")  FI
+  PER; 
+  IF l > 0 THEN out (""8"")  FI;
+  put (")")
+END PROC put;
+
+PROC put (RANGE CONST a, REPRESENTATION CONST r) : 
+  write (text (a.low, r));
+  write ("...");
+  write (text (a.high, r))
+END PROC put;
+(*** ist put auf RANGE in dieser Weise sinnvoll ?
+     vielleicht lieber die Maske bitweise mit x, 1, 0 darstellen ?
+***)
+
+PROC put (BOOL CONST b):
+  IF b
+    THEN put ("Ja  ");
+    ELSE put ("Nein");
+  FI
+END PROC put;
+
+
+(********************* interne Hilfsprozeduren ****************************) 
+ 
+TEXT PROC text (UNSIGNED CONST a, REPRESENTATION CONST r) : 
+  TEXT VAR result :: "";
+  INT  VAR i;
+  set conversion (TRUE);
+  IF CONCR (r) = 10   THEN decimal form
+  ELIF CONCR (r) = 2  THEN binary form 
+  ELSE hex form  FI. 
+ 
+decimal form :
+  IF bit (a, 15)  (* dann kriegt man im Eumel negatives Vorzeichen *)
+  THEN result := text (real (text (a)) + 65536.0); (* Der Umweg ueber
+       Text ist noetig, wegen (1.8.0) real (-32767-1) --> stack overflow *)
+       subtext (result, 1, pos (result, ".") - 1) (* Dezimalpunkt weghauen *)
+  ELSE text (a)  FI. 
+
+binary form : 
+  FOR i FROM 15 DOWNTO 0 REP
+    IF bit (a, i) THEN result CAT "1" ELSE result CAT "0"  FI 
+  PER; 
+  result + "b". 
+ 
+hex form : 
+  INT VAR help :: a; 
+  FOR i FROM 1 UPTO 4 REP 
+    rotate (help, 4);    (* oberste 4 bit zu untersten 4 machen *)
+    result CAT (hex digits SUB nibble + 1);  (* oberste 4 bit darstellen *) 
+  PER; 
+  result + "h". 
+ 
+nibble : 
+  help MOD 16.   (* unterste 4 bit *) 
+END PROC text; 
+
+TEXT PROC textform (UNSIGNED CONST a) : 
+  (* speichert das INT in einen TEXT (mit ISUB lesbar) *) 
+  TEXT VAR ta :: "  ";
+  replace (ta, 1, a);
+  ta 
+END PROC textform; 
+ 
+TEXT PROC reverse (TEXT CONST a) : 
+  (* Text umdrehen. Das braucht man, um die ISUBS direkt vergleichen zu
+     koennen. 
+  *)
+  IF LENGTH a <= 1 THEN a 
+  ELSE reverse (subtext (a, 2)) + (a SUB 1)  FI 
+END PROC reverse;
+
+PROC test up or down (TEXT CONST prompt, data) :
+  IF current direction <> "" AND NOT direction valid
+  THEN current direction := "";
+       LEAVE test up or down
+  FI;
+  out (prompt);
+  out ("       "8""8""8""8""8""8"");  (* nächste 6 Zeichen Löschen *)
+  out (data); LENGTH data TIMESOUT ""8"";
+  IF NOT direction valid THEN LEAVE test up or down  FI;
+  getchar (current direction);
+  IF current direction = up OR current direction = down
+  THEN (* verschlucken, spaeter auswerten *)
+  ELSE push (current direction);
+       current direction := ""
+  FI
+END PROC test up or down;
+
+TEXT PROC to lower (TEXT CONST text) :
+  TEXT VAR t :: text;
+  INT  VAR i;
+  FOR i FROM 1 UPTO LENGTH t REP
+    IF (t SUB i) >= ""65"" AND (t SUB i) <= ""90""
+    THEN replace (t, i, code (code (t SUB i) + 32))  FI
+  PER;
+  t
+END PROC to lower;
+
+END PACKET setup eumel basisoperationen;
+
+
+
+PACKET splitting DEFINES  low byte,     (* Copyright (C) 1985       *)
+                          high byte,    (* Martin Schönbeck, Spenge *)
+                          low word,     (* Stand: 13.09.85          *)
+                          high word: 
+ 
+INT PROC high byte (INT CONST value):
+ 
+    TEXT VAR x := "  ";
+    replace (x, 1, value);
+    code (x SUB 2)
+
+END PROC high byte;
+
+INT PROC low byte (INT CONST value):
+ 
+    TEXT VAR x := "  ";
+    replace (x, 1, value);
+    code (x SUB 1)
+
+END PROC low byte; 
+ 
+INT PROC high word (REAL CONST double precission int):
+
+    int (double precission int / 65536.0)
+
+END PROC high word;
+
+INT PROC low word (REAL CONST double precission int): 
+ 
+    string of low bytes ISUB 1.
+
+string of low bytes:
+    code (int (double precission int MOD 256.0)) +
+    code (int ((double precission int MOD 65536.0) / 256.0)). 
+ 
+END PROC low word; 
+ 
+END PACKET splitting;
+
+
+
+PACKET basic block io DEFINES
+  verify track, 
+  read block,
+  write block:
+
+
+PROC read block (DATASPACE VAR ds,
+                 INT CONST ds page no, 
+                 INT CONST block no,
+                 INT VAR return code):
+  read block; 
+  retry if read error.
+ 
+read block: 
+  block in (ds, ds page no, 0, block no, return code).
+ 
+retry if read error: 
+  INT VAR retry;
+  FOR retry FROM 1 UPTO 10 WHILE return code = 2 REP 
+    reset to block 0 if fifth try; 
+    read block 
+  PER. 
+ 
+reset to block 0 if fifth try: 
+  IF retry = 5 
+    THEN block in (ds, ds page no, 0, 0, return code) 
+  FI. 
+ 
+END PROC read block;
+ 
+PROC write block (DATASPACE CONST ds,
+                 INT CONST ds page no, 
+                 INT CONST block no,
+                 INT VAR return code):
+  write block; 
+  retry if write error. 
+ 
+write block: 
+  block out (ds, ds page no, 0, block no, return code).
+ 
+retry if write error: 
+  INT VAR retry;
+  FOR retry FROM 1 UPTO 10 WHILE return code = 2 REP 
+    reset to block 0 if fifth try; 
+    write block 
+  PER. 
+ 
+reset to block 0 if fifth try: 
+  IF retry = 5 
+    THEN disable stop;
+         DATASPACE VAR dummy ds := nilspace;
+         block in (dummy ds, 2, 0, 0, return code);
+         forget (dummy ds);
+         enable stop
+  FI. 
+ 
+END PROC write block; 
+
+PROC read block (DATASPACE VAR ds, INT CONST ds page,
+                 REAL CONST archive block):
+
+   enable stop;
+   read block (ds, ds page, archive block, error);
+   INT VAR error;
+   SELECT error OF
+      CASE 0:
+      CASE 1: error stop ("Platte kann nicht gelesen werden");
+      CASE 2: error stop ("Lesefehler bei Block "+ text (archive block));
+      CASE 3: error stop ("Versorgungsfehler Archiv");
+      OTHERWISE error stop ("unbekannter Fehler auf Platte");
+   END SELECT;
+
+END PROC read block;
+
+PROC write block (DATASPACE CONST ds, INT CONST ds page,
+                  REAL CONST archive block):
+
+   enable stop;
+   write block (ds, ds page, archive block, error);
+   INT VAR error;
+   SELECT error OF
+      CASE 0:
+      CASE 1: error stop ("Platte kann nicht geschrieben werden");
+      CASE 2: error stop ("Schreibfehler bei Block "+ text (archive block));
+      CASE 3: error stop ("Versorgungsfehler Archiv");
+      OTHERWISE error stop ("unbekannter Fehler auf Platte");
+   END SELECT;
+
+END PROC write block;
+
+PROC read block (DATASPACE VAR ds,
+                 INT CONST ds page no, 
+                 REAL CONST block no,
+                 INT VAR return code):
+  read block; 
+  retry if read error.
+ 
+read block: 
+  block in (ds, ds page no, high word (block no) OR -512,
+                             low word (block no), return code).
+ 
+retry if read error: 
+  INT VAR retry;
+  FOR retry FROM 1 UPTO 10 WHILE return code = 2 REP 
+    reset to block 0 if fifth try; 
+    read block 
+  PER. 
+ 
+reset to block 0 if fifth try: 
+  IF retry = 5 
+    THEN block in (ds, ds page no, 0, 0, return code) 
+  FI. 
+ 
+END PROC read block;
+ 
+PROC write block (DATASPACE CONST ds,
+                 INT CONST ds page no, 
+                 REAL CONST block no,
+                 INT VAR return code):
+  write block; 
+  retry if write error. 
+ 
+write block: 
+  block out (ds, ds page no, high word (block no) OR -512,
+                              low word (block no), return code).
+ 
+retry if write error: 
+  INT VAR retry;
+  FOR retry FROM 1 UPTO 10 WHILE return code = 2 REP 
+    reset to block 0 if fifth try; 
+    write block 
+  PER. 
+ 
+reset to block 0 if fifth try: 
+  IF retry = 5 
+    THEN disable stop;
+         DATASPACE VAR dummy ds := nilspace;
+         block in (dummy ds, 2, 0, 0, return code);
+         forget (dummy ds);
+         enable stop
+  FI. 
+ 
+END PROC write block; 
+
+PROC verify track (DATASPACE VAR ds, INT CONST ds page no,
+                   REAL CONST startblock no, INT VAR return code):
+  block in (ds, ds page no, high word (startblock no) OR -256,
+                   low word (startblock no), return code);
+END PROC verify track;
+
+END PACKET basic block io;
+
+
+
+PACKET write file DEFINES write file,   (* Copyright (C) 1985, 1987 *)
+                          read file :   (* Martin Schönbeck, Spenge *)
+                                        (* Lutz Prechelt, Karlsruhe *)
+                                        (* Stand: 07.06.87          *)
+
+PROC write file (TEXT CONST file name, REAL CONST start block,
+                 INT CONST number of blocks): 
+ 
+    INT VAR count;
+    disable stop; 
+    DATASPACE VAR ds := old (file name);
+    FOR count FROM 0 UPTO (number of blocks - 1) REP 
+        write block (ds, count + 3, start block + real (count)) 
+    UNTIL is error PER; 
+    forget (ds). 
+ 
+END PROC write file; 
+ 
+PROC write file (TEXT CONST file name, REAL CONST start block,
+                 INT CONST number of blocks, write channel): 
+ 
+    enable stop; 
+    INT VAR old channel := channel;
+    IF old channel <> write channel THEN continue (write channel)  FI;
+    disable stop;
+    write file (file name, start block, number of blocks);
+    IF old channel <> write channel
+    THEN break (quiet);
+         continue (old channel)
+    FI.
+END PROC write file;
+
+PROC read file (DATASPACE VAR file, REAL CONST start block,
+                 INT CONST number of blocks): 
+    INT VAR count;
+    disable stop; 
+    forget (file); file := nilspace;
+    FOR count FROM 0 UPTO (number of blocks - 1) REP 
+        read block (file, count + 3, start block + real (count)) 
+    UNTIL is error PER.
+END PROC read file; 
+ 
+PROC read file (DATASPACE VAR file, REAL CONST start block,
+                INT CONST number of blocks, read channel): 
+    enable stop; 
+    INT VAR old channel := channel;
+    IF old channel <> read channel THEN continue (read channel)  FI;
+    disable stop;
+    read file (file, start block, number of blocks);
+    IF old channel <> channel
+    THEN break (quiet);
+         continue (old channel)
+    FI.
+END PROC read file;
+
+END PACKET write file;
+
+PACKET thesaurus utilities
+DEFINES ONE, certain :                     (* Stand: 21.03.88 *)
+                                           (* Korr : Lutz Prechelt *)
+LET  max entries = 200; 
+ 
+LET oben unten rubout return = ""3""10""12""13"";
+ 
+INT  VAR anzahl, 
+         firstline, size,  (* erste Bildschirmz./Anz. Zeilen für Vorgang *)
+         realc, virtc;     (* akt. Zeile in Fenster/Eintragsnummer *)
+ 
+TEXT VAR string; 
+ 
+THESAURUS PROC certain (THESAURUS CONST in, pre) :
+  einzelne (in, pre, TRUE).
+END PROC certain;
+
+TEXT OP ONE (THESAURUS CONST t): 
+  name (einzelne (t, empty thesaurus, FALSE),1) 
+END OP ONE; 
+ 
+THESAURUS PROC einzelne (THESAURUS CONST thes, preselections, 
+                         BOOL CONST viele): 
+  (* Benutzt nur den Rest des Bildschirms ab der aktuellen Zeile nach unten. 
+     Die in preselections enthaltenen Namen aus t sind bereits zu Beginn 
+     angekreuzt. 
+     Ein Aufruf mit NOT viele und preselections/t <> empty thesaurus ist
+     nicht sinnvoll.
+     Die Cursorposition nach Verlassen ist wieder in der "aktuellen" Zeile 
+     auf Position 1, so daß mit out (""4"") der Kram selektiv gelöscht
+     werden kann.
+  *)
+  ROW maxentries TEXT VAR eintrag;
+  THESAURUS VAR ausgabe :: empty thesaurus,
+                t :: empty thesaurus + thes;  (* Leereinträge entfernen! *)
+  INT VAR i; 
+  initialisiere ankreuzen;
+  IF anzahl = 0 THEN LEAVE einzelne WITH empty thesaurus FI;
+  bildschirm vorbereiten;
+  bild (1, eintrag); 
+  virtc := 1; 
+  realc := 1; 
+  realcursor setzen; 
+  kreuze an (viele, eintrag);
+  ausgabe erzeugen; 
+  cursor (1, firstline - 2); out (""4"");
+  ausgabe. 
+ 
+initialisiere ankreuzen:
+  anzahl := highest entry (t);
+  string := "";
+  (* t enthält keine Leereinträge mehr ! *)
+  FOR i FROM 1 UPTO anzahl REP 
+     eintrag [i] := name (t,i)
+  PER;
+  FOR i FROM 1 UPTO highest entry (preselections) REP 
+    INT CONST preselection link :: link (t, name (preselections, i));
+    IF preselection link > 0
+    THEN string CAT textstr (preselection link)  FI
+  PER.
+
+bildschirm vorbereiten: 
+  get cursor (i, firstline); 
+  out (""13""4"");  (* Restbildschirm löschen *)
+  IF viele
+  THEN putline ("Wählen <CR>  Löschen <RUBOUT>  " + 
+                "alle Löschen <HOP><RUBOUT>  Beenden <ESC>q") 
+  ELSE putline ("Auswählen <CR>")  FI;
+  putline ("Marke bewegen  <RUNTER>  <RAUF>  <HOP><RUNTER>  <HOP><RAUF>"); 
+  firstline INCR 2; 
+  size := 24 - firstline + 1.
+
+ausgabe erzeugen: 
+  WHILE string <> "" REP 
+    insert (ausgabe, eintrag [string ISUB 1]);
+    string := subtext (string, 3); 
+ PER 
+END PROC einzelne; 
+ 
+PROC realcursor setzen: 
+  TEXT CONST mark :: marke (virtc, TRUE);
+  cursor (1, firstline + realc - 1); 
+  out (mark + LENGTH mark * ""8"").
+END PROC real cursor setzen; 
+ 
+TEXT PROC marke (INT CONST zeiger, BOOL CONST mit cursor): 
+  INT VAR pl :: nr (zeiger); 
+  IF pl = 0 
+     THEN leer
+     ELSE mit zahl
+  FI. 
+ 
+mit zahl: 
+  IF mit cursor 
+     THEN (3 - length (text (pl))) * "-" + text (pl) + "-> " 
+     ELSE text (pl, 3) + " > " 
+  FI. 
+ 
+leer: 
+  IF mit cursor 
+     THEN ">>>>> " 
+     ELSE "      "
+  FI 
+END PROC marke; 
+ 
+PROC bild (INT CONST anfang, ROW maxentries TEXT CONST eintrag): 
+  cursor (1, firstline);
+  out (""4""3"");    (* Restschirm löschen, 1 Zeile rauf *)
+  INT VAR i; 
+  FOR i FROM anfang UPTO grenze REP 
+     out (""13""10"");
+     out (marke (i, FALSE)); 
+     out (eintrag [i]) 
+  PER. 
+ 
+grenze: 
+  min (anzahl, anfang + size - 1)
+END PROC bild; 
+ 
+PROC kreuze an (BOOL CONST viele, ROW maxentries TEXT CONST eintrag) :
+  REP zeichen lesen; 
+      zeichen interpretieren 
+  PER. 
+ 
+zeichen lesen: 
+  TEXT VAR zeichen; 
+  inchar (zeichen, ""1""27""3""10""13"1Xx+"11""12"Oo0-"). 
+ 
+zeichen interpretieren: 
+  SELECT code (zeichen) OF 
+    CASE   1 (* hop *)    : hoppen (eintrag)
+    CASE  27 (* ESC *)    : IF incharety (600) = "q" THEN LEAVE kreuze an  FI
+    CASE   3 (* rauf *)   : nach oben (eintrag)
+    CASE  10 (* runter *) : nach unten (eintrag)
+    CASE  13 (* Return *) : ankreuzen (eintrag, TRUE); evtl aufhoeren
+    CASE  49,(* 1 *)
+          88,(* X *)
+         120,(* x *)
+          43,(* + *)
+          11 (* Rubin *)  : ankreuzen (eintrag, FALSE); evtl aufhoeren 
+    CASE  12,(* Rubout *)
+          79,(* O *)
+         111,(* o *)
+          48,(* 0 *)
+          45 (* - *)      : auskreuzen (eintrag)
+  END SELECT. 
+ 
+evtl aufhoeren: 
+  IF NOT viele THEN LEAVE kreuze an FI. 
+ 
+END PROC kreuze an; 
+ 
+PROC hoppen (ROW maxentries TEXT CONST eintrag) :
+  zweites zeichen lesen; 
+  zeichen interpretieren. 
+ 
+zweites zeichen lesen: 
+  TEXT VAR zz; 
+  inchar (zz).
+ 
+zeichen interpretieren: 
+  SELECT pos (oben unten rubout return, zz) OF 
+    CASE 1 : hop nach oben 
+    CASE 2 : hop nach unten 
+    CASE 3 : alles loeschen 
+    CASE 4 : rest ankreuzen
+    OTHERWISE out (""7"")
+  END SELECT. 
+ 
+rest ankreuzen:
+  INT VAR i;
+  FOR i FROM 1 UPTO anzahl REP     (* alles *)
+    IF nr (i) = 0                  (* was noch nicht angekreuzt ist *)
+       THEN string CAT textstr (i) (* ankreuzen *)
+    FI
+  PER;
+  bild aktualisieren.
+
+alles loeschen: 
+  string := ""; 
+  bild aktualisieren.
+ 
+hop nach oben: 
+  IF   ganz oben 
+       THEN out (""7"") 
+  ELIF oben im fenster    
+       THEN raufblaettern 
+       ELSE top of page 
+  FI. 
+ 
+ganz oben: 
+  virtc = 1. 
+ 
+oben im fenster: 
+  realc = 1. 
+ 
+raufblaettern: 
+  virtc DECR size;
+  virtc := max (virtc, 1); 
+  bild (virtc, eintrag); 
+  realcursor setzen. 
+ 
+top of page: 
+  loesche marke; 
+  virtc DECR (realc - 1); 
+  realc := 1; 
+  realcursor setzen. 
+ 
+hop nach unten: 
+  IF   ganz unten 
+       THEN out (""7"") 
+  ELIF unten im fenster 
+       THEN runterblaettern 
+       ELSE bottom of page 
+  FI. 
+ 
+ganz unten: 
+  virtc = anzahl. 
+ 
+unten im fenster: 
+  firstline + realc > 24. 
+ 
+runterblaettern: 
+  INT VAR alter virtc :: virtc; 
+  virtc INCR size;
+  virtc := min (virtc, anzahl); 
+  realc := virtc - alter virtc; 
+  bild (alter virtc + 1, eintrag);
+  realcursor setzen. 
+ 
+bottom of page: 
+  loesche marke; 
+  alter virtc := virtc; 
+  virtc INCR (size - realc); 
+  virtc := min (anzahl, virtc); 
+  realc INCR (virtc - alter virtc); 
+  realcursor setzen 
+END PROC hoppen; 
+ 
+PROC ankreuzen (ROW maxentries TEXT CONST eintrag, BOOL CONST ggf auskreuzen):
+  (* bei ggf auskreuzen wird der Eintrag, falls er schon angekreuzt ist,
+     ausgekreuzt, andernfalls normal angekreuzt.
+  *)
+  INT VAR pl :: nr (virtc); 
+  IF pl <> 0 
+     THEN schon angekreuzt
+  FI; 
+  string CAT textstr (virtc); 
+  IF virtc < anzahl THEN nach unten (eintrag) ELSE realcursor setzen  FI.
+
+schon angekreuzt :
+  IF ggf auskreuzen THEN auskreuzen (eintrag) ELSE out (""7"")  FI;
+  LEAVE ankreuzen.
+END PROC ankreuzen; 
+ 
+PROC auskreuzen (ROW maxentries TEXT CONST eintrag) :
+  INT VAR posi :: nr (virtc); 
+  IF posi = 0 
+     THEN out (""7""); LEAVE auskreuzen 
+  FI; 
+  rausschmeissen; 
+  loesche marke; 
+  bild aktualisieren; 
+  IF virtc < anzahl THEN nach unten (eintrag) FI.
+ 
+rausschmeissen: 
+  string := subtext (string,1, 2*posi-2) + subtext (string,2*posi+1) 
+END PROC auskreuzen; 
+ 
+PROC bild aktualisieren: 
+  INT VAR ob, un, i; 
+  ob := virtc - realc + 1; 
+  un := min (ob + size - 1, anzahl); 
+  cursor (1, firstline - 1); 
+  FOR i FROM ob UPTO un REP 
+    out (""13""10""); out (marke (i, FALSE))
+  PER;
+  realcursor setzen.
+END PROC bild aktualisieren; 
+ 
+PROC nach oben (ROW maxentries TEXT CONST eintrag) :
+  IF noch nicht oben   (* virtuell *) 
+     THEN gehe nach oben 
+     ELSE out (""7"") 
+  FI;
+  realcursor setzen.
+ 
+noch nicht oben: 
+  virtc > 1. 
+ 
+gehe nach oben: 
+  IF realc = 1 
+     THEN scroll down 
+     ELSE cursor up 
+  FI. 
+ 
+scroll down: 
+  virtc DECR 1; 
+  bild (virtc, eintrag).
+ 
+cursor up: 
+  loesche marke; 
+  virtc DECR 1; 
+  realc DECR 1.
+END PROC nach oben; 
+ 
+PROC nach unten (ROW maxentries TEXT CONST eintrag) :
+  IF noch nicht unten  (* virtuell *) 
+     THEN gehe nach unten
+     ELSE out (""7"")
+  FI. 
+ 
+noch nicht unten: 
+  virtc < anzahl. 
+ 
+gehe nach unten:
+  IF realc > size - 1 
+     THEN scroll up 
+     ELSE cursor down 
+  FI. 
+ 
+scroll up: 
+  virtc INCR 1; 
+  bild (virtc - size + 1, eintrag); 
+  realcursor setzen. 
+ 
+cursor down: 
+  loesche marke; 
+  virtc INCR 1; 
+  realc INCR 1; 
+  realcursor setzen 
+END PROC nach unten; 
+ 
+PROC loesche marke: 
+  out (marke (virtc, FALSE)) 
+END PROC loesche marke; 
+ 
+TEXT PROC textstr (INT CONST nr): 
+  TEXT VAR help :: "  "; 
+  replace (help, 1, nr); 
+  help.
+END PROC textstr; 
+ 
+INT PROC nr (INT CONST zeiger): 
+  IF pos (string, textstr (zeiger)) = 0 (* haut hin, da zeiger < 255 *)
+     THEN 0 
+     ELSE (pos (string,textstr (zeiger)) DIV 2) + 1 
+  FI 
+END PROC nr;
+
+PROC inchar (TEXT VAR t, TEXT CONST allowed) : 
+  REP 
+    getchar (t); 
+    IF pos (allowed, t) = 0 THEN out (""7"")  FI 
+  UNTIL pos (allowed, t) > 0  PER. 
+END PROC inchar; 
+ 
+END PACKET thesaurus utilities;
+

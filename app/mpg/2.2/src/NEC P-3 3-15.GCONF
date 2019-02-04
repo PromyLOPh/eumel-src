@@ -1,0 +1,126 @@
+INCLUDE "std primitives"; 
+INCLUDE "matrix printer"; 
+ 
+PLOTTER "NEC P3",3,15,1024,1024,21.68,21.68;
+ 
+COLORS "000999";
+
+(*   Version vom 21.10.87 BJ  *)
+
+(******** Hilfsvariablen fuer nec-plot ***************)
+LET nec x pixel = 1024,nec y pixel d 16 = 64; 
+LET nec y max = 1023;
+LET BITLINE = ROW nec x pixel INT; 
+BOUND ROW nec y pixeld16 BITLINE VAR nec map; 
+BITLINE VAR nec nilline; 
+DATASPACE VAR nec ds;
+INT VAR nec x,nec y;
+(*****************************************************)
+ 
+PROC prepare: 
+   call (29, "", printer); (* wait for halt *) 
+   continue (channel (plotter))
+END PROC prepare;
+
+PROC initplot:
+     INT VAR nec i; 
+     FOR nec i FROM 1 UPTO nec x pixel REP 
+       nec nilline[nec i] := 0 
+     PER; 
+     forget(nec ds);
+     nec ds := nilspace;
+     nec map := nec ds;
+     disable stop
+END PROC initplot; 
+ 
+PROC endplot: 
+   out(""27"T16"); 
+   INT VAR nec i; 
+   FOR nec i FROM 1 UPTO necypixeld16 REP 
+       nec out line (nec i)
+   PER;
+   out(""12"");
+   break(quiet);
+   call (26,"",printer);  (* start spool *)
+   enable stop 
+END PROC endplot; 
+ 
+PROC nec out line (INT CONST i):
+   INT VAR c,j :: 1,d; 
+   WHILE j <= nec x pixel REP 
+      c := nec map[i][j]; 
+      d := 0;
+      WHILE j <= nec x pixel CAND nec map[i][j] = c REP 
+         j INCR 1;
+         d INCR 1
+      PER; 
+      IF j <= nec x pixel OR c <> 0 
+        THEN TEXT VAR t :: text(d,4);
+             change all(t," ","0");
+             INT VAR kk :: c;rotate(kk,8);
+             out(""27"W"+t+code(c AND 255) + code(kk AND 255)) 
+      FI
+   PER; 
+   out(""13""10"")
+END PROC nec out line; 
+ 
+PROC clear:
+   INT VAR nec i; 
+   FOR nec i FROM 1 UPTO nec y pixeld16 REP 
+       nec map[nec i] := nec nilline 
+   PER 
+END PROC clear; 
+ 
+PROC home:
+   move to (0,0)
+END PROC home;
+
+PROC moveto (INT CONST x,y): 
+      nec x := x;
+      nec y := y
+END PROC moveto; 
+ 
+PROC drawto (INT CONST x,y): 
+  printer line (nec x+1, nec y max - nec y,x+1,nec y max - y,
+                PROC (INT CONST, INT CONST) nec p3 set pixel); 
+   nec x:=x;nec y:=y
+END PROC drawto; 
+ 
+PROC setpixel (INT CONST x,y): 
+    setbit(nec map[(nec y max-y) DIV 16 + 1][x+1],(nec y max-y) AND 15) 
+END PROC setpixel;
+
+PROC nec p3 set pixel (INT CONST x,y):
+    set bit(nec map[y DIV 16 + 1][x],y AND 15)
+END PROC nec p3 set pixel;
+
+BOOL PROC nec p3 is pixel (INT CONST x,y):
+  bit (nec map[y DIV 16 + 1][x],y AND 15) 
+END PROC nec p3 is pixel;
+
+PROC foreground (INT VAR type): 
+   type := 1;    (* Nur Schwarz auf Weiss-Druck moeglich *)
+END PROC foreground;
+
+PROC background (INT VAR type):
+   type := 0;
+END PROC background; 
+        
+PROC setpalette: 
+END PROC setpalette;
+
+PROC circle (INT CONST x,y,rad,from,to): 
+   std circle (x,y,rad,from,to)
+END PROC circle; 
+ 
+PROC box (INT CONST x1,y1,x2,y2,pattern): 
+   std box (x1, y1, x2, y2, pattern)
+END PROC box; 
+ 
+PROC fill (INT CONST x,y,pattern): 
+  printer fill (x,x,nec y max - y,1,
+                BOOL PROC (INT CONST, INT CONST) nec p3 is pixel,
+                PROC (INT CONST, INT CONST) nec p3 set pixel)
+END PROC fill;
+ 
+

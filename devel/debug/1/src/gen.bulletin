@@ -1,0 +1,536 @@
+PACKET eumel coder part 1 m DEFINES bulletin m :   (* Author: U.Bartling *)
+                                                   (* modif'd by G.Szalay*)
+                                                   (* 87-03-31 *)
+
+(**************************************************************************)
+(*                                                                        *)
+(*  This program generates a file "bulletin" containing procedure heads   *)
+(*  and the module numbers, to be used by the debugging packet 'trace'.   *)
+(*                                                                        *)
+(**************************************************************************)
+
+
+                   (***** Globale Variable *****)
+
+TEXT VAR object name;
+
+FILE VAR bulletin file;
+
+INT VAR hash table pointer, nt link, permanent pointer, param link,
+        index, mode, word, packet link;
+
+BOOL VAR found, end of params;
+
+#page#
+(**************************************************************************)
+(*                                                                        *)
+(*                  1. Interface zum ELAN-Compiler            04.08.1986  *)
+(*                              1.8.0                                     *)
+(*                                                                        *)
+(*   Beschreibung der      Tabellen (-groessen),                          *)
+(*                         internen Vercodung von Typen                   *)
+(*                    und  Kennungen .                                    *)
+(*   Initialisieren und Beenden des Compilers,                            *)
+(*   Lesen aus und Schreiben in Namens- bzw. Permanent-Tabelle            *)
+(*                                                                        *)
+(**************************************************************************)
+
+
+LET  begin of hash table         =     0 ,
+     end of hash table           =  1023 ,
+
+     begin of permanent table    = 22784 ,
+       before first pt entry     = 22784 ,
+       first permanent entry     = 22785 ,
+     end of permanent table      = 32767 ,
+
+     wordlength                  =     1 ,  (* compile  u n d  run time *)
+     two word length             =     2 ,
+     three word length           =     3 ,
+
+     permanent param const             = 10000 ,
+     permanent param var               = 20000 ,
+     permanent proc op                 = 30000 ,
+     permanent type                    = 30000 ,
+     permanent row                     =    10 ,
+     permanent struct                  =    11 ,
+     permanent param proc              =    12 ,
+(*   permanent param proc end marker   =     0 , *)
+     permanent type field              =     0 ,
+
+     ptt limit                         = 10000 ,
+     begin of pt minus ptt limit       = 12784 ,
+
+     void                              =     0 ,
+     int                               =     1 ,
+     real                              =     2 ,
+     string                            =     3 ,
+     bool                              =     5 ,
+     bool result                       =     6 ,
+     dataspace                         =     7 ,
+     row                               =    10 ,
+     struct                            =    11 ,
+
+     const                             =     1 ,
+     var                               =     2 ,
+(*   proc                              =     3 , *)
+(*   denoter                           =     5 , *)
+     bold                              =     2 ;
+
+
+INT CONST permanent packet            :=     -2 ,
+          permanent end               :=     -3 ;
+
+
+
+
+                   (***** Hash/Namenstabelle *****)
+.
+next hash entry :
+     hash table pointer INCR wordlength .
+
+end of hash table reached :
+     hash table pointer > end of hash table .
+
+yet another nt entry :
+     nt link := cdb int (nt link) ;
+     nt link <> 0 . ;
+
+PROC to object (TEXT CONST searched object) :
+     hash ;
+     search nt entry .
+
+hash :
+     hash code := 0 ;
+     FOR index FROM 1 UPTO LENGTH searched object REP
+         addmult cyclic
+     ENDREP .
+
+addmult cyclic :
+     hash code INCR hash code ;
+     IF hash code > end of hash table THEN wrap around FI ;
+     hash code := (hash code + code (searched object SUB index)) MOD 1024 .
+
+wrap around :
+     hash code DECR end of hash table .
+
+hash code : nt link .
+
+search nt entry :
+     found := FALSE ;
+     WHILE yet another nt entry REP
+          read current entry ;
+          IF object name = searched object
+             THEN found := TRUE ;
+                  LEAVE to object
+          FI
+     PER .
+
+read current entry :
+     permanent pointer := cdb int (nt link + wordlength) ;
+     object name := cdb text (nt link + two word length)
+ENDPROC to object ;
+
+
+                 (***** Permanent Tabelle *****)
+.
+next procedure :
+     permanent pointer := cdb int (permanent pointer) . ;
+
+PROC next pt param :
+     mode := cdb int (param link) MOD ptt limit ;
+     param link INCR wordlength ;
+     IF   mode = permanent row    THEN skip over permanent row
+     ELIF mode = permanent struct THEN skip over permanent struct
+     FI ;
+     set end marker if end of list .
+
+skip over permanent row :
+     param link INCR wordlength ;
+     next pt param .
+
+skip over permanent struct :
+     REP
+         next pt param ;
+         mode := cdb int (param link)
+     UNTIL mode = permanent type field PER ;
+     param link INCR wordlength
+ENDPROC next pt param ;
+
+PROC set end marker if end of list :
+     mode := cdb int (param link) ;
+     end of params := mode >= permanent proc op OR mode <= 0
+ENDPROC set end marker if end of list ;
+
+PROC get type and mode (INT VAR type) :
+     mode := cdb int (param link) ;
+     IF mode = permanent param proc THEN type of param proc
+                                    ELSE type of object
+     FI .
+
+type of param proc :
+     param link INCR wordlength ;
+     get type and mode (type) ;
+     mode := permanent param proc .
+
+type of object :
+     IF mode < 0 THEN type := 2769 + (32767 + mode) ;
+                      mode := 0
+                 ELSE type := mode MOD ptt limit ;
+                      mode DECR type ;
+                      translate type if necessary ;
+                      translate mode if necessary
+     FI .
+
+translate type if necessary :
+     IF permanent row or struct THEN translate type FI .
+
+translate type :
+     type := param link - begin of pt minus ptt limit .
+
+translate mode if necessary :
+    IF   mode = permanent param const THEN mode := const
+    ELIF mode = permanent param var   THEN mode := var
+    FI .
+
+permanent row or struct :
+     type = permanent row OR type = permanent struct
+ENDPROC get type and mode ;
+
+
+                 (***** Allgemeine Zugriffsprozeduren *****)
+
+INT PROC cdb int (INT CONST index) :
+   EXTERNAL 116
+ENDPROC cdb int ;
+
+TEXT PROC cdb text (INT CONST index) :
+   EXTERNAL 117
+ENDPROC cdb text ;
+
+#page#
+(**************************************************************************)
+(*                                                                        *)
+(*                 10. Inspector                              01.08.1986  *)
+(*                                                                        *)
+(**************************************************************************)
+
+
+
+INT VAR line number, begin of packet,
+        last packet entry, indentation;
+
+TEXT VAR type and mode, pattern, buffer;
+
+PROC name of type (INT CONST type) :
+            SELECT type OF
+     CASE void              :
+     CASE int               : type and mode CAT "INT"
+     CASE real              : type and mode CAT "REAL"
+     CASE string            : type and mode CAT "TEXT"
+     CASE bool, bool result : type and mode CAT "BOOL"
+     CASE dataspace         : type and mode CAT "DS"
+     CASE row               : type and mode CAT "ROW "
+     CASE struct            : type and mode CAT "STRUCT"
+     OTHERWISE              : complex type
+            ENDSELECT .
+
+complex type :
+     IF type > ptt limit THEN perhaps permanent struct or row
+                         ELSE get complex type
+     FI .
+
+perhaps permanent struct or row :
+     index := type + begin of pt minus ptt limit ;
+     mode := cdb int (index) MOD ptt limit ;
+     IF   mode = permanent row    THEN get permanent row
+     ELIF mode = permanent struct THEN get permanent struct
+                                  ELSE type and mode CAT "-"
+     FI .
+
+get complex type :
+     index := type + begin of permanent table ;
+     IF is complex type THEN get name
+                        ELSE type and mode CAT "-"
+     FI .
+
+is complex type :
+     permanent type definition mode = permanent type .
+
+get name :
+     type and mode CAT cdb text (link to type name + two word length) .
+
+link to type name :
+     cdb int (index + three word length) .
+
+permanent type definition mode :
+     cdb int (index + wordlength) .
+
+get permanent row :
+     INT VAR t;
+     type and mode CAT "ROW " ;
+     type and mode CAT text (cdb int (index + wordlength)) ;
+     type and mode CAT " " ;
+     param link := index + two wordlength ;
+     get type and mode (t) ;
+     name of type (t) .
+
+get permanent struct :
+     type and mode CAT "STRUCT ( ... )"
+ENDPROC name of type ;
+
+
+BOOL PROC not end of chain :
+     permanent pointer <> 0
+ENDPROC not end of chain ;
+
+PROC put specifications (TEXT CONST proc name) :
+     put obj name (proc name) ;
+     to first param ;
+     IF NOT end of params THEN put param list FI ;
+     put result ;
+     write bulletin line (text(cdb int(param link+wordlength),5)) ;
+     writeline .
+
+to first param :
+     param link := permanent pointer + word length ;
+     set end marker if end of list .
+
+put result :
+     INT VAR type;
+     get type and mode (type) ;
+     IF type <> void THEN type and mode := " --> " ;
+                          name of type (type) ;
+                          write bulletin line (type and mode)
+     FI
+ENDPROC put specifications ;
+
+PROC put param list :
+     write bulletin line (" (") ;
+     REP
+         INT VAR type, param mode;
+         get type and mode (type) ;
+         param mode := mode ;
+         put type and mode ;
+         maybe param proc ;
+         next pt param ;
+         IF end of params THEN write bulletin line (")") ;
+                               LEAVE put param list
+         FI ;
+         write bulletin line (", ") ;
+     PER .
+
+put type and mode :
+     type and mode := "" ;
+     name of type (type) ;
+     type and mode CAT name of mode ;
+     write bulletin line (type and mode) .
+
+name of mode :
+     IF   param mode = const THEN " C"
+     ELIF param mode = var   THEN " V"
+                             ELSE " PROC"
+     FI .
+
+maybe param proc :
+     IF mode = permanent param proc THEN put virtual params FI .
+
+put virtual params :
+     skip over result type if complex type ;
+     IF NOT end of virtual params THEN put param list FI.
+
+skip over result type if complex type :
+     next pt param .
+
+end of virtual params :
+    end of params
+ENDPROC put param list ;
+
+PROC to packet (TEXT CONST packet name) :
+     to object ( packet name) ;
+     IF found THEN find start of packet objects FI .
+
+find start of packet objects :
+     last packet entry := 0 ;
+     packet link := before first pt entry ;
+     REP
+         packet link INCR wordlength ;
+         word := cdb int (packet link) ;
+         IF word < 0 THEN IF   word = permanent packet THEN packet found
+                          ELIF word = permanent end    THEN return
+                          FI
+         FI
+     ENDREP .
+
+packet found :
+     IF cdb int (packet link + wordlength) = nt link
+        THEN last packet entry := packet link FI .
+
+return :
+     IF last packet entry <> 0 THEN found := TRUE ;
+                                    packet link := last packet entry
+                               ELSE found := FALSE
+     FI ;
+     LEAVE to packet
+ENDPROC to packet ;
+
+PROC next packet :
+     REP
+         packet link INCR wordlength ;
+         word := cdb int (packet link) ;
+         IF   word = permanent packet THEN true return
+         ELIF end of permanents       THEN false return
+         FI ;
+     ENDREP .
+
+true return :
+     found := TRUE ;
+     LEAVE next packet .
+
+false return :
+     found := FALSE ;
+     LEAVE next packet .
+
+end of permanents :
+     word = permanent end OR packet link > end of permanent table
+ENDPROC next packet ;
+
+PROC prep bulletin :
+     IF exists ("bulletin")
+     THEN IF yes("overwrite old file ""bulletin""")
+          THEN command dialogue (FALSE);
+               forget ("bulletin");
+               command dialogue (TRUE);
+               bulletin file := sequential file (output, new ("bulletin"))
+          ELSE bulletin file := sequential file (output, old ("bulletin"))
+          FI
+     ELSE bulletin file := sequential file (output, new ("bulletin"))
+     FI;
+     putline ("GENERATING ""bulletin"" ...");
+     line number := 0 ;
+     buffer := ""
+ENDPROC prep bulletin ;
+
+PROC write bulletin line (TEXT CONST line) :
+  (* IF LENGTH buffer + LENGTH line > 75 THEN writeline FI ; *)
+     buffer CAT line
+ENDPROC write bulletin line ;
+
+PROC writeline  :
+     write (bulletin file, buffer) ;
+     line (bulletin file) ;
+     line number INCR 1 ;
+     cout (line number) ;
+     buffer := ""
+ENDPROC writeline ;
+
+PROC writeline (INT CONST times) :
+     IF LENGTH compress(buffer) <> 0 THEN index := times - 1 ;
+                                          writeline
+                                     ELSE index := times
+     FI ;
+     line (bulletin file, index) ;
+     line number INCR index;
+     indentation := 0 ;
+     cout (line number)
+ENDPROC writeline ;
+
+PROC bulletin m (TEXT CONST packet name) :
+     prep bulletin ;
+     scan (packet name) ;
+     next symbol (pattern) ;
+     to packet (pattern) ;
+     IF found THEN list packet
+              ELSE error stop (packet name + " ist kein Paketname")
+     FI .
+
+ENDPROC bulletin m;
+
+PROC list packet :
+     begin of packet := packet link + word length ;
+     find end of packet ;
+     run through nametab and list all packet objects .
+
+find end of packet :
+     last packet entry := begin of packet ;
+     REP
+         last packet entry INCR wordlength ;
+         word := cdb int (last packet entry) ;
+     UNTIL end of packet entries PER .
+
+end of packet entries :
+     word = permanent packet OR word = permanent end .
+
+run through nametab and list all packet objects :
+     hashtable pointer := begin of hashtable ;
+     REP
+         nt link := hashtable pointer ;
+         list objects of current packet in this chain ;
+         next hash entry
+     UNTIL end of hashtable reached ENDREP .
+
+list objects of current packet in this chain :
+     WHILE yet another nt entry REP
+         permanent pointer := cdb int (nt link + wordlength) ;
+         put objects of this name
+     PER .
+
+put objects of this name :
+     IF there is at least one object of this name in the current packet
+       THEN into bulletin FI .
+
+there is at least one object of this name in the current packet :
+     REP
+        IF permanent pointer >= begin of packet AND
+           permanent pointer < last packet entry
+           THEN LEAVE there is at least one object of this name
+                      in the current packet WITH TRUE FI ;
+        next procedure
+     UNTIL permanent pointer = 0 PER ;
+     FALSE .
+
+into bulletin :
+     object name := cdb text (nt link + two word length) ;
+     object names into bulletin (BOOL PROC within packet)
+ENDPROC list packet ;
+
+BOOL PROC within packet :
+     permanent pointer >= begin of packet AND
+     permanent pointer < last packet entry
+ENDPROC within packet ;
+
+PROC object names into bulletin (BOOL PROC link ok) :
+     scan (object name) ;
+     next symbol (object name, mode) ;
+     IF NOT type definition THEN put object definitions FI .
+
+type definition :
+     mode = bold AND no params .
+
+no params :
+     cdb int (permanent pointer + word length) >= permanent type .
+
+put object definitions :
+     WHILE link ok REP
+         put specifications (object name) ;
+         next procedure
+     ENDREP
+ENDPROC object names into bulletin ;
+
+PROC bulletin m:
+     prep bulletin ;
+     packet link := first permanent entry ;
+     REP
+         list packet ;
+         next packet
+     UNTIL NOT found PER
+ENDPROC bulletin m;
+
+PROC put obj name (TEXT CONST name) :
+     buffer := name.
+ENDPROC put obj name ;
+
+bulletin m;
+
+ENDPACKET eumel coder part 1 m;
+

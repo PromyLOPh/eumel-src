@@ -1,0 +1,162 @@
+PACKET protversetzkonflistenDEFINES konfprolispezielleteile:LET 
+mnrbearbeitetwirdjgst=106,mnrbearbeitetwirdklasse=107,mnrbearbeitetwirdkurs=
+108;TEXT VAR bearbeitetwirdjgst,bearbeitetwirdklasse,bearbeitetwirdkurs,
+startjahr,startzug;INT VAR aktuelleindexnr;LET niltext="",nildatum="01.01.00"
+,null=0,blank=" ",mittestrich="-",doppelpunkt=":",vordr1ueberarb=
+"vordruck1 ueberarbeitet",vordr2ueberarb="vordruck2 ueberarbeitet",
+vordr3ueberarb="vordruck3 ueberarbeitet",spalte2breite=52,anzspaltentrenner=1
+,ausgkopflaenge=3,ausgfeldlaenge=2,AUSGFELD =ROW ausgfeldlaengeTEXT ,
+AUSGKOPF =ROW ausgkopflaengeTEXT ,konfprolieingangsmaske=
+"ms liste konfpro eingang",konfprolianfpos=2;INT VAR spalte1breite,
+druckzeilenzahl,druckzeilenzahlrest,zeilenanz,schuelerzaehler,eingabestatus;
+TEXT VAR konfproliueberschrift,zug,jahrgang,schuelername,schuelerrufname,
+schuelernamenszus,schuelergebdat,zugangjgst,abmeldedat,schuelerjgst,
+schuelerzug,vordruck,vordruckueberarbeitet,druckstrich;AUSGFELD VAR 
+ausgfelddruck;AUSGKOPF VAR ausgkopfdruck;BOOL VAR sek1,einjahrgang,alle,
+neuesmerkmal;FILE VAR f;PROC konfprolispezielleteile(INT CONST nr):SELECT nr
+OF CASE 1:konfprolidialogvorbereitenCASE 2:konfprolieingabenrichtigCASE 3:
+konfprolilistenvorbereitenCASE 4:konfprolidruckvorbereitenCASE 5:
+konfproliseitedruckenENDSELECT .END PROC konfprolispezielleteile;PROC 
+konfprolidialogvorbereiten:konfproliueberschrift:=text(vergleichsknoten);
+setzeanfangswerte(konfprolieingangsmaske,konfprolianfpos).END PROC 
+konfprolidialogvorbereiten;PROC konfprolieingabenrichtig:LET fnrmskjgst=2,
+fnrmskzug=3,auswahlnichtsinnvoll=56;sek1:=FALSE ;alle:=FALSE ;einjahrgang:=
+FALSE ;jahrgang:="";zug:=compress(standardmaskenfeld(fnrmskzug));IF 
+standardmaskenfeld(fnrmskjgst)=niltextTHEN IF zug=niltextTHEN alle:=TRUE ;
+sek1:=TRUE ;setzeausgabedrucker(TRUE );setzeeingabetest(TRUE )ELSE 
+meldefehler;infeld(fnrmskzug);setzeeingabetest(FALSE )FI ELSE standardpruefe(
+3,fnrmskjgst,5,13,niltext,eingabestatus);IF eingabestatus<>0THEN infeld(
+eingabestatus);setzeeingabetest(FALSE )ELSE jahrgang:=zweistellig(
+standardmaskenfeld(fnrmskjgst));einjahrgang:=(zug=niltext);IF int(jahrgang)<
+11THEN sek1:=TRUE FI ;setzeausgabedrucker(TRUE );setzeeingabetest(TRUE )FI 
+FI .meldefehler:standardmeldung(auswahlnichtsinnvoll,niltext).END PROC 
+konfprolieingabenrichtig;PROC konfprolilistenvorbereiten:BOOL VAR b:=FALSE ;
+startjahr:=jahrgang;startzug:=zug;IF startjahr>"10"CAND startzug=niltextTHEN 
+aktuelleindexnr:=ixsustatjgstELSE aktuelleindexnr:=ixsustatjgstzugFI ;
+dbstatus(ok);inittupel(dnrschueler);initobli(1);parsenooffields(19);
+setzeidentiwert("");putwert(fnrsusgrpjgst,startjahr);putwert(fnrsusgrpzugtut,
+startzug);putwert(fnrsustatuss,"ls");#objektlistestarten(aktuelleindexnr,"",
+fnrsusgrpjgst,TRUE ,b);#objektlistestarten(aktuelleindexnr,"",staticfield,
+TRUE ,b);setzebestandende(NOT multistopkonf).staticfield:IF aktuelleindexnr=
+ixsustatjgstzugTHEN fnrsusgrpzugtutELSE dnrschueler+1FI .END PROC 
+konfprolilistenvorbereiten;PROC konfprolidruckvorbereiten:LET prevordruck=
+"vordruck",postvordruck=" protokoll versetzkonf",vordr3=
+"vordruck3 protokoll versetzkonf",anzvordrucke=3,manager="anschreiben server"
+;INT VAR i;schuelerzaehler:=null;jahrgang:=wert(fnrsusgrpjgst);zug:=wert(
+fnrsusgrpzugtut);aktuellevordruckevommanagerholen;neuesmerkmal:=TRUE ;
+druckvorbereiten;variablenfuerdrucksetzen;vordruck3fuellen;
+setzesonderwerteschulkenndaten;holemeldungen;putwert(dateinr(primdatid(
+aktuelleindexnr))+1,"");putwert(fnrsusgrpjgst,startjahr);putwert(
+fnrsusgrpzugtut,startzug);lesenvorbereitendruck(PROC (INT CONST ,BOOL PROC ,
+INT VAR )scanforward,BOOL PROC multistopkonfsim);initspalten;
+initausgabekopfdruck.holemeldungen:meldungstext(mnrbearbeitetwirdjgst,
+bearbeitetwirdjgst);meldungstext(mnrbearbeitetwirdklasse,bearbeitetwirdklasse
+);meldungstext(mnrbearbeitetwirdkurs,bearbeitetwirdkurs).
+aktuellevordruckevommanagerholen:FOR iFROM 1UPTO anzvordruckeREP forget(
+prevordruck+text(i)+postvordruck,quiet);fetch(prevordruck+text(i)+
+postvordruck,/manager);PER .variablenfuerdrucksetzen:druckstrich:=druckbreite
+*mittestrich;spalte1breite:=druckbreite-anzspaltentrenner-spalte2breite.
+vordruck3fuellen:vordruck:=vordr3;vordruckueberarbeitet:=vordr3ueberarb;
+forget(vordruckueberarbeitet,quiet);briefalternative(vordruck,
+vordruckueberarbeitet).END PROC konfprolidruckvorbereiten;PROC 
+initausgabekopfdruck:LET name="   :Familienname",rufname="   :  Rufname",
+rest1="        :    :Erg.  :Fächer:",rest2=
+"Geb.dat.:Bem.:v/w/n :Nachpr:Gründe";hilfsfeldervorbelegen;spaltenweise(name)
+;spaltenweise(rest1);ausgkopfdruck(1):=zeile;spaltenweise(rufname);
+spaltenweise(rest2);ausgkopfdruck(2):=zeile;ausgkopfdruck(3):=druckstrich.
+hilfsfeldervorbelegen:setzespaltentrenner(blank);setzespaltenbreite(
+spalte1breite);setzespaltenbreite(spalte2breite).END PROC 
+initausgabekopfdruck;PROC konfproliseitedrucken:LET listewirdgedruckt=58;
+konfproliueberschriftdrucken;seitedrucken(PROC (INT VAR )schuelerdatendrucken
+,druckzeilenzahl,ausgfeldlaenge,PROC bestandendesimulierenbeimerkmalwechsel,
+BOOL PROC multistopkonfsim);IF neuesmerkmalTHEN simuliertesendezuruecknehmen;
+konfproliunterschriftdrucken;meldelistewirdgedruckt;drucknachbereiten;
+schuelerzaehler:=null;neuelistevorbereitenELIF NOT bestandendeTHEN 
+seitenwechselFI .simuliertesendezuruecknehmen:setzebestandende(FALSE ).
+meldelistewirdgedruckt:standardmeldung(listewirdgedruckt,niltext).
+neuelistevorbereiten:druckvorbereiten.END PROC konfproliseitedrucken;PROC 
+konfproliueberschriftdrucken:LET vordr1="vordruck1 protokoll versetzkonf",
+vordr2="vordruck2 protokoll versetzkonf",anzleerzeilen=2,markiert="#";INT 
+VAR i;TEXT VAR klassejgstaufber;IF neuesmerkmalTHEN 
+zwischenmeldungundvordruckefuellenFI ;vordruck1schreiben;IF neuesmerkmalTHEN 
+vordruck2schreibenFI ;leerzeilenschreiben;ausgabekopfschreiben.
+zwischenmeldungundvordruckefuellen:LET swiklassebzwjgst=511,
+swianwesendelehrer=512,klasse="Klasse ",kurs="Tutorenkurs ",jgst="Jgst. ";
+klassejgstaufber:=jahrgang;IF (alleOR einjahrgang)AND NOT sek1THEN 
+standardmeldung(bearbeitetwirdjgst,klassejgstaufber+markiert);
+klassejgstaufber:=jgst+klassejgstaufberELSE klassejgstaufber:=
+klassejgstaufber+blank+zug;IF sek1THEN standardmeldung(bearbeitetwirdklasse,
+klassejgstaufber+markiert);klassejgstaufber:=klasse+klassejgstaufberELSE 
+standardmeldung(bearbeitetwirdkurs,klassejgstaufber+markiert);
+klassejgstaufber:=kurs+klassejgstaufberFI ;FI ;festesonderwertesetzen;
+vordruck:=vordr1;vordruckueberarbeitet:=vordr1ueberarb;forget(
+vordruckueberarbeitet,quiet);briefalternative(vordruck,vordruckueberarbeitet)
+;vordruck:=vordr2;vordruckueberarbeitet:=vordr2ueberarb;forget(
+vordruckueberarbeitet,quiet);briefalternative(vordruck,vordruckueberarbeitet)
+.festesonderwertesetzen:setzesonderwert(swiklassebzwjgst,klassejgstaufber);
+setzesonderwert(swianwesendelehrer,blank).vordruck2schreiben:
+vordruckueberarbeitet:=vordr2ueberarb;f:=sequentialfile(input,
+vordruckueberarbeitet);zeilenanz:=lines(f);FOR iFROM 1UPTO zeilenanzREP 
+getline(f,ausgfelddruck(1));druckzeileschreiben(ausgfelddruck(1));PER ;
+druckzeilenzahlDECR zeilenanz.leerzeilenschreiben:FOR iFROM 1UPTO 
+anzleerzeilenREP druckzeileschreiben(blank)PER ;druckzeilenzahlDECR 
+anzleerzeilen.ausgabekopfschreiben:FOR iFROM 1UPTO ausgkopflaengeREP 
+druckzeileschreiben(ausgkopfdruck(i))PER ;druckzeilenzahlDECR ausgkopflaenge;
+druckzeilenzahlrest:=druckzeilenzahl.END PROC konfproliueberschriftdrucken;
+PROC konfproliunterschriftdrucken:INT VAR i;vordruck3holen;vordruck3schreiben
+.vordruck3holen:vordruckueberarbeitet:=vordr3ueberarb;f:=sequentialfile(input
+,vordruckueberarbeitet);zeilenanz:=lines(f).vordruck3schreiben:IF zeilenanz>
+druckzeilenzahlrestTHEN seitenwechselmitneuemkopfFI ;FOR iFROM 1UPTO 
+zeilenanzREP getline(f,ausgfelddruck(1));druckzeileschreiben(ausgfelddruck(1)
+);PER ;druckzeilenzahlrestDECR zeilenanz.seitenwechselmitneuemkopf:
+seitenwechsel;vordruck1schreiben;druckzeilenzahlrest:=druckzeilenzahl;
+vordruck3holen.END PROC konfproliunterschriftdrucken;PROC vordruck1schreiben:
+INT VAR i;druckzeilenzahl:=drucklaenge;vordruckueberarbeitet:=vordr1ueberarb;
+f:=sequentialfile(input,vordruckueberarbeitet);zeilenanz:=lines(f);FOR iFROM 
+1UPTO zeilenanzREP getline(f,ausgfelddruck(1));druckzeileschreiben(
+ausgfelddruck(1));PER ;druckzeilenzahlDECR zeilenanz.END PROC 
+vordruck1schreiben;PROC schuelerdatendrucken(INT VAR zeilenzaehler):
+schuelerdatenholen;schuelerdatenaufbereiten;zeilenzaehlerINCR ausgfeldlaenge;
+schuelerdatenindruckdatei.END PROC schuelerdatendrucken;PROC 
+schuelerdatenholen:schuelername:=wert(fnrsufamnames);schuelerrufname:=wert(
+fnrsurufnames);schuelernamenszus:=wert(fnrsunamenszusatzs);schuelergebdat:=
+wert(fnrsugebdatums);zugangjgst:=wert(fnrsuartzugang);abmeldedat:=wert(
+fnrsuabgdats);schuelerjgst:=wert(fnrsusgrpjgst);schuelerzug:=wert(
+fnrsusgrpzugtut).END PROC schuelerdatenholen;PROC schuelerdatenaufbereiten:
+LET unterstrich="_",bem1="w",bem2="x",abgemeldet="ab",gebdatlaenge=8,
+zugangjgstlaenge=4,ausgleich1=3,ausgleich2=2,abgemlaenge1=4,abgemlaenge2=2,
+rest1=":      :      :",rest2=":______:______:________________________";
+schuelerzaehlerINCR 1;schreibenamegebdatbemerkungen.
+schreibenamegebdatbemerkungen:setzespaltentrenner(blank);spaltenweise(
+schuelernameundnraufber);spaltenweise(schuelerbemteil1aufber);ausgfelddruck(1
+):=zeile;setzespaltentrenner(unterstrich);spaltenweise(schuelerrufnameaufber)
+;spaltenweise(schuelerbemteil2aufber);ausgfelddruck(2):=zeile.
+schuelernameundnraufber:IF schuelernamenszus=niltextTHEN nr+doppelpunkt+
+schuelernameELSE nr+doppelpunkt+schuelernamenszus+blank+schuelernameFI .nr:(
+ausgleich1-length(text(schuelerzaehler)))*blank+text(schuelerzaehler).
+schuelerbemteil1aufber:gebdatlaenge*blank+doppelpunkt+zugangjgstaufber+rest1.
+zugangjgstaufber:IF (zugangjgst=bem1)OR (zugangjgst=bem2)THEN zugangjgst+(
+zugangjgstlaenge-length(zugangjgst))*blankELSE zugangjgstlaenge*blankFI .
+schuelerrufnameaufber:ausgleich1*unterstrich+doppelpunkt+ausgleich2*
+unterstrich+schuelerrufname+anzunterstriche*unterstrich.
+schuelerbemteil2aufber:schuelergebdat+doppelpunkt+abgemeldetaufber+rest2.
+anzunterstriche:spalte1breite-ausgleich2-length(schuelerrufname).
+abgemeldetaufber:IF abmeldedat=nildatumTHEN abgemlaenge1*unterstrichELSE 
+abgemeldet+abgemlaenge2*unterstrichFI .END PROC schuelerdatenaufbereiten;
+PROC schuelerdatenindruckdatei:INT VAR i;FOR iFROM 1UPTO ausgfeldlaengeREP 
+druckzeileschreiben(ausgfelddruck(i))PER ;druckzeilenzahlrestDECR 
+ausgfeldlaenge.END PROC schuelerdatenindruckdatei;PROC 
+bestandendesimulierenbeimerkmalwechsel:IF bestandendeTHEN neuesmerkmal:=
+FALSE ;konfproliunterschriftdruckenELSE nochklassebzwjgstzubearbeiten;IF 
+neuesmerkmalTHEN setzebestandende(TRUE )FI ;FI .nochklassebzwjgstzubearbeiten
+:jahrgang:=wert(fnrsusgrpjgst);zug:=wert(fnrsusgrpzugtut);neuesmerkmal:=
+neuejgst;IF neuesmerkmalAND int(jahrgang)>10THEN sek1:=FALSE FI ;IF sek1THEN 
+neuesmerkmal:=neuesmerkmalOR neuerzugFI .neuejgst:schuelerjgst<>jahrgang.
+neuerzug:schuelerzug<>zug.END PROC bestandendesimulierenbeimerkmalwechsel;
+BOOL PROC multistopkonf:BOOL VAR b:=#TRUE ;#FALSE ;IF wert(fnrsustatuss)="ls"
+THEN b:=TRUE ;IF startjahr<>""THEN IF startzug=niltextTHEN b:=(wert(
+fnrsusgrpjgst)=startjahr)ELSE b:=(wert(fnrsusgrpzugtut)=startzugAND wert(
+fnrsusgrpjgst)=startjahr)FI ;FI ;FI ;bEND PROC multistopkonf;BOOL PROC 
+multistopkonfsim:BOOL VAR b:=multistopkonf;setzebestandende(NOT b);bENDPROC 
+multistopkonfsim;END PACKET protversetzkonflisten;
+

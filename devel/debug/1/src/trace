@@ -1,0 +1,1020 @@
+PACKET trace DEFINES trace: 
+ 
+(**************************************************************) 
+(*                                          Autor: G. Szalay  *) 
+(*    E U M E L 0 - T R A C E                                 *) 
+(*                                          Stand: 87-04-23   *) 
+(**************************************************************) 
+ 
+LET packet area = 0, stack area = 1, text opd maxlen = 14, 
+    stdds = 0, info lines = 4, crlf = ""13""10"", 
+    beep = ""7"", carriage return = ""13"", cursor up = ""3"", 
+    std charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ123456 
+    7890<>.,:;-_+*!""�$%&/()=?'äÄöÖüÜ#^", 
+    blanks = "                                        ", 
+    startindent = 10, indentincr = 2; 
+BOOL VAR trap set := FALSE, trapped, initial call := TRUE, quit, 
+         single step := FALSE, protocol := FALSE, cond br follows, 
+         prot just started := FALSE, prot stopped := TRUE, 
+         users error := FALSE, users stpdis, prot operands := TRUE, 
+         nontraceable found, errorstop processing := FALSE, 
+         std procs traceable := id (1) = 4 (* processor = 68000 *), 
+         longcall to trace flag; 
+INT VAR  aret hi := 0, aret lo := 0, ic hi, ic lo, ic h, ic l, i, 
+         atrap hi, atrap lo, nail1 hi, nail1 lo, nail2 hi, nail2 lo, 
+         no of nails := 1, saved instr, saved instr w2, 
+         saved1, saved1 w2, saved2, saved2 w2, 
+         call to trace, call2 to trace, length of call to trace,
+         cmd, ilen, iclass, ilen1, iclass1, indentpos, 
+         code addr modif, pbase, lbase, users lbase, 
+         users errcode, users errline, old flags, flags, 
+         module no, word, word1, word2, case, xpos, ypos, 
+         cond br hi, cond br lo, maxlines:=12, lines,
+         opad hiword, opad hi, opad lo, opdds, br param, brcomp index, 
+         ic off, opd ptr, int opd, text opd len, text opd tr len, 
+         heap link, root word 2, no of results:=0, 
+         no of nontraceables := 0, no of long nontraceables := 0, 
+         pproc modno, pproc call, pproc ic lo := 0; 
+ROW 3 INT VAR res ds, res opadh, res opadl; 
+INT CONST lo byte mask  := dec ("00ff"), 
+          hi byte mask  := dec ("ff00"), 
+          branch param mask := dec ("87ff"), 
+          opcode mask0  := dec ("83ff"), 
+          opcode mask1  := dec ("7c00"), 
+          bf mask1      := dec ("0040"), 
+          ln br mask1   := dec ("7800"), 
+          stpdis mask0  := dec ("ffbf"), 
+          stpdis mask1  := dec ("0040"), 
+          aritu mask1   := dec ("0010"), 
+          error mask1   := dec ("0080"), 
+          flags mask1   := dec ("00fc"), 
+          mask 8000     := dec ("8000"), 
+          mask 7fff     := dec ("7fff"), 
+          mask 7ffe     := dec ("7ffe"), 
+          mask 7f00     := dec ("7f00"), 
+          mask 0400     := dec ("0400"), 
+          mask fbff     := dec ("fbff"), 
+          mask 0007     := dec ("0007"), 
+          mask fff8     := dec ("fff8"), 
+          m l t start   := dec ("0200"), 
+          ln opcode     := dec ("0000"), 
+          br opcode     := dec ("7000"), 
+          rtn opcode    := dec ("7f00"), 
+          call opcode   := dec ("7800"), 
+          longcall opcode  := dec ("ff78"), 
+          pproc opcode  := dec ("7f1e"), 
+          estop opcode  := dec ("7f4b"), 
+          dstop opcode  := dec ("7f4c");
+TEXT VAR buf, char, command, iname, iname1, ioplist, ioplist1, opd type, 
+         opd buf, text opd, res types, users errmsg; 
+ 
+ 
+(********* following OPs and PROCs may be used by TRACE only ***********) 
+ 
+PROC put (TEXT CONST a): 
+  out (a); out (" ") 
+ENDPROC put; 
+ 
+PROC putline (TEXT CONST a): 
+  out (a); out (crlf) 
+ENDPROC putline; 
+ 
+ 
+(***********************************************************************) 
+ 
+PROC eval br addr (INT CONST br para hi, br para lo, 
+                   INT VAR br addr hi, br addr lo): 
+  br param := dsgetw (stdds, br para hi, br para lo) 
+           AND branch param mask; 
+  br addr hi := br para hi; 
+  br addr lo := (br para lo AND hi byte mask) 
+             OR (br param AND lo byte mask); 
+  IF NOT br within page 
+  THEN rotate (br param, 8); 
+       br param := br param AND lo byte mask; 
+       rotate (br param, 1);
+       IF br param > 255 
+       THEN br param INCR 1; 
+            br param := br param AND 255 
+       FI; 
+       rotate (br param, 8); 
+       br addr lo INCR br param; 
+       word := br addr lo AND hi byte mask; rotate (word, 8); 
+       IF word >= code addr modif 
+       THEN br addr lo DECR dec("1000")
+       FI 
+  FI.
+ 
+  br within page: 
+    br param = (br param AND lo byte mask). 
+ 
+ENDPROC eval br addr; 
+ 
+ 
+PROC eval opd addr (INT CONST ic offset): 
+  word := dsgetw (stdds, ic hi, ic lo PLUS ic offset); 
+  IF ic offset = 0 
+  THEN word := word AND opcode mask0 
+  FI; 
+  IF global
+  THEN eval global addr
+  ELIF local 
+  THEN eval local addr 
+  ELSE eval ref addr 
+  FI.
+ 
+  global: (word AND mask 8000) = 0. 
+ 
+  local: (word AND 1) = 0. 
+ 
+  eval global addr: 
+    opdds := stdds; 
+    opad hi := packet area; 
+    opad hiword := opad hi;
+    opad lo := pbase PLUS word; 
+    perhaps put opad. 
+ 
+  eval local addr: 
+    opdds := stdds; 
+    opad hi := stack area; 
+    opad hiword := opad hi;
+    word := word AND mask 7ffe; rotate (word, -1); 
+    opad lo := users lbase PLUS word; 
+    perhaps put opad. 
+ 
+  eval ref addr: 
+    eval local addr; 
+    opad hiword := dsgetw (stdds, stack area, opad lo PLUS 1); 
+    opad lo := dsgetw (stdds, stack area, opad lo); 
+    opdds := opad hiword AND hi byte mask; rotate (opdds, 8); 
+    opad hi := opad hiword AND lo byte mask; 
+    perhaps put opad. 
+ 
+perhaps put opad: 
+ (* put("opad=" CT hex(opad hiword) CT hex(opad lo)) *) . (*for tests*) 
+ 
+ENDPROC eval opd addr; 
+ 
+ 
+PROC out int opd: 
+  out (txt (int opd)); 
+  IF int opd < 0 OR int opd > 9 
+  THEN out ("("); out (hex (int opd)); out (")") 
+  FI 
+ENDPROC out int opd; 
+ 
+ 
+PROC fetch text opd: 
+  root word 2 := dsgetw (opdds, opad hi, opad lo PLUS 1); 
+  opd buf := subtext (blanks, 1, text opd maxlen + 2); 
+  IF text on heap 
+  THEN eval text from heap 
+  ELSE eval text from root 
+  FI; 
+  convert nonstd chars; 
+  text opd := """"; 
+  text opd CAT subtext (opd buf, 1, text opd tr len); 
+  text opd CAT """"; 
+  IF text opd len > text opd tr len 
+  THEN text opd CAT "(..."; 
+       text opd CAT txt (text opd len); 
+       text opd CAT "B)" 
+  FI. 
+ 
+text on heap:
+  (root word 2 AND lo byte mask) = 255.
+ 
+eval text from root: 
+  text opd len := root word 2 AND lo byte mask; 
+  text opd tr len := min (text opd len, text opd maxlen); 
+  FOR i FROM 1 UPTO text opd tr len DIV 2 + 1 REP 
+    replace (opd buf, i, dsgetw (opdds, opad hi, opad lo PLUS i)) 
+  PER; 
+  opd buf := subtext (opd buf, 2, text opd tr len + 1). 
+ 
+eval text from heap: 
+  rotate (root word 2, 8); 
+  text opd len := root word 2 AND lo byte mask 
+               OR (dsget2b (opdds, opad hi, opad lo PLUS 2) AND hi byte mask); 
+  text opd tr len := min (text opd len, text opd maxlen); 
+  heap link := dsgetw (opdds, opad hi, opad lo); 
+  rotate (heap link, 15); 
+  opad hi := heap link AND mask 0007; 
+  opad lo := heap link AND mask fff8; 
+  IF opdds = stdds THEN opad lo INCR 2 FI; 
+  FOR i FROM 1 UPTO text opd tr len DIV 2 REP 
+    replace (opd buf, i, dsgetw (opdds, opad hi, opad lo PLUS i)) 
+  PER; 
+  opd buf := subtext (opd buf, 1, text opd tr len). 
+ 
+convert nonstd chars: 
+  i := 1; 
+  WHILE i <= LENGTH opd buf REP 
+    char := opd buf SUB i; 
+    IF pos (std charset, char) = 0 
+    THEN buf := txt (code (char)); 
+         opd buf := subtext (opd buf, 1, i-1) CT 
+                    """" CT buf CT """" CT 
+                    subtext (opd buf, i+1); 
+         i INCR 2 + length (buf); 
+    ELIF char = """" 
+    THEN opd buf := subtext (opd buf, 1, i-1) CT """""" CT 
+                    subtext (opd buf, i+1); 
+         i INCR 2 
+    ELSE i INCR 1 
+    FI 
+  PER; 
+  text opd tr len := LENGTH opd buf. 
+ 
+END PROC fetch text opd; 
+ 
+ 
+INT OP PLUS (INT CONST a, b):
+  unsigned arith;
+  a + b
+ENDOP PLUS;
+
+PROC trace: 
+  ROW 40 INT VAR dummy space for 20 pps; 
+  get return address; 
+  IF initial call 
+  THEN save call to trace 
+  ELSE process regular call 
+  FI. 
+ 
+get return address: 
+  lbase:=local base; 
+  users lbase := dsgetw (stdds, stack area, lbase); 
+  aret lo := dsgetw (stdds, stack area, lbase+1); 
+  word := dsgetw (stdds, stack area, lbase+2); 
+  aret hi := word AND 3; 
+  flags := word AND flags mask1; 
+  ic hi := aret hi; ic lo := aret lo. 
+ 
+save call to trace: 
+  call to trace := dsgetw (stdds, aret hi, aret lo - 1); 
+  IF (call to trace AND opcode mask1) = call opcode 
+  THEN length of call to trace := 1;
+       longcall to trace flag := FALSE 
+  ELSE call2 to trace := call to trace; 
+       call to trace := dsgetw (stdds, aret hi, aret lo - 2); 
+       length of call to trace := 2;
+       longcall to trace flag := TRUE; 
+       putline ("WARNING: call to trace needs 2 words!!!") 
+  FI; 
+  initial call := FALSE. 
+ 
+process regular call: 
+  IF protocol 
+  THEN pull old nails 
+  ELSE indentpos := startindent; cond br follows := FALSE 
+  FI; 
+  get users error state and set modes for trace; 
+  IF NOT errorstop processing 
+  THEN normal processing of instructions 
+  ELSE errorstop processing := FALSE 
+  FI; 
+  handle possible trace errors; 
+  IF NOT protocol THEN restore users error state FI.  
+ 
+normal processing of instructions: 
+  trapped := trap set AND atrap lo = ic lo - length of call to trace
+           AND atrap hi = ic hi;
+  IF protocol THEN postprocess protocol FI; 
+  IF trapped THEN handle trap FI; 
+  IF protocol OR trapped
+  THEN ic lo DECR length of call to trace;
+       update icount on stack
+  FI; 
+  IF trapped OR NOT protocol OR single step OR incharety <> "" 
+     OR lines >= maxlines
+  THEN quit := FALSE; protocol := FALSE; single step := FALSE; lines := 0;
+       REP ask for next action; 
+           execute command 
+       UNTIL quit PER 
+  FI; 
+  IF protocol THEN protocol instruction and set nails FI. 
+ 
+get users error state and set modes for trace: 
+  signed arith; 
+  IF NOT protocol 
+  THEN users error  := (flags AND error mask1) <> 0; 
+       users stpdis := (flags AND stpdis mask1) <> 0; 
+       IF users error 
+       THEN save users error state; clear error; 
+            line; putline ("trace called with user error " CT 
+                            txt (users errcode) CT ": " CT users errmsg) 
+       ELSE disable stop 
+       FI 
+  ELIF is error 
+  THEN IF first occurrence 
+       THEN users error := TRUE; 
+            save users error state; 
+            line; 
+            putline ("trace detected user error " CT 
+                     txt (users errcode) CT ": " CT users errmsg); 
+            IF users stpdis 
+            THEN out ("(stop disabled)") 
+            ELSE errorstop processing := TRUE; stop op; 
+                 IF protocol THEN set nail1 FI 
+            FI 
+       ELSE line; 
+            putline ("trace detected user error " CT 
+                     txt (error code) CT ": " CT error message); 
+            out ("(ignored because of previous error(s)) "); 
+       FI; 
+       clear error 
+  ELSE IF (flags AND stpdis mask1) = 0 
+       THEN set stpdis flag on stack; disable stop 
+       FI 
+  FI. 
+ 
+first occurrence: NOT users error. 
+ 
+save users error state: 
+  users errmsg := error message; 
+  users errline := error line; 
+  users errcode := error code. 
+ 
+handle possible trace errors: 
+  IF is error 
+  THEN line; 
+       putline ("TRACE error " CT txt (error code) 
+                 CT " at line " CT txt (error line) 
+                 CT ": " CT error message); 
+       clear error 
+  FI. 
+ 
+restore users error state: 
+  IF users error 
+  THEN error stop (users errcode, users errmsg); 
+       users error := FALSE 
+  FI; 
+  restore users stpdis flag on stack. 
+ 
+handle trap: 
+  put trap message; 
+  restore instruction; 
+  trap set := FALSE. 
+ 
+put trap message: 
+  putline ("trap at address " CT txt (atrap hi) CT hex (atrap lo)). 
+ 
+restore instruction: 
+  dsputw (stdds, atrap hi, atrap lo, saved instr); 
+  IF longcall to trace flag 
+  THEN dsputw (stdds, atrap hi, atrap lo PLUS 1, saved instr w2) 
+  FI. 
+ 
+postprocess protocol: 
+  IF prot operands THEN protocol result operands FI; 
+  line; lines INCR 1;
+  IF cond br follows THEN protocol cond br op; cond br follows := FALSE FI. 
+ 
+protocol cond br op: 
+  outsubtext (blanks, 1, indentpos); 
+  out (txt (cond br hi)); out (hex (cond br lo)); out (": "); 
+  word := dsget2b (stdds, cond br hi, cond br lo); 
+  IF (word AND bf mask1) <> 0 
+  THEN out ("BF       ") 
+  ELSE out ("BT       ") 
+  FI; 
+  putline (hex (word)); lines INCR 1.
+ 
+pull old nails: 
+  dsputw (stdds, nail1 hi, nail1 lo, saved1); 
+  IF longcall to trace flag 
+  THEN dsputw (stdds, nail1 hi, nail1 lo PLUS 1, saved1 w2) 
+  FI; 
+  IF no of nails = 2 
+  THEN dsputw (stdds, nail2 hi, nail2 lo, saved2); 
+       IF longcall to trace flag 
+       THEN dsputw (stdds, nail2 hi, nail2 lo PLUS 1, saved2 w2) 
+       FI; 
+       no of nails := 1 
+  FI. 
+ 
+update icount on stack: 
+  dsputw (stdds, 1, lbase + 1, ic lo). 
+ 
+ask for next action: 
+  putline (""15"" CT
+          "TRACE: step, more, trap, regs, lines, info, disasm, or quit"14""); 
+  inchar (command). 
+ 
+execute command: 
+  cmd := pos ("tidqmsrl", command); 
+  SELECT cmd OF 
+    CASE 1: set address trap;                        prot stopped := TRUE 
+    CASE 2: info (stdds, ic hi, ic lo, info lines);  prot stopped := TRUE 
+    CASE 3: disasm (ic hi, ic lo);                   prot stopped := TRUE 
+    CASE 4: quit := TRUE;                            prot stopped := TRUE 
+    CASE 5: initialize protocol; single step := FALSE; 
+            quit := TRUE 
+    CASE 6: initialize protocol; single step := TRUE; 
+            quit := TRUE 
+    CASE 7: show registers;                          prot stopped := TRUE 
+    CASE 8: set new line count;                      prot stopped := TRUE
+    OTHERWISE out(beep CT carriage return CT cursor up) 
+  ENDSELECT. 
+ 
+set new line count:
+  out ("lines="); gethex (buf); maxlines := dec (buf).
+
+set address trap: 
+  IF trap set 
+  THEN putline ("current trap address: " CT txt (atrap hi) CT hex (atrap lo));
+       out ("type <CR> to confirm, or ")
+  ELSE out ("type ")
+  FI;
+  out ("new trap addr ("); 
+  IF std procs traceable THEN out ("2") ELSE out ("3") FI; 
+  out ("0000...3ffff), or 0 for no trap:"); 
+  gethex (buf); 
+  IF buf <> "" 
+  THEN IF trap set THEN restore instruction; trap set := FALSE FI; 
+       buf:="0000" CT buf; 
+       atrap hi := dec (subtext (buf, LENGTH buf-7, LENGTH buf-4)); 
+       atrap lo := dec (subtext (buf, LENGTH buf-3)); 
+       IF atrap hi=3 OR atrap hi=2 AND std procs traceable 
+       THEN saved instr := dsgetw (stdds, atrap hi, atrap lo); 
+            dsputw (stdds, atrap hi, atrap lo, call to trace); 
+            IF longcall to trace flag 
+            THEN saved instr w2 := dsgetw (stdds, atrap hi, atrap lo PLUS 1); 
+                 dsputw (stdds, atrap hi, atrap lo PLUS 1, call2 to trace); 
+            FI; 
+            trap set := TRUE 
+       ELIF NOT (atrap hi=0 AND atrap lo=0) 
+       THEN out (beep); putline ("address not in above range") 
+       FI 
+  ELSE IF NOT trap set THEN out (beep); putline ("no trap specified") FI 
+  FI. 
+ 
+initialize protocol: 
+  pbase := dsgetw (stdds, stack area, lbase + 2) AND hi byte mask; 
+  code addr modif := dsgetw (stdds, stack area, lbase + 3) 
+                  AND lo byte mask; 
+  set stpdis flag on stack; 
+  prot just started := TRUE; 
+  protocol := TRUE. 
+ 
+set stpdis flag on stack: 
+  word := dsgetw (stdds, stack area, lbase + 2); 
+  dsputw (stdds, stack area, lbase + 2, word OR stpdis mask1). 
+ 
+restore users stpdis flag on stack: 
+  word := dsgetw (stdds, stack area, lbase + 2) AND stpdis mask0; 
+  IF users stpdis THEN word := word OR stpdis mask1 FI; 
+  dsputw (stdds, stack area, lbase + 2, word). 
+ 
+protocol instruction and set nails: 
+  protocol instr; 
+  SELECT iclass OF 
+    CASE 0:  standard ops 
+    CASE 1:  cond branch ops 
+    CASE 2:  branch ops 
+    CASE 3:  comp branch op 
+    CASE 4:  call op 
+    CASE 5:  exec op 
+    CASE 6:  pcall op 
+    CASE 7:  return ops 
+    CASE 8:  penter op 
+    CASE 9:  pp ops 
+    CASE 10: line ops 
+    CASE 11: stop ops 
+    CASE 12: ke op 
+    CASE 13: clrerr op
+    OTHERWISE: wrong ops 
+  ENDSELECT; 
+  IF protocol THEN set nail1 FI. 
+ 
+protocol instr: 
+  word1 := dsgetw (stdds, ic hi, ic lo); 
+  disa (ic hi, ic lo, iname, ioplist, ilen, iclass); 
+  protocol this instr. 
+ 
+protocol this instr: 
+  possibly delete command line; 
+  outsubtext (blanks, 1, indentpos); 
+  ic h := ic hi; ic l := ic lo; 
+  out (txt (ic h)); out (hex (ic l)); out (": "); 
+  out (iname); out (" "); 
+  IF ilen > 0 
+  THEN FOR i FROM 1 UPTO ilen 
+       REP out (hex (dsget2b (stdds, ic h, ic l))); out (" "); 
+           ic l INCR 1 PER 
+  ELSE out (hex (dsget2b (stdds, ic h, ic l))); out (" ") 
+  FI; 
+  IF prot operands THEN protocol operands FI. 
+
+possibly delete command line: 
+  IF prot just started 
+  THEN prot just started := FALSE; 
+       IF prot stopped 
+       THEN prot stopped := FALSE 
+       ELSE delete command line 
+       FI 
+  FI. 
+ 
+delete command line: 
+  get cursor (xpos, ypos); cursor (1, ypos-1); out(""4""). 
+ 
+protocol operands: 
+  out ("  "); 
+  IF (word1 AND mask 7f00) = mask 7f00 
+  THEN ic off := 1 
+  ELSE ic off := 0 
+  FI; 
+  res types := ""; 
+  no of results := 0; 
+  FOR opd ptr FROM 1 UPTO LENGTH ioplist REP 
+    opd type := ioplist SUB opd ptr; 
+    IF opd type <> " " 
+    THEN case := pos ("irtdpahIRTDPEH", opd type); 
+         IF case > 0 
+         THEN eval opd addr (ic off); 
+              SELECT case OF 
+                CASE 1: prot int rd opd 
+                CASE 2: prot real rd opd 
+                CASE 3: prot text rd opd 
+                CASE 4: prot dataspace rd opd 
+                CASE 5: prot task rd opd 
+                CASE 6: prot virt addr 
+                CASE 7: prot hex rd opd 
+                OTHERWISE save res type 
+              ENDSELECT 
+         FI; 
+         ic off INCR 1 
+    FI 
+  UNTIL opd type = " " PER. 
+ 
+save res type: 
+  res types CAT opd type; 
+  no of results INCR 1; 
+  res ds    (no of results) := opdds; 
+  res opadh (no of results) := opad hi; 
+  res opadl (no of results) := opad lo. 
+ 
+protocol result operands: 
+  FOR opd ptr FROM 1 UPTO no of results REP prot this result PER.
+ 
+prot this result: 
+  opdds   := res ds    (opd ptr); 
+  opad hi := res opadh (opd ptr); 
+  opad lo := res opadl (opd ptr); 
+  opd type := res types SUB opd ptr; 
+  SELECT pos ("IRTDPEH", opd type) OF 
+    CASE 1: prot int result 
+    CASE 2: prot real result 
+    CASE 3: prot text result 
+    CASE 4: prot dataspace result 
+    CASE 5: prot task result 
+    CASE 6: prot eva result 
+    CASE 7: prot hex result 
+    OTHERWISE out (opd type CT "(???) ") 
+  ENDSELECT. 
+ 
+prot int rd opd: 
+  int opd := dsgetw (opdds, opad hi, opad lo); 
+  out (">"); out int opd; out (" "). 
+ 
+prot int result: 
+  int opd := dsgetw (opdds, opad hi, opad lo); 
+  out int opd; out ("> "). 
+ 
+prot hex rd opd: 
+  int opd := dsgetw (opdds, opad hi, opad lo); 
+  out (">"); out (hex (int opd)); out (" "). 
+ 
+prot hex result: 
+  int opd := dsgetw (opdds, opad hi, opad lo); 
+  out (hex (int opd)); out ("> ").
+ 
+prot real rd opd: 
+  out (">"); 
+  out (hex (dsget2b (opdds, opad hi, opad lo))); 
+  out (hex (dsget2b (opdds, opad hi, opad lo PLUS 1))); 
+  out (hex (dsget2b (opdds, opad hi, opad lo PLUS 2))); 
+  out (hex (dsget2b (opdds, opad hi, opad lo PLUS 3))); out (" "). 
+ 
+prot real result: 
+  out (hex (dsget2b (opdds, opad hi, opad lo))); 
+  out (hex (dsget2b (opdds, opad hi, opad lo PLUS 1))); 
+  out (hex (dsget2b (opdds, opad hi, opad lo PLUS 2))); 
+  out (hex (dsget2b (opdds, opad hi, opad lo PLUS 3))); 
+  out ("> "). 
+ 
+prot text rd opd: 
+  fetch text opd; 
+  out (">"); out (text opd); out (" "). 
+ 
+prot text result: 
+  fetch text opd; 
+  out (text opd); out ("> "). 
+ 
+prot dataspace rd opd: 
+  int opd := dsgetw (opdds, opad hi, opad lo); 
+  out (">"); out (hex (int opd)); out (" "). 
+ 
+prot dataspace result: 
+  int opd := dsgetw (opdds, opad hi, opad lo); 
+  out (hex (int opd)); out ("> "). 
+ 
+prot task rd opd: 
+  out (">"); out (hex (dsgetw (opdds, opad hi, opad lo))); 
+  out ("/"); out (hex (dsgetw (opdds, opad hi, opad lo PLUS 1))); out (" "). 
+ 
+prot task result: 
+  out (hex (dsgetw (opdds, opad hi, opad lo))); out ("/"); 
+  out (hex (dsgetw (opdds, opad hi, opad lo PLUS 1))); out ("> "). 
+ 
+prot virt addr: 
+  out (">"); out (hex (opad hiword)); out (hex (opad lo)); out (" "). 
+ 
+prot eva result: 
+  out (hex (dsgetw (opdds, opad hi, opad lo PLUS 1))); 
+  out (hex (dsgetw (opdds, opad hi, opad lo))); 
+  out (">").  
+ 
+standard ops: 
+  nail1 hi := ic hi; nail1 lo := ic lo PLUS ilen. 
+ 
+set nail1: 
+  saved1 := dsgetw (stdds, nail1 hi, nail1 lo); 
+  dsputw (stdds, nail1 hi, nail1 lo, call to trace); 
+  IF longcall to trace flag 
+  THEN saved1 w2 := dsgetw (stdds, nail1 hi, nail1 lo PLUS 1); 
+       dsputw (stdds, nail1 hi, nail1 lo PLUS 1, call2 to trace) 
+  FI. 
+ 
+set nail2: 
+  saved2 := dsgetw (stdds, nail2 hi, nail2 lo); 
+  dsputw (stdds, nail2 hi, nail2 lo, call to trace); 
+  IF longcall to trace flag 
+  THEN saved2 w2 := dsgetw (stdds, nail2 hi, nail2 lo PLUS 1); 
+       dsputw (stdds, nail2 hi, nail2 lo PLUS 1, call2 to trace) 
+  FI. 
+ 
+cond branch ops: 
+  cond br follows := TRUE; 
+  cond br hi := ic hi; cond br lo := ic lo PLUS ilen; 
+  nail1 hi := cond br hi; nail1 lo := cond br lo PLUS 1; 
+  eval br addr (cond br hi, cond br lo, nail2 hi, nail2 lo); 
+  no of nails := 2; set nail2. 
+ 
+branch ops: 
+  eval br addr (ic hi, ic lo, nail1 hi, nail1 lo). 
+ 
+comp branch op: 
+  eval opd addr (1); 
+  brcomp index := dsgetw (stdds, opad hi, opad lo); 
+  IF brcomp index < 0 OR brcomp index >= dsgetw (stdds, ic hi, ic lo PLUS 2) 
+  THEN brcomp index := -1 
+  FI; 
+  nail1 hi := ic hi; 
+  nail1 lo := ic lo PLUS ilen PLUS brcomp index PLUS 1. 
+ 
+call op: 
+  eval module no; 
+  call or exec. 
+ 
+call or exec: 
+  IF module no < 1280 AND NOT std procs traceable 
+  THEN possibly append proc head; 
+       out (" (*n.t.*)"); 
+       nontraceable found := TRUE 
+  ELSE check for nontraceable 
+  FI; 
+  IF NOT nontraceable found 
+  THEN restore users stpdis flag on stack; 
+       get proc address via module link table; 
+       possibly append proc head; 
+       indentpos INCR indentincr; 
+       nail1 hi := ic hi; nail1 lo := ic lo PLUS 1 (*nail behind head*) 
+  ELIF call to trace found 
+  THEN skip instruction 
+  ELIF possibly call to bool proc 
+  THEN cond branch ops 
+  ELSE standard ops 
+  FI. 
+ 
+eval module no: 
+  IF word1 = longcall opcode
+  THEN module no := dsgetw (stdds, ic hi, ic lo PLUS 1)
+  ELSE module no := word1 AND opcode mask0; 
+       IF (module no AND mask 8000) <> 0 
+       THEN module no := module no AND mask 7fff OR mask 0400 
+       FI
+  FI. 
+ 
+check for nontraceable: 
+  nontraceable found := FALSE; 
+  IF word1 = longcall opcode 
+  THEN word2 := dsgetw (stdds, ic hi, ic lo PLUS 1); 
+       FOR j FROM 1 UPTO no of long nontraceables REP 
+         IF word 2 = call2 to nontraceables (j) 
+         THEN out (names of long nontraceables (j)); 
+              nontraceable found := TRUE 
+         FI 
+       UNTIL nontraceable found PER 
+  ELSE FOR j FROM 1 UPTO no of nontraceables REP 
+         IF word1 = calls to nontraceables (j) 
+         THEN out (names of short nontraceables (j)); 
+              nontraceable found := TRUE 
+         FI 
+       UNTIL nontraceable found PER 
+  FI. 
+ 
+get proc address via module link table: 
+  IF module no < 1280 THEN ic hi := 2 ELSE ic hi := 3 FI; 
+  ic lo := dsgetw (stdds, packet area, m l t start + module no). 
+ 
+possibly append proc head: 
+  out (proc head (module no)). 
+ 
+skip instruction: 
+  ic lo INCR ilen; update icount on stack; 
+  nail1 hi := ic hi; nail1 lo := ic lo. 
+ 
+possibly call to bool proc: 
+  word := dsgetw (stdds, ic hi, ic lo PLUS ilen) AND ln br mask1; 
+  word = ln opcode OR word = br opcode. 
+ 
+exec op: 
+  eval opd addr (1); 
+  module no := dsgetw (stdds, opad hi, opad lo); 
+  call or exec. 
+  
+pcall op: 
+  eval opd addr (1); 
+  IF opad lo = 2 AND NOT std procs traceable 
+  THEN out (" (*n.t.*)"); 
+       nontraceable found := TRUE 
+  ELSE check for nontraceable pproc 
+  FI; 
+  IF NOT nontraceable found 
+  THEN restore users stpdis flag on stack; 
+       possibly append proc head for pproc; 
+       indentpos INCR indentincr; 
+       nail1 hi := opad hi; nail1 lo := opad lo PLUS 1 (*nail behind head*) 
+(*ELIF word1 = call to trace 
+  THEN skip instruction *) 
+  ELIF possibly call to bool proc 
+  THEN cond branch ops 
+  ELSE standard ops 
+  FI. 
+ 
+check for nontraceable pproc: 
+  nontraceable found := FALSE; 
+  IF opad lo = pproc ic lo 
+  THEN FOR j FROM 1 UPTO no of nontraceables REP 
+         IF pproc call = calls to nontraceables (j) 
+         THEN out (names of nontraceables (j)); 
+              nontraceable found := TRUE 
+         FI 
+       UNTIL nontraceable found PER 
+  ELSE nontraceable found := TRUE  (*to be on the secure side*) 
+  FI. 
+ 
+possibly append proc head for pproc: 
+  IF opad lo = pproc ic lo 
+  THEN out (proc head (pproc modno)) 
+  FI. 
+ 
+return ops: 
+  fetch eumel0 regs of caller from users stack; 
+  out ("--> ");
+  put users flags; 
+  IF (old flags AND aritu mask1) <> 0
+  THEN put ("ARITU")
+  ELSE put ("ARITS")
+  FI;
+  IF nontraceable caller 
+  THEN line; putline ("trace ended by returning to nontraceable caller"); 
+       protocol := FALSE; prot stopped := TRUE 
+  ELIF users error AND NOT users stpdis
+  THEN stop op
+  ELSE set nail for return ops 
+  FI. 
+ 
+set nail for return ops: 
+  IF word1 = rtn opcode 
+  THEN nail1 hi := ic hi; nail1 lo := ic lo 
+  ELSE nail1 hi := ic hi; nail1 lo := ic lo PLUS 1; 
+       eval br addr (ic hi, ic lo, nail2 hi, nail2 lo); 
+       no of nails := 2; set nail2 
+  FI. 
+ 
+penter op: 
+  pbase := word1 AND lo byte mask; rotate (pbase, 8); 
+  standard ops. 
+  
+line ops: 
+  standard ops. 
+ 
+stop ops: 
+  IF word1 = estop opcode 
+  THEN users stpdis := FALSE; 
+       IF users error THEN stop op ELSE standard ops FI 
+  ELIF word1 = dstop opcode 
+  THEN users stpdis := TRUE; standard ops 
+  ELSE stop op 
+  FI. 
+ 
+clrerr op:
+  users error := FALSE; standard ops.
+
+ke op: 
+  skip instruction; 
+  line; putline ("INFO: ke"); 
+  info (stdds, ic hi, ic lo, info lines);
+  single step := TRUE.
+
+pp ops: 
+  save modno and ic lo if pproc; 
+  look at next instr; 
+  WHILE iclass1 = 9 REP 
+    ic lo INCR ilen; iname := iname1; ioplist := ioplist1; 
+    ilen := ilen1; iclass := iclass1; 
+    line; lines INCR 1;
+    protocol this instr; 
+    save modno and ic lo if pproc; (*only the first one will be saved!!!*) 
+    look at next instr 
+  PER; 
+  standard ops. 
+ 
+save modno and ic lo if pproc: 
+  IF word1 = pproc opcode 
+  THEN pproc modno := dsgetw (stdds, ic hi, ic lo PLUS 1); 
+       IF pproc modno < 256 
+       THEN putline ("*** this looks like a compiler error ***"); 
+            protocol := FALSE; prot stopped := TRUE; users error := TRUE; 
+            users errcode := 0; users errmsg := ("maybe a compiler error"); 
+            LEAVE normal processing of instructions 
+       ELIF (pproc modno AND mask 0400) <> 0 
+       THEN word := (pproc modno AND mask fbff) OR mask 8000 
+       ELSE word := pproc modno 
+       FI; 
+       pproc call := word OR opcode mask1; 
+       pproc ic lo := dsgetw (stdds, packet area, m l t start + pproc modno) 
+  FI. 
+   
+look at next instr: 
+    word1 := dsgetw (stdds, ic hi, ic lo PLUS ilen); 
+    disa (ic hi, ic lo PLUS ilen, iname1, ioplist1, ilen1, iclass1). 
+ 
+wrong ops: 
+  putline ("**** das kann ich (noch) nicht!!! ***"); 
+  info (stdds, ic hi, ic lo, info lines); 
+  protocol := FALSE. 
+ 
+show registers: 
+  pbase := dsgetw (stdds, stack area, lbase + 2) AND hi byte mask; 
+  code addr modif := dsgetw (stdds, stack area, lbase + 3) 
+                  AND lo byte mask; 
+  putline ("----------------- EUMEL0-registers: ------------------"); 
+  put ("icount=" CT txt (ic hi) CT hex (ic lo) CT 
+       " lbase=1" CT hex (users lbase) CT " pbase=" CT hex (pbase)); 
+  put users flags;
+  IF (flags AND aritu mask1) <> 0
+  THEN putline ("ARITU")
+  ELSE putline ("ARITS")
+  FI.
+
+put users flags:
+  IF users stpdis 
+  THEN put ("STPDIS") 
+  ELSE put ("STOPEN") 
+  FI; 
+  IF users error 
+  THEN put ("ERROR") 
+  ELSE put ("NOERR") 
+  FI. 
+ 
+ENDPROC trace; 
+ 
+ 
+PROC stop op: 
+  line; 
+  suppress result protocolling; 
+  REP outsubtext (blanks, 1, indentpos); 
+      fetch eumel0 regs of caller from users stack; 
+      out ("stop/error induced return to addr "); 
+      out (txt (ic hi)); out (hex (ic lo)); 
+      IF users stpdis 
+      THEN putline (" (STPDIS)")
+      ELSE putline (" (STOPEN)") 
+      FI; 
+      lines INCR 1;
+      IF nontraceable caller 
+      THEN putline ("trace ended by returning to nontraceable caller"); 
+           protocol := FALSE; prot stopped := TRUE 
+      ELIF users stpdis 
+      THEN copy stack of disabled caller to tracers stack 
+      ELSE users lbase := dsgetw (stdds, stack area, users lbase) 
+      FI 
+  UNTIL users stpdis OR NOT protocol PER; 
+  nail1 hi := ic hi; nail1 lo := ic lo. 
+ 
+suppress result protocolling: 
+  no of results := 0. 
+ 
+copy stack of disabled caller to tracers stack: 
+  FOR i FROM 1 UPTO 4 REP 
+    word := dsgetw (stdds, stack area, users lbase + i - 1); 
+    dsputw (stdds, stack area, lbase + i - 1, word) 
+  PER. 
+ 
+ENDPROC stop op; 
+ 
+ 
+i n i t i a l i z e   t r a c e. 
+ 
+nontraceable caller: 
+  ic hi = 2 AND NOT std procs traceable 
+   OR (old flags AND aritu mask1) <> 0 AND (flags AND aritu mask1) = 0. 
+ 
+fetch eumel0 regs of caller from users stack: 
+  indentpos DECR indentincr; 
+  ic lo := dsgetw (stdds, stack area, users lbase + 1); 
+  word := dsgetw (stdds, stack area, users lbase + 2); 
+  ic hi := word AND 3; 
+  old flags := word AND flags mask1; 
+  users stpdis := (old flags AND stpdis mask1) <> 0;
+  pbase := word AND hi byte mask; 
+  code addr modif := dsgetw (stdds, stack area, users lbase + 3) 
+                     AND lo byte mask. 
+ 
+initialize trace: 
+  LET maxno of nontraceables = 20; 
+  INT VAR int, j; 
+  TEXT VAR text; 
+  ROW maxno of nontraceables TEXT VAR names of nontraceables; 
+  ROW maxno of nontraceables TEXT VAR names of short nontraceables; 
+  ROW maxno of nontraceables TEXT VAR names of long nontraceables; 
+  ROW maxno of nontraceables INT VAR calls to nontraceables; 
+  ROW maxno of nontraceables INT VAR call2 to nontraceables; 
+
+  putline("initializing ""trace"" ...");
+  names of nontraceables (1) := "disa (I,I,T,T,I,I) (*n.t.*)"; 
+  names of nontraceables (2) := "disasm (I,I) (*n.t.*)"; 
+  names of nontraceables (3) := "info (I,I,I,I) (*n.t.*)";
+  names of nontraceables (4) := "dec (T) (*n.t.*)"; 
+  names of nontraceables (5) := "hex (I) (*n.t.*)"; 
+  names of nontraceables (6) := "dsget2b (I,I,I) (*n.t.*)"; 
+  names of nontraceables (7) := "trace (*ignored*)"; 
+  trace; (* initialize 'call to trace', 'ic hi' and 'ic lo' *) 
+  IF FALSE THEN 
+     disa (int, int, text, text, int, int); 
+     disasm (int, int); 
+     info (int, int, int, int); 
+     int := dec (text); 
+     text := hex (int); 
+     int  := dsget2b (int, int, int); 
+     trace   (****** must be the last one !!! *****) 
+   FI; 
+   FOR j FROM 1 UPTO maxno of nontraceables REP 
+     REP ic lo INCR 1; 
+         word1 := dsgetw (stdds, ic hi, ic lo) 
+     UNTIL call opcode found PER; 
+     IF word1 <> longcall opcode 
+     THEN no of nontraceables INCR 1; 
+          calls to nontraceables (no of nontraceables) := word1; 
+          names of short nontraceables (no of nontraceables) := 
+               names of nontraceables (j)
+     ELSE no of long nontraceables INCR 1; 
+          word2 := dsgetw (stdds, ic hi, ic lo PLUS 1); ic lo INCR 1; 
+          call2 to nontraceables (no of long nontraceables) := word2;
+          names of long nontraceables (no of long nontraceables) := 
+               names of nontraceables (j) 
+     FI 
+   UNTIL call to trace found 
+         OR no of nontraceables = maxno of nontraceables 
+         OR no of long nontraceables = maxno of nontraceables PER; 
+   putline ("""trace"" initialized:");
+   putline ("        " CT txt (no of nontraceables)
+                       CT " nontraceable shortcalls");
+   putline ("        " CT txt (no of long nontraceables)
+                       CT " nontraceable longcalls"); 
+   IF no of nontraceables = maxno of nontraceables 
+      OR no of long nontraceables = maxno of nontraceables 
+   THEN errorstop ("too many nontraceables") 
+   ELSE test trace 
+   FI. 
+ 
+call opcode found: 
+  (word1 AND opcode mask1) = call opcode OR word1 = longcall opcode. 
+ 
+call to trace found: 
+  IF word1 = call to trace 
+  THEN IF longcall to trace flag 
+       THEN word2 = call2 to trace 
+       ELSE TRUE 
+       FI 
+  ELSE FALSE 
+  FI. 
+ 
+test trace:.
+
+END PACKET trace; 
+

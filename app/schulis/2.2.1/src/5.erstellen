@@ -1,0 +1,146 @@
+PACKET erstellenDEFINES staterstellen:LET datenbasisname="STATISTIK.basis",
+statistikdatei="STATISTIK.",statistikserver="statistik server",maskeerstellen
+="mst statistik erstellen",niltext="",space=" ",meldungzusatz="+",spaces=
+"          ",sjoker="*",squote="""",sklammerzu=")",adate=2,erstedatenzeile=2,
+defvorzeilen=3,fstatnr=2,fstichtag=3,datepos=14,mkeinebasis=471,mzahleingeben
+=53,mgibtesnicht=477,mstatprozent=479,mstaterstellt=480,ogleich=1,ogroesser=2
+,okleiner=3,ogroessergleich=4,okleinergleich=5,oungleich=6,oenthalten=7,olike
+=8,maxvergleiche=25,ende=0,VERGLEICH =STRUCT (BOOL kursvergleich,INT operator
+,von,bis,INT undvergleich,odervergleich,INT zweiterkursvergleich,TEXT text);
+ROW maxvergleicheVERGLEICH VAR vergleiche;INT VAR anzahlvergleiche,verglpos;
+TEXT VAR vergl,basiszeile;PROC staterstellen(INT CONST was):SELECT wasOF 
+CASE 1:erstellenstartprocCASE 2:erstellenexecCASE 3:statlistezeigen(int(
+standardmaskenfeld(fstatnr)))CASE 4:erstellenlisteexecEND SELECT .
+erstellenstartproc:standardstartproc(maskeerstellen);statdatenbasisermitteln(
+fstichtag);standardnproc.erstellenexec:IF NOT statdatenbasisvorhandenTHEN 
+standardmeldung(mkeinebasis,niltext);ELIF int(standardmaskenfeld(fstatnr))<=0
+THEN standardmaskenfeld(niltext,fstatnr);standardmeldung(mzahleingeben,
+niltext);ELSE holedatenbasis;erstellen(standardmaskenfeld(fstatnr));
+loeschedatenbasis;FI ;leave(1).erstellenlisteexec:statlistebearbeiten(
+maskeerstellen);statdatenbasisermitteln(fstichtag);standardfelderausgeben;IF 
+NOT statdatenbasisvorhandenTHEN standardmeldung(mkeinebasis,niltext);ELSE 
+holedatenbasis;WHILE statlisteeintrag>niltextREP erstellen(statlisteeintrag);
+statlistebearbeiten(maskeerstellen);PER ;loeschedatenbasis;FI ;
+standardmaskenfeld(niltext,fstatnr);leave(2).END PROC staterstellen;PROC 
+erstellen(TEXT CONST statistiknummer):BOOL VAR abbruch:=FALSE ;IF NOT exists(
+gewaehltestatistik,task(statistikserver))THEN standardmeldung(mgibtesnicht,
+statistiknummer+meldungzusatz);ELSE erstellestatistik;FI .erstellestatistik:
+statistiknummerIN fstatnr;standardmaskenfeld(niltext,fstatnr);standardmeldung
+(mstaterstellt,statistiknummer+meldungzusatz+"wird"+meldungzusatz);forget(
+gewaehltestatistik,quiet);fetch(gewaehltestatistik,task(statistikserver));
+fuelleallefelderaus;IF abbruchTHEN standardmeldung(mstaterstellt,
+statistiknummer+meldungzusatz+"nicht"+meldungzusatz);ELSE commanddialogue(
+FALSE );save(gewaehltestatistik,task(statistikserver));commanddialogue(TRUE )
+;standardmeldung(mstaterstellt,statistiknummer+meldungzusatz+
+standardmaskenfeld(fstichtag)+meldungzusatz);FI ;forget(gewaehltestatistik,
+quiet).fuelleallefelderaus:FILE VAR basis:=sequentialfile(modify,
+datenbasisname),stat:=sequentialfile(modify,gewaehltestatistik);INT VAR 
+aktfeld,bearbeitetefelder:=0,felder:=lines(stat)-defvorzeilen;TEXT VAR 
+dateizeile;fuellebedingungfelder;fuellesummenfelder;toline(stat,defvorzeilen)
+;writerecord(stat,subtext(standardmaskenfeld(fstichtag),datepos)).
+fuellebedingungfelder:toline(stat,defvorzeilen+1);col(stat,1);WHILE NOT eof(
+stat)REP readrecord(stat,dateizeile);SELECT pos("bst",dateizeileSUB 5)OF 
+CASE 1:wertebedingungausCASE 2:replace(dateizeile,1,"    ")OTHERWISE 
+bearbeitetefelderINCR 1END SELECT ;writerecord(stat,dateizeile);down(stat);
+UNTIL abbruchPER .fuellesummenfelder:toline(stat,defvorzeilen+1);WHILE NOT 
+eof(stat)REP readrecord(stat,dateizeile);IF (dateizeileSUB 5)="s"THEN 
+wertesummeausFI ;writerecord(stat,dateizeile);down(stat);UNTIL abbruchPER .
+wertebedingungaus:replace(dateizeile,1,text(anzahlschueler(basis,subtext(
+dateizeile,6)),4));gibprozentmeldungaus.wertesummeaus:aktfeld:=lineno(stat);
+replace(dateizeile,1,text(summe(stat,subtext(dateizeile,6)),4));toline(stat,
+aktfeld);gibprozentmeldungaus.gibprozentmeldungaus:bearbeitetefelderINCR 1;
+disablestop;INT VAR proz:=(bearbeitetefelder*100)DIV felder;IF iserrorTHEN 
+clearerror;proz:=int((real(bearbeitetefelder)*100.0)/real(felder));FI ;
+enablestop;standardmeldung(mstatprozent,statistiknummer+meldungzusatz+text(
+proz)+meldungzusatz);.gewaehltestatistik:statistikdatei+statistiknummer.END 
+PROC erstellen;PROC holedatenbasis:forget(datenbasisname,quiet);fetch(
+datenbasisname,task(statistikserver));END PROC holedatenbasis;PROC 
+loeschedatenbasis:forget(datenbasisname,quiet);END PROC loeschedatenbasis;
+INT PROC summe(FILE VAR stat,TEXT CONST formel):INT VAR summe:=0,posi:=1,
+feldnr,faktor;REP faktor:=pos("+-",formelSUB posi);IF faktor>0THEN posiINCR 2
+;FI ;feldnr:=int(subtext(formel,posi+1,posi+4));toline(stat,feldnr+3);IF 
+faktor=2THEN summeDECR int(subtext(stat,1,4));ELSE summeINCR int(subtext(stat
+,1,4));FI ;posi:=pos(formel,space,posi)+1;UNTIL posi<=1PER ;max(summe,0).END 
+PROC summe;INT PROC anzahlschueler(FILE VAR basis,TEXT CONST bedingung):INT 
+VAR erstervergleich,anzahl;liesallevergleiche;zaehledieschueler;anzahl.
+liesallevergleiche:anzahlvergleiche:=0;verglpos:=1;vergl:=bedingung;
+erstervergleich:=liesvergleich.zaehledieschueler:anzahl:=0;toline(basis,
+erstedatenzeile);col(basis,1);WHILE NOT eof(basis)REP readrecord(basis,
+basiszeile);IF vergleichpositiv(erstervergleich)THEN anzahlINCR 1;FI ;down(
+basis);PER .END PROC anzahlschueler;INT PROC liesvergleich:INT VAR wurzel,
+knoten;BOOL VAR opand;wurzel:=naechstervergleich;verglposINCR 1;WHILE 
+nochmehrvergleicheREP liesboolop;knoten:=naechstervergleich;IF opandTHEN 
+verknuepfeand(wurzel,knoten);ELSE verknuepfeor(wurzel,knoten);FI ;verglpos
+INCR 1;PER ;wurzel.naechstervergleich:SELECT pos("(mk",verglSUB verglpos)OF 
+CASE 1:behandleklammerCASE 2:liesmerkmalCASE 3:lieskursOTHERWISE errorstop(
+"unzulässiger Vergleich");0END SELECT .behandleklammer:verglposINCR 1;
+liesvergleich.nochmehrvergleiche:(verglSUB verglpos-1)<>sklammerzuAND 
+verglpos<length(vergl).liesboolop:SELECT pos(vergl," ",verglpos)-verglposOF 
+CASE 2:verglposINCR 3;opand:=FALSE ;CASE 4:verglposINCR 5;opand:=FALSE ;
+OTHERWISE verglposINCR 4;opand:=TRUE ;END SELECT .END PROC liesvergleich;INT 
+PROC liesmerkmal:INT VAR merkmal:=int(subtext(vergl,verglpos+1,verglpos+2)),
+operator:=pos("=><",verglSUB verglpos+4)+pos(".=>",verglSUB verglpos+5),von,
+bis,jokerpos;TEXT VAR vergltext:=niltext;IF operator>okleinerTHEN verglpos
+INCR 7;ELSE verglposINCR 6;FI ;IF (verglSUB verglpos)=sjokerTHEN operator:=
+ogroesser;vergltext:=subtext(spaces,1,statfeldlaenge(merkmal));verglposINCR 1
+;ELSE liestext(vergltext);FI ;erzeugemerkmalvergleich.erzeugemerkmalvergleich
+:von:=statfeldpos(merkmal);bis:=von-1+statfeldlaenge(merkmal);jokerpos:=pos(
+vergltext,sjoker);IF jokerpos>0THEN aenderevergleichsmerkmale;ELIF 
+statfeldart(merkmal)=adateTHEN vergltext:=vergleichbaresdatum(vergltext);FI ;
+anzahlvergleicheINCR 1;vergleiche[anzahlvergleiche]:=VERGLEICH :(FALSE ,
+operator,von,bis,ende,ende,ende,vergltext);anzahlvergleiche.
+aenderevergleichsmerkmale:IF jokerpos=1AND pos(vergltext,sjoker,2)=length(
+vergltext)THEN operator:=oenthalten;vergltext:=subtext(vergltext,2,length(
+vergltext)-1);ELIF pos(vergltext,sjoker,jokerpos+1)>0THEN operator:=olike;
+ELIF jokerpos=1THEN vergltext:=subtext(vergltext,2);vonINCR (bis-von-length(
+vergltext)+1);ELIF jokerpos=length(vergltext)THEN vergltext:=subtext(
+vergltext,1,length(vergltext)-1);bisDECR (bis-von-length(vergltext)+1);ELSE 
+operator:=olike;FI .END PROC liesmerkmal;PROC liestext(TEXT VAR vergltext):
+INT VAR beginn;verglposINCR 1;REP beginn:=verglpos;verglpos:=pos(vergl,squote
+,beginn+1);vergltextCAT subtext(vergl,beginn,verglpos-1);verglposINCR 1;
+UNTIL (verglSUB verglpos)<>squotePER END PROC liestext;INT PROC lieskurs:
+TEXT VAR vergl1:=niltext,vergl2:=niltext;INT VAR von1:=1,bis1:=0,von2,bis2,
+teilfeld,operator:=ogleich;BOOL VAR zweivergleiche:=FALSE ;ROW 4INT CONST 
+laenge:=ROW 4INT :(2,2,4,1);verglposINCR 6;FOR teilfeldFROM 1UPTO 4REP 
+liesnaechstenteiltext;PER ;erzeugekursvergleich.liesnaechstenteiltext:
+verglposINCR 1;IF (verglSUB verglpos)=sjokerTHEN verglposINCR 1;
+leererteiltext;ELIF zweivergleicheTHEN liestext(vergl2);bis2INCR laenge[
+teilfeld];ELSE liestext(vergl1);bis1INCR laenge[teilfeld];FI .leererteiltext:
+IF zweivergleicheTHEN IF von2>bis2THEN von2INCR laenge[teilfeld];bis2INCR 
+laenge[teilfeld];FI ;ELIF von1>bis1THEN von1INCR laenge[teilfeld];bis1INCR 
+laenge[teilfeld];ELSE zweivergleiche:=TRUE ;von2:=bis1+laenge[teilfeld]+1;
+bis2:=bis1+laenge[teilfeld];FI .erzeugekursvergleich:IF von1>bis1THEN 
+operator:=ogroesser;ELIF zweivergleicheAND von2>bis2THEN zweivergleiche:=
+FALSE ;FI ;anzahlvergleicheINCR 1;vergleiche[anzahlvergleiche]:=VERGLEICH :(
+TRUE ,operator,von1,bis1,ende,ende,evtlvergl2,vergl1);IF zweivergleicheTHEN 
+anzahlvergleicheINCR 1;vergleiche[anzahlvergleiche]:=VERGLEICH :(TRUE ,
+ogleich,von2,bis2,ende,ende,ende,vergl2);anzahlvergleiche-1ELSE 
+anzahlvergleicheFI .evtlvergl2:IF zweivergleicheTHEN anzahlvergleiche+1ELSE 
+endeFI .END PROC lieskurs;PROC verknuepfeand(INT CONST wurzel,knoten):IF 
+vergleiche[wurzel].undvergleich<>endeTHEN verknuepfeand(vergleiche[wurzel].
+undvergleich,knoten);ELIF wurzel<>knotenTHEN vergleiche[wurzel].undvergleich
+:=knoten;FI ;IF vergleiche[wurzel].odervergleich<>endeTHEN verknuepfeand(
+vergleiche[wurzel].odervergleich,knoten);FI ;END PROC verknuepfeand;PROC 
+verknuepfeor(INT CONST wurzel,knoten):IF vergleiche[wurzel].odervergleich=
+endeTHEN vergleiche[wurzel].odervergleich:=knotenELSE verknuepfeor(vergleiche
+[wurzel].odervergleich,knoten);FI ;END PROC verknuepfeor;BOOL PROC 
+vergleichpositiv(INT CONST wurzel):(wurzelbedingungerfuelltCAND 
+undbedingungenerfuellt)COR oderbedingungenerfuellt.undbedingungenerfuellt:(v.
+undvergleich=endeOR vergleichpositiv(v.undvergleich)).oderbedingungenerfuellt
+:(v.odervergleich<>endeAND vergleichpositiv(v.odervergleich)).
+wurzelbedingungerfuellt:IF v.kursvergleichTHEN kursvergleichpositiv(wurzel)
+ELSE SELECT v.operatorOF CASE ogleich:basistext=v.textCASE ogroesser:
+basistext>v.textCASE okleiner:basistext<v.textCASE ogroessergleich:basistext
+>=v.textCASE okleinergleich:basistext<=v.textCASE oungleich:basistext<>v.text
+CASE oenthalten:pos(basistext,v.text)>0OTHERWISE basistextLIKE v.textEND 
+SELECT FI .basistext:subtext(basiszeile,v.von,v.bis).v:vergleiche[wurzel].
+END PROC vergleichpositiv;BOOL PROC kursvergleichpositiv(INT CONST wurzel):
+INT VAR kurspos:=122;IF v.operator=ogroesserTHEN stellefestobkursebelegtELSE 
+REP kurspos:=pos(basiszeile,v.text,kurspos+1);UNTIL kurspos=0COR (
+kursposstimmtCAND zweitervergleichok)PER ;kurspos>0FI .
+stellefestobkursebelegt:pos(basiszeile,"!","�",kurspos+1)>0.kursposstimmt:((
+kurspos-6)MOD 9)=v.von-1.zweitervergleichok:v.zweiterkursvergleich=endeCOR v2
+.text=subtext(basiszeile,beginn+v2.von,beginn+v2.bis).v:vergleiche[wurzel].v2
+:vergleiche[v.zweiterkursvergleich].beginn:kurspos-v.von.END PROC 
+kursvergleichpositiv;END PACKET erstellen;
+

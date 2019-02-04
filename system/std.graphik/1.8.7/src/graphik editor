@@ -1,0 +1,324 @@
+PACKET graphic editor DEFINES  graphic,           (*Autor: H.Indenbirken *)
+                               picfile, picture,  (*Stand: 26.02.1985    *)
+
+                               neu zeichnen,
+ 
+                               UP, DOWN, T,
+
+                               pen, select pen, selected pen, background,
+                               extrema pic, extrema picfile:
+ 
+
+ 
+LET norm cmd = ""1""27""3""10""9"epb"16"",
+    hop cmd = ""2""10""12""1"",
+    bell    = ""7"",
+    esc     = ""27"";
+
+PICFILE VAR p;
+PICTURE VAR pic;
+TEXT VAR command :: "", old command :: "", char, headline :: "";
+BOOL VAR within edit :: FALSE, new plot :: FALSE;
+ROW 3 ROW 2 REAL VAR size;
+ROW 2 ROW 2 REAL VAR limits;
+ROW 4 REAL VAR angles;
+ROW 2 REAL VAR oblique;
+ROW 3 REAL VAR perspective;
+
+PROC open graphic (TEXT CONST name, DATASPACE CONST ds):
+  p := ds; 
+  get values (p, size, limits, angles, oblique, perspective); 
+  head line := ""1""15"LEN       ................................ DIM    PEN    .."14" Picture      "15""14"";
+  replace (head line, 32-LENGTH name DIV 2, name);
+  new plot := TRUE;
+  within edit := TRUE
+END PROC open graphic;
+
+PROC graphic:
+  graphic (last param)
+END PROC graphic;
+
+PROC graphic (TEXT CONST name) :
+  IF NOT exists (name) 
+  THEN IF yes ("Soll ein neuer Picfile eingerichtet werden")
+       THEN graphic (new (name), name) FI
+  ELSE graphic (old (name), name) FI
+
+END PROC graphic;
+
+PROC graphic (DATASPACE CONST f, TEXT CONST name) :
+  open graphic (name, f);
+  reset;
+  kommandos bearbeiten;
+  within edit := FALSE  .
+
+kommandos bearbeiten :
+  REP IF new plot
+      THEN plot (p);
+           new plot := FALSE
+      FI;
+      read picture (p, pic);
+      out head line;
+      inchar (command);
+      do command
+  PER  .
+ 
+out head line:
+  replace (headline,  7, text (length (pic), 5));
+  replace (headline, 50, text (dim (pic), 1));
+  replace (headline, 57, text (pen (pic), 2));
+  replace (headline, 72, text (picture no (p), 4));
+  out (head line)  .
+
+do command:
+  SELECT pos (norm cmd, command) OF 
+  CASE  1: hop commands
+  CASE  2: escape commands
+  CASE  3: position up
+  CASE  4: position down
+  CASE  5: position direct
+  CASE  6: extrema pic
+  CASE  7: selected pen (pen (pic));
+  CASE  8: out (1, 2, ""15""5"Hintergrundfarbe: " +
+           colour of (background (p)) + " "14"")
+  CASE  9: identify (pic);
+  OTHERWISE out (bell) ENDSELECT .
+
+position up :
+  IF is first picture (p)
+  THEN out (bell);
+  ELSE up (p) FI  .
+
+position down :
+  IF eof (p)
+  THEN out (bell)
+  ELSE down (p) FI  .
+ 
+position direct:
+   out (1, 68, "");
+   edit get (command, 4, 4);
+   to pic (p, int (command))  .
+
+hop commands :
+  inchar (command);
+  SELECT pos (hop cmd, command) OF 
+  CASE 1: to first pic (p)
+  CASE 2: to eof (p)
+  CASE 3: delete picture (p);
+          IF NOT new plot
+          THEN erase (pic) FI
+  CASE 4: new plot := TRUE
+  OTHERWISE out (bell) ENDSELECT  .
+
+escape commands :
+  inchar (command);
+  IF command = "q"
+  THEN LEAVE kommandos bearbeiten
+  ELIF command = "f"
+  THEN do (old command)
+  ELIF command = esc
+  THEN kommandomodus
+  ELSE do (kommando auf taste (command)) FI  .
+
+END PROC graphic;
+
+PROC kommandomodus:
+  command := "";
+  disable stop;
+  REP get command;
+      do (command)
+  UNTIL command executed PER;
+
+  IF new values
+  THEN get values (size, limits, angles, oblique, perspective); 
+       set values (p, size, limits, angles, oblique, perspective); 
+       new plot := new plot OR new values
+  FI  .
+
+get command:
+  REP out (1, 2, ""15"Gib Graphikkommando: ");
+      edit get (command, 0, 54, "", "k", char);
+      out (""14"");
+      out (1, 2, ""5"");
+
+      IF char = ""13""
+      THEN LEAVE get command
+      ELIF char = ""27"k"
+      THEN command := old command FI
+  PER  .
+
+command executed:
+  IF is error
+  THEN out (1, 1, error message);
+       clear error;
+       FALSE
+  ELSE old command := command;
+       TRUE
+  FI  .
+
+END PROC kommandomodus;
+
+PROC out (INT CONST x, y, TEXT CONST t):
+  cursor (x, y);
+  out (t)
+END PROC out;
+
+TEXT PROC colour of (INT CONST colour):
+  SELECT colour OF
+  CASE 0: "löschen"
+  CASE 1: "std"
+  CASE 2: "rot"
+  CASE 3: "blau"
+  CASE 4: "grün"
+  CASE 5: "schwarz"
+  CASE 6: "weiß"
+  OTHERWISE text (colour) ENDSELECT  .
+END PROC colour of;
+
+TEXT PROC linetype of (INT CONST linetype):
+  SELECT linetype OF
+  CASE 0: "unsichtbar"
+  CASE 1: "durchgehend"
+  CASE 2: "gepunktet"
+  CASE 3: "kurz gestrichelt"
+  CASE 4: "lang gestrichelt"
+  CASE 5: "strichpunkt"
+  OTHERWISE text (linetype) ENDSELECT  .
+END PROC linetype of;
+
+PICFILE PROC picfile :
+  IF NOT within edit
+  THEN errorstop ("Not within editmode") FI;
+  p
+END PROC picfile;
+
+PICTURE PROC picture :
+  IF NOT within edit
+  THEN errorstop ("Not within editmode") FI;
+  pic
+END PROC picture;
+
+PROC neu zeichnen:
+  new plot := TRUE
+END PROC neu zeichnen;
+
+OP UP (INT CONST distance):
+  up (p, distance);
+  read picture (p, pic) 
+END OP UP;
+
+OP DOWN (INT CONST distance):
+  down (p, distance);
+  read picture (p, pic) 
+END OP DOWN;
+
+OP T (INT CONST n):
+  to pic (p, n);
+  read picture (p, pic) 
+END OP T;
+ 
+PROC pen (INT CONST n):
+  IF NOT new plot
+  THEN erase (pic) FI;
+
+  pen (pic, n);
+  write picture (p, pic);
+
+  IF NOT new plot
+  THEN show (pic) FI
+END PROC pen;
+
+PROC select pen (INT CONST n, colour, thickness, linetype, BOOL CONST hidden):
+  select pen (p, n, colour, thickness, linetype, hidden);
+  new plot := TRUE
+END PROC select pen;
+
+PROC select pen (INT CONST n, colour, thickness, linetype):
+  select pen (p, n, colour, thickness, linetype, FALSE);
+  new plot := TRUE
+END PROC select pen;
+
+PROC selected pen (INT CONST n, INT VAR colour, thickness, linetype,
+                   BOOL VAR hidden):
+  selected pen (p, n, colour, thickness, linetype, hidden);
+END PROC selected pen;
+
+PROC selected pen (INT CONST n):
+  INT VAR colour, thickness, linetype;
+  BOOL VAR hidden;
+  selected pen (p, n, colour, thickness, linetype, hidden);
+  out (1, 2, ""5""15"PEN #" + text (n) + ":  Farbe: " + colour of (colour) +
+             ", Dicke " + text (thickness) + ", Linientyp " + linetype of (linetype) +
+             hidden text + " "14"")  .
+
+hidden text:
+  IF hidden
+  THEN ". "
+  ELSE ", nicht sichtbare Linien werden unterdrückt." FI  .
+
+END PROC selected pen;
+
+INT PROC background:
+  background (p)
+END PROC background;
+
+PROC background (INT CONST n):
+  new plot := n <> background (p);
+  background (p, n)
+END PROC background;
+
+PROC extrema pic:
+  REAL VAR x min, x max, y min, y max, z min, z max;
+  IF dim (pic) = 2
+  THEN extrema (pic, x min, x max, y min, y max);
+       out (1, 2, ""5""15"Extrema: [" + text (x min) + "," + text (x max) + 
+                  "]  [" + text (y min) + "," + text (y max) + "] "14"")
+  ELSE extrema (pic, x min, x max, y min, y max, z min, z max);
+       out (1, 2, ""5""15"Extrema: [" + text (x min) + "," + text (x max) + 
+                  "]  [" + text (y min) + "," + text (y max) + 
+                  "]  [" + text (z min) + "," + text (z max) +"] "14"") 
+  FI
+END PROC extrema pic;
+
+PROC extrema picfile:
+  REAL VAR x min, x max, y min, y max, z min, z max;
+  extrema (p, x min, x max, y min, y max, z min, z max);
+  out (1, 2, ""5""15"Extrema: [" + text (x min) + "," + text (x max) + 
+             "]  [" + text (y min) + "," + text (y max) + 
+             "]  [" + text (z min) + "," + text (z max) +"] "14"") 
+END PROC extrema picfile;
+
+PROC identify (PICTURE CONST pic):
+  begin plot;
+  hidden lines (TRUE);
+  pen (background (p), 1, 1, 2);
+  plot (pic);
+  end plot
+END PROC identify;
+
+PROC erase (PICTURE CONST pic):
+  INT VAR colour, thickness, linetype;
+  BOOL VAR hidden;
+
+  selected pen (p, pen (pic), colour, thickness, linetype, hidden); 
+  begin plot;
+  hidden lines (TRUE);
+  pen (background (p), 0, thickness, linetype);
+  plot (pic);
+  end plot
+END PROC erase;
+
+PROC show (PICTURE CONST pic):
+  INT VAR colour, thickness, linetype;
+  BOOL VAR hidden;
+
+  selected pen (p, pen (pic), colour, thickness, linetype, hidden); 
+  begin plot;
+  hidden lines (TRUE);
+  pen (background (p), colour, thickness, linetype);
+  plot (pic);
+  end plot
+END PROC show;
+
+END PACKET graphic editor;
+

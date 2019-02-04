@@ -1,0 +1,290 @@
+(* ------------------- VERSION 2     05.05.86 ------------------- *)
+PACKET command handler DEFINES                (* Autor: J.Liedtke *)
+
+       get command , 
+       analyze command , 
+       do command , 
+       command error ,
+       cover tracks :
+ 
+ 
+LET cr lf        = ""4""13""10"" ,
+    esc k        = ""27"k" ,
+    command pre  = ""4""13"      " ,
+    command post = ""13""10"      " ,
+ 
+    max command length = 2010 ,
+
+    tag type = 1 ,
+    texttype = 4 ,
+    eof type = 7 ;
+ 
+ 
+TEXT VAR command handlers own command line := "" ,
+         previous command line := "" ,
+         symbol ,
+         procedure ,
+         pattern ,
+         error note := "" ;
+ 
+INT VAR  symbol type ;
+
+ 
+PROC get command (TEXT CONST command text) :
+
+  get command (command text, command handlers own command line)
+
+ENDPROC get command ;
+
+PROC get command (TEXT CONST command text, TEXT VAR command line) :
+
+  set line nr (0) ;
+  error protocoll ;
+  get command from console .
+ 
+error protocoll :
+  IF is error
+    THEN put error ;
+         clear error
+    ELSE command line := "" ;
+  FI .
+ 
+get command from console :
+  normalize cursor ;
+  REP
+    out (command pre) ;
+    out (command text) ;
+    out (command post) ;
+    editget command
+  UNTIL command line <> "" PER ;
+  param position (LENGTH command line) ;
+  out (command post) .
+ 
+editget command :
+  TEXT VAR exit char ;
+  REP
+    get cursor (x, y) ;
+    editget (command line, max command length, x size - x,
+             "", "k", exit char) ;
+    ignore halt errors during editget ;
+    break quiet if command line is too long ;
+    IF exit char = esc k
+      THEN cursor to begin of command input ;
+           command line := previous command line
+    ELIF LENGTH command line > 1
+      THEN previous command line := command line ;
+           LEAVE editget command
+    ELSE   LEAVE editget command
+    FI
+  PER .
+
+normalize cursor :
+  INT VAR x, y;
+  out (crlf) ;
+  get cursor (x, y) ;
+  cursor (x, y) .
+ 
+ignore halt errors during editget :
+  IF is error
+    THEN clear error
+  FI .
+
+break quiet if command line is too long :
+  IF command line is too long
+    THEN command line := "break (quiet)"
+  FI .
+
+command line is too long :
+  LENGTH command line = max command length .
+
+cursor to begin of command input :
+  out (command pre) .
+
+ENDPROC get command ;
+ 
+
+PROC analyze command ( TEXT CONST command list,
+                       INT CONST permitted type, 
+                       INT VAR command index, number of params, 
+                       TEXT VAR param 1, param 2) :
+
+  analyze command (command list, command handlers own command line,
+                   permitted type, command index,
+                   number of params, param 1, param 2)
+
+ENDPROC analyze command ;
+
+PROC analyze command ( TEXT CONST command list, command line,
+                       INT CONST permitted type, 
+                       INT VAR command index, number of params, 
+                       TEXT VAR param 1, param 2) :
+
+  error note := "" ;
+  scan (command line) ;
+  next symbol ;
+  IF symbol type <> tag type AND symbol <> "?"
+    THEN error ("Name ungueltig") ;
+         impossible command
+  ELIF pos (command list, symbol) > 0
+    THEN procedure name ;
+         parameter list pack option ;
+         nothing else in command line ;
+         decode command
+    ELSE impossible command
+  FI .
+ 
+procedure name :
+  procedure := symbol ;
+  next symbol .
+ 
+parameter list pack option :
+  number of params := 0 ;
+  param 1 := "" ;
+  param 2 := "" ;
+  IF symbol = "("
+    THEN next symbol ;
+         parameter list ;
+         IF symbol <> ")" AND error note = ""
+           THEN error (") fehlt")
+         FI
+  ELIF symbol type <> eof type
+    THEN error ("( fehlt")
+  FI .
+ 
+parameter list :
+  parameter (param 1, number of params, permitted type) ;
+  IF symbol = ","
+    THEN next symbol ;
+         parameter (param 2, number of params, permitted type) ;
+  FI .
+ 
+nothing else in command line :
+  next symbol ;
+  IF symbol <> ""
+    THEN error ("Kommando zu schwierig")
+  FI .
+
+decode command :
+  command index := index (command list, procedure, number of params) .
+ 
+impossible command :
+  command index := 0 .
+ 
+ENDPROC analyze command ;
+ 
+PROC parameter (TEXT VAR param, INT VAR number of params,
+                INT CONST permitted type) :
+ 
+  IF symbol type = text type OR symbol type = permitted type
+    THEN param := symbol ;
+         number of params INCR 1 ;
+         next symbol
+    ELSE error ("Parameter ist kein TEXT ("" fehlt)")
+  FI
+ 
+ENDPROC parameter ;
+ 
+INT PROC index (TEXT CONST list, procedure, INT CONST params) :
+ 
+  pattern := procedure ;
+  pattern CAT ":" ;
+  IF procedure name found
+    THEN get colon pos ;
+         get dot pos ;
+         get end pos ;
+         get command index ;
+         get param index ;
+         IF param index >= 0
+           THEN command index + param index
+           ELSE - command index
+         FI
+    ELSE 0
+  FI .
+ 
+procedure name found :
+  INT VAR index pos := pos (list, pattern) ;
+  WHILE index pos > 0 REP
+    IF index pos = 1  COR  (list SUB index pos - 1) <= "9"
+      THEN LEAVE procedure name found WITH TRUE 
+    FI ;
+    index pos := pos (list, pattern, index pos + 1) 
+  PER ;
+  FALSE .
+ 
+get param index :
+  INT CONST param index :=
+            pos (list, text (params), dot pos, end pos) - dot pos - 1 .
+ 
+get command index :
+  INT CONST command index :=
+            int ( subtext (list, colon pos + 1, dot pos - 1) ) .
+ 
+get colon pos :
+  INT CONST colon pos := pos (list, ":", index pos) .
+ 
+get dot pos :
+  INT CONST dot pos := pos (list, ".", index pos) .
+ 
+get end pos :
+  INT CONST end pos := dot pos + 4 .
+ 
+ENDPROC index ;
+ 
+PROC do command :
+
+  do (command handlers own command line)
+
+ENDPROC do command ;
+
+PROC error (TEXT CONST message) :
+ 
+  error note := message ;
+  scan ("") ;
+  procedure := "-"
+ 
+ENDPROC error ;
+ 
+PROC command error :
+
+  disable stop ;
+  IF error note <> ""
+    THEN errorstop (error note) ;
+         error note := ""
+  FI ;
+  enable stop
+
+ENDPROC command error ;
+
+
+PROC next symbol :
+ 
+  next symbol (symbol, symbol type)
+ 
+ENDPROC next symbol ;
+ 
+
+PROC cover tracks :
+
+  cover tracks (command handlers own command line) ;
+  cover tracks (previous command line) ;
+  erase buffers of compiler and do packet .
+
+erase buffers of compiler and do packet :
+  do (command handlers own command line) .
+
+ENDPROC cover tracks ;
+
+PROC cover tracks (TEXT VAR secret) :
+
+  INT VAR i ;
+  FOR i FROM 1 UPTO LENGTH secret REP
+    replace (secret, i, " ")
+  PER ;
+  WHILE LENGTH secret < 13 REP
+    secret CAT " "
+  PER
+
+ENDPROC cover tracks ;
+
+ENDPACKET command handler ;
+

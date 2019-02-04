@@ -1,0 +1,170 @@
+PACKET idadataDEFINES putformular,openformular,initformular,getactivformular,
+getformtextname,getformularinfo,putformularinfo,getformularname,
+getformularindex,getsteuercode,putsteuercode,getdruckaufbereitung,
+putdruckaufbereitung,getzeile,putzeile,geteinfuegstellen,puteinfuegstellen,
+getzeilenanzahl,putzeilenanzahl,getunterbloecke,putunterbloecke,
+getvorzeilennr,putvorzeilennr,getanzahlselfelder,putanzahlselfelder,
+getselektion,putselektion,getobjektklasse,putobjektklasse,getleitindex,
+putleitindex,getscan,putscan,getanzahlregeln,putanzahlregeln,getregelnummer,
+deleteregel,getblockregelnummer,putblockregelnummer,getzugriffsregel,
+putzugriffsregel,getanzahlregelfelder,putanzahlregelfelder,getvergleichswert,
+putvergleichswert,getblockanzahl,FORMULAR ,openmitloeschen,
+setzeidazeichensatz:TEXT VAR idazeichensatz:="";LET maxanw=100,maxblock=11,
+maxregel=50,maxobjekt=10,maxfeld=10,maxtext=100,maxsel=200;TYPE FORMULAR =
+STRUCT (INFO formularbeschreibung,ROW maxregelREGEL zugriffsregel,INT 
+anzregeln,ROW maxobjektTEXT objektklassen,ROW maxselSELEKT selektion,INT 
+anzselfelder,DRUCKFORM druckform);TYPE INFO =STRUCT (TEXT formname,
+scanbedingung,INT formindex,leitindex,BOOL formtyp);TYPE REGEL =STRUCT (INT 
+objektklassennr,regelnummer,indexnr,anzkeyfelder,ROW maxfeldTEXT 
+vergleichswert);TYPE SELEKT =STRUCT (TEXT selektionsfeld,wert);TYPE BLOCK =
+STRUCT (ROW maxtextTEXT zeile,ROW maxtextTEXT einfuegstellen,INT anzzeilen,
+zuregelnummer,TEXT unterblock,vorzeilennr);TYPE DRUCKFORM =STRUCT (ROW 
+maxblockBLOCK block,ROW maxanwSTCODE stcodes,INT anzblock,DRUCK 
+druckaufbereitung);TYPE STCODE =STRUCT (TEXT steuercode,INT laenge,BOOL 
+rechtsbuendig,druckvariable);TYPE DRUCK =STRUCT (TEXT schrifttyp,REAL 
+startlinks,startoben,INT zeilenproseite,REAL zeilenbreite);DATASPACE VAR fds
+:=nilspace;BOUND FORMULAR VAR form;INT VAR aktformindex:=0;PROC 
+setzeidazeichensatz(TEXT CONST schriftart):idazeichensatz:=schriftartEND 
+PROC setzeidazeichensatz;BOOL VAR loeschenerlaubt:=TRUE ;BOOL PROC 
+openmitloeschen:loeschenerlaubtENDPROC openmitloeschen;PROC openmitloeschen(
+BOOL CONST b):loeschenerlaubt:=bENDPROC openmitloeschen;PROC putformular(
+DATASPACE CONST ds):forget(fds);fds:=ds;form:=fds;aktformindex:=
+getformularindexENDPROC putformular;PROC openformular(INT CONST index):IF 
+aktformindex<>indexCAND loeschenerlaubtTHEN letzteformularloeschenFI ;
+aktformindex:=index;IF exists(getformdataname)THEN form:=old(getformdataname)
+ELSE initformular(index);FI .letzteformularloeschen:forget(getformdataname,
+quiet);forget(getformtextname,quiet).ENDPROC openformular;PROC initformular(
+INT CONST index):INT VAR i,j;FILE VAR formtext;aktformindex:=index;forget(
+getformdataname,quiet);form:=new(getformdataname);putanzahlregeln(0);
+putanzahlselfelder(0);putleitindex(0);putscan("");formtext:=sequentialfile(
+output,getformtextname);FOR iFROM 1UPTO maxobjektREP putobjektklasse(i,"")
+PER ;FOR iFROM 1UPTO maxanwREP putsteuercode(i,"",0,FALSE ,TRUE )PER ;FOR i
+FROM 1UPTO maxregelREP FOR jFROM 1UPTO maxfeldREP form.zugriffsregel[i].
+vergleichswert[j]:=""PER PER ;putdruckaufbereitung(idazeichensatz,2.0,2.0,60,
+77.0);putformularinfo("",index,TRUE )ENDPROC initformular;INT PROC 
+getactivformular:aktformindexENDPROC getactivformular;TEXT PROC 
+getformdataname:"FORMDATA."+text(aktformindex)ENDPROC getformdataname;TEXT 
+PROC getformtextname:"FORMTEXT."+text(aktformindex)ENDPROC getformtextname;
+PROC getsteuercode(INT CONST index,TEXT VAR ausdruck,INT VAR ausglaenge,BOOL 
+VAR rbuendig,druckvar):IF index<1COR index>maxanwTHEN ausdruck:=""ELSE 
+ausdruck:=form.druckform.stcodes[index].steuercode;ausglaenge:=form.druckform
+.stcodes[index].laenge;rbuendig:=form.druckform.stcodes[index].rechtsbuendig;
+druckvar:=form.druckform.stcodes[index].druckvariable;FI ENDPROC 
+getsteuercode;PROC putsteuercode(INT CONST index,TEXT CONST ausdruck,INT 
+CONST ausglaenge,BOOL CONST rbuendig,druckvar):form.druckform.stcodes[index].
+steuercode:=ausdruck;form.druckform.stcodes[index].laenge:=ausglaenge;form.
+druckform.stcodes[index].rechtsbuendig:=rbuendig;form.druckform.stcodes[index
+].druckvariable:=druckvar;ENDPROC putsteuercode;PROC putdruckaufbereitung(
+TEXT CONST schriftart,REAL CONST linkerrandlinks,linkerrandoben,INT CONST 
+zeilenperseite,REAL CONST zeichenperzeile):form.druckform.druckaufbereitung.
+schrifttyp:=schriftart;form.druckform.druckaufbereitung.startlinks:=
+linkerrandlinks;form.druckform.druckaufbereitung.startoben:=linkerrandoben;
+form.druckform.druckaufbereitung.zeilenproseite:=zeilenperseite;form.
+druckform.druckaufbereitung.zeilenbreite:=zeichenperzeile;ENDPROC 
+putdruckaufbereitung;PROC getdruckaufbereitung(TEXT VAR schriftart,REAL VAR 
+linkerrandlinks,linkerrandoben,INT VAR zeilenperseite,REAL VAR 
+zeichenperzeile):schriftart:=form.druckform.druckaufbereitung.schrifttyp;
+linkerrandlinks:=form.druckform.druckaufbereitung.startlinks;linkerrandoben:=
+form.druckform.druckaufbereitung.startoben;zeilenperseite:=form.druckform.
+druckaufbereitung.zeilenproseite;zeichenperzeile:=form.druckform.
+druckaufbereitung.zeilenbreite;ENDPROC getdruckaufbereitung;TEXT PROC 
+getzeile(INT CONST blocknr,zeilennr):form.druckform.block[blocknr+1].zeile[
+zeilennr]ENDPROC getzeile;PROC putzeile(INT CONST blocknr,zeilennr,TEXT 
+CONST textzeile):form.druckform.block[blocknr+1].zeile[zeilennr]:=textzeile;
+form.druckform.anzblock:=max(form.druckform.anzblock,blocknr)ENDPROC putzeile
+;TEXT PROC geteinfuegstellen(INT CONST blocknr,zeilennr):form.druckform.block
+[blocknr+1].einfuegstellen[zeilennr]ENDPROC geteinfuegstellen;PROC 
+puteinfuegstellen(INT CONST blocknr,zeilennr,TEXT CONST einfueg):form.
+druckform.block[blocknr+1].einfuegstellen[zeilennr]:=einfuegENDPROC 
+puteinfuegstellen;INT PROC getzeilenanzahl(INT CONST blocknr):form.druckform.
+block[blocknr+1].anzzeilenENDPROC getzeilenanzahl;PROC putzeilenanzahl(INT 
+CONST blocknr,zeilennr):form.druckform.block[blocknr+1].anzzeilen:=zeilennr
+ENDPROC putzeilenanzahl;INT PROC getblockregelnummer(INT CONST blocknr):form.
+druckform.block[blocknr+1].zuregelnummerENDPROC getblockregelnummer;PROC 
+putblockregelnummer(INT CONST blocknr,regel):form.druckform.block[blocknr+1].
+zuregelnummer:=regelENDPROC putblockregelnummer;INT PROC getblockanzahl:form.
+druckform.anzblockENDPROC getblockanzahl;TEXT PROC getunterbloecke(INT CONST 
+blocknr):form.druckform.block[blocknr+1].unterblockENDPROC getunterbloecke;
+PROC putunterbloecke(INT CONST blocknr,TEXT CONST ub):form.druckform.block[
+blocknr+1].unterblock:=ubENDPROC putunterbloecke;TEXT PROC getvorzeilennr(
+INT CONST blocknr):form.druckform.block[blocknr+1].vorzeilennrENDPROC 
+getvorzeilennr;PROC putvorzeilennr(INT CONST blocknr,TEXT CONST zeilenno):
+form.druckform.block[blocknr+1].vorzeilennr:=zeilennoENDPROC putvorzeilennr;
+TEXT PROC getscan:form.formularbeschreibung.scanbedingungENDPROC getscan;
+PROC putscan(TEXT CONST bedingung):form.formularbeschreibung.scanbedingung:=
+bedingungENDPROC putscan;TEXT PROC getobjektklasse(INT CONST ix):form.
+objektklassen[ix]ENDPROC getobjektklasse;PROC putobjektklasse(INT CONST ix,
+TEXT CONST okname):form.objektklassen[ix]:=oknameENDPROC putobjektklasse;
+TEXT PROC getformularname:form.formularbeschreibung.formnameENDPROC 
+getformularname;INT PROC getformularindex:form.formularbeschreibung.formindex
+ENDPROC getformularindex;PROC getformularinfo(TEXT VAR name,INT VAR index,
+BOOL VAR typ):name:=form.formularbeschreibung.formname;index:=form.
+formularbeschreibung.formindex;typ:=form.formularbeschreibung.formtyp;
+ENDPROC getformularinfo;PROC putformularinfo(TEXT CONST name,INT CONST index,
+BOOL CONST typ):form.formularbeschreibung.formname:=name;form.
+formularbeschreibung.formindex:=index;form.formularbeschreibung.formtyp:=typ;
+ENDPROC putformularinfo;INT PROC getleitindex:form.formularbeschreibung.
+leitindexENDPROC getleitindex;PROC putleitindex(INT CONST neuerindex):form.
+formularbeschreibung.leitindex:=neuerindexENDPROC putleitindex;INT PROC 
+getanzahlregeln:form.anzregelnENDPROC getanzahlregeln;PROC putanzahlregeln(
+INT CONST anzahl):form.anzregeln:=anzahlENDPROC putanzahlregeln;PROC 
+putanzahlselfelder(INT CONST anzahl):form.anzselfelder:=anzahlENDPROC 
+putanzahlselfelder;INT PROC getanzahlselfelder:form.anzselfelderENDPROC 
+getanzahlselfelder;OP :=(REGEL VAR left,REGEL CONST right):CONCR (left):=
+CONCR (right)ENDOP :=;INT PROC getregelnummer(INT CONST objektklasse,regelnr)
+:INT VAR i;FOR iFROM 1UPTO getanzahlregelnREP IF form.zugriffsregel[i].
+objektklassennr=objektklasseCAND form.zugriffsregel[i].regelnummer=regelnr
+THEN LEAVE getregelnummerWITH iFI PER ;0ENDPROC getregelnummer;PROC 
+deleteregel(INT CONST regel):INT VAR i;IF regel<=getanzahlregelnCAND regel>0
+THEN FOR iFROM regelUPTO getanzahlregeln-1REP form.zugriffsregel[i]:=form.
+zugriffsregel[i+1]PER ;putanzahlregeln(getanzahlregeln-1)FI ENDPROC 
+deleteregel;PROC getzugriffsregel(INT CONST nr,INT VAR objekt,regel,index,
+anzfelder):objekt:=form.zugriffsregel[nr].objektklassennr;regel:=form.
+zugriffsregel[nr].regelnummer;index:=form.zugriffsregel[nr].indexnr;anzfelder
+:=form.zugriffsregel[nr].anzkeyfelder;ENDPROC getzugriffsregel;PROC 
+putzugriffsregel(INT CONST nr,INT CONST objekt,regel,index,anzfelder):form.
+anzregeln:=max(nr,form.anzregeln);form.zugriffsregel[nr].objektklassennr:=
+objekt;form.zugriffsregel[nr].regelnummer:=regel;form.zugriffsregel[nr].
+indexnr:=index;form.zugriffsregel[nr].anzkeyfelder:=anzfelder;ENDPROC 
+putzugriffsregel;INT PROC getanzahlregelfelder(INT CONST regelnr):form.
+zugriffsregel[regelnr].anzkeyfelderENDPROC getanzahlregelfelder;PROC 
+putanzahlregelfelder(INT CONST regelnr,anzahl):form.zugriffsregel[regelnr].
+anzkeyfelder:=anzahlENDPROC putanzahlregelfelder;TEXT PROC getvergleichswert(
+INT CONST regel,nr):form.zugriffsregel[regel].vergleichswert[nr]ENDPROC 
+getvergleichswert;PROC putvergleichswert(INT CONST regelnr,TEXT CONST vglwert
+):form.zugriffsregel[regelnr].anzkeyfelderINCR 1;form.zugriffsregel[regelnr].
+vergleichswert[form.zugriffsregel[regelnr].anzkeyfelder]:=vglwertENDPROC 
+putvergleichswert;PROC putselektion(TEXT CONST feldname,vglwert):form.
+anzselfelderINCR 1;form.selektion[form.anzselfelder].selektionsfeld:=feldname
+;form.selektion[form.anzselfelder].wert:=vglwert;ENDPROC putselektion;PROC 
+getselektion(INT CONST ix,TEXT VAR feldname,vglwert):feldname:=form.selektion
+[ix].selektionsfeld;vglwert:=form.selektion[ix].wert;ENDPROC getselektion;
+TEXT PROC getselektion:buildselektionENDPROC getselektion;LET textbegrenzer=
+"""",klammerauf="<",klammerzu=">",gleich="=",undoperator=" UND ",operatoren=
+"=<>";INT PROC postextende(TEXT CONST ausgabe,INT CONST aktuelleposition):
+INT VAR neupos:=aktuelleposition+1;WHILE (ausgabeSUB neupos)<>textbegrenzer
+REP neuposINCR 1;IF (ausgabeSUB neupos)=textbegrenzerCAND (ausgabeSUB neupos+
+1)=textbegrenzerTHEN neuposINCR 2;FI ;UNTIL neupos>length(ausgabe)PER ;neupos
++1ENDPROC postextende;INT PROC operatorposition(TEXT VAR ausdruck,INT CONST 
+abpos):INT VAR p:=abpos;WHILE p<=length(ausdruck)AND pos(operatoren,ausdruck
+SUB p)=0REP IF (ausdruckSUB p)=textbegrenzerTHEN insertchar(ausdruck,
+klammerauf,p);pINCR 1;p:=postextende(ausdruck,p);insertchar(ausdruck,
+klammerzu,p);pINCR 1;ELSE pINCR 1FI ;PER ;IF p>length(ausdruck)THEN 0ELSE p
+FI ENDPROC operatorposition;TEXT PROC buildselektion:INT VAR i:=1,oppos,
+lastpos;TEXT VAR selausdruck:="",feldname:="",einfacherausdruck:="",
+feldausdruck:="";WHILE i<=getanzahlselfelderREP getselektion(i,feldname,
+einfacherausdruck);IF einfacherausdruck>""THEN evtlumoperatorergaenzen;
+feldausdruck:="";lastpos:=1;oppos:=operatorposition(einfacherausdruck,1);
+WHILE oppos>0REP teilausdruckuebernehmen;feldnameneinfuegen;lastpos:=oppos;
+opposINCR 1;IF pos(operatoren,einfacherausdruckSUB oppos)>0THEN opposINCR 1
+FI ;oppos:=operatorposition(einfacherausdruck,oppos);PER ;restuebernehmen;
+feldausdruckklammern;IF length(selausdruck)>0THEN selausdruckCAT undoperator
+FI ;selausdruckCAT feldausdruck;FI ;iINCR 1;PER ;selausdruck.
+evtlumoperatorergaenzen:IF pos(operatoren,einfacherausdruckSUB 1)=0THEN 
+einfacherausdruck:=gleich+einfacherausdruckFI .teilausdruckuebernehmen:
+feldausdruckCAT subtext(einfacherausdruck,lastpos,oppos-1).feldnameneinfuegen
+:feldausdruck:=feldausdruck+textbegrenzer+feldname+textbegrenzer+" ".
+restuebernehmen:feldausdruckCAT subtext(einfacherausdruck,lastpos).
+feldausdruckklammern:feldausdruck:="("+feldausdruck+")".ENDPROC 
+buildselektion;ENDPACKET idadata
+

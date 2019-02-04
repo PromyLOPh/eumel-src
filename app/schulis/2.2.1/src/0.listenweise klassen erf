@@ -1,0 +1,215 @@
+PACKET listenweiseklassenerfDEFINES neueinfuegenklassen,entfernenklassen,
+bearbeitungklassen,klassennichtspeichern,klassenspeichern:LET tofather=1,
+tograndfather=2,niltext="",blank=" ",null=0,trenner="/",meldtrenner="#";LET 
+standardanfang=1,standardeinstieg=4;LET jgst5=5,jgst13=13,erstejgst="05";LET 
+erstesfeld=3,felderprozeile=4,klassenproseite=18;LET meldbestleer=59,
+meldnichtspeichern=63,meldplausi=57,meldwertzulang=60,meldwarten=69,
+meldspeicherung=132,meldspeicherfehler=131,meldfalscheauswahl=56,
+meldfortschreibung=140,meldkeinelehrer=141,meldfalscherlehrer=142,meldschonda
+=143,meldnichtleer=144,meldnichtda=134,meldloeschung=145;LET maxlaengekennung
+=4,maxlaengeintegabez=4;LET pruefartalternative=5,pruefartgrenzen=3;LET 
+fnrjgst=4,fnrakt=3,fnrgepl=2,fnrfort2=5,fnrfortneu=6;LET keysj="Schuljahr",
+keyshj="Schulhalbjahr";LET wertaktuell="aktuell",wertgeplant="geplant";LET 
+paraphentrenner="";LET vaaendern=1,vaneu=2,valoeschen=3;LET hj1="1",hj2="2";
+BOOL VAR nochwelcheda,akthalbjahr,fortschreibungzweiteshalbjahr,
+fortschreibungneuesschuljahr,fortschreibung;INT VAR klassenzahl,aktuellesfeld
+,pruefstatus,verarbeitungsart;ROW klassenproseiteTEXT VAR kennung;ROW 
+klassenproseiteTEXT VAR altedaten;TEXT VAR neuesschuljahr,neueshalbjahr,
+vergleichsjgst,lehrerparaphen:=niltext,schuljahr:=niltext,halbjahr:=niltext;
+PROC eingangsbildschirmpruefen(BOOL CONST neu):reinitparsing;
+ankreuzfelderpruefen;IF eingangsbildschirmokTHEN jgstpruefen;IF 
+eingangsbildschirmokTHEN fortschreibungpruefenFI FI .ankreuzfelderpruefen:
+standardpruefe(pruefartalternative,fnrgepl,fnrakt,null,niltext,pruefstatus).
+jgstpruefen:akthalbjahr:=standardmaskenfeld(fnrakt)<>niltext;standardpruefe(
+pruefartgrenzen,fnrjgst,jgst5,jgst13,niltext,pruefstatus);.
+fortschreibungpruefen:vergleichsjgst:=jgstaufber(standardmaskenfeld(fnrjgst))
+;fortschreibungzweiteshalbjahr:=standardmaskenfeld(fnrfort2)<>niltext;
+fortschreibungneuesschuljahr:=standardmaskenfeld(fnrfortneu)<>niltext;
+fortschreibung:=(fortschreibungzweiteshalbjahrCOR 
+fortschreibungneuesschuljahr);IF (fortschreibungzweiteshalbjahrCAND 
+fortschreibungneuesschuljahr)THEN pruefstatus:=fnrfort2ELIF (fortschreibung
+CAND akthalbjahr)THEN pruefstatus:=fnraktELIF (fortschreibungCAND (NOT neu))
+THEN pruefstatus:=meldfortschreibungELIF ((NOT akthalbjahr)CAND (
+vergleichsjgst=erstejgst))CAND fortschreibungneuesschuljahrTHEN pruefstatus:=
+fnrjgstFI ;IF pruefstatus=meldfortschreibungTHEN standardmeldung(pruefstatus,
+niltext);pruefstatus:=fnrjgstELIF pruefstatus<>nullTHEN standardmeldung(
+meldfalscheauswahl,niltext)FI .eingangsbildschirmok:pruefstatus=0.END PROC 
+eingangsbildschirmpruefen;PROC neueinfuegenklassen:verarbeitungsart:=vaneu;
+eingangsbehandlungEND PROC neueinfuegenklassen;PROC entfernenklassen:
+verarbeitungsart:=valoeschen;eingangsbehandlungEND PROC entfernenklassen;
+PROC bearbeitungklassen:verarbeitungsart:=vaaendern;eingangsbehandlungEND 
+PROC bearbeitungklassen;PROC eingangsbehandlung:BOOL CONST neueklassen:=(
+verarbeitungsart=vaneu);eingangsbildschirmpruefen(neueklassen);IF 
+eingangsbildschirmokTHEN neuesschuljahrhalbjahrerrechnen;
+initialisierungenvornehmen;blocklesenundausgeben;IF keinemehrdaTHEN 
+bestandleermelden;enter(tofather)ELSE standardnprocFI ELSE 
+eingangsmaskenfehler;return(tofather)FI .eingangsbildschirmok:pruefstatus=0.
+initialisierungenvornehmen:bestandsetzen;plausipruefungvorbereiten;
+standardstartproc(maske(vergleichsknoten)).bestandsetzen:infeld(fnrjgst);IF 
+verarbeitungsart=vaaendernTHEN pruefebestandELSE nochwelcheda:=trueFI .
+pruefebestand:inittupel(dnraktschuelergruppen);klassengrunddateninpuffer;
+search(dnraktschuelergruppen,FALSE );IF keineklassezudieserjgstTHEN 
+bestandleermelden;return(tofather);LEAVE eingangsbehandlungELSE nochwelcheda
+:=trueFI .keineklassezudieserjgst:(dbstatus<>null)COR ((jgstaufber(wert(
+fnrsgrpjgst))<>vergleichsjgst)COR (wert(fnrsgrpsj)<>neuesschuljahr)COR (wert(
+fnrsgrphj)<>neueshalbjahr)).plausipruefungvorbereiten:standardmeldung(
+meldwarten,niltext);.keinemehrda:NOT nochwelcheda.bestandleermelden:
+standardmeldung(meldbestleer,niltext).eingangsmaskenfehler:infeld(pruefstatus
+).END PROC eingangsbehandlung;PROC klassennichtspeichern:nichtspeichernmelden
+;neuerblock.nichtspeichernmelden:standardmeldung(meldnichtspeichern,niltext);
+pause(10).END PROC klassennichtspeichern;PROC klassenspeichern:SELECT 
+verarbeitungsartOF CASE vaaendern:aenderungenspeichernCASE vaneu:
+neueklassenspeichernCASE valoeschen:klassenloeschenEND SELECT .
+aenderungenspeichern:speicherungdurchfuehren(PROC (BOOL VAR )
+pruefeaenderungsplausi,false,true,false).neueklassenspeichern:
+speicherungdurchfuehren(PROC (BOOL VAR )pruefeneuplausi,true,false,false).
+klassenloeschen:speicherungdurchfuehren(PROC (BOOL VAR )pruefeloeschplausi,
+false,false,true).END PROC klassenspeichern;PROC pruefeloeschplausi(BOOL VAR 
+dateninordnung):INT VAR satzindex:=erstesfeld,plausind;FOR plausindFROM 1
+UPTO klassenzahlREP pruefezeile;IF NOT dateninordnungTHEN fehlermeldung;
+LEAVE pruefeloeschplausiFI ;satzindexINCR felderprozeilePER .pruefezeile:IF 
+standardmaskenfeld(satzindex)<>niltextTHEN dateninordnung:=
+schuelergruppevorhandenFI .schuelergruppevorhanden:klassengrunddateninpuffer;
+putwert(fnrsgrpkennung,standardmaskenfeld(satzindex));search(
+dnraktschuelergruppen,TRUE );aktuellesfeld:=satzindex;(dbstatus=null).
+fehlermeldung:IF (akthalbjahr)CAND (dbstatus=null)THEN TEXT VAR pruefsg:=
+vergleichsjgst+standardmaskenfeld(satzindex);standardmeldung(meldnichtleer,
+pruefsg+meldtrenner)ELSE standardmeldung(meldnichtda,standardmaskenfeld(
+satzindex)+meldtrenner)FI .END PROC pruefeloeschplausi;PROC pruefeneuplausi(
+BOOL VAR dateninordnung):BOOL VAR parapheninordnung;INT VAR satzindex:=
+erstesfeld,plausind;IF lehrerparaphen=niltextTHEN holeallelehrerparaphenFI ;
+FOR plausindFROM 1UPTO klassenzahlREP IF standardmaskenfeld(satzindex)<>
+niltextTHEN IF length(standardmaskenfeld(satzindex))>maxlaengekennungTHEN 
+dateninordnung:=FALSE ;standardmeldung(meldwertzulang,meldtrenner);
+aktuellesfeld:=satzindex;LEAVE pruefeneuplausiELIF length(standardmaskenfeld(
+satzindex+3))>maxlaengeintegabezTHEN dateninordnung:=FALSE ;standardmeldung(
+meldwertzulang,meldtrenner);aktuellesfeld:=satzindex+3;LEAVE pruefeneuplausi
+ELSE parapheninordnung:=korrekteparaphe(satzindex+1)CAND korrekteparaphe(
+satzindex+2);dateninordnung:=parapheninordnungCAND schuelergruppenochnichtda;
+IF NOT dateninordnungTHEN fehlermeldung;LEAVE pruefeneuplausiFI FI FI ;
+satzindexINCR felderprozeilePER .schuelergruppenochnichtda:TEXT VAR pruefsg:=
+vergleichsjgst+standardmaskenfeld(satzindex);klassengrunddateninpuffer;
+putwert(fnrsgrpkennung,standardmaskenfeld(satzindex));search(
+dnraktschuelergruppen,TRUE );aktuellesfeld:=satzindex;(dbstatus<>null).
+fehlermeldung:IF NOT parapheninordnungTHEN IF lehrerparaphen=paraphentrenner
+THEN standardmeldung(meldkeinelehrer,niltext)ELSE standardmeldung(
+meldfalscherlehrer,standardmaskenfeld(aktuellesfeld)+meldtrenner)FI ELSE 
+standardmeldung(meldschonda,pruefsg+meldtrenner)FI .END PROC pruefeneuplausi;
+PROC pruefeaenderungsplausi(BOOL VAR dateninordnung):INT VAR satzindex:=
+erstesfeld,plausind;IF lehrerparaphen=niltextTHEN holeallelehrerparaphenFI ;
+FOR plausindFROM 1UPTO klassenzahlREP IF length(standardmaskenfeld(satzindex)
+)>maxlaengekennungTHEN dateninordnung:=FALSE ;standardmeldung(meldwertzulang,
+meldtrenner);aktuellesfeld:=satzindex;LEAVE pruefeaenderungsplausiELIF length
+(standardmaskenfeld(satzindex+3))>maxlaengeintegabezTHEN dateninordnung:=
+FALSE ;standardmeldung(meldwertzulang,meldtrenner);aktuellesfeld:=satzindex+3
+;LEAVE pruefeaenderungsplausiELSE dateninordnung:=korrekteparaphe(satzindex+1
+)CAND korrekteparaphe(satzindex+2);IF NOT dateninordnungTHEN fehlermeldung;
+LEAVE pruefeaenderungsplausiFI ;FI ;satzindexINCR felderprozeilePER .
+fehlermeldung:IF lehrerparaphen=paraphentrennerTHEN standardmeldung(
+meldkeinelehrer,niltext)ELSE standardmeldung(meldfalscherlehrer,
+standardmaskenfeld(aktuellesfeld)+meldtrenner)FI .END PROC 
+pruefeaenderungsplausi;PROC speicherungdurchfuehren(PROC (BOOL VAR )plausi,
+BOOL CONST neu,aendern,loeschen):pruefeplausibilitaet;IF dateninordnungTHEN 
+speicherntransaktion;neuerblockELSE eingabefehler;return(tofather)FI ;.
+pruefeplausibilitaet:BOOL VAR dateninordnung:=true;standardmeldung(meldplausi
+,niltext);plausi(dateninordnung).speicherntransaktion:BOOL VAR 
+transaktionsfehler:=false;BOOL VAR aenderungsvermerkzusetzen:=FALSE ;
+aendernschleife;IF aenderungsvermerkzusetzenTHEN IF akthalbjahrTHEN 
+aenderungsvermerksetzen(wertaktuell)ELSE aenderungsvermerksetzen(wertgeplant)
+FI ELSE pause(10)FI .aendernschleife:INT VAR suind;INT VAR zahlderaenderungen
+:=null;INT VAR satzindex:=erstesfeld;FOR suindFROM 1UPTO klassenzahlREP 
+behandleklassensatz;satzindexINCR felderprozeilePER .behandleklassensatz:IF 
+datenveraendertTHEN fuehreaenderungaus;aenderungsvermerkzusetzen:=TRUE ;
+meldevollzugFI .datenveraendert:((NOT aendern)CAND (standardmaskenfeld(
+satzindex)<>niltext))COR (aendernCAND (altedaten(suind)<>(standardmaskenfeld(
+satzindex+1)+trenner+standardmaskenfeld(satzindex+2)+trenner+
+standardmaskenfeld(satzindex+3)))).fuehreaenderungaus:lesenvorbereiten;lesen;
+zurueckschreiben.lesenvorbereiten:zahlderaenderungenINCR 1;
+klassengrunddateninpuffer;putwert(fnrsgrpkennung,standardmaskenfeld(satzindex
+)).lesen:IF NOT neuTHEN search(dnraktschuelergruppen,TRUE );
+transaktionsfehler:=(dbstatus<>null)FI .zurueckschreiben:IF NOT 
+transaktionsfehlerTHEN saveupdateposition(dnraktschuelergruppen);IF NOT 
+loeschenTHEN putwert(fnrsgrplehrer,standardmaskenfeld(satzindex+1));putwert(
+fnrsgrpstellvlehrer,standardmaskenfeld(satzindex+2));bereiteintegabezauf;
+putwert(fnrsgrpintegabez,standardmaskenfeld(satzindex+3));IF aendernTHEN 
+selupdate(dnraktschuelergruppen)ELSE insert(dnraktschuelergruppen);#
+wuerfelwarten(vergleichsjgst,dr10.05.88standardmaskenfeld(satzindex))#FI 
+ELSE delete(dnraktschuelergruppen);#wuerfelwarten(vergleichsjgst,dr10.05.88
+standardmaskenfeld(satzindex))#FI FI .bereiteintegabezauf:IF 
+standardmaskenfeld(satzindex+3)=niltextCAND length(standardmaskenfeld(
+satzindex))<=2THEN standardmaskenfeld(standardmaskenfeld(erstesfeld-1)+
+standardmaskenfeld(satzindex),satzindex+3)FI .meldevollzug:TEXT VAR 
+meldungstext;IF dbstatus=nullTHEN meldungstext:=vergleichsjgst+
+standardmaskenfeld(satzindex)+meldtrenner;IF NOT loeschenTHEN standardmeldung
+(meldspeicherung,meldungstext)ELSE standardmeldung(meldloeschung,meldungstext
+)FI ELSE meldungstext:=text(dbstatus)+meldtrenner;meldungstextCAT (
+vergleichsjgst+standardmaskenfeld(satzindex));meldungstextCAT meldtrenner;
+standardmeldung(meldspeicherfehler,meldungstext);return(tofather);LEAVE 
+speicherungdurchfuehrenFI ;infeld(satzindex).eingabefehler:infeld(
+aktuellesfeld).END PROC speicherungdurchfuehren;PROC neuerblock:enter(
+tograndfather)END PROC neuerblock;PROC blocklesenundausgeben:SELECT 
+verarbeitungsartOF CASE vaaendern:aenderungsblocklesenCASE vaneu:
+blocklesenneuCASE valoeschen:blocklesenloeschenEND SELECT .blocklesenneu:
+neuerbildschirm.blocklesenloeschen:neuerbildschirm;
+paraphenfelderundintegabezsperren.paraphenfelderundintegabezsperren:INT VAR 
+sperrfeld:=erstesfeld+1;INT VAR i;FOR iFROM 1UPTO klassenproseiteREP 
+feldschutz(sperrfeld);feldschutz(sperrfeld+1);feldschutz(sperrfeld+2);
+sperrfeldINCR felderprozeilePER .END PROC blocklesenundausgeben;PROC 
+neuerbildschirm:vorbereiten;gewuenschteszeigen;nachbereiten.vorbereiten:
+standardmaskenfeld(vergleichsjgst,erstesfeld-1);aktuellesfeld:=erstesfeld.
+gewuenschteszeigen:IF fortschreibungTHEN TEXT VAR altejgst:=vergleichsjgst;
+TEXT VAR altesschuljahr:=neuesschuljahr,alteshalbjahr:=neueshalbjahr;
+klassenzahl:=null;IF fortschreibungneuesschuljahrTHEN vergleichsjgst:=
+jgstaufber(text(int(altejgst)-1));FI ;neuesschuljahr:=schulkenndatum(keysj);
+neueshalbjahr:=schulkenndatum(keyshj);klassengrunddateninpuffer;
+statleseschleife(dnraktschuelergruppen,vergleichsjgst,niltext,fnrsgrpjgst,
+fnrsgrpkennung,PROC zeigeklassendaten);vergleichsjgst:=altejgst;
+neuesschuljahr:=altesschuljahr;neueshalbjahr:=alteshalbjahrFI .nachbereiten:
+klassenzahl:=klassenproseite;infeld(standardanfang);standardfelderausgeben;
+infeld(erstesfeld).END PROC neuerbildschirm;PROC aenderungsblocklesen:
+vorbereiten;gewuenschteszeigen;nachbereiten.vorbereiten:standardmeldung(
+meldwarten,niltext);klassenzahl:=null;standardmaskenfeld(vergleichsjgst,
+erstesfeld-1);aktuellesfeld:=erstesfeld.gewuenschteszeigen:
+klassengrunddateninpuffer;statleseschleife(dnraktschuelergruppen,
+vergleichsjgst,niltext,fnrsgrpjgst,fnrsgrpkennung,PROC zeigeklassendaten).
+nachbereiten:restlichezeilenloeschen;infeld(standardanfang);
+standardfelderausgeben;infeld(standardeinstieg).restlichezeilenloeschen:INT 
+VAR zeilenzaehler;INT VAR zeilenfeld:=(klassenzahl*felderprozeile)+erstesfeld
+;FOR zeilenzaehlerFROM klassenzahl+1UPTO klassenproseiteREP loeschezeilePER .
+loeschezeile:INT VAR zeilenincr;FOR zeilenincrFROM 1UPTO felderprozeileREP 
+standardmaskenfeld(standardfeldlaenge(zeilenfeld)*blank,zeilenfeld);
+feldschutz(zeilenfeld);zeilenfeldINCR 1PER ;.END PROC aenderungsblocklesen;
+PROC zeigeklassendaten(BOOL VAR schluss):IF gehoertdazuTHEN klassenzahlINCR 1
+;kennungzeigen;paraphenzeigen;integabezzeigenFI .gehoertdazu:schluss:=(
+jgstaufber(wert(fnrsgrpjgst))<>vergleichsjgst)COR klassenzahl=klassenproseite
+;NOT schluss.kennungzeigen:TEXT CONST zug:=wert(fnrsgrpkennung);kennung(
+klassenzahl):=zug;standardmaskenfeld(zug,aktuellesfeld);IF NOT fortschreibung
+THEN feldschutz(aktuellesfeld);FI ;aktuellesfeldINCR 1.paraphenzeigen:TEXT 
+VAR paraphen:=wert(fnrsgrplehrer);TEXT CONST par:=wert(fnrsgrpstellvlehrer);
+standardmaskenfeld(paraphen,aktuellesfeld);feldfrei(aktuellesfeld);
+aktuellesfeldINCR 1;standardmaskenfeld(par,aktuellesfeld);feldfrei(
+aktuellesfeld);aktuellesfeldINCR 1;paraphenCAT (trenner+par);altedaten(
+klassenzahl):=paraphen+trenner+wert(fnrsgrpintegabez).integabezzeigen:
+standardmaskenfeld(wert(fnrsgrpintegabez),aktuellesfeld);feldfrei(
+aktuellesfeld);aktuellesfeldINCR 1.END PROC zeigeklassendaten;PROC 
+feldloeschen(INT CONST laenge):standardmaskenfeld(laenge*blank,aktuellesfeld)
+END PROC feldloeschen;PROC holeallelehrerparaphen:lehrerparaphen:=
+paraphentrenner;statleseschleife(dnrlehrer,niltext,niltext,fnrlparaphe,
+fnrlfamname,PROC setzelehrparaphe)END PROC holeallelehrerparaphen;PROC 
+neuesschuljahrhalbjahrerrechnen:IF schuljahr=niltextTHEN schuljahr:=
+schulkenndatum(keysj);halbjahr:=schulkenndatum(keyshj)FI ;IF akthalbjahrTHEN 
+neuesschuljahr:=schuljahr;neueshalbjahr:=halbjahrELIF halbjahr=hj1THEN 
+neuesschuljahr:=schuljahr;neueshalbjahr:=hj2ELSE ersteshalbjahrneuesschuljahr
+FI .ersteshalbjahrneuesschuljahr:neuesschuljahr:=subtext(schuljahr,3,4);
+neuesschuljahrCAT text(int(neuesschuljahr)+1,2);neueshalbjahr:=hj1.END PROC 
+neuesschuljahrhalbjahrerrechnen;PROC setzelehrparaphe(BOOL VAR b):
+lehrerparaphenCAT paraphe(wert(fnrlparaphe))END PROC setzelehrparaphe;TEXT 
+PROC paraphe(TEXT CONST p):p+paraphentrennerEND PROC paraphe;BOOL PROC 
+korrekteparaphe(INT CONST ind):TEXT CONST par:=standardmaskenfeld(ind);INT 
+VAR paraphenpos:=pos(lehrerparaphen,paraphentrenner+paraphe(par));
+aktuellesfeld:=ind;(par=niltext)COR (paraphenpos>null)END PROC 
+korrekteparaphe;PROC klassengrunddateninpuffer:putwert(fnrsgrpsj,
+neuesschuljahr);putwert(fnrsgrphj,neueshalbjahr);putwert(fnrsgrpjgst,
+vergleichsjgst);END PROC klassengrunddateninpuffer;END PACKET 
+listenweiseklassenerf;
+

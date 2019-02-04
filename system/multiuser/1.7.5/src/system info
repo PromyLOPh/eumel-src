@@ -1,0 +1,342 @@
+
+PACKET system info DEFINES                      (* Autor: J.Liedtke *)
+                                                (* Stand: 10.09.84  *)
+    task info ,
+    task status ,
+    storage info ,
+    help :
+
+
+LET supervisor mode = 0 ,
+    simple mode     = 1 ,
+    status mode     = 2 ,
+    storage mode    = 3 ,
+
+    ack             = 0 ,
+
+    channel field  = 4 ,
+    prio field     = 6 ,
+
+    cr lf     = ""13""10"" , 
+    cr        = ""13"" , 
+    page      = ""1""4"" ,
+    begin mark= ""15"" ,
+    end mark  = ""14"" ,
+    bell      = ""7"" ,
+    esc       = ""27"" ;
+
+
+
+TEXT VAR task name , record ;
+DATASPACE VAR ds := nilspace ;
+
+
+PROC task info :
+
+  task info (simple mode)
+
+ENDPROC task info ;
+
+PROC task info (INT CONST mode) :
+
+  open list file ;
+  task info (mode, list file) ;
+  show task info .
+
+open list file :
+  forget (ds) ;
+  ds := nilspace ;
+  FILE VAR list file := sequential file (output, ds) .
+
+show task info :
+  IF mode <> supervisor mode
+    THEN show (list file)
+    ELSE open editor (list file, FALSE) ;
+         edit (groesster editor, "q", PROC (TEXT CONST) no orders)
+  FI .
+
+ENDPROC task info ;
+
+PROC task info (INT CONST mode, FILE VAR list file) :
+
+  access catalogue ;
+  IF mode > simple mode
+    THEN generate head
+  FI ;
+  list tree (list file, supervisor,0, mode) .
+
+generate head :
+  put (list file, date) ;
+  put (list file, " ") ;
+  put (list file, time of day) ;
+  put (list file, "                          ") ;
+  IF mode = storage mode
+    THEN put (list file, "K     ")
+  FI ;
+  put (list file, " CPU    PRIO CHAN STATUS") ;
+  line (list file) .
+
+ENDPROC task info ;
+ 
+PROC task info (INT CONST level, fremdstation): 
+  IF fremdstation = station (myself) 
+  THEN task info (level) 
+  ELSE 
+    disable stop;
+    DATASPACE VAR x:= nilspace; 
+    BOUND INT VAR l := x; l := level; 
+    call (collector, 256+fremdstation, x, rtn); 
+    INT VAR rtn; 
+    IF rtn = ack 
+      THEN FILE VAR ti:= sequential file (modify, x) ;
+           show (ti) 
+      ELSE forget (x) ;
+           errorstop ("Station " + text (fremdstation) + " antwortet nicht")
+    FI ;
+    forget (x) 
+  FI 
+END PROC task info; 
+
+PROC no orders (TEXT CONST ed kommando taste) :
+
+  IF ed kommando taste = "q"
+    THEN quit
+    ELSE out (""7"")
+  FI
+
+ENDPROC no orders ;
+
+PROC list tree (FILE VAR list file,
+                TASK CONST first son, INT CONST depth, mode) :
+
+  enable stop ;
+  TASK VAR actual task := first son ;
+  WHILE NOT is niltask (actual task) REP
+    list actual task ;
+    list tree (list file, son (actual task), depth+1, mode) ;
+    actual task := brother (actual task)
+  PER .
+
+list actual task :
+  record := "" ;
+  generate layout and task name ;
+  IF mode > simple mode
+    THEN tab to info position ;
+         show storage if wanted ;
+         record CAT cpu time of (actual task) ;
+         record CAT prio of actual task ;
+         record CAT channel of actual task ;
+         record CAT "   " ;
+         record CAT status of (actual task)
+   FI ;
+   putline (list file, record) .
+
+generate layout and task name :
+  INT VAR i ;
+  FOR i FROM 1 UPTO depth REP
+    record CAT "    "
+  PER ;
+  task name := name (actual task) ;
+  record CAT task name .
+
+tab to info position :
+  record := subtext (record, 1, 40) ;
+  FOR i FROM LENGTH record + 1 UPTO 40 REP
+    record CAT "."
+  PER ;
+  record CAT " " .
+
+show storage if wanted :
+  IF mode = storage mode
+    THEN record CAT text (storage (actual task), 5) ;
+         record CAT "  "
+  FI .
+
+prio of actual task :
+  text (pcb (actual task, prio field),4) .
+
+channel of actual task :
+  INT CONST channel := pcb (actual task, channel field) ;
+  IF channel = 0
+    THEN "   -"
+    ELSE text (channel,4)
+  FI .
+
+ENDPROC list tree ;
+
+TEXT PROC cpu time of (TASK CONST actual task) :
+
+  disable stop ;
+  TEXT VAR result := subtext (time (clock (actual task), 12), 1, 10) ;
+  IF is error
+    THEN clear error ;
+         result := 10 * "*"
+  FI ;
+  result
+
+ENDPROC cpu time of ;
+
+TEXT PROC status of (TASK CONST actual task) :
+
+  SELECT status (actual task) OF
+    CASE 0 :  "-busy-"
+    CASE 1 :  "i/o"
+    CASE 2 :  "wait"
+    CASE 4 :  "busy-blocked"
+    CASE 5 :  "i/o -blocked"
+    CASE 6 :  "wait-blocked"
+    OTHERWISE "--dead--"
+  END SELECT .
+
+ENDPROC status of ;
+
+PROC task status :
+
+  task status (myself)
+
+ENDPROC task status ;
+
+PROC task status (TEXT CONST task name) :
+
+  task status (task (task name))
+
+ENDPROC task status ;
+
+PROC task status (TASK CONST actual task) :
+
+  IF exists (actual task)
+    THEN put status of task
+    ELSE errorstop ("Task nicht vorhanden")
+  FI .
+
+put status of task :
+  line ;
+  put (date); put (time of day) ;
+  put ("  TASK:") ;
+  put (name (actual task)) ;
+  line (2) ;
+  put ("Speicher:"); put (storage (actual task)); putline ("K");
+  put ("CPU-Zeit:"); put (cpu time of (actual task)) ; line;
+  put ("Zustand :"); write (status of (actual task)); 
+                     put (", (prio");
+                     write (text (pcb (actual task, prio field)));
+                     put ("), Kanal") ;
+                     IF channel (actual task) = 0
+                       THEN put ("-")
+                       ELSE put (channel (actual task))
+                     FI ;
+                     line .
+
+ENDPROC task status ;
+
+PROC storage info :
+ 
+  INT VAR size, used ;
+  storage (size, used) ;
+  out (""13""10"      ") ;
+  put (used) ;
+  put ("K von") ;
+  put (size plus reserve) ;
+  putline ("K sind belegt!") .
+ 
+size plus reserve :
+  int (real (size + 24) * 64.0 / 63.0 ) .
+
+ENDPROC storage info ;
+ 
+ 
+PROC help :
+
+  IF NOT exists ("help")
+    THEN get help file
+  FI ;
+  FILE VAR f := sequential file (modify, "help") ;
+  help (f) .
+
+get help file :
+  TEXT VAR old std param := std ;
+  IF exists ("help", father)
+    THEN fetch ("help")
+    ELSE fetch ("help", public)
+  FI ;
+  last param (old std param) .
+
+ENDPROC help ;
+
+PROC help (FILE VAR help file) :
+ 
+  initialize help command ;
+  REP 
+    out (page) ;
+    to paragraph ; 
+    show paragraph ; 
+    get show command 
+  UNTIL is quit command PER .
+ 
+initialize help command :
+   TEXT VAR
+   help command := getcharety ;
+   IF help command = ""
+     THEN help command := "0"
+   FI .
+
+to paragraph : 
+  col (help file, 1) ;
+  to line (help file, 1) ; 
+  downety (help file, "#" + help command + "#") ; 
+  IF eof (help file) 
+    THEN to line (help file, 1) ;
+         out (bell)
+  FI . 
+ 
+show paragraph : 
+  show headline ;
+  WHILE NOT end of help subfile REP 
+    show help line
+  PER ; 
+  show bottom line .
+
+show headline :
+  out (begin mark) ;
+  INT CONST dots := (x size - len (help file) - 5) DIV 2 ;
+  dots TIMESOUT "." ;
+  exec (PROC show line, help file, 4) ;
+  dots TIMESOUT "." ;
+  out (end mark) ;
+  down (help file) .
+
+show help line :
+  out (cr lf) ;
+  exec (PROC show line, help file, 1) ;
+  down (help file) .
+
+show bottom line :
+  cursor (5, y size) ; 
+  exec (PROC show line, help file, 3) ; 
+  out (cr) . 
+ 
+get show command : 
+  TEXT VAR char ;
+  get char (char) ;
+  IF char = esc
+    THEN get char (char)
+  FI ;
+  IF char >= " "
+    THEN help command := char
+    ELSE out (bell)
+  FI .
+
+end of help subfile : pos (help file,"##",1) <> 0 OR eof (help file) .
+
+is quit command     : help command = "q" OR help command = "Q" .
+
+ENDPROC help ;
+ 
+PROC show line (TEXT CONST line, INT CONST from) : 
+ 
+  outsubtext (line, from, x size - from) 
+ 
+ENDPROC show line ;
+ 
+ENDPACKET system info ;
+

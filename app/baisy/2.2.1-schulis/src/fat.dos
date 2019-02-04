@@ -1,0 +1,82 @@
+PACKET dosfatDEFINES readfat,writefat,firstfatblockok,clearfatds,formatfat,
+fatentry,lastfatchainentry,islastfatchainentry,erasefatchain,
+availablefatentry:LET fatsize=16384,maxanzahlfatsektoren=64;LET FAT =BOUND 
+STRUCT (ALIGN dummy,ROW 256INT blockrow,ROW fatsizeINT fatrow);DATASPACE VAR 
+fatds;INITFLAG VAR fatdsused:=FALSE ;FAT VAR fatstruktur;.fat:fatstruktur.
+fatrow.REAL VAR erstermoeglicherfreiereintrag;BOOL VAR kleinesfatformat;PROC 
+readfat:fatdsinitialisieren;fatbloeckelesen;fatformatbestimmen;
+erstermoeglicherfreiereintrag:=2.0.fatdsinitialisieren:clearfatds;fatstruktur
+:=fatds.fatbloeckelesen:LET keintestblock=FALSE ;INT VAR blockno;FOR blockno
+FROM 0UPTO fatsectors-1REP fatblocklesen(blockno,keintestblock)PER .
+fatformatbestimmen:IF fatentrys<=4086THEN kleinesfatformat:=TRUE ELSE 
+kleinesfatformat:=FALSE FI .END PROC readfat;PROC writefat:disablestop;INT 
+VAR blocknr;FOR blocknrFROM 0UPTO fatsectors-1REP fatblockschreiben(blocknr)
+PER .END PROC writefat;BOOL PROC firstfatblockok:enablestop;LET testblock=
+TRUE ;fatblocklesen(0,testblock);INT VAR i;FOR iFROM 1UPTO 256REP 
+vergleichewoerterPER ;TRUE .vergleichewoerter:IF fat[i]<>fatstruktur.blockrow
+[i]THEN LEAVE firstfatblockokWITH FALSE FI .END PROC firstfatblockok;PROC 
+clearfatds:IF initialized(fatdsused)THEN forget(fatds)FI ;fatds:=nilspace.
+END PROC clearfatds;PROC formatfat:fatdsinitialisieren;fatformatbestimmen;
+erstermoeglicherfreiereintrag:=2.0;writefirstfourfatbytes;writeotherfatbytes;
+vermerkeschreibzugriffe;writefat.fatdsinitialisieren:clearfatds;fatstruktur:=
+fatds.fatformatbestimmen:IF fatentrys<=4086THEN kleinesfatformat:=TRUE ELSE 
+kleinesfatformat:=FALSE FI .writefirstfourfatbytes:fat[1]:=word(
+mediadescriptor,255);IF kleinesfatformatTHEN fat[2]:=word(255,0)ELSE fat[2]:=
+word(255,255)FI .writeotherfatbytes:INT VAR i;FOR iFROM 3UPTO 256*fatsectors
+REP fat[i]:=0PER .vermerkeschreibzugriffe:FOR iFROM 0UPTO fatsectors-1REP 
+schreibzugriff(i)PER .END PROC formatfat;REAL PROC fatentry(REAL CONST 
+realentryno):INT CONST entryno:=int(realentryno);IF kleinesfatformatTHEN 
+construct12bitvalueELSE dint(fat[entryno+1],0)FI .construct12bitvalue:INT 
+CONST firstbyteno:=entryno+entrynoDIV 2;IF entrynoMOD 2=0THEN real((rightbyte
+MOD 16)*256+leftbyte)ELSE real(rightbyte*16+leftbyteDIV 16)FI .leftbyte:
+fatbyte(firstbyteno).rightbyte:fatbyte(firstbyteno+1).END PROC fatentry;TEXT 
+VAR convertbuffer:="12";INT PROC fatbyte(INT CONST no):replace(convertbuffer,
+1,word);IF evenbytenoTHEN code(convertbufferSUB 1)ELSE code(convertbufferSUB 
+2)FI .evenbyteno:noMOD 2=0.word:fat[noDIV 2+1].END PROC fatbyte;PROC fatentry
+(REAL CONST realentryno,realvalue):INT CONST entryno:=int(realentryno),value
+:=lowword(realvalue);IF kleinesfatformatTHEN write12bitvalueELSE fat[entryno+
+1]:=value;schreibzugriff(entrynoDIV 256)FI ;updatefirstpossibleavailableentry
+.write12bitvalue:INT CONST firstbyteno:=entryno+entrynoDIV 2;schreibzugriff(
+fatblockoffirstbyte);schreibzugriff(fatblockofsecondbyte);writevalue.
+fatblockoffirstbyte:firstbytenoDIV 512.fatblockofsecondbyte:secondbytenoDIV 
+512.writevalue:IF evenentrynoTHEN writefatbyte(firstbyteno,valueMOD 256);
+writefatbyte(secondbyteno,(rightbyteDIV 16)*16+valueDIV 256)ELSE writefatbyte
+(firstbyteno,(leftbyteMOD 16)+16*(valueMOD 16));writefatbyte(secondbyteno,
+valueDIV 16)FI .evenentryno:entrynoMOD 2=0.secondbyteno:firstbyteno+1.
+leftbyte:fatbyte(firstbyteno).rightbyte:fatbyte(secondbyteno).
+updatefirstpossibleavailableentry:IF value=0THEN 
+erstermoeglicherfreiereintrag:=min(erstermoeglicherfreiereintrag,realentryno)
+FI .END PROC fatentry;PROC writefatbyte(INT CONST byteno,newvalue):
+readoldword;changebyte;writenewword.readoldword:replace(convertbuffer,1,word)
+.writenewword:word:=convertbufferISUB 1.word:fat[bytenoDIV 2+1].changebyte:
+replace(convertbuffer,bytepos,code(newvalue)).bytepos:bytenoMOD 2+1.END PROC 
+writefatbyte;REAL PROC lastfatchainentry:IF kleinesfatformatTHEN 4088.0ELSE 
+65528.0FI .END PROC lastfatchainentry;BOOL PROC islastfatchainentry(REAL 
+CONST value):value>=lastfatchainentryEND PROC islastfatchainentry;PROC 
+erasefatchain(REAL CONST firstentryno):REAL VAR nextentryno:=firstentryno,
+actentryno:=0.0;WHILE nextentryexistsREP actentryno:=nextentryno;nextentryno
+:=fatentry(actentryno);fatentry(actentryno,0.0)PER .nextentryexists:NOT 
+islastfatchainentry(nextentryno).END PROC erasefatchain;REAL PROC 
+availablefatentry:INT VAR i;REAL VAR reali:=erstermoeglicherfreiereintrag;
+FOR iFROM int(erstermoeglicherfreiereintrag)UPTO fatentrys-1REP IF fatentry(
+reali)=0.0THEN erstermoeglicherfreiereintrag:=reali;LEAVE availablefatentry
+WITH erstermoeglicherfreiereintragFI ;realiINCR 1.0PER ;closework;errorstop(
+"MS-DOS Datentraeger voll");1.0e99.END PROC availablefatentry;PROC 
+fatblocklesen(INT CONST blocknr,BOOL CONST testblock):disablestop;IF NOT 
+testblockTHEN keinschreibzugriff(blocknr)FI ;INT VAR kopienr;FOR kopienrFROM 
+0UPTO fatcopies-1REP clearerror;readdiskblock(fatds,dsseitennr,diskblocknr)
+UNTIL NOT iserrorPER ;IF iserrorTHEN closeworkFI .dsseitennr:IF testblock
+THEN 2ELSE blocknr+2+1FI .diskblocknr:beginoffat(kopienr)+blocknr.END PROC 
+fatblocklesen;PROC fatblockschreiben(INT CONST blocknr):IF warschreibzugriff(
+blocknr)THEN wirklichschreibenFI .wirklichschreiben:disablestop;INT VAR 
+kopienr;FOR kopienrFROM 0UPTO fatcopies-1REP 
+writediskblockandcloseworkiferror(fatds,dsseitennr,diskblocknr)PER ;
+keinschreibzugriff(blocknr).dsseitennr:blocknr+2+1.diskblocknr:beginoffat(
+kopienr)+blocknr.END PROC fatblockschreiben;ROW maxanzahlfatsektorenBOOL VAR 
+schreibzugrifftabelle;PROC schreibzugriff(INT CONST fatsektor):
+schreibzugrifftabelle[fatsektor+1]:=TRUE END PROC schreibzugriff;PROC 
+keinschreibzugriff(INT CONST fatsektor):schreibzugrifftabelle[fatsektor+1]:=
+FALSE END PROC keinschreibzugriff;BOOL PROC warschreibzugriff(INT CONST 
+fatsektor):schreibzugrifftabelle[fatsektor+1]END PROC warschreibzugriff;END 
+PACKET dosfat;
+

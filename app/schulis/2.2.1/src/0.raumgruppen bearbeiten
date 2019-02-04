@@ -1,0 +1,54 @@
+PACKET erfraumgruppenDEFINES erfassungraumgruppen:LET maskenname=
+"ms erf raumgruppen",fnrkennung=2,fnrletztesfeld=17,trenner=" = ",maxraeume=
+15,laengeraumgruppe=4,laengeeinerraumangabe=4;TEXT VAR raeume:="";TEXT VAR 
+raum:="";INT VAR anzraeume;TEXT VAR gueltigeraeume:="";LET postrenner="�";
+LET meldnrungueltigerraum=55,meldnrraumgruppezulang=60;LET sachgebietraum=
+"c02 raeume"PROC erfassungraumgruppen(INT CONST proznr):systemdboff;
+reinitparsing;SELECT proznrOF CASE 1:setzeerfassungsparameterCASE 2:
+zeigeraumgruppezurbearbeitungCASE 3:pruefeplausibilitaetCASE 4:
+setzewertefuerdbspeicherungCASE 5:setzeidentiobjektfuerobjektlisteCASE 6:
+raumgruppelesenCASE 7:raumgruppeaendernCASE 8:raumgruppeeinfuegenCASE 9:
+raumgruppeloeschenEND SELECT END PROC erfassungraumgruppen;PROC 
+setzeerfassungsparameter:gueltigeraeume:="";setzeerfassungsparameter(
+dnrraumgruppen,maskenname,fnrletztesfeld)END PROC setzeerfassungsparameter;
+PROC zeigeraumgruppezurbearbeitung:setzeerfassungsfeld(wert(fnrrgraumgrp),
+fnrkennung);raeume:=wert(fnrrgraeume);anzraeume:=(length(raeume))DIV 
+laengeeinerraumangabe;INT VAR i:=1;WHILE i<=anzraeumeREP raum:=subtext(raeume
+,1,laengeeinerraumangabe);raeume:=subtext(raeume,laengeeinerraumangabe+1);
+setzeerfassungsfeld(compress(raum),i+fnrkennung);iINCR 1PER ;WHILE i<=
+maxraeumeREP setzeerfassungsfeld("",i+fnrkennung);iINCR 1PER ;END PROC 
+zeigeraumgruppezurbearbeitung;PROC pruefeplausibilitaet:LET leer="",null=0;
+IF gueltigeraeume=""THEN holealleraeumeingueltigeraeumeFI ;INT VAR 
+fehlerstatus;pruefe(1,erfassungsmaske,PROC erfassungswert,fnrkennung,null,
+null,leer,fehlerstatus);IF fehlerstatus<>0THEN setzefehlerstatus(fehlerstatus
+);LEAVE pruefeplausibilitaetELIF length(erfassungswert(fnrkennung))>
+laengeraumgruppeTHEN meldeauffaellig(erfassungsmaske,meldnrraumgruppezulang);
+setzefehlerstatus(fnrkennung);LEAVE pruefeplausibilitaetFI ;INT VAR i;FOR i
+FROM 1UPTO maxraeumeREP INT VAR fnrraum:=i+fnrkennung;IF erfassungswert(
+fnrraum)<>""THEN IF ungueltigeraumangabeTHEN setzefehlerstatus(fnrraum);
+meldeauffaellig(erfassungsmaske,meldnrungueltigerraum);LEAVE 
+pruefeplausibilitaetFI ;FI ;PER .ungueltigeraumangabe:pos(gueltigeraeume,
+suchwert)=0.suchwert:postrenner+compress(erfassungswert(fnrraum))+postrenner.
+END PROC pruefeplausibilitaet;PROC holealleraeumeingueltigeraeume:
+gueltigeraeume:=postrenner;statleseschleife(dnrschluessel,sachgebietraum,"",
+fnrschlsachgebiet,fnrschlschluessel,PROC raumlesen);END PROC 
+holealleraeumeingueltigeraeume;PROC raumlesen(BOOL VAR b):IF dbstatus<>0COR 
+wert(fnrschlsachgebiet)>sachgebietraumTHEN b:=TRUE ELSE gueltigeraeumeCAT 
+wert(fnrschlschluessel)+postrennerFI END PROC raumlesen;PROC 
+setzewertefuerdbspeicherung:putwert(fnrrgraumgrp,erfassungswert(fnrkennung));
+INT VAR i;raeume:="";FOR iFROM fnrkennung+1UPTO fnrletztesfeldREP raum:=
+erfassungswert(i);IF raum<>""THEN raeumeCAT text(raum,laengeeinerraumangabe)
+FI PER ;putwert(fnrrgraeume,raeume)END PROC setzewertefuerdbspeicherung;PROC 
+setzeidentiobjektfuerobjektliste:LET trennsymbolfuerobli="$";TEXT VAR 
+identizeile;identizeile:=wert(fnrrgraumgrp)+trenner+wert(fnrrgraeume);
+setzeidentiwert(identizeilemitschluesselanhang).
+identizeilemitschluesselanhang:identizeile+trennsymbolfuerobli+wert(
+fnrrgraumgrp).END PROC setzeidentiobjektfuerobjektliste;PROC raumgruppelesen:
+putwert(fnrrgraumgrp,schluessel);search(dnrraumgruppen,TRUE );IF dbstatus=ok
+THEN saveupdateposition(dnrraumgruppen)FI END PROC raumgruppelesen;PROC 
+raumgruppeaendern:restoreupdateposition(dnrraumgruppen);update(dnrraumgruppen
+)END PROC raumgruppeaendern;PROC raumgruppeeinfuegen:insert(dnrraumgruppen)
+END PROC raumgruppeeinfuegen;PROC raumgruppeloeschen:delete(dnrraumgruppen)
+END PROC raumgruppeloeschen;TEXT PROC schluessel:erfassungswert(fnrkennung)
+END PROC schluessel;END PACKET erfraumgruppen;
+

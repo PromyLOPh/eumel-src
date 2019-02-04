@@ -1,0 +1,157 @@
+PACKET stundenplannachzeitenerfassenDEFINES stundenplannachzeitenspeichern,
+stundenplannachzeitenzurueckzummenue,stdnraustagstd,
+stundenplannachzeitenzeigen:LET stdplmaske="ms stdplan nach zeit bearb",
+feldeingtag=2,feldeingstd=3,feldeingakt=4,laengelv=8,laengeraum=4,trenner="�"
+,schuljahr="Schuljahr",halbjahr="Schulhalbjahr",kennungraum="R",
+kennungparaphe="P",kennunglv="L",kennungzulzeit="ZZ",leerelv="        ",
+leererraum="    ",leererlehrer="    ",ausgabeparam="#",maxeintraege=60,
+erstestunde=1,letztestunde=66,stdprotag=12,meldungzeitgesperrt=363,
+meldungnichtspeichern=63,meldungraumangloeschen=396,meldungraumbesetzt=370,
+meldungplausi=57,meldungnur60lv=394,meldungspeichern=50,meldungwarten=69,
+meldungdatenaufbereitet=357,meldungfalschertag=385,meldungfalschestd=54,
+meldungfalscherraum=359,meldungkeinesugruppen=334,meldungzuvielesugruppen=356
+,meldungnichtlv=360,meldunglehrerbesetzt=361,meldungsugrupbesetzt=362,
+meldungkeinelv=326,meldungaenderungsfehler=364,meldunguvfehler=403,#
+meldungstdplanveraltet=377,#meldungserverfehler=376,meldungbasisinkon=378,
+meldungzuvielelv=358;ROW maxeintraegeTEXT VAR eintragausstdpl;TEXT VAR 
+maskeneintragtag:="",maskeneintragstd:="",gewhj,gewsj,allelv,alleraeume,
+alleparaphen,uvoklv,lveintrag,raumeintrag,hjsjanhang:="",altereintrag:="";
+TEXT VAR alletage:="��01�02�03�04�05�06�1�2�3�4�5�6�MO�DI�MI�DO�FR�SA�"+
+"�mo�di�mi�do�fr�sa�Mo�Di�Mi�Do�Fr�Sa�"+
+"� 1� 2� 3� 4� 5� 6�1 �2 �3 �4 �5 �6 �",allestden:=
+"��01�02�03�04�05�06�07�08�09�10�11�12�13� 1� 2� 3�"+
+"� 4� 5� 6� 7� 8� 9�1 �2 �3 �4 �5 �6 �7 �8 �9 �"+"1�2�3�4�5�6�7�8�9�";INT 
+VAR i,fstat,abstd:=0,uvokfeld,hjkennalt:=-1,hjkennneu:=0,letztebearbstd:=66;
+BOOL VAR spok:=TRUE ,uvok:=TRUE ,anzlvok:=TRUE ,stdplzeilegeloescht:=FALSE ,
+aenderungsfehler:=FALSE ;INT PROC stdnraustagstd(TEXT CONST tag,std):INT VAR 
+itag:=int(tag),istd;IF lastconversionokTHEN IF itag=0COR itag=1THEN itag:=1
+FI ELSE IF tag="MO"COR tag="mo"COR tag="Mo"COR tag=""THEN itag:=1ELIF tag=
+"DI"COR tag="di"COR tag="Di"THEN itag:=2ELIF tag="MI"COR tag="mi"COR tag="Mi"
+THEN itag:=3ELIF tag="DO"COR tag="do"COR tag="Do"THEN itag:=4ELIF tag="FR"
+COR tag="fr"COR tag="Fr"THEN itag:=5ELSE itag:=6FI FI ;IF std=""THEN istd:=1
+ELSE istd:=int(std)FI ;(itag-1)*stdprotag+istdEND PROC stdnraustagstd;PROC 
+stundenplannachzeitenreorganisiertverlassen:
+stundenplanreorganisierenundsichern(fstat);IF fstat<>0THEN return(1);
+meldungausgeben(fstat)ELSE enter(2)FI END PROC 
+stundenplannachzeitenreorganisiertverlassen;PROC stundenplannachzeitenzeigen:
+standardmeldung(meldungwarten," ");maskeneintragtag:=standardmaskenfeld(
+feldeingtag);maskeneintragstd:=standardmaskenfeld(feldeingstd);abstd:=
+stdnraustagstd(maskeneintragtag,maskeneintragstd);prueftag;pruefstd;IF akthj
+<>""THEN hjkennneu:=0ELSE hjkennneu:=1FI ;IF hjkennneu<>hjkennaltTHEN 
+hjkennalt:=hjkennneu;gewsj:=schulkenndatum(schuljahr);gewhj:=schulkenndatum(
+halbjahr);IF hjkennneu=1THEN geplanteshjundsjberechnen(gewhj,gewsj)FI ;
+stundenplanhalbjahrsetzen(gewhj,gewsj);ermittleletztestunde;hjsjanhang:=" "+
+gewhj+". "+text(gewsj,2)+"/"+subtext(gewsj,3)+", Raum ";holestdplanFI ;
+pruefzeitzulaessig;stundenplannachzeitenausgeben.akthj:standardmaskenfeld(
+feldeingakt).holestdplan:standardmeldung(meldungdatenaufbereitet,"");
+stundenplanbasisundstundenplanholen(fstat);IF fstat<>0CAND fstat<>8THEN 
+stundenplanbasisundstundenplanerstellen(fstat);IF fstat<>0THEN return(1);
+meldungausgeben(fstat);LEAVE stundenplannachzeitenzeigenELSE 
+stundenplanbasissichern(fstat);stundenplansichern(fstat);IF fstat<>0THEN 
+return(1);meldungausgeben(fstat);LEAVE stundenplannachzeitenzeigenFI FI ELIF 
+fstat=8THEN meldungausgeben(fstat)FI .prueftag:IF pos(alletage,trenner+
+maskeneintragtag+trenner)=0THEN return(1);infeld(feldeingtag);standardmeldung
+(meldungfalschertag,"");LEAVE stundenplannachzeitenzeigenFI .pruefstd:IF pos(
+allestden,trenner+maskeneintragstd+trenner)=0THEN return(1);infeld(
+feldeingstd);standardmeldung(meldungfalschestd,"");LEAVE 
+stundenplannachzeitenzeigenELIF abstdDIV stdprotag=6THEN IF abstd-60>6THEN 
+return(1);infeld(feldeingstd);standardmeldung(meldungfalschestd,"");LEAVE 
+stundenplannachzeitenzeigenFI ;FI .pruefzeitzulaessig:IF NOT 
+bezeichnungzulaessig(kennungzulzeit,text(abstd))THEN return(1);infeld(
+feldeingtag);standardmeldung(meldungzeitgesperrt,tagstunde(abstd,FALSE )+"."+
+ausgabeparam);LEAVE stundenplannachzeitenzeigenFI .ermittleletztestunde:FOR i
+FROM letztestundeDOWNTO erstestundeREP IF bezeichnungzulaessig(kennungzulzeit
+,text(i))THEN letztebearbstd:=i;LEAVE ermittleletztestundeFI PER .END PROC 
+stundenplannachzeitenzeigen;PROC stundenplannachzeitenausgeben:
+standardstartproc(stdplmaske);fuellemaske;IF NOT anzlvokTHEN standardmeldung(
+meldungnur60lv,tagstunde(abstd,TRUE )+ausgabeparam)ELIF NOT uvokTHEN infeld(
+uvokfeld);standardmeldung(meldunguvfehler," ");FI ;standardnproc.END PROC 
+stundenplannachzeitenausgeben;PROC fuellemaske:TEXT VAR lvimstdplan,
+raumimstdplan,parimstdplan;INT VAR poslv,posraum,index;stdplzeilegeloescht:=
+FALSE ;allelv:=datenderzeit(abstd,kennunglv);alleraeume:=datenderzeit(abstd,
+kennungraum);alleparaphen:=datenderzeit(abstd,kennungparaphe);
+standardkopfmaskeaktualisieren("Stundenplan für "+tagstunde(abstd,FALSE )+
+". Stunde");uvok:=TRUE ;anzlvok:=TRUE ;uvokfeld:=2;poslv:=1;posraum:=1;IF 
+length(allelv)>maxeintraege*laengelvTHEN allelv:=text(allelv,maxeintraege*
+laengelv);alleraeume:=text(alleraeume,maxeintraege*laengeraum);anzlvok:=
+FALSE FI ;FOR iFROM 1UPTO maxeintraegeREP index:=i*2;IF poslv<length(allelv)
+THEN lvimstdplan:=subtext(allelv,poslv,poslv+7);raumimstdplan:=subtext(
+alleraeume,posraum,posraum+3);parimstdplan:=subtext(alleparaphen,posraum,
+posraum+3);standardmaskenfeld(compress(lvimstdplan),index);standardmaskenfeld
+(compress(raumimstdplan),index+1);eintragausstdpl(i):=lvimstdplan+
+raumimstdplan;IF parimstdplan=leererlehrerCAND uvokTHEN uvokfeld:=index;uvok
+:=FALSE FI ;poslvINCR 8;posraumINCR 4;ELSE standardmaskenfeld("",index);
+standardmaskenfeld("",index+1);eintragausstdpl(i):=""FI ;PER ;infeld(1);
+standardfelderausgeben;infeld(2).END PROC fuellemaske;PROC meldungausgeben(
+INT VAR fstat):IF fstat=2THEN standardmeldung(meldungserverfehler,"");ELIF 
+fstat=4THEN standardmeldung(meldungkeinesugruppen,"");ELIF fstat=5THEN 
+standardmeldung(meldungzuvielesugruppen,"")ELIF fstat=6THEN standardmeldung(
+meldungkeinelv,"")ELIF fstat=7THEN standardmeldung(meldungzuvielelv,"")ELIF 
+fstat=9THEN standardmeldung(meldungbasisinkon,"");ELSE LEAVE meldungausgeben
+FI END PROC meldungausgeben;PROC stundenplannachzeitenspeichern(BOOL CONST 
+speichern):TEXT VAR par:="",lv:="",t1:="",t2:="";INT VAR pos:=1;IF abstd=
+letztebearbstdTHEN IF speichernCAND anzlvokTHEN aenderungenvornehmen;ELIF 
+stdplzeilegeloeschtTHEN alteeintraegeschreibenFI ;
+stundenplannachzeitenreorganisiertverlassenELSE IF speichernCAND anzlvokTHEN 
+aenderungenvornehmen;ELIF stdplzeilegeloeschtTHEN alteeintraegeschreibenFI ;
+IF abstdMOD 12=0THEN stundenplanreorganisierenundsichern(fstat)FI ;
+naechstestd;meldungenbeifehler;return(1)FI .alteeintraegeschreiben:
+standardmeldung(meldungnichtspeichern,"");loescheinhaltaktstundenplanzeile;
+FOR iFROM 1UPTO maxeintraegeREP IF eintragausstdpl(i)<>""THEN 
+planeintragvornehmen(abstd,text(eintragausstdpl(i),laengelv),subtext(
+eintragausstdpl(i),laengelv+1),spok)ELSE LEAVE alteeintraegeschreibenFI PER .
+loescheinhaltaktstundenplanzeile:stdplzeilegeloescht:=TRUE ;t1:=datenderzeit(
+abstd,kennunglv);pos:=1;WHILE pos<length(t1)REP planeintragloeschen(abstd,
+subtext(t1,pos,pos+laengelv-1),spok);posINCR laengelvPER .naechstestd:FOR i
+FROM abstd+1UPTO letztebearbstdREP IF bezeichnungzulaessig(kennungzulzeit,
+text(i))THEN abstd:=i;fuellemaske;LEAVE naechstestdELSE abstd:=letztebearbstd
+FI ;PER .meldungenbeifehler:IF NOT anzlvokTHEN standardmeldung(meldungnur60lv
+,tagstunde(abstd,TRUE )+ausgabeparam)ELIF NOT uvokTHEN infeld(uvokfeld);
+standardmeldung(meldunguvfehler," ")FI .aenderungenvornehmen:standardmeldung(
+meldungplausi," ");aenderungsfehler:=FALSE ;plausipruefungundspeicherung;IF 
+aenderungsfehlerTHEN standardmeldung(meldungaenderungsfehler,"");return(1);
+LEAVE stundenplannachzeitenspeichernELSE standardmeldung(meldungspeichern," "
+);IF abstdMOD 12=0THEN stundenplannachzeitenreorganisiertverlassenELSE 
+stundenplansichern(fstat)FI ;IF fstat<>0THEN meldungausgeben(fstat);return(1)
+;LEAVE stundenplannachzeitenspeichernFI ;FI .plausipruefungundspeicherung:
+loescheinhaltaktstundenplanzeile;FOR iFROM 1UPTO maxeintraegeREP infeld(i*2);
+altereintrag:=eintragausstdpl(i);lveintrag:=standardmaskenfeld(i*2);IF (
+lveintragSUB 1)=" "THEN lveintrag:=jgstaufber(text(lveintrag,2))+subtext(
+lveintrag,3)FI ;lveintrag:=text(lveintrag,laengelv);raumeintrag:=text(
+standardmaskenfeld(i*2+1),laengeraum);IF lveintrag+raumeintrag<>leerelv+
+leererraumTHEN infeld(i*2);pruefelvleerundraum;pruefelvgueltig;
+prueferaumgueltig;pruefelehrerfrei;prueferaumfrei;pruefesugruppenfrei;
+planeintragschreibenFI ;PER .pruefelvleerundraum:IF lveintrag=leerelvCAND 
+raumeintrag<>leererraumTHEN standardmeldung(meldungraumangloeschen,"");return
+(1);LEAVE stundenplannachzeitenspeichernFI .pruefelvgueltig:IF NOT 
+bezeichnungzulaessig(kennunglv,lveintrag)THEN standardmeldung(meldungnichtlv,
+lveintrag+ausgabeparam);return(1);LEAVE stundenplannachzeitenspeichernFI .
+prueferaumgueltig:IF raumeintrag<>leererraumTHEN IF NOT bezeichnungzulaessig(
+kennungraum,raumeintrag)THEN standardmeldung(meldungfalscherraum,"");infeld(i
+*2+1);return(1);LEAVE stundenplannachzeitenspeichernFI FI .pruefelehrerfrei:
+par:=datenzurlv(kennungparaphe,lveintrag);IF par<>leererlehrerTHEN IF 
+lehrerunterrichtTHEN standardmeldung(meldunglehrerbesetzt,par+ausgabeparam);
+return(1);LEAVE stundenplannachzeitenspeichernFI FI .lehrerunterricht:lv:=
+geplantelvfuer(abstd,kennungparaphe,par);lv<>lveintragCAND lv<>"".
+prueferaumfrei:IF raumeintrag<>leererraumTHEN IF inraumunterrichtTHEN 
+standardmeldung(meldungraumbesetzt,"");infeld(i*2+1);return(1);LEAVE 
+stundenplannachzeitenspeichernFI FI .inraumunterricht:t1:=geplantelvfuer(
+abstd,kennungraum,raumeintrag);t1<>lveintragCAND t1<>"".pruefesugruppenfrei:
+IF sugruppenichtunterrichtsfreiTHEN standardmeldung(meldungsugrupbesetzt,t1+
+ausgabeparam);return(1);LEAVE stundenplannachzeitenspeichernFI .
+sugruppenichtunterrichtsfrei:schuelergruppenschnittbeizeit(abstd,kennunglv,
+lveintrag,text(altereintrag,8),t1,t2).planeintragschreiben:
+planeintragvornehmen(abstd,lveintrag,raumeintrag,spok);IF NOT spokTHEN 
+aenderungsfehler:=TRUE FI .END PROC stundenplannachzeitenspeichern;PROC 
+stundenplannachzeitenzurueckzummenue:INT VAR pos;TEXT VAR t1;standardmeldung(
+meldungnichtspeichern,"");IF stdplzeilegeloeschtTHEN alteeintraegeschreiben
+FI ;stundenplanreorganisierenundsichern(fstat);enter(2).
+alteeintraegeschreiben:loescheinhaltaktstundenplanzeile;FOR iFROM 1UPTO 
+maxeintraegeREP IF eintragausstdpl(i)<>""THEN planeintragvornehmen(abstd,text
+(eintragausstdpl(i),laengelv),subtext(eintragausstdpl(i),laengelv+1),spok)
+ELSE LEAVE alteeintraegeschreibenFI PER .loescheinhaltaktstundenplanzeile:t1
+:=datenderzeit(abstd,kennunglv);pos:=1;WHILE pos<length(t1)REP 
+planeintragloeschen(abstd,subtext(t1,pos,pos+laengelv-1),spok);posINCR 
+laengelvPER .END PROC stundenplannachzeitenzurueckzummenue;END PACKET 
+stundenplannachzeitenerfassen;
+

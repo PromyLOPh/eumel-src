@@ -1,0 +1,180 @@
+PACKET disk block io DEFINES                    (* Copyright (C) 1986 *)
+                                                (* Frank Klapper      *)
+                                                (* 05.01.87           *)
+  read disk block,
+  read disk block and close work if error,
+  read disk cluster, 
+  write disk block,
+  write disk block and close work if error,
+  write disk cluster,
+  first non dummy ds page,
+
+  block no dump modus:
+
+BOOL VAR block no dump flag := FALSE;
+ 
+LET write normal = 0;
+
+INT CONST first non dummy ds page := 2;
+
+INT VAR error;
+
+PROC read disk block (DATASPACE VAR ds,
+                      INT CONST ds page no, 
+                      INT CONST block no):
+  IF block no dump flag THEN dump ("READ ", block no) FI;
+  check rerun;
+  read block (ds, ds page no, eublock (block no), error); 
+  IF error > 0
+    THEN lesefehler (error)
+  FI.
+ 
+END PROC read disk block;
+ 
+PROC read disk block (DATASPACE VAR ds,
+                      INT CONST ds page no, 
+                      REAL CONST block no):
+  IF block no dump flag THEN dump ("READ ", block no) FI;
+  check rerun;
+  read block (ds, ds page no, eublock (block no), error); 
+  IF error > 0
+    THEN lesefehler (error)
+  FI.
+ 
+END PROC read disk block;
+ 
+PROC read disk block and close work if error (DATASPACE VAR ds,
+                                              INT CONST ds page no, 
+                                              INT CONST block no):
+  IF block no dump flag THEN dump ("READ ", block no) FI;
+  check rerun;
+  read block (ds, ds page no, eublock (block no), error); 
+  IF error > 0
+    THEN close work;
+         lesefehler (error)
+  FI.
+ 
+END PROC read disk block and close work if error;
+ 
+PROC read disk block and close work if error (DATASPACE VAR ds,
+                                              INT CONST ds page no, 
+                                              REAL CONST block no):
+  IF block no dump flag THEN dump ("READ ", block no) FI;
+  check rerun;
+  read block (ds, ds page no, eublock (block no), error); 
+  IF error > 0
+    THEN close work;
+         lesefehler (error)
+  FI.
+ 
+END PROC read disk block and close work if error;
+
+PROC read disk cluster (DATASPACE VAR ds, 
+                        INT CONST first ds page no,
+                        REAL CONST cluster no): 
+  IF block no dump flag THEN dump ("CLUSTER ", cluster no) FI;
+  INT VAR i;
+  FOR i FROM 0 UPTO  sectors per cluster - 1 REP
+    read disk block (ds, first ds page no + i, block no + real (i))
+  PER.
+ 
+block no:
+  begin of cluster (cluster no).
+ 
+END PROC read disk cluster; 
+ 
+PROC lesefehler (INT CONST fehler code):
+  error stop (fehlertext).
+
+fehlertext:
+  SELECT fehler code OF
+    CASE 1: "Diskettenlaufwerk nicht betriebsbereit"
+    CASE 2: "Lesefehler"
+    OTHERWISE "Lesefehler " + text (fehler code)
+  END SELECT.
+
+END PROC lesefehler;
+
+PROC write disk block (DATASPACE CONST ds,
+                      INT CONST ds page no, 
+                      INT CONST block no):
+  IF block no dump flag THEN dump ("WRITE", block no) FI;
+  check rerun;
+  write block (ds, ds page no, write normal, eublock (block no), error); 
+  IF error > 0
+    THEN schreibfehler (error)
+  FI.
+ 
+END PROC write disk block;
+ 
+PROC write disk block (DATASPACE CONST ds,
+                      INT CONST ds page no, 
+                      REAL CONST block no):
+  IF block no dump flag THEN dump ("WRITE", block no) FI;
+  check rerun;
+  write block (ds, ds page no, write normal, eublock (block no), error); 
+  IF error > 0
+    THEN schreibfehler (error)
+  FI.
+ 
+END PROC write disk block;
+ 
+PROC write disk block and close work if error (DATASPACE CONST ds,
+                                              INT CONST ds page no, 
+                                              INT CONST block no):
+  IF block no dump flag THEN dump ("WRITE", block no) FI;
+  check rerun;
+  write block (ds, ds page no, write normal, eublock (block no), error); 
+  IF error > 0
+    THEN close work;
+         schreibfehler (error)
+  FI.
+ 
+END PROC write disk block and close work if error;
+ 
+PROC write disk block and close work if error (DATASPACE CONST ds,
+                                              INT CONST ds page no, 
+                                              REAL CONST block no):
+  IF block no dump flag THEN dump ("WRITE", block no) FI;
+  check rerun;
+  write block (ds, ds page no, write normal, eublock (block no), error); 
+  IF error > 0
+    THEN close work;
+         schreibfehler (error)
+  FI.
+ 
+END PROC write disk block and close work if error;
+
+PROC write disk cluster (DATASPACE CONST ds,
+                        INT CONST first ds page no,
+                        REAL CONST cluster no): 
+  IF block no dump flag THEN dump ("CLUSTER ", cluster no) FI;
+  INT VAR i;
+  FOR i FROM 0 UPTO sectors per cluster - 1 REP
+    write disk block (ds, first ds page no + i, block no + real (i))
+  PER.
+ 
+block no:
+  begin of cluster (cluster no).
+ 
+END PROC write disk cluster; 
+ 
+PROC schreibfehler (INT CONST fehler code):
+  error stop (fehlertext).
+
+fehlertext:
+  SELECT fehler code OF
+    CASE 1: "Diskettenlaufwerk nicht betriebsbereit"
+    CASE 2: "Schreibfehler"
+    OTHERWISE "Schreibfehler " + text (fehler code)
+  END SELECT.
+
+END PROC schreibfehler;
+
+PROC block no dump modus (BOOL CONST status):
+  block no dump flag := status
+
+END PROC block no dump modus;
+
+END PACKET disk block io;
+

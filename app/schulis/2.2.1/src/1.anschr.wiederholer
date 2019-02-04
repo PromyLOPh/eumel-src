@@ -1,0 +1,91 @@
+PACKET anschrwiederholerDEFINES wiederholereingang,wiederholerstarten,
+sonderwertewiederholer,multistopwiederholer:INT VAR aktuellerindex;TEXT VAR 
+schuelerschluessel1,schuelerschluessel2,schuelerschluessel3,
+bestandsschluessel1,bestandsschluessel2,aktuellesschuljahr:="";LET vordruck=
+"vordruck fuer wiederholer";LET swindexvolljminderj=511,
+swindexminderjmaennlweibl=512,swindexnichterreichtejgst=513;LET jgst13=13,
+weibl="w",maennl="m",minderj="m",vollj="v",niltext="",trennsymbol=" ",punkt=
+".",schluesselwiederholer="w";LET maske="ms anschr schueler o. klasse";LET 
+namefeldnr=2,vornamefeldnr=3,geburtsdatumfeldnr=4,jgstfeldnr=5,zugtutorfeldnr
+=6,bildschirmfeldnr=7,druckerfeldnr=8;LET fehlermeldnr=56,nurimzweitenhj=194,
+#wartemeldnr=69,anschreibenkannnichterstelltwerdennr=124,#
+dieauswahlderjgstistnichtzulaessignr=146,vater=1;LET minjgst=5,maxjgst=13;
+PROC wiederholereingang:standardvproc(maske)END PROC wiederholereingang;BOOL 
+PROC sonderwertewiederholer:BOOL VAR erstellbar:=TRUE ;sucheschuelerdaten;
+sonderwertfuervolljoderminderjundmaennlweibl;sonderwertfuernichterreichtejgst
+;sonderwertfueradressaten;erstellbar#keitsangabe#.sucheschuelerdaten:
+inittupel(dnrschueler);uebernimmschuelerdaten;search(dnrschueler,TRUE ).
+uebernimmschuelerdaten:putwert(fnrsufamnames,wert(fnrhjdfamnames));putwert(
+fnrsurufnames,wert(fnrhjdrufnames));putwert(fnrsugebdatums,wert(fnrhjdgebdats
+)).sonderwertfuervolljoderminderjundmaennlweibl:IF volljaehrig(wert(
+fnrsugebdatums))THEN setzesonderwert(swindexvolljminderj,vollj);
+setzesonderwert(swindexminderjmaennlweibl,niltext)ELSE setzesonderwert(
+swindexvolljminderj,minderj);IF wert(fnrsugeschlechts)=weiblTHEN 
+setzesonderwert(swindexminderjmaennlweibl,weibl)ELSE setzesonderwert(
+swindexminderjmaennlweibl,maennl)FI ;setzeerzieheradresseFI .
+setzeerzieheradresse:#IF intwert(fnradresse)<>0THEN putwert(fnradrkuerzel,
+wert(fnradresse));search(dnradressen,TRUE );IF dbstatus=okTHEN putwert(
+fnrsustrnrs,wert(fnradrstrasse));putwert(fnrsuplzorts,wert(fnradrort))FI FI #
+IF wert(fnrsuplzorte)<>""THEN putwert(fnrsustrnrs,wert(fnrsustrnre));putwert(
+fnrsuplzorts,wert(fnrsuplzorts))FI .sonderwertfuernichterreichtejgst:
+setzesonderwert(swindexnichterreichtejgst,text(intwert(fnrhjdjgst)+1));
+erstellbar:=NOT (intwert(fnrhjdjgst)=jgst13).sonderwertfueradressaten:
+adressat((wert(fnrsurufnames)SUB 1)+punkt+trennsymbol+wert(fnrsufamnames));.#
+erstellbarkeitsangabe:IF intwert(fnrzugang)=schluesselwiederholerTHEN 
+erstellbar:=wert(dbmindexversetzung,zweiteteilsegment)=schluesselwiederholer
+AND erstellbarELSE erstellbar:=(dbwert(dbmindexversetzung,ersteteilsegment)=
+schluesselwiederholer)AND erstellbarFI ;erstellbar.#END PROC 
+sonderwertewiederholer;PROC wiederholerstarten:IF zweiteshjTHEN weiterFI .
+weiter:lesemaskenwerte;IF maskenwerteinordnungTHEN IF 
+beibestandsauswahlauswahlzulaessigTHEN #bestandbilden;IF status<>0THEN 
+meldenichterstellbar;zurueckzumdialogELSE #indexnummerbestimmen;
+startenausfuehren#FI #ELSE meldeunzulaessigeschuelergruppenauswahl;
+zurueckzumdialogFI ELSE meldedenfehler;zurueckzumdialogFI .zweiteshj:IF int(
+schulkenndatum("Schulhalbjahr"))=1THEN standardmeldung(nurimzweitenhj,"2.#");
+zurueckzumdialog;FALSE ELSE TRUE FI .lesemaskenwerte:schuelerschluessel1:=
+standardmaskenfeld(namefeldnr);schuelerschluessel2:=standardmaskenfeld(
+vornamefeldnr);schuelerschluessel3:=standardmaskenfeld(geburtsdatumfeldnr);
+bestandsschluessel1:=standardmaskenfeld(jgstfeldnr);bestandsschluessel2:=
+standardmaskenfeld(zugtutorfeldnr);BOOL CONST anschreibenzeigen:=
+standardmaskenfeld(bildschirmfeldnr)<>niltext.maskenwerteinordnung:IF NOT ((
+standardmaskenfeld(bildschirmfeldnr)<>niltext)XOR (standardmaskenfeld(
+druckerfeldnr)<>niltext))THEN infeld(bildschirmfeldnr);FALSE ELIF ((
+schuelerschluessel1<>niltextAND bestandsschluessel1+bestandsschluessel2=
+niltextAND (schuelerschluessel2<>niltextXOR (schuelerschluessel2=niltextAND 
+schuelerschluessel3=niltext)))XOR (schuelerschluessel1+schuelerschluessel2+
+schuelerschluessel3=niltextAND bestandsschluessel1<>niltext)XOR (
+schuelerschluessel1+schuelerschluessel2+schuelerschluessel3+
+bestandsschluessel1+bestandsschluessel2=niltext))THEN TRUE ELSE infeld(
+namefeldnr);FALSE FI .meldedenfehler:standardmeldung(fehlermeldnr,niltext).
+zurueckzumdialog:return(vater).#meldenichterstellbar:standardmeldung(
+anschreibenkannnichterstelltwerdennr,niltext);.#
+meldeunzulaessigeschuelergruppenauswahl:standardmeldung(
+dieauswahlderjgstistnichtzulaessignr,niltext).
+beibestandsauswahlauswahlzulaessig:(bestandsschluessel1=niltext)OR (
+bestandsschluessel1<>niltextCAND int(bestandsschluessel1)<maxjgstCAND int(
+bestandsschluessel1)>=minjgst).startenausfuehren:
+initialisieredruckerfueranschreiben;dbstatus(ok);inittupel(dnrhalbjahresdaten
+);parsenooffields(28);uebernimmentsprechendedaten;anschreibenstart(
+aktuellerindex,vordruck,anschreibenzeigen,(schuelerschluessel1+
+schuelerschluessel2)<>"",BOOL PROC sonderwertewiederholer,BOOL PROC 
+multistopwiederholer).uebernimmentsprechendedaten:putwert(fnrhjdfamnames,
+schuelerschluessel1);putwert(fnrhjdrufnames,schuelerschluessel2);putwert(
+fnrhjdgebdats,datumskonversion(schuelerschluessel3));aktuellesschuljahr:=
+schulkenndatum("Schuljahr");putwert(fnrhjdsj,aktuellesschuljahr);putintwert(
+fnrhjdhj,2);putwert(fnrhjdjgst,bestandsschluessel1);putwert(fnrhjdkennung,
+bestandsschluessel2);putwert(fnrhjdversetzung,schluesselwiederholer);.
+indexnummerbestimmen:IF schuelerschluessel1<>niltextTHEN aktuellerindex:=#
+dnrhalbjahresdaten#ixhjdverfamsjhjrufgebELSE aktuellerindex:=
+ixhjdversjhjjgstkennFI .END PROC wiederholerstarten;BOOL PROC 
+multistopwiederholer:BOOL VAR b:=wert(fnrhjdsj)=aktuellesschuljahrCAND 
+intwert(fnrhjdhj)=2CAND wert(fnrhjdversetzung)=schluesselwiederholer;IF b
+THEN weitereueberpruefungFI ;b.weitereueberpruefung:IF aktuellerindex=
+ixhjdverfamsjhjrufgebTHEN ueberpruefenamenELSE IF bestandsschluessel1<>""
+THEN ueberpruefejgstFI FI .ueberpruefenamen:b:=wert(fnrhjdfamnames)=
+schuelerschluessel1CAND (schuelerschluessel2=""COR wert(fnrhjdrufnames)=
+schuelerschluessel2)CAND (schuelerschluessel3=""COR wert(fnrhjdgebdats)=
+datumskonversion(schuelerschluessel3)).ueberpruefejgst:b:=int(
+bestandsschluessel1)=intwert(fnrhjdjgst)CAND (bestandsschluessel2=""COR 
+bestandsschluessel2=wert(fnrhjdkennung)).ENDPROC multistopwiederholer;END 
+PACKET anschrwiederholer;
+

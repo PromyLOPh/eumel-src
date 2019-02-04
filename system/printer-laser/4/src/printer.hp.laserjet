@@ -1,0 +1,417 @@
+PACKET hp laserjet printer
+ 
+(**************************************************************************)
+(*                                                Stand   : 03.02.88      *)
+(*  HP 2686A LaserJet / LaserJet+                 Verison : 4             *)
+(*                                                Autor   : Rudolf Ruland *)
+(**************************************************************************)
+ 
+       DEFINES open,
+               close,
+               execute,
+ 
+               paper size,
+               printer type :
+ 
+LET
+(*  underline           =  1,
+    bold                =  2,
+    italics             =  4,
+    reverse             =  8,
+ 
+    underline linetype  =  1, *)
+ 
+    c document          =  1,
+    c page              =  2,
+ 
+    c write text        =  1,
+    c write cmd         =  2,
+    c carriage return   =  3, 
+    c move              =  4,
+    c draw              =  5,
+    c on                =  6, 
+    c off               =  7,
+    c type              =  8;
+ 
+INT VAR abs x pos
+REAL VAR x size, y size;
+BOOL VAR is laser jet plus, is landscape;
+
+(*********************************************************************)
+ 
+paper size (21.0, 29.7);
+printer type ("LaserJet");
+ 
+PROC paper size (REAL CONST x, y) :
+ 
+  x size := x;
+  y size := y;
+ 
+END PROC paper size;
+ 
+PROC paper size : 
+ 
+  line;
+  putline ("Papierbreite  =  " + text (x size, 5, 2) + " cm  =  " + text (x size / 2.54, 5, 2) + " Zoll");
+  putline ("Papierlaenge  =  " + text (y size, 5, 2) + " cm  =  " + text (y size / 2.54, 5, 2) + " Zoll");
+ 
+END PROC paper size;
+ 
+PROC printer type (TEXT CONST type) :
+
+  is laser jet plus := pos (type, "+") <> 0
+
+END PROC printer type;
+ 
+TEXT PROC printer type :
+
+  IF is laser jet plus
+     THEN "LaserJet+"
+     ELSE "LaserJet"
+  FI
+
+END PROC printer type;
+
+(*********************************************************************)
+ 
+PROC open (INT CONST op code, INT VAR param1, param2) :
+ 
+SELECT op code OF
+  CASE c document : open document 
+  CASE c page     : open page
+END SELECT; 
+ 
+ 
+. x steps : param1
+. y steps : param2
+. 
+  open document :
+    out (""27"E");      (* Reset des Druckers *)
+    out (""27"&s1C");   (* 'end of line wrap' aus *)
+    out (""27"&l0L");   (* 'perforation skip' aus *)
+    out (""27"&l1X");   (* eine Kopie             *)
+    out (""27"&l1H");   (* upper tray             *)
+    IF pos (material, "landscape") > 0 OR pos (material, "quer") > 0
+       THEN is landscape := TRUE;
+            x steps      := x step conversion ( y size );
+            y steps      := y step conversion ( x size );
+            out (""27"&l1O");
+       ELSE is landscape := FALSE;
+            x steps      := x step conversion ( x size );
+            y steps      := y step conversion ( y size );
+    FI;
+ 
+. x start : param1
+. y start : param2
+. 
+  open page :
+    IF is landscape
+       THEN x start  := x step conversion (0.508);     (* 0.200*2.54 *)
+            y start  := y step conversion (1.693333);  (* 0.500*2.54 + 2.54/6.0 *)
+       ELSE x start  := x step conversion (0.39878);   (* 0.157*2.54 *)
+            y start  := y step conversion (1.693333);  (* 0.500*2.54 + 2.54/6.0 *)
+    FI;
+    IF   pos (material, "lower tray") > 0 COR pos (material, "lowertray") > 0
+         THEN out (""27"&l4H");
+    ELIF pos (material, "tray") > 0 COR pos (material, "upper tray") > 0 COR pos (material, "uppertray") > 0
+         THEN out (""27"&l1H");
+    ELIF pos (material, "manual") > 0
+         THEN out (""27"&l2H");
+    ELIF pos (material, "envelope") > 0
+         THEN out (""27"&l3H");
+    FI;
+    IF material contains a number
+       THEN out (""27"&l" + text (number) + "X");
+    FI;
+    out (""13"");
+ 
+    . material contains a number :
+        INT VAR number := pos (material, "0", "9", 1);
+        IF number = 0
+           THEN FALSE
+           ELSE number := max (1, int (subtext (material, number, number + 1)));
+                TRUE
+        FI
+ 
+END PROC open; 
+ 
+ 
+PROC close (INT CONST op code, INT CONST param1) :
+ 
+SELECT op code OF
+  CASE c document : close document 
+  CASE c page     : close page
+  OTHERWISE : put (param1)
+END SELECT; 
+ 
+. 
+  close document :
+ 
+ 
+(*. remaining y steps : param1*)
+.
+  close page :
+    out (""12"") 
+ 
+END PROC close;
+ 
+ 
+PROC execute (INT CONST op code, TEXT CONST string, INT CONST param1, param2) :
+ 
+SELECT op code OF
+  CASE c write text       :  write text
+  CASE c write cmd        :  write cmd
+  CASE c carriage return  :  carriage return
+  CASE c move             :  move
+  CASE c draw             :  draw
+  CASE c on               :  on
+  CASE c off              :  off
+  CASE c type             :  type
+END SELECT
+
+ 
+. from : param1
+. to   : param2
+.
+  write text :
+    out subtext (string, from, to)
+ 
+.
+  write cmd :
+    out subtext (string, from, to)
+ 
+ 
+(*. x steps to left margin : param1*)
+.
+  carriage return :
+    out (""13"")
+ 
+ 
+. x steps : param1
+. y steps : param2
+.
+  move :
+    IF   x steps <> 0
+         THEN x move
+    ELIF y steps > 0
+         THEN out (""27"&a+" + text (y steps) + "V");
+    ELIF y steps < 0
+         THEN out (""27"&a"  + text (y steps) + "V");
+    FI;
+ 
+    . x move :
+        IF is laser jet plus
+           THEN laser jet plus x move
+           ELSE laser jet x move
+        FI;
+
+    . laser jet plus x move :
+        IF x steps >= 0
+           THEN out (""27"*p+" + text (x steps) + "X");
+           ELSE out (""27"*p"  + text (x steps) + "X");
+        FI;
+
+    . laser jet x move :
+        abs x pos := x pos;
+        IF abs x pos >= 0
+           THEN out (""27"&a");
+                out (text ((abs x pos DIV 5) * 12 + ((abs x pos MOD 5) * 12 + 4) DIV 5));
+                out ("H");
+           ELSE stop
+        FI;
+
+. 
+  draw :
+    stop
+ 
+ 
+. modification : param1
+.
+  on :
+    IF on string (modification) <> ""
+       THEN out (on string (modification))
+       ELSE stop
+    FI
+ 
+.
+  off :
+    IF off string (modification) <> ""
+       THEN out (off string (modification))
+       ELSE stop
+    FI
+ 
+ 
+. font nr : param1
+.
+  type :
+    out (font string (font nr));
+ 
+END PROC execute;
+ 
+ 
+END PACKET hp laserjet printer;
+ 
+ 
+#page# 
+(******************************************************************)
+(***                                                            ***)
+(***   Generierung des Printers                                 ***)
+(***                                                            ***)
+(******************************************************************)
+ 
+LET printer name = "printer.hp.laserjet",
+    up           = ""3""13""5"";
+ 
+TEXT VAR fonttab name := "fonttab.hp.laserjet";
+ 
+BOOL CONST multi user := (pcb (9) AND 255) <> 1;
+ 
+INT VAR pr channel;
+TEXT VAR buffer;
+ 
+command dialogue (TRUE);
+IF NOT multi user 
+  THEN errorstop ("Dieser Treiber arbeitet nur mit Multi-Tasking-EUMEL") 
+FI; 
+ask for print channel;
+ask for printer type;
+load font table;
+forget (printer name, quiet);
+IF multi user THEN generate printer spool FI;
+check on;
+.
+  ask for print channel :
+    line;
+    put ("gib Druckerkanal:");
+    get (pr channel);
+    do ("serverchannel(" + text (pr channel) + ")" ) ;
+    line;
+. 
+  ask for printer type :
+    printer type (laser jet);
+ 
+    . laser jet :
+        line;
+        REP out (up); 
+            IF yes ("Druckertyp : HP LaserJet")
+               THEN LEAVE laser jet WITH "LaserJet" FI;
+            out (up);
+            IF yes ("Druckertyp : HP LaserJet+")
+               THEN LEAVE laser jet WITH "LaserJet+" FI;
+        PER;
+        ""
+.
+  load font table :
+    line (2);
+    write (""13""4"");
+    putline ("Die Fonttabelle """ + fonttab name +
+             """ enthält die Schrifttypen der");
+    putline ("Font Cartriges:");
+    putline ("                  92286A  Courier 1");
+    putline ("                  92286C  International 1");
+    putline ("                  92286D  Prestige Elite");
+    putline ("                  92286E  Letter Gothic");
+    putline ("                  92286F  TMS Proportional 2");
+    putline ("                  92286L  Courier P&L");
+    putline ("                  92286M  Prestige Elite P&L");
+    putline ("                  92286N  Letter Gothic P&L");
+    putline ("                  92286P  TMS RMN P&L");
+    putline ("                  92286Q  Memo 1");
+    line;
+    putline ("Für ein korrektes Druckbild dürfen immer nur die Schrifttypen angesprochen");
+    putline ("werden, deren Cartrige eingeschoben ist!");
+    IF printer type = "LaserJet"
+       THEN line;
+            putline ("ELAN-Listings können nur gedruckt werden, wenn ein Cartrige mit dem");
+            putline ("Schrifttyp 'LINE PRINTER' eingeschoben ist!");
+    FI;
+    line (2);
+    putline ("Weiter nach Eingabe einer Taste");
+    pause;
+    IF NOT exists (fonttab name)
+       THEN command dialogue (TRUE); 
+            REP line (2); 
+                putline ("Bitte Archiv mit der Fonttabelle """ +
+                          fonttab name + """ einlegen!");
+                line;
+            UNTIL yes ("Archiv eingelegt") PER;
+            reserve archive;
+            fetch (fonttab name, archive);
+            release (archive);
+    FI;
+    font table (fonttab name);
+    IF multi user
+       THEN command dialogue (FALSE); 
+            do ("save(""" + font tab name + """,task(""configurator""))") 
+    FI;
+    forget (fonttab name, quiet);
+ 
+    . reserve archive :
+        INT VAR p1, p2;
+        archive (" "31" ");
+        disable stop;
+        list (archive);
+        IF is error
+           THEN buffer := errormessage;
+                p1 := pos (buffer, """", 1 ) + 1;
+                p2 := pos (buffer, """", p1) - 1;
+                IF p1 > 0 AND p2 > 0
+                   THEN clear error;
+                        buffer := subtext (buffer, p1, p2);
+                        archive (buffer);
+                FI;
+        FI;
+        enable stop;
+ 
+. generate printer spool :
+    eumel must advertise;
+    cursor (1, 12);
+    putline ("In allen bestehenden Tasks - insbesondere in der Task ""PUBLIC"" - muß");
+    putline ("die Fonttabelle mit dem Kommando");
+    line;
+    putline ("      font table (""" + font tab name + """)");
+    line;
+    putline ("eingestellt werden!!!");
+    line (4);
+    putline ("Generierung beendet, weiter mit 'SV'");
+    generate printer server;
+    do (buffer);
+ 
+. generate printer server :
+    buffer :=  "break (quiet);";
+    buffer CAT "spool manager (PROC printer);";
+    buffer CAT "INT VAR reply; DATASPACE VAR ds; FILE VAR file;";
+    buffer CAT "PROC printer:";
+    buffer CAT "  disable stop;";
+    buffer CAT "  continue (server channel);";
+    buffer CAT "  check error (error message);";
+    buffer CAT "  ds := nilspace;";
+    buffer CAT "  REP forget (ds);";
+    buffer CAT "      execute print;";
+    buffer CAT "      IF is error AND online";
+    buffer CAT "         THEN out (""""27""(8U""27""(s0p10h12v0s0b3T"");";
+    buffer CAT "              put error; clear error; out (""""12"""");";
+    buffer CAT "      FI;";
+    buffer CAT "  PER;";
+    buffer CAT "END PROC printer;";
+    buffer CAT "PROC execute print:";
+    buffer CAT "  LET ack = 0, fetch code = 11, file type = 1003;";
+    buffer CAT "  enable stop;";
+    buffer CAT "  ds := nilspace;";
+    buffer CAT "  call (father, fetch code, ds, reply);";
+    buffer CAT "  IF reply = ack CAND type (ds) = file type";
+    buffer CAT "     THEN file := sequential file (input, ds);";
+    buffer CAT "          print (file,";
+    buffer CAT "            PROC (INT CONST, INT VAR, INT VAR) open,";
+    buffer CAT "            PROC (INT CONST, INT CONST) close,";
+    buffer CAT "            PROC (INT CONST, TEXT CONST, INT CONST, INT CONST) execute);";
+    buffer CAT "  FI;";
+    buffer CAT "END PROC execute print;"; 
+    buffer CAT "PROC check error(TEXT CONST message):";
+    buffer CAT "  IF is error";
+    buffer CAT "     THEN clear error; rename myself (message);";
+    buffer CAT "          IF is error THEN end(myself) FI;"; 
+    buffer CAT "          pause (9000); end(myself);";
+    buffer CAT "  FI;";
+    buffer CAT "END PROC check error;"; 
+

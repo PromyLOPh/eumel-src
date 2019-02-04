@@ -1,0 +1,37 @@
+(* 
+        
+         ********************************************************** 
+         ********************************************************** 
+         **                                                      ** 
+         **                    ls-Warenhaus 1                    ** 
+         **                                                      ** 
+         **                     Version 1.01                     ** 
+         **                                                      ** 
+         **                                                      ** 
+         **                  (Stand:  30.08.89)                  ** 
+         **                                                      ** 
+         **                                                      ** 
+         **                                                      ** 
+         **           Autor: Bruno Pollok, Bielefeld             ** 
+         **                                                      ** 
+         **    Copyright (C) 1988  Eva Latta-Weber, Bielefeld    ** 
+         **    Copyright (C) 1990  ERGOS GmbH, Siegburg          ** 
+         **                                                      ** 
+         ********************************************************** 
+         ********************************************************** 
+ 
+                                                                           *) 
+PACKET monitor alt DEFINES original monitor:          
+  PROC original monitor:{}    monitor{}  END PROC originalmonitor{}END PACKET monitor alt;{}PACKET ls warenhaus 1 DEFINES{}       zentrale,{}       monitor,{}       warenhaus direktstart,{}       warenhaus hauptstelle,{}       hauptstellenname:{}LET  max kundenzahl             =  31,{}     min kundennummer           = 129,{}     kundendatei holen code     = 100,{}     kundendatei ergaenzen code = 200;{}TYPE KUNDENDATEN   = STRUCT (TEXT nachname, vorname, geschlecht),{}     KUNDENDATEI   = ROW max kundenzahl KUNDENDATEN;{}{}
+BOUND KUNDENDATEN VAR kundendaten;{}BOUND KUNDENDATEI VAR bound kundendatei;{}KUNDENDATEI VAR kundendatei;{}DATASPACE   VAR ds;{}TASK        VAR absender,{}                zentraltask        :: niltask,{}                hauptstelle        :: niltask,{}                direktstartmanager :: niltask;{}BOOL        VAR mit direktstart    :: FALSE,{}                mit loeschen       :: FALSE;{}INT         VAR codenummer;{}PROC zentrale:{}  enable stop;{}  IF pos (name (myself), ".Zentrale") = 0{}     THEN errorstop ("Unzulaessiger Befehl!"){}{}
+  FI;{}  disable stop;{}  REP wait (ds, codenummer, absender);{}      bearbeite auftrag;{}      send (absender, codenummer, ds);{}      IF is error THEN clear error FI{}  PER.{}  bearbeite auftrag:{}    IF   codenummer = kundendatei holen code{}         THEN hole kundendatei{}    ELIF codenummer = kundendatei ergaenzen code{}         THEN ergaenze kundendatei{}    ELIF codenummer >= min kundennummer{}         THEN lies kundendaten{}         ELSE speichere kundendaten{}    FI.{}END PROC zentrale;{}{}
+PROC hole kundendatei:{}  bound kundendatei := ds;{}  bound kundendatei := kundendatei{}END PROC hole kundendatei;{}PROC ergaenze kundendatei:{}  INT VAR kundennummer;{}  bound kundendatei := ds;{}  FOR kundennummer FROM 1 UPTO max kundenzahl REP{}    IF kundendatei [kundennummer].nachname = ""{}       THEN kundendatei [kundennummer] := bound kundendatei [kundennummer]{}    FI{}  PER;{}  init ds{}END PROC ergaenze kundendatei;{}PROC lies kundendaten:{}  kundendaten := ds;{}  kundendaten := kundendatei [platznummer].{}{}
+  platznummer: codenummer - min kundennummer + 1.{}END PROC lies kundendaten;{}PROC speichere kundendaten:{}  kundendaten := ds;{}  kundendatei [codenummer] := kundendaten;{}  init ds{}END PROC speichere kundendaten;{}PROC warenhaus hauptstelle (BOOL CONST task soll hauptstelle sein):{}  enable stop;{}  IF task soll hauptstelle sein{}     THEN mache task zur hauptstelle{}     ELSE mache hauptstellenstatus rueckgaengig{}  FI.{}  mache task zur hauptstelle:{}    sei eine hauptstelle;{}    line (2);{}{}
+    IF NOT mit direktstart CAND yes ("Mit Direktstart"){}       THEN warenhaus direktstart (TRUE){}       ELSE global manager{}    FI{}END PROC warenhaus hauptstelle;{}PROC sei eine hauptstelle:{}  IF NOT (hauptstelle = niltask OR hauptstelle = myself){}     THEN errorstop ("Hauptstelle ist bereits die Task '" +{}                      name (hauptstelle) + "'!"){}  FI;{}  disable stop;{}  end (zentraltask);{}  IF is error THEN clear error FI;{}  enable stop;{}  hauptstelle := niltask;{}  begin (name (myself) + ".Zentrale", PROC zentrale, zentraltask);{}{}
+  hauptstelle := myself{}END PROC sei eine hauptstelle;{}PROC mache hauptstellenstatus rueckgaengig:{}  IF NOT (hauptstelle = niltask OR hauptstelle = myself){}     THEN errorstop ("Dieses Kommando darf nur in der Task '" +{}                      name (hauptstelle) + " gegeben werden!"){}  FI;{}  disable stop;{}  end (zentraltask);{}  IF is error THEN clear error FI;{}  enable stop;{}  hauptstelle := niltask;{}  warenhaus direktstart (FALSE){}END PROC mache hauptstellenstatus rueckgaengig;{}PROC warenhaus direktstart (BOOL CONST wahl):{}{}
+  pruefe zulaessigkeit;{}  mit direktstart := wahl;{}  IF mit direktstart{}     THEN direktstartmanager := myself;{}          mit loeschen := yes ("Mit automatischem Löschen"){}     ELSE direktstartmanager := niltask{}  FI;{}  global manager.{}  pruefe zulaessigkeit:{}    enable stop;{}    IF NOT (direktstartmanager = niltask OR direktstartmanager = myself){}       THEN errorstop ("Der Direktstart kann nur aus der Task '" +{}                        name (direktstartmanager) + "'geaendert werden!"){}{}
+    FI.{}END PROC warenhaus direktstart;{}TEXT PROC hauptstellenname:{}  name (hauptstelle){}END PROC hauptstellenname;{}PROC monitor:{}  IF mit direktstart{}     THEN warenhaus monitor{}     ELSE original  monitor{}  FI{}END PROC monitor;{}PROC warenhausmonitor:{}  disable stop;{}  INT VAR previous heapsize := heap size;{}  REP command dialogue (TRUE);{}      sysin (""); sysout ("");{}      cry if not enough storage;{}      reset dialog; erase menunotice;{}      do ("warenhaus");{}      IF is error{}{}
+         THEN clear error{}         ELSE sitzungsende{}      FI{}  PER.{}  sitzungsende:{}    collect heap garbage if necessary;{}    page;{}    IF mit loeschen{}       THEN break; end (myself){}       ELSE end; break{}    FI.{}  collect heap garbage if necessary:{}    IF heap size > previous heapsize + 10{}       THEN collect heap garbage;{}            previous heapsize := heap size{}    FI.{}  cry if not enough storage:{}    INT VAR size, used;{}    storage (size, used);{}    IF used > size{}       THEN out (""7"Speicher Engpass! Dateien loeschen!"13""10""){}{}
+    FI.{}END PROC warenhausmonitor;{}OP := (KUNDENDATEN VAR ziel, KUNDENDATEN CONST quelle):{}   CONCR (ziel) := CONCR (quelle){}END OP :=;{}OP := (KUNDENDATEI VAR ziel, KUNDENDATEI CONST quelle):{}   CONCR (ziel) := CONCR (quelle){}END OP :=;{}PROC init ds:{}  forget (ds); ds := nilspace{}END PROC init ds;{}PROC initialisiere kundendatei:{}  KUNDENDATEN CONST leer :: KUNDENDATEN : ("", "", "");{}  INT VAR nr;{}  FOR nr FROM 1 UPTO max kundenzahl REP{}      kundendatei [nr] := leer{}  PER{}END PROC initialisiere kundendatei;{}{}
+initialisiere kundendatei{}END PACKET ls warenhaus 1{}{}
+

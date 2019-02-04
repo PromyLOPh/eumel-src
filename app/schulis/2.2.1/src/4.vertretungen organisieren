@@ -1,0 +1,318 @@
+PACKET vertretungenorganisierenDEFINES vertretungenorgbearbeiten,
+vertretungenorgvertretungsdatenlisten,vertretungenorginlisteblaettern,
+vertretungenorgspeichern,vertretungenorglvauflisten,
+vertretungenorglvauflisteneinlesen,vertretungenorginlvlisteblaettern,
+vertretungenorgangekreuztebearbeiten:LET maskebearb=
+"ms vertretungen organisieren",maskeliste="mu objektliste";LET fnrsuchparaphe
+=2,fnrstartdatum=3,fnrstartstunde=4,fnrendedatum=5,fnrendestunde=6,fnrparaphe
+=2,fnranrechnungart=3,fnrvertretdatum=4,fnrvertrettag=5,fnrvertretstd=6,
+fnrvertretlv=7,fnrvertretparaphe=8,fnrtabellenanfang=9;LET 
+meldnrlistewirdaufbereitet=7,meldnrbittefuellen=52,
+meldnrungueltigerschluessel=55,meldnrletzterbehandelt=67,meldnrbittewarten=69
+,meldnrblaetternnichtmoeglich=72,meldnrspeicherungunmoeglich=73,
+meldnrzulangevertretungsdauer=157,meldnrdatenwerdengespeichert=301,
+meldnrdatenwerdennichtgespeichert=303,meldnrungueltigeparaphe=344,
+meldnrstundenplanfehlt=366,meldnrparapheschonzugeteilt=361,
+meldnrzweitesdatumkleiner=386,meldnrkeinunterrichtzurzeit=395;LET schuljahr=
+"Schuljahr",schulhalbjahr="Schulhalbjahr";LET sachgebietanrechnungskennz=
+"c02 anrechnung vertret";LET kennzhell="#";LET kennzfreistunde="f",ankreuzung
+="x",fehlanzeige="-",lehrerbelegt="1",trenner="�";LET erstestunde=1,
+letztestunde=66,samstagstd=6,stundenprotag=12;LET kennungparaphe="P",
+kennunglv="L";LET laengesugruppe=6,laengeparaphe=4,laengelv=8;LET 
+logbucheintrag="Anw. 4.6.1 Vertretungen eingegeben oder geändert";INT VAR 
+pruefstatus:=0;INT VAR ifnr;TEXT VAR gueltigeanrechnungskennz:="",
+gueltigeparaphen:="";TEXT VAR paraphe,gespeicherteparaphe,startdatum,
+startstunde,endedatum,endestunde,aktschuljahr:="",akthalbjahr:="";TEXT VAR 
+auszeile;TEXT VAR liste:="";TEXT VAR lv,letztebehandeltelv:="",
+vertretungsdatum,hinweisfreistunde,hinweisvorherfrei,hinweisnachherfrei,
+hinweislehrerinsugruppe,hinweislehrbefaehigung,hinweislehrbefart;INT VAR std,
+dauer,erstevertretstd,letztevertretstd,idatum;INT VAR ivertret,maxvertret,
+erstevertretaufbildschirm;LET maxvertretaufbildschirm=14;FILE VAR fvertret;
+LET namevertretdatei="Liste der Vertretungsmöglichkeiten";INT VAR ilv,maxlv;
+ROW letztestundeSTRUCT (INT datum,INT std,TEXT lv)VAR vertret;ROW 
+letztestundeBOOL VAR listenankreuzung;INT VAR erstelvinliste;INT VAR izeile;
+LET maxlistenzeile=18,erstesfeldinliste=2,felderprozeileinliste=2;TEXT VAR 
+zeitendeslehrers,paraphenzursugruppe,allelvdersugruppe,lehrerderzeitvorher,
+lehrerderzeit,lehrerderzeitnachher,freielehrerderzeit,lehrerdesfachs,
+lehrbefartdesfachs,sugruppe,sugruppen,zuletztbehandeltesugruppen:="";TEXT 
+VAR fundlv,fundraum,fundparaphe,suchfach,zuletztbehandeltesfach:="";INT VAR 
+poslv,posparaphe,posfachlehrer,possugruppe;BOOL VAR vertretungliegtvor,
+bearbeitungueberobjektliste;INT VAR fstatusstuplan;PROC 
+vertretungenorgbearbeiten:eingangspruefung;IF pruefstatus<>0THEN infeld(
+pruefstatus);return(1)ELSE standardmeldung(meldnrbittewarten,"");
+vertretungsorganisationvorbereiten;IF zuvertretendelvvorhandenTHEN 
+standardstartproc(maskebearb);bearbeitungueberobjektliste:=FALSE ;
+zeigebsmitvertretungsmoeglichkeiten;standardnprocELSE standardmeldung(
+meldnrkeinunterrichtzurzeit,"");infeld(fnrstartdatum);return(1)FI FI .
+zuvertretendelvvorhanden:ilv<=maxlv.END PROC vertretungenorgbearbeiten;PROC 
+vertretungsorganisationvorbereiten:zeitendeslehrers:=allezeitenvon(
+kennungparaphe,paraphe);idatum:=datum(startdatum);erstevertretstd:=stundezu(
+startdatum,startstunde);letztevertretstd:=stundezu(endedatum,endestunde);ilv
+:=0;IF erstevertretstd>letztevertretstdTHEN FOR stdFROM erstevertretstdUPTO 
+letztestundeREP IF (zeitendeslehrersSUB std)=lehrerbelegtTHEN 
+planeintraglesen(std,kennungparaphe,paraphe,fundlv,fundraum,fundparaphe);ilv
+INCR 1;vertret(ilv).datum:=idatum;vertret(ilv).std:=std;vertret(ilv).lv:=
+fundlv;FI ;IF (stdMOD stundenprotag)=0THEN idatumINCR 1FI PER ;idatumINCR 2;
+erstevertretstd:=erstestunde;FI ;std:=erstevertretstd;WHILE std<=
+letztevertretstdREP IF (zeitendeslehrersSUB std)=lehrerbelegtTHEN 
+planeintraglesen(std,kennungparaphe,paraphe,fundlv,fundraum,fundparaphe);ilv
+INCR 1;vertret(ilv).datum:=idatum;vertret(ilv).std:=std;vertret(ilv).lv:=
+fundlv;FI ;IF (stdMOD stundenprotag)=0THEN idatumINCR 1FI ;stdINCR 1PER ;
+maxlv:=ilv;ilv:=1END PROC vertretungsorganisationvorbereiten;PROC 
+zeigebsmitvertretungsmoeglichkeiten:lv:=vertret(ilv).lv;std:=vertret(ilv).std
+;idatum:=vertret(ilv).datum;vertretungsdatum:=datum(idatum);
+standardmaskenfeld(vertretungsdatum,fnrvertretdatum);standardmaskenfeld(
+namedestags(tagnummer(vertretungsdatum)),fnrvertrettag);standardmaskenfeld(
+stundennummer(std),fnrvertretstd);standardmaskenfeld(lv,fnrvertretlv);
+standardmaskenfeld(text(paraphe,laengeparaphe),fnrvertretparaphe);
+holemoeglichevertretungenzulv;vertretungliegtvor:=FALSE ;inittupel(
+dnrvertretungen);putwert(fnrvdatum,vertretungsdatum);putintwert(fnrvtagstd,
+std);search(dnrvertretungen,FALSE );WHILE dbstatus=0AND wert(fnrvdatum)=
+vertretungsdatumAND intwert(fnrvtagstd)=stdREP IF compress(wert(
+fnrvveranstaltung))=compress(lv)THEN vertretungliegtvor:=TRUE ;
+standardmaskenfeld(wert(fnrvparaphe),fnrparaphe);standardmaskenfeld(wert(
+fnrvanrechnung),fnranrechnungart);FI ;succ(dnrvertretungen);UNTIL 
+vertretungliegtvorPER ;IF NOT vertretungliegtvorTHEN standardmaskenfeld("",
+fnrparaphe);standardmaskenfeld("",fnranrechnungart);FI ;gespeicherteparaphe:=
+standardmaskenfeld(fnrparaphe);infeld(1);standardfelderausgeben;infeld(
+fnrparaphe).END PROC zeigebsmitvertretungsmoeglichkeiten;PROC 
+holemoeglichevertretungenzulv:moeglichevertretungsdatenzusammenstellen;
+vertretungsdatenzeigen(1).moeglichevertretungsdatenzusammenstellen:ivertret:=
+0;forget(namevertretdatei,quiet);fvertret:=sequentialfile(output,
+namevertretdatei);IF (stdMOD stundenprotag)=0THEN lehrerderzeitnachher:="";
+lehrerderzeitvorher:=datenderzeit(std-1,kennungparaphe)ELIF (stdMOD 
+stundenprotag)=1THEN lehrerderzeitvorher:="";lehrerderzeitnachher:=
+datenderzeit(std+1,kennungparaphe)ELSE lehrerderzeitvorher:=datenderzeit(std-
+1,kennungparaphe);lehrerderzeitnachher:=datenderzeit(std+1,kennungparaphe)FI 
+;IF lv<>letztebehandeltelvTHEN letztebehandeltelv:=lv;sugruppen:=
+beteiligteschuelergruppen(kennunglv,lv);IF sugruppen<>
+zuletztbehandeltesugruppenTHEN zuletztbehandeltesugruppen:=sugruppen;
+bestimmedieparaphenzursugruppeFI FI ;freielehrerderzeit:="";
+holeallelehrerdesfachs;inittupel(dnrvertretungen);putwert(fnrvdatum,
+vertretungsdatum);putintwert(fnrvtagstd,std);search(dnrvertretungen,FALSE );
+WHILE dbstatus=0AND wert(fnrvdatum)=vertretungsdatumAND intwert(fnrvtagstd)=
+stdREP IF wert(fnrvanrechnung)=kennzfreistundeTHEN fundparaphe:=wert(
+fnrvparaphe);hinweisfreistunde:=ankreuzung;
+weiterehinweisezugefundenerparaphesetzen;
+ausgabezeilezugefundenerparapheindateischreibenFI ;succ(dnrvertretungen);PER 
+;lehrerderzeit:=datenderzeit(std,kennungparaphe);posparaphe:=1;WHILE 
+posparaphe<length(gueltigeparaphen)REP fundparaphe:=subtext(gueltigeparaphen,
+posparaphe,posparaphe+laengeparaphe-1);IF suchpos(lehrerderzeit,fundparaphe,
+laengeparaphe)=0THEN hinweisfreistunde:=fehlanzeige;
+weiterehinweisezugefundenerparaphesetzen;
+ausgabezeilezugefundenerparapheindateischreibenFI ;posparapheINCR 
+laengeparaphePER ;maxvertret:=ivertret.bestimmedieparaphenzursugruppe:
+allelvdersugruppe:="";possugruppe:=1;WHILE possugruppe<length(sugruppen)REP 
+sugruppe:=subtext(sugruppen,possugruppe,possugruppe+laengesugruppe-1);
+allelvdersugruppeCAT lvderschuelergruppe(sugruppe);possugruppeINCR 
+laengesugruppePER ;paraphenzursugruppe:="";poslv:=1;WHILE poslv<length(
+allelvdersugruppe)REP fundlv:=subtext(allelvdersugruppe,poslv,poslv+laengelv-
+1);paraphenzursugruppeCAT datenzurlv(kennungparaphe,fundlv);poslvINCR 
+laengelvPER END PROC holemoeglichevertretungenzulv;PROC 
+holeallelehrerdesfachs:suchfach:=compress(subtext(lv,3,4));IF suchfach<>
+zuletztbehandeltesfachTHEN zuletztbehandeltesfach:=suchfach;
+holeallelehrerdesfachsganzneuFI .holeallelehrerdesfachsganzneu:lehrerdesfachs
+:="";lehrbefartdesfachs:="";dbstatus(0);inittupel(dnrlehrbefaehigungen);
+statleseschleife(dnrlehrbefaehigungen,suchfach,suchfach,fnrlbfach,fnrlbfach,
+PROC lehrbefaehigunglesen);inittupel(dnrfaecher);putwert(fnrffach,suchfach);
+search(dnrfaecher,TRUE );IF dbstatus=0AND wert(fnrffachgrp)<>""THEN suchfach
+:=wert(fnrffachgrp);inittupel(dnrlehrbefaehigungen);statleseschleife(
+dnrlehrbefaehigungen,suchfach,suchfach,fnrlbfach,fnrlbfach,PROC 
+lehrbefaehigunglesen);FI ;END PROC holeallelehrerdesfachs;PROC 
+lehrbefaehigunglesen(BOOL VAR b):IF dbstatus<>0OR suchfach<>wert(fnrlbfach)
+THEN b:=TRUE ELSE lehrerdesfachsCAT text(wert(fnrlbparaphe),laengeparaphe);
+lehrbefartdesfachsCAT text(wert(fnrlbart),1)FI END PROC lehrbefaehigunglesen;
+PROC weiterehinweisezugefundenerparaphesetzen:IF suchpos(lehrerderzeitvorher,
+fundparaphe,laengeparaphe)>0THEN hinweisvorherfrei:=ankreuzungELSE 
+hinweisvorherfrei:=fehlanzeigeFI ;IF suchpos(lehrerderzeitnachher,fundparaphe
+,laengeparaphe)>0THEN hinweisnachherfrei:=ankreuzungELSE hinweisnachherfrei:=
+fehlanzeigeFI ;IF suchpos(paraphenzursugruppe,fundparaphe,laengeparaphe)>0
+THEN hinweislehrerinsugruppe:=ankreuzungELSE hinweislehrerinsugruppe:=
+fehlanzeigeFI ;posfachlehrer:=suchpos(lehrerdesfachs,fundparaphe,
+laengeparaphe);IF posfachlehrer>0THEN hinweislehrbefaehigung:=ankreuzung;
+hinweislehrbefart:=lehrbefartdeslehrersELSE hinweislehrbefaehigung:=
+fehlanzeige;hinweislehrbefart:=" "FI .lehrbefartdeslehrers:lehrbefartdesfachs
+SUB ((posfachlehrerDIV laengeparaphe)+1).END PROC 
+weiterehinweisezugefundenerparaphesetzen;PROC 
+ausgabezeilezugefundenerparapheindateischreiben:auszeile:=text(fundparaphe,
+laengeparaphe);freielehrerderzeitCAT auszeile;auszeileCAT hinweisfreistunde;
+auszeileCAT hinweisvorherfrei;auszeileCAT hinweisnachherfrei;auszeileCAT 
+hinweislehrerinsugruppe;auszeileCAT hinweislehrbefaehigung;auszeileCAT 
+hinweislehrbefart;putline(fvertret,auszeile);ivertretINCR 1END PROC 
+ausgabezeilezugefundenerparapheindateischreiben;PROC vertretungsdatenzeigen(
+INT CONST abzeile):fvertret:=sequentialfile(modify,namevertretdatei);
+erstevertretaufbildschirm:=abzeile;toline(fvertret,abzeile);col(fvertret,1);
+ivertret:=1;ifnr:=fnrtabellenanfang;WHILE ivertret<=maxvertretaufbildschirm
+REP IF NOT eof(fvertret)THEN readrecord(fvertret,auszeile);standardmaskenfeld
+(auszeile,ifnr);down(fvertret)ELSE standardmaskenfeld("          ",ifnr)FI ;
+ifnrINCR 1;ivertretINCR 1PER ;END PROC vertretungsdatenzeigen;PROC 
+vertretungenorgvertretungsdatenlisten:WINDOW VAR w:=startwindow(37,24,77,7);
+fundparaphe:=standardmaskenfeld(fnrparaphe);IF parapheungueltigTHEN 
+standardmeldung(meldnrungueltigeparaphe,"");return(1)ELSE standardmeldung(
+meldnrlistewirdaufbereitet,"");bereitelistenausgabeauf;IF menuedraussenTHEN 
+reorganizescreenFI ;open(w);auskunfterteilung(liste,w,FALSE );
+reorganizescreen;setlasteditvalues;infeld(1);standardfelderausgeben;infeld(
+fnrparaphe);return(1)FI .bereitelistenausgabeauf:liste:=
+"Vertretungsdaten zu Paraphe ";listeCAT fundparaphe;listeCAT 
+auskunftstextende;listeCAT "Datum     Zeit    Art Lehrveranst.";listeCAT 
+auskunftstextende;inittupel(dnrvertretungen);dbstatus(0);statleseschleife(
+ixvpar,fundparaphe,fundparaphe,fnrvparaphe,fnrvparaphe,PROC 
+vertretdatenzuparapheaufbereiten);listeCAT "*";listeCAT auskunftstextende.
+END PROC vertretungenorgvertretungsdatenlisten;PROC 
+vertretdatenzuparapheaufbereiten(BOOL VAR b):IF dbstatus=0AND wert(
+fnrvparaphe)=fundparapheTHEN listeCAT wert(fnrvdatum);listeCAT "  ";listeCAT 
+namedestags(tagnummer(wert(fnrvdatum)));listeCAT " ";listeCAT stundennummer(
+intwert(fnrvtagstd));listeCAT ".  ";listeCAT text(wert(fnrvanrechnung),2);
+listeCAT "  ";listeCAT lvaufbereitet;listeCAT auskunftstextendeELSE b:=TRUE 
+FI .lvaufbereitet:fundlv:=wert(fnrvveranstaltung);subtext(fundlv,1,2)+" "+
+subtext(fundlv,3,4)+" "+subtext(fundlv,5,8).END PROC 
+vertretdatenzuparapheaufbereiten;PROC vertretungenorginlisteblaettern(BOOL 
+CONST vor):IF vorTHEN IF erstevertretaufbildschirm+maxvertretaufbildschirm>
+maxvertretTHEN standardmeldung(meldnrblaetternnichtmoeglich,"")ELSE 
+vertretungsdatenzeigen(erstevertretaufbildschirm+maxvertretaufbildschirm)FI 
+ELSE IF erstevertretaufbildschirm=1THEN standardmeldung(
+meldnrblaetternnichtmoeglich,"")ELSE vertretungsdatenzeigen(
+erstevertretaufbildschirm-maxvertretaufbildschirm)FI FI ;return(1)END PROC 
+vertretungenorginlisteblaettern;PROC vertretungenorgspeichern(BOOL CONST 
+speichern):IF speichernTHEN fundparaphe:=standardmaskenfeld(fnrparaphe);IF 
+plausifehlerTHEN return(1)ELSE vertretungwieangegebenspeichern;logeintrag(
+logbucheintrag);IF dbstatus<>0THEN standardmeldung(
+meldnrspeicherungunmoeglich,"");return(1)ELSE naechstelvzeigenoderzurueckFI 
+FI ELSE standardmeldung(meldnrdatenwerdennichtgespeichert,"");
+naechstelvzeigenoderzurueckFI .plausifehler:IF fundparaphe=""THEN 
+standardmeldung(meldnrbittefuellen,"");infeld(fnrparaphe);TRUE ELIF 
+parapheungueltigTHEN standardmeldung(meldnrungueltigeparaphe,"");infeld(
+fnrparaphe);TRUE ELIF suchpos(freielehrerderzeit,fundparaphe,laengeparaphe)=0
+THEN standardmeldung(meldnrparapheschonzugeteilt,fundparaphe+kennzhell);
+infeld(fnrparaphe);TRUE ELIF standardmaskenfeld(fnranrechnungart)=
+kennzfreistundeTHEN standardmeldung(meldnrungueltigerschluessel,"");infeld(
+fnranrechnungart);TRUE ELIF ungueltigesanrechnungskennz(standardmaskenfeld(
+fnranrechnungart))THEN standardmeldung(meldnrungueltigerschluessel,"");infeld
+(fnranrechnungart);TRUE ELIF vertretungkannsonichtgespeichertwerdenTHEN 
+standardmeldung(meldnrparapheschonzugeteilt,fundparaphe+kennzhell);infeld(
+fnrparaphe);TRUE ELSE FALSE FI .vertretungkannsonichtgespeichertwerden:
+inittupel(dnrvertretungen);putwert(fnrvdatum,vertretungsdatum);putintwert(
+fnrvtagstd,std);putwert(fnrvparaphe,fundparaphe);search(dnrvertretungen,TRUE 
+);IF dbstatus<>0THEN FALSE ELIF wert(fnrvanrechnung)=kennzfreistundeTHEN 
+delete(dnrvertretungen);FALSE ELIF wert(fnrvveranstaltung)=compress(lv)THEN 
+FALSE ELSE TRUE FI .vertretungwieangegebenspeichern:standardmeldung(
+meldnrdatenwerdengespeichert,"");putwert(fnrvdatum,vertretungsdatum);
+putintwert(fnrvtagstd,std);IF gespeicherteparaphe=""THEN putwert(fnrvparaphe,
+fundparaphe);putwert(fnrvanrechnung,standardmaskenfeld(fnranrechnungart));
+putwert(fnrvveranstaltung,compress(lv));insert(dnrvertretungen)ELSE putwert(
+fnrvparaphe,gespeicherteparaphe);search(dnrvertretungen,TRUE );IF dbstatus=0
+THEN putwert(fnrvparaphe,fundparaphe);putwert(fnrvanrechnung,
+standardmaskenfeld(fnranrechnungart));putwert(fnrvveranstaltung,compress(lv))
+;update(dnrvertretungen)FI FI .naechstelvzeigenoderzurueck:IF 
+bearbeitungueberobjektlisteTHEN naechsteangekreuztelvsetzenELSE ilvINCR 1FI ;
+IF ilv>maxlvTHEN standardmeldung(meldnrletzterbehandelt,"");IF 
+bearbeitungueberobjektlisteTHEN enter(3)ELSE enter(2)FI ELSE 
+zeigebsmitvertretungsmoeglichkeiten;return(1)FI .naechsteangekreuztelvsetzen:
+ilvINCR 1;WHILE NOT listenankreuzung(ilv)REP ilvINCR 1UNTIL ilv>maxlvPER .
+END PROC vertretungenorgspeichern;PROC vertretungenorglvauflisten:
+eingangspruefung;IF pruefstatus<>0THEN infeld(pruefstatus);return(1)ELSE 
+vertretungsorganisationvorbereiten;IF zuvertretendelvvorhandenTHEN 
+bearbeitungueberobjektliste:=TRUE ;standardstartproc(maskeliste);
+standardmeldung(meldnrbittewarten,"");initlistenankreuzung;erstelvinliste:=1;
+zeigelvinliste;vertretungenorglvauflisteneinlesenELSE standardmeldung(
+meldnrkeinunterrichtzurzeit,"");infeld(fnrstartdatum);return(1)FI FI .
+zuvertretendelvvorhanden:ilv<=maxlv.initlistenankreuzung:FOR ilvFROM 1UPTO 
+letztestundeREP listenankreuzung(ilv):=FALSE PER .END PROC 
+vertretungenorglvauflisten;PROC zeigelvinliste:ifnr:=erstesfeldinliste;ilv:=
+erstelvinliste;FOR izeileFROM 1UPTO maxlistenzeileREP IF ilv>maxlvTHEN 
+zeigeleerzeileELSE zeigelvzeile;ilvINCR 1FI ;ifnrINCR felderprozeileinliste
+PER ;infeld(1);standardfelderausgeben;infeld(erstesfeldinliste);.
+zeigeleerzeile:feldschutz(ifnr);standardmaskenfeld("",ifnr);
+standardmaskenfeld(" ",ifnr+1).zeigelvzeile:feldfrei(ifnr);IF 
+listenankreuzung(ilv)THEN standardmaskenfeld(ankreuzung,ifnr)ELSE 
+standardmaskenfeld("",ifnr)FI ;auszeilezusammenbauen;standardmaskenfeld(
+auszeile,ifnr+1).auszeilezusammenbauen:auszeile:=datum(vertret(ilv).datum);
+auszeileCAT "  ";auszeileCAT namedestags(tagnummer(datum(vertret(ilv).datum))
+);auszeileCAT " ";auszeileCAT stundennummer(vertret(ilv).std);auszeileCAT 
+".  ";auszeileCAT "  ";auszeileCAT lvaufbereitet.lvaufbereitet:fundlv:=
+vertret(ilv).lv;subtext(fundlv,1,2)+" "+subtext(fundlv,3,4)+" "+subtext(
+fundlv,5,8).END PROC zeigelvinliste;PROC vertretungenorglvauflisteneinlesen:
+infeld(erstesfeldinliste);standardnproc;ilv:=erstelvinliste;ifnr:=
+erstesfeldinliste;FOR izeileFROM 1UPTO maxlistenzeileREP IF ilv<=maxlvTHEN 
+IF standardmaskenfeld(ifnr)<>""THEN listenankreuzung(ilv):=TRUE ELSE 
+listenankreuzung(ilv):=FALSE FI ;ilvINCR 1FI ;ifnrINCR felderprozeileinliste
+PER END PROC vertretungenorglvauflisteneinlesen;PROC 
+vertretungenorginlvlisteblaettern(BOOL CONST vor):IF vorTHEN IF 
+erstelvinliste+maxlistenzeile>maxlvTHEN standardmeldung(
+meldnrblaetternnichtmoeglich,"")ELSE erstelvinlisteINCR maxlistenzeile;
+zeigelvinlisteFI ;return(1)ELSE IF erstelvinliste=1THEN standardmeldung(
+meldnrblaetternnichtmoeglich,"")ELSE erstelvinlisteDECR maxlistenzeile;
+zeigelvinlisteFI ;return(1)FI END PROC vertretungenorginlvlisteblaettern;
+PROC vertretungenorgangekreuztebearbeiten:ilv:=1;WHILE NOT listenankreuzung(
+ilv)REP ilvINCR 1UNTIL ilv>maxlvPER ;IF ilv>maxlvTHEN standardmeldung(
+meldnrletzterbehandelt,"");enter(2)ELSE standardstartproc(maskebearb);
+zeigebsmitvertretungsmoeglichkeiten;standardnprocFI END PROC 
+vertretungenorgangekreuztebearbeiten;PROC eingangspruefung:IF aktschuljahr=""
+THEN aktschuljahr:=schulkenndatum(schuljahr);akthalbjahr:=schulkenndatum(
+schulhalbjahr)FI ;stundenplanhalbjahrsetzen(akthalbjahr,aktschuljahr);
+stundenplanbasisundstundenplanholen(fstatusstuplan);IF fstatusstuplan<>0AND 
+fstatusstuplan<>8THEN standardmeldung(meldnrstundenplanfehlt,"");pruefstatus
+:=fnrsuchparaphe;LEAVE eingangspruefungFI ;standardpruefe(1,fnrsuchparaphe,0,
+0,"",pruefstatus);IF pruefstatus<>0THEN LEAVE eingangspruefungELSE 
+fundparaphe:=standardmaskenfeld(fnrsuchparaphe);IF gueltigeparaphen=""THEN 
+holegueltigeparaphenFI ;IF parapheungueltigTHEN standardmeldung(
+meldnrungueltigeparaphe,"");pruefstatus:=fnrsuchparaphe;LEAVE 
+eingangspruefungELSE paraphe:=fundparapheFI ;standardpruefe(6,fnrstartdatum,0
+,0,"",pruefstatus);IF pruefstatus<>0THEN LEAVE eingangspruefungELSE 
+startdatum:=standardmaskenfeld(fnrstartdatum)FI ;INT VAR ug,og,wochentagnr;
+standardpruefe(2,fnrstartstunde,0,0,"",pruefstatus);IF pruefstatus<>0THEN 
+LEAVE eingangspruefungELSE wochentagnr:=tagnummer(startdatum);IF wochentagnr=
+6THEN og:=samstagstdELSE og:=stundenprotagFI ;ug:=erstestunde;standardpruefe(
+3,fnrstartstunde,ug,og,"",pruefstatus);IF pruefstatus<>0THEN LEAVE 
+eingangspruefungELSE startstunde:=standardmaskenfeld(fnrstartstunde)FI FI ;
+endedatum:=standardmaskenfeld(fnrendedatum);endestunde:=standardmaskenfeld(
+fnrendestunde);IF endedatum=""THEN endedatum:=startdatum;IF endestunde=""
+THEN endestunde:=startstunde;LEAVE eingangspruefungELSE standardpruefe(2,
+fnrendestunde,0,0,"",pruefstatus);IF pruefstatus<>0THEN LEAVE 
+eingangspruefungELIF wochentagnr=6THEN og:=samstagstdELSE og:=stundenprotag
+FI ;ug:=int(startstunde);standardpruefe(3,fnrendestunde,ug,og,"",pruefstatus)
+;IF pruefstatus<>0THEN LEAVE eingangspruefungFI FI ;ELSE standardpruefe(6,
+fnrendedatum,0,0,"",pruefstatus);IF pruefstatus<>0THEN LEAVE eingangspruefung
+FI ;standardpruefe(2,fnrendestunde,0,0,"",pruefstatus);IF pruefstatus<>0THEN 
+LEAVE eingangspruefungELSE wochentagnr:=tagnummer(endedatum);IF wochentagnr=6
+THEN og:=samstagstdELSE og:=stundenprotagFI ;ug:=erstestunde;standardpruefe(3
+,fnrendestunde,ug,og,"",pruefstatus);IF pruefstatus<>0THEN LEAVE 
+eingangspruefungFI ;FI ;dauer:=datum(endedatum)-datum(startdatum);pruefstatus
+:=fnrendedatum;IF dauer<0THEN standardmeldung(meldnrzweitesdatumkleiner,"");
+LEAVE eingangspruefungELIF dauer=0THEN IF int(endestunde)<int(startstunde)
+THEN standardmeldung(meldnrzweitesdatumkleiner,"");LEAVE eingangspruefungFI 
+ELIF dauer>7THEN standardmeldung(meldnrzulangevertretungsdauer,"");LEAVE 
+eingangspruefungELIF dauer>6THEN IF int(endestunde)>=int(startstunde)THEN 
+standardmeldung(meldnrzulangevertretungsdauer,"");LEAVE eingangspruefungFI 
+FI ;pruefstatus:=0;FI ;FI ;END PROC eingangspruefung;BOOL PROC 
+parapheungueltig:suchpos(gueltigeparaphen,fundparaphe,laengeparaphe)=0END 
+PROC parapheungueltig;PROC holegueltigeparaphen:gueltigeparaphen:="";
+inittupel(dnrlehrer);statleseschleife(dnrlehrer,"","",fnrlparaphe,fnrlparaphe
+,PROC paraphelesen)END PROC holegueltigeparaphen;PROC paraphelesen(BOOL VAR b
+):IF dbstatus<>0THEN b:=TRUE ELSE gueltigeparaphenCAT text(wert(fnrlparaphe),
+laengeparaphe)FI END PROC paraphelesen;BOOL PROC ungueltigesanrechnungskennz(
+TEXT CONST kennz):IF gueltigeanrechnungskennz=""THEN 
+holegueltigeanrechnungskennzFI ;pos(gueltigeanrechnungskennz,trenner+kennz+
+trenner)=0END PROC ungueltigesanrechnungskennz;PROC 
+holegueltigeanrechnungskennz:gueltigeanrechnungskennz:=trenner;inittupel(
+dnrschluessel);statleseschleife(dnrschluessel,sachgebietanrechnungskennz,"",
+fnrschlsachgebiet,fnrschlschluessel,PROC anrechnungskennzlesen)END PROC 
+holegueltigeanrechnungskennz;PROC anrechnungskennzlesen(BOOL VAR b):IF 
+dbstatus<>0COR wert(fnrschlsachgebiet)<>sachgebietanrechnungskennzTHEN b:=
+TRUE ELSE gueltigeanrechnungskennzCAT wert(fnrschlschluessel);
+gueltigeanrechnungskennzCAT trennerFI END PROC anrechnungskennzlesen;INT 
+PROC suchpos(TEXT CONST quelle,suchtext,INT CONST laenge):INT VAR findpos:=
+pos(quelle,suchtext);WHILE findpos>0REP IF findposMOD laenge=1THEN LEAVE 
+suchposWITH findposELSE findpos:=pos(quelle,suchtext,findpos+1);FI PER ;
+findposEND PROC suchpos;TEXT PROC jgstzweistellig(INT CONST intjgst):IF 
+intjgst=0THEN "00"ELIF intjgst>4AND intjgst<10THEN "0"+text(intjgst)ELSE text
+(intjgst)FI END PROC jgstzweistellig;INT PROC tagnummer(TEXT CONST 
+datumsangabe):(datum(datumsangabe)+5)MOD 7END PROC tagnummer;TEXT PROC 
+namedestags(INT CONST tagesnummer):SELECT tagesnummerOF CASE 0:"So"CASE 1:
+"Mo"CASE 2:"Di"CASE 3:"Mi"CASE 4:"Do"CASE 5:"Fr"CASE 6:"Sa"OTHERWISE ""END 
+SELECT .END PROC namedestags;TEXT PROC stundennummer(INT CONST istd):IF (istd
+MOD stundenprotag)=0THEN text(stundenprotag)ELSE text(istdMOD stundenprotag,2
+)FI END PROC stundennummer;INT PROC stundezu(TEXT CONST angtag,angstd):(
+tagnummer(angtag)-1)*stundenprotag+int(angstd)END PROC stundezu;END PACKET 
+vertretungenorganisieren
+

@@ -1,0 +1,145 @@
+(*************************************************************************)
+(*** Insertiert alle notwendigen Pakete, die zum Betrieb des Netzes    ***)
+(*** notwendig sind.                                                   ***)
+(*** Berücksichtigt nur EUMEL - Versionen ab  1.8.1, sowie             ***)
+(*** Multi-User-Version                                                ***)
+(***                                                                   ***)
+(***                                                                   ***)
+(*** 23.05.87  ar                                                      ***)
+(*************************************************************************)
+
+LET netfile = "netz",
+    multi files = "net files/M";
+
+
+INT CONST version :: id (0);
+THESAURUS VAR tesa;
+
+head;
+IF no privileged task
+     THEN errorstop (name (myself) + " ist nicht privilegiert!")
+  ELIF station number wrong
+       THEN errorstop ("'define station' vergessen ")
+FI;
+
+IF version < 181 THEN versionsnummer zu klein
+                 ELSE install net
+FI.
+
+no privileged task:
+   NOT (myself < supervisor).
+
+station number wrong:
+   station (myself) < 1.
+
+install net :
+   IF NOT exists (netfile)
+        THEN errorstop ("Datei " + netfile +" existiert nicht")
+   FI;
+   IF is multi THEN insert multi net
+               ELSE errorstop ("Diese Netzversion ist nur für Multi-user Versionen freigegeben")
+   FI;
+   forget ("net install", quiet);
+   net start.
+
+net start :
+    say line (" ");
+    do ("start");
+    do ("global manager (PROC (DATASPACE VAR, INT CONST, INT CONST, TASK CONST)
+                         net manager)").
+
+is multi :
+   (pcb(9) AND 255) > 1.
+
+insert multi net :
+   hole dateien vom archiv;
+   insert say and forget (tesa).
+
+hole dateien vom archiv :
+   fetch if necessary (multi files);
+   tesa := ALL (multi files);
+   forget (multi files, quiet);
+   fetch if necessary (tesa - all);
+   say line (" ");
+   say line ("Archiv-Floppy kann entnommen werden.");
+   release (archive).
+   
+   
+head :
+   IF online THEN page;
+                  put center (" E U M E L  -  Netz  wird  installiert.");
+                  line;
+                  put center ("----------------------------------------");
+                  line (2)
+   FI.
+
+versionsnummer zu klein : 
+   errorstop ("Netzsoftware erst ab Version 1.8.1 insertierbar !").
+ 
+PROC fetch if necessary (TEXT CONST datei) :
+   IF NOT exists (datei) THEN say line ("Loading """ + datei + """...");
+                              fetch (datei, archive)
+   FI.
+END PROC fetch if necessary;
+
+PROC fetch if necessary (THESAURUS CONST tes) :
+   do (PROC (TEXT CONST) fetch if necessary, tes)
+END PROC fetch if necessary;
+
+PROC insert say and forget (TEXT CONST name of packet): 
+   IF online THEN INT VAR cx, cy;
+                  put ("Inserting """ + name of packet + """..."); 
+                  get cursor (cx, cy)
+   FI;
+   insert (name of packet); 
+   IF online THEN cl eop (cx, cy); line FI;
+   forget (name of packet, quiet)
+END PROC insert say and forget;
+
+PROC insert say and forget (THESAURUS CONST tes): 
+   do (PROC (TEXT CONST) insert say and forget, tes)
+END PROC insert say and forget;
+
+PROC put center (TEXT CONST t):
+   put center (t, xsize);
+END PROC put center;
+
+PROC put center (INT CONST zeile, TEXT CONST t):
+   put center (zeile, t, xsize);
+END PROC put center;
+
+PROC put center (TEXT CONST t, INT CONST gesamtbreite):
+   INT VAR cy;
+   get cursor (cy, cy);
+   put center (cy, t, gesamtbreite)
+END PROC put center;
+
+PROC put center (INT CONST zeile, TEXT CONST t, INT CONST gesamtbreite):
+   cursor ((gesamtbreite - length (t)) DIV 2, zeile);
+   put (t).
+END PROC put center;
+
+PROC cl eol: 
+  out (""5"") 
+END PROC cl eol;
+
+PROC cl eop: 
+  out (""4"") 
+END PROC cl eop; 
+ 
+PROC cl eol (INT CONST cx, cy): 
+   cursor (cx, cy); 
+   cl eol 
+END PROC cl eol; 
+ 
+PROC cl eop (INT CONST cx, cy): 
+   cursor (cx, cy); 
+   cl eop 
+END PROC cl eop; 
+
+PROC say line (TEXT CONST t):
+    IF online THEN put line (t) FI
+ENDPROC say line;
+
+
+

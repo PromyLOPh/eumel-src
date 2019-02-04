@@ -1,0 +1,120 @@
+PACKET halbjahreswechselzumstundenplanDEFINES 
+halbjahreswechselzumstundenplanvorbereiten,
+halbjahreswechselzumstundenplanstarten,halbjahreswechselzumstundenplandrucken
+:LET maske="ms halbjahreswechsel zum stundenplan";INT VAR fnraktsj:=2,
+fnrakthj:=3,fnrgeplsj:=4,fnrgeplhj:=5,fnrauskunft:=6;LET 
+meldnrhalbjahreswechsellaeuft=156,meldnrinbearbeitung=352;FILE VAR prot;LET 
+protname="Protokoll zum Halbjahreswechsel";LET schuljahr="Schuljahr",
+schulhalbjahr="Schulhalbjahr",schulname="Schulname",schulort="Schulort";LET 
+aenderungsvermerk="c02 aenderungsvermerk",wertaktuell="aktuell",wertgeplant=
+"geplant";LET erstessj=1,letztessj=9900,naechstessj=101,ersteshj=1,letzteshj=
+2;TEXT CONST meldtextanfang:="Daten für ",meldtextexist:="  existieren.",
+meldtextexistnicht:="  existierten nicht.",meldtextgeloescht:=
+"  wurden gelöscht.",ueberschrift:=
+"Schulhalbjahreswechsel in Daten der Unterrichtsorganisation",untertitel1:=
+"Wechsel von Schuljahr ",untertitel2:="        zum Schuljahr ",halbjahr:=
+". Halbjahr",namestundenplan:="Stundenplan";LET strich="-",schraegstrich="/",
+doppelpunkt=":",kennzhell="#";LET laengedatname=30;TEXT VAR aktsj:="",akthj:=
+"",geplsj,geplhj;INT VAR bearbsj,bearbhj,gelesensj,gelesenhj,intaktsj,
+intakthj,intgeplsj,intgeplhj;INT VAR dateinummer;TEXT VAR auszeile,dateiname;
+LET logbucheintraghjwechsel=
+"Anw. 4.7.1 Halbjahreswechsel z. Unterrichtsorg. ";PROC 
+halbjahreswechselzumstundenplanvorbereiten:standardstartproc(maske);IF aktsj=
+""THEN aktsj:=schulkenndatum(schuljahr);akthj:=schulkenndatum(schulhalbjahr)
+FI ;geplsj:=aktsj;geplhj:=akthj;geplanteshjundsjberechnen(geplhj,geplsj);
+standardmaskenfeld(aktsj,fnraktsj);standardmaskenfeld(akthj,fnrakthj);
+standardmaskenfeld(geplsj,fnrgeplsj);standardmaskenfeld(geplhj,fnrgeplhj);
+infeld(fnraktsj);standardfelderausgeben;infeld(fnrauskunft);standardnprocEND 
+PROC halbjahreswechselzumstundenplanvorbereiten;PROC 
+halbjahreswechselzumstundenplanstarten:standardmeldung(
+meldnrhalbjahreswechsellaeuft,"");logeintrag(logbucheintraghjwechsel+
+"gestartet");protokollvorbereiten;ausgabekopfaufbereiten;
+halbjahreswechselvorbereiten;wechselfuerbestand(dnraktschuelergruppen);
+wechselfuerbestand(dnrzeitraster);wechselfuerbestand(dnraufsichtszeiten);
+wechselfuerbestand(dnrzeitwuensche);wechselfuerbestand(dnrfaecherangebot);
+wechselfuerbestand(dnrlehrveranstaltungen);wechselfuerbestandstundenplan;
+wechselfuerbestand(dnraufsichtsplan);logeintrag(logbucheintraghjwechsel+
+"beendet");aenderungsvermerkfuerstundenplansetzen;zeigedatei(protname,"").
+protokollvorbereiten:forget(protname,quiet);prot:=sequentialfile(output,
+protname).ausgabekopfaufbereiten:putline(prot,schulkenndatum(schulname));
+putline(prot,text(schulkenndatum(schulort),65)+date);line(prot);putline(prot,
+ueberschrift);putline(prot,length(ueberschrift)*strich);line(prot);auszeile:=
+untertitel1;auszeileCAT subtext(aktsj,1,2);auszeileCAT schraegstrich;auszeile
+CAT subtext(aktsj,3,4);auszeileCAT " , ";auszeileCAT akthj;auszeileCAT 
+halbjahr;putline(prot,auszeile);auszeile:=untertitel2;auszeileCAT subtext(
+geplsj,1,2);auszeileCAT schraegstrich;auszeileCAT subtext(geplsj,3,4);
+auszeileCAT " , ";auszeileCAT geplhj;auszeileCAT halbjahr;putline(prot,
+auszeile);line(prot).halbjahreswechselvorbereiten:intaktsj:=int(aktsj);
+intakthj:=int(akthj);intgeplsj:=int(geplsj);intgeplhj:=int(geplhj);
+dateinummer:=0.aenderungsvermerkfuerstundenplansetzen:inittupel(dnrschluessel
+);putwert(fnrschlsachgebiet,aenderungsvermerk);putwert(fnrschlschluessel,
+wertaktuell);search(dnrschluessel,TRUE );IF dbstatus=0THEN delete(
+dnrschluessel);FI ;putwert(fnrschlsachgebiet,aenderungsvermerk);putwert(
+fnrschlschluessel,wertgeplant);search(dnrschluessel,TRUE );IF dbstatus=0THEN 
+putwert(fnrschlschluessel,wertaktuell);update(dnrschluessel);FI .END PROC 
+halbjahreswechselzumstundenplanstarten;PROC wechselfuerbestand(INT CONST 
+dateinr):standardmeldung(meldnrinbearbeitung,name(dateinr)+kennzhell);
+dateinamefuerausgabevorbereiten;erstensatzlesen;WHILE 
+geleseneshalbjahrkleineraktuelleshalbjahrREP IF wechselliegtvorTHEN 
+zeilezuhalbjahrausgeben(meldtextgeloescht,gelesensj,gelesenhj)FI ;
+satzloeschen;satzlesenPER ;IF geleseneshalbjahrgleichaktuelleshalbjahrTHEN 
+zeilezuhalbjahrausgeben(meldtextgeloescht,gelesensj,gelesenhj);REP 
+satzloeschen;satzlesenUNTIL NOT geleseneshalbjahrgleichaktuelleshalbjahrPER 
+ELSE zeilezuhalbjahrausgeben(meldtextexistnicht,intaktsj,intakthj)FI ;IF 
+geleseneshalbjahrgleichgeplanteshalbjahrTHEN zeilezuhalbjahrausgeben(
+meldtextexist,intgeplsj,intgeplhj)ELSE zeilezuhalbjahrausgeben(
+meldtextexistnicht,intgeplsj,intgeplhj)FI ;bearbsj:=gelesensj;bearbhj:=
+gelesenhj;WHILE nochsaetzedaREP IF wechselliegtvorTHEN 
+zeilezuhalbjahrausgeben(meldtextexist,gelesensj,gelesenhj)FI ;
+naechsteshalbjahrsuchenPER .dateinamefuerausgabevorbereiten:line(prot);
+dateinummerINCR 1;dateiname:=text(dateinummer);dateinameCAT ". ";dateiname
+CAT name(dateinr);dateinameCAT doppelpunkt;dateiname:=text(dateiname,
+laengedatname).geleseneshalbjahrkleineraktuelleshalbjahr:dbstatus=0AND ((
+gelesensj<intaktsj)OR (gelesensj=intaktsjAND gelesenhj<intakthj)).
+geleseneshalbjahrgleichaktuelleshalbjahr:dbstatus=0AND (gelesensj=intaktsj
+AND gelesenhj=intakthj).geleseneshalbjahrgleichgeplanteshalbjahr:dbstatus=0
+AND (gelesensj=intgeplsjAND gelesenhj=intgeplhj).nochsaetzeda:dbstatus=0.
+erstensatzlesen:bearbsj:=0;bearbhj:=-1;first(dateinr);gelesensj:=intwert(
+dateinr+1);gelesenhj:=intwert(dateinr+2).satzlesen:succ(dateinr);gelesensj:=
+intwert(dateinr+1);gelesenhj:=intwert(dateinr+2).satzloeschen:delete(dateinr)
+.naechsteshalbjahrsuchen:putintwert(dateinr+2,bearbhj+1);search(dateinr,
+FALSE );gelesensj:=intwert(dateinr+1);gelesenhj:=intwert(dateinr+2).
+wechselliegtvor:IF bearbsj<>gelesensjOR bearbhj<>gelesenhjTHEN bearbsj:=
+gelesensj;bearbhj:=gelesenhj;TRUE ELSE FALSE FI .END PROC wechselfuerbestand;
+PROC wechselfuerbestandstundenplan:INT VAR fstatusstuplan;standardmeldung(
+meldnrinbearbeitung,namestundenplan+kennzhell);
+dateinamefuerausgabevorbereiten;gelesensj:=erstessj;WHILE gelesensj<=
+letztessjREP FOR gelesenhjFROM ersteshjUPTO letzteshjREP 
+stundenplanhalbjahrsetzen(text(gelesenhj),gelesensjaufbereitet);IF 
+geleseneshalbjahrkleineraktuelleshalbjahrTHEN IF stundenplandatenvorhanden
+THEN stundenplanbasisundstundenplanloeschen(fstatusstuplan);
+zeilezuhalbjahrausgeben(meldtextgeloescht,gelesensj,gelesenhj)FI ELIF 
+geleseneshalbjahrgleichaktuelleshalbjahrTHEN IF stundenplandatenvorhanden
+THEN stundenplanbasisundstundenplanloeschen(fstatusstuplan);
+zeilezuhalbjahrausgeben(meldtextgeloescht,gelesensj,gelesenhj)ELSE 
+zeilezuhalbjahrausgeben(meldtextexistnicht,gelesensj,gelesenhj)FI ELIF 
+geleseneshalbjahrgleichgeplanteshalbjahrTHEN IF stundenplandatenvorhanden
+THEN zeilezuhalbjahrausgeben(meldtextexist,gelesensj,gelesenhj)ELSE 
+zeilezuhalbjahrausgeben(meldtextexistnicht,gelesensj,gelesenhj)FI ELSE IF 
+stundenplandatenvorhandenTHEN zeilezuhalbjahrausgeben(meldtextexist,gelesensj
+,gelesenhj)FI FI PER ;gelesensj:=gelesensj+naechstessjPER .
+geleseneshalbjahrkleineraktuelleshalbjahr:(gelesensj<intaktsj)OR (gelesensj=
+intaktsjAND gelesenhj<intakthj).geleseneshalbjahrgleichaktuelleshalbjahr:
+gelesensj=intaktsjAND gelesenhj=intakthj.
+geleseneshalbjahrgleichgeplanteshalbjahr:gelesensj=intgeplsjAND gelesenhj=
+intgeplhj.gelesensjaufbereitet:TEXT VAR ausgabesj:="000"+text(gelesensj);
+subtext(ausgabesj,length(ausgabesj)-3).dateinamefuerausgabevorbereiten:line(
+prot);dateinummerINCR 1;dateiname:=text(dateinummer);dateinameCAT ". ";
+dateinameCAT namestundenplan;dateinameCAT doppelpunkt;dateiname:=text(
+dateiname,laengedatname).END PROC wechselfuerbestandstundenplan;PROC 
+zeilezuhalbjahrausgeben(TEXT CONST ergaenzung,INT CONST aussj,aushj):TEXT 
+VAR ausgabesj:="000"+text(aussj);ausgabesj:=subtext(ausgabesj,length(
+ausgabesj)-3);auszeile:=dateiname;auszeileCAT meldtextanfang;auszeileCAT 
+subtext(ausgabesj,1,2);auszeileCAT schraegstrich;auszeileCAT subtext(
+ausgabesj,3,4);auszeileCAT schraegstrich;auszeileCAT text(aushj);auszeileCAT 
+ergaenzung;putline(prot,auszeile);dateiname:=laengedatname*" ".END PROC 
+zeilezuhalbjahrausgeben;PROC halbjahreswechselzumstundenplandrucken(BOOL 
+CONST drucken):IF druckenTHEN print(protname)FI ;forget(protname,quiet);enter
+(2)END PROC halbjahreswechselzumstundenplandrucken;END PACKET 
+halbjahreswechselzumstundenplan
+

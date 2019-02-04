@@ -1,0 +1,135 @@
+(*************************************************************************)
+(*** Generiert Für IBM-AT einen neuen SYSUR-Zweig.                     ***)
+(*** Danach wird die eingebaute Hardwareuhr für die Systemzeit benutzt ***)
+(*** und andere Partitionen können mit neuem 'shutup' gebootet werden. ***)
+(***                                                                   ***)
+(*** Autor : W. Sauerwein                             Stand : 15.07.86 ***)
+(*************************************************************************)
+
+LET ack = 0,
+    nak = 1;
+ 
+cl eop (1, 4);
+erzeuge collector;
+erzeuge archive manager;
+erzeuge operator;
+erzeuge configurator;
+loesche collector;
+forget ("AT Generator", quiet);
+break.
+
+loesche collector :
+   end (/"colly");
+   put ("Collector gelöscht.");
+   line (2).
+
+erzeuge collector :
+   put line ("Generating 'Collector'...");
+   begin ("colly", PROC generate collector, t);
+   warte auf meldung;
+   IF answer = nak THEN end (/"colly");
+                        errorstop (meldung)
+   FI.
+   TASK VAR t.
+
+erzeuge archive manager :
+   put line ("Generating 'ARCHIVE'...");
+   end (/"ARCHIVE");
+   begin ("ARCHIVE", PROC archive manager, t).
+
+erzeuge operator :
+   put line ("Generating 'OPERATOR'...");
+   end (/"OPERATOR");
+   begin ("OPERATOR", PROC monitor, t).
+ 
+erzeuge configurator :
+   put line ("Generating 'configurator'...");
+   end (/"configurator");
+   begin ("configurator", PROC generate configurator, t); 
+   warte auf meldung;
+   IF answer = nak THEN errorstop (meldung) FI.
+ 
+warte auf meldung : 
+   DATASPACE VAR ds; INT VAR answer; 
+   wait (ds, answer, t);
+   BOUND TEXT VAR m := ds;
+   TEXT VAR meldung := m;
+   forget (ds).
+ 
+PROC generate collector :
+
+   disable stop;
+   fetch all (/"configurator");
+   DATASPACE VAR ds := nilspace;
+   BOUND TEXT VAR m := ds; m := "";
+   send (father, mess, ds);
+   forget (ds);
+   free global manager.
+ 
+mess : IF is error THEN m := error message;
+                        nak
+                   ELSE ack FI.
+
+END PROC generate collector;
+
+PROC generate configurator :
+
+   disable stop;
+   fetch all (/"colly");
+   DATASPACE VAR ds := nilspace; 
+   BOUND TEXT VAR m := ds; m := "";
+   send (father, mess, ds);
+   forget (ds);
+   enable stop;
+   new configuration;
+   setup;
+   global manager (PROC ( DATASPACE VAR, INT CONST, INT CONST, TASK CONST) 
+                   configuration manager with time).
+
+mess : IF is error THEN m := error message;
+                        nak
+                   ELSE ack FI.
+
+END PROC generate configurator;
+
+TEXT PROC inverse (TEXT CONST t):
+  ""15"" + t + " " + ""14""
+END PROC inverse;
+
+PROC put center (TEXT CONST t):
+   put center (t, 80)
+END PROC put center;
+
+PROC put center (INT CONST zeile, TEXT CONST t):
+   put center (zeile, t, 80)
+END PROC put center;
+
+PROC put center (TEXT CONST t, INT CONST gesamtbreite):
+   INT VAR cy;
+   get cursor (cy, cy);
+   put center (cy, t, gesamtbreite)
+END PROC put center;
+
+PROC put center (INT CONST zeile, TEXT CONST t, INT CONST gesamtbreite):
+   cursor ((gesamtbreite - length (t)) DIV 2, zeile);
+   put (t).
+END PROC put center;
+
+PROC cl eol: 
+  out (""5"") 
+END PROC cl eol;
+
+PROC cl eop: 
+  out (""4"") 
+END PROC cl eop; 
+ 
+PROC cl eol (INT CONST cx, cy): 
+   cursor (cx, cy); 
+   cl eol 
+END PROC cl eol; 
+ 
+PROC cl eop (INT CONST cx, cy): 
+   cursor (cx, cy); 
+   cl eop 
+END PROC cl eop; 
+

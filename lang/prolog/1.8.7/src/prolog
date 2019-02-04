@@ -1,0 +1,2488 @@
+PACKET  prolog                                   (* Autor: P.Heyderhoff *) 
+DEFINES                                          (* Date:  03.07.1987   *) 
+        prolog, prolog again: 
+ 
+{ GLOBALS } 
+ 
+LET { Stacksize parameter } 
+    limit = 800; 
+ 
+LET { nil-POINTER } 
+    nil = 0; 
+ 
+LET { bootstrap rules } 
+    boot = """|"".""!"".""MOD"".""-"".""+"".""*"".""/"".bye.listing. 
+call(X).write(X).writeq(X).read(X).get(X).get0(X).put(X).incr(X). 
+assertz(X).asserta(X).retract(X).var(X). 
+X IS Y.X=X.X<>Y.X<=Y.X==Y.X=..Y.clause(X,_).name(X,Y). 
+arg(X,Y,Z).functor(X,Y,Z).elan(X).elan(X,Y)"; 
+ 
+LET { bootstrap symbols, see: boot } 
+    cons=1, cut=2, mod=3, {TOKEN: minus=4, plus=5, times=6, slash=7} 
+    bye=8, list=9, call=10, xpar=11, 
+    writ=12, wriq=13, read=14, get=15, get0=16, put0=17, 
+    incr=18, ass=19, assa=20, retr=21, vari=22, 
+    is=23, ypar=24, dif=26, leq=27, eq=28, univ=29, clau=30, claupar=31, 
+    nam=32, argi=33, zpar=34, func=35, 
+    elan=36, build ins=33; 
+ 
+LET { TOKENS } 
+    stroke=1, exclamation=2, colon=3, minus=4, plus=5, times=6, slash=7, 
+    underscore=8, less=9, equal=10, uneq=11, grt=12, eqeq=13, 
+    eqdotdot=14, period=15, comma=17, semicolon=18, 
+    open paren=19, close paren=20, open bracket=21, close bracket=22, 
+    end of input=23, boldvar=24, number=25, identifier=26; 
+ 
+LET { SYMBOLTYPES } 
+    tag=1, bold=2, num=3, tex=4, operator=5, delimiter=6, end of file=7, 
+    within com=8, within tex=9; 
+ 
+INT CONST integer:= -1, var:= -2; 
+ 
+LET TOKEN = INT; 
+ 
+LET SYMBOLTYPE = INT; 
+ 
+LET SYMBOL = INT; 
+LET SYMBOLTABLE = THESAURUS; 
+ 
+LET TERMS = INT; 
+{ LET TERMSCELL = STRUCT (TERM first, 
+                          TERMS rest); } 
+LET TERM = STRUCT (SYMBOL symbol, 
+                   TERMS arguments, 
+                   INT arity); 
+ 
+LET CLAUSES = INT; 
+{ LET CLAUSESCELL = STRUCT (TERMS first, 
+                            CLAUSES rest); } 
+LET FRAME = INT; 
+LET FRAMECELL = STRUCT (TERM call, 
+                        FRAME father, 
+                        TERMS subgoals, { remaining } 
+                        ENVIRONMENT environment, 
+                        EXPRESSIONS reset, 
+                        CLAUSES rest { potential rules }, 
+                        FRAME level ); 
+ 
+LET ENVIRONMENT = INT; 
+LET ENVIRONMENTCELL = STRUCT (SUBSTITUTION first, 
+                              ENVIRONMENT rest); 
+LET SUBSTITUTION = STRUCT (TERM variable, 
+                           TERM substitute, 
+                           FRAME others); 
+ 
+LET FRAMESTACK = STRUCT (FRAME frame, goalframe, removed goal, 
+                         INT last tp, last kp, last fp, last np); 
+ 
+LET EXPRESSIONS = INT; 
+ 
+LET EXPRESSION = STRUCT (TERM term, 
+                         FRAME index); 
+ 
+TEXT VAR tcsymbol, tcarguments, tcarity, tcrest; INT VAR tp; 
+ 
+TEXT VAR kcfirst, kcrest; INT VAR kp; 
+ 
+ROW limit FRAMECELL VAR fc; INT VAR fp; 
+ 
+ROW limit ENVIRONMENTCELL VAR nc; INT VAR np; 
+ 
+ROW limit FRAMESTACK VAR fsc; INT VAR fsp; 
+ 
+ROW limit EXPRESSION VAR ec; INT VAR ep; 
+ 
+ROW limit CLAUSES VAR freec; INT VAR freep; 
+ 
+SYMBOL VAR look ahead value; 
+TEXT   VAR look ahead symbol, ahead symbol; 
+BOOL   VAR look ahead empty,  ahead empty; 
+INT    VAR look ahead token,  ahead symboltype; 
+ 
+SYMBOL VAR pattern; 
+ 
+TERMS VAR ts; 
+ 
+TERM VAR t, t2, t3; 
+ 
+CLAUSES VAR k, kl, knowledge base, candidates; 
+ 
+FRAME VAR root, cut level, res frame; 
+ 
+SYMBOLTABLE VAR symboltable, reset symboltable; 
+ 
+FILE VAR file; 
+ 
+BOOL VAR from file, tracing, testing, found, quoting, free of errors, finish; 
+ 
+INT  VAR i, j, reset tp, reset kp, reset freep, anonym value, 
+         inference level, inference count, rule count; 
+ 
+TEXT VAR command; 
+ 
+REAL VAR start time:= 0.0; 
+ 
+PROC init globals: 
+   tp := nil; kp:= nil; 
+   tracing:= FALSE; 
+   testing:= FALSE; 
+   symboltable:= empty thesaurus; 
+   reset symboltable:= symboltable; 
+   reset tp:= nil; 
+   reset kp:= nil; 
+   reset freep:= nil; 
+   knowledge base:= nil; 
+   from file:= FALSE; 
+   inference count:= 0; 
+   tcsymbol:=""; 
+   tcarguments:=""; 
+   tcarity:=""; 
+   tcrest:=""; 
+   kcfirst:=""; 
+   kcrest:=""; 
+   quoting:= TRUE 
+ENDPROC init globals; 
+ 
+PROC init prooftree: 
+   root := nil; 
+   freep:= reset freep; 
+   fp:= nil; fsp:= nil; np:= nil; ep:= nil; tp:= reset tp; kp:= reset kp; 
+   symboltable:= reset symboltable; 
+   free of errors:= TRUE; 
+   candidates:= nil; 
+   new (fp, root); 
+   fc(root):= FRAMECELL:(t, nil, nil, nil, nil, nil, 0); 
+   anonym value:= 0; 
+   collect heap garbage; 
+   finish:= FALSE 
+ENDPROC init proof tree; 
+  
+PROC prolog (TEXT CONST knowledge): 
+   line; 
+   last param (knowledge); 
+   init globals; 
+   bootstrap; 
+   IF   exists (knowledge) THEN consult (knowledge) FI; 
+   IF   free of errors 
+   THEN prolog again 
+   FI; 
+   last param (knowledge). 
+ 
+ bootstrap: 
+   TERMS VAR clauses:= nil; 
+   init proof tree; 
+   look ahead empty:= TRUE; ahead empty:= TRUE; 
+   scan (boot); 
+   WHILE look ahead <> end of input 
+   REP read clause; 
+       assertz (clauses); 
+       clauses:= nil 
+   PER; 
+   reset tp:= tp; 
+   reset kp:= kp; 
+   reset symboltable:= symboltable. 
+ 
+ read clause: 
+   TERM VAR term; 
+   read term (term); 
+   IF   look ahead = period 
+   THEN remove token 
+   FI; 
+   insert term in clauses. 
+ 
+ insert term in clauses: 
+   TERMS VAR tmp; 
+   new tp (tmp); 
+   replace(tcsymbol,tmp,term.symbol); 
+   replace(tcarguments,tmp,term.arguments); 
+   replace(tcarity,tmp,term.arity); 
+   replace(tcrest,tmp, clauses); 
+   clauses:= tmp. 
+ 
+ remove token: 
+   look ahead empty:= TRUE. 
+ 
+ENDPROC prolog; 
+ 
+BOOL PROC prolog (TEXT CONST query, TEXT VAR answer): 
+   disable stop; 
+   init prooftree; 
+   read goals; 
+   BOOL VAR result:= NOT prove; 
+   answer is value of last variable; 
+   result . 
+ 
+ read goals: 
+   scan (query); 
+   look ahead empty:= TRUE; ahead empty:= TRUE; 
+   from file:= FALSE; 
+   fc(root).subgoals:= nil; 
+   read terms (fc(root).subgoals); 
+   IF   look ahead = period 
+   THEN remove token 
+   FI; 
+   IF   look ahead <> end of input 
+   THEN syntax error ("unexpected characters after last goal") 
+   FI. 
+ 
+ answer is value of last variable: 
+   IF fc(root).environment <> nil 
+   THEN 
+        value (nc(fc(root).environment).first.variable, t, root); 
+        file:= sequential file (output, "$$"); 
+        sysout ("$$"); 
+        write term backward (t); 
+        sysout (""); 
+        input (file); 
+        getline (file, answer); 
+        forget ("$$", quiet) 
+   ELSE answer:= "" 
+   FI . 
+ 
+ remove token: 
+   look ahead empty:= TRUE. 
+ 
+ENDPROC prolog; 
+ 
+PROC prolog again: 
+   disable stop; 
+   lernsequenz auf taste legen ("q","bye"13""); 
+   write (""13""10""5"?- "); 
+   REP 
+         init proof tree; 
+         initiate read terms (fc(root).subgoals, "-"); 
+         read goals; 
+         prove goals; 
+   UNTIL finish 
+   PER; 
+   lernsequenz auf taste legen ("q","break"13""). 
+   
+ read goals: 
+   IF   is error 
+   THEN c:= "?" 
+   ELIF look ahead = open bracket 
+   THEN remove token; 
+        read consult list 
+   ELSE read terms (fc(root).subgoals); 
+        IF   look ahead = period 
+        THEN remove token 
+        FI; 
+        IF   look ahead <> end of input 
+        THEN syntax error ("unexpected characters after last goal") 
+        FI 
+   FI. 
+ 
+ prove goals: 
+   IF  tracing THEN inference level:= 0; line FI; 
+   inference count:= 0; 
+   start time:= clock (0); 
+   REP 
+        IF   c <> "?" CAND prove 
+        THEN IF tracing THEN line FI; 
+             write ("   no"13""10""5"?- "); 
+             LEAVE prove goals 
+        ELSE IF tracing THEN inference level:= 0 FI; 
+             get cursor (i,j); IF i > 1 THEN line FI; 
+             IF   is error 
+             THEN put error; clear error; putline (""4""{cleop}); 
+                  free of errors:= FALSE; 
+                  sysout (""); sysin (""); 
+                  putline ("type '?' to get explanations"); 
+                  putline ("type ';' to try next alternative"); 
+                  putline ("type any other key to stop") 
+             ELSE write answers 
+             FI; 
+             get cursor (i, j); 
+             write (""10""10""13""5"?- "); 
+             getchar (c); 
+             TEXT VAR c; 
+             SELECT pos ("?;",c) OF 
+             CASE 1:    write ("?"); 
+                        inform 
+             CASE 2:    write (""13""5""3""3""); 
+                        get cursor (j, k); 
+                        cursor (i, k); 
+                        putline (";"); 
+             OTHERWISE  IF c >= " " COR c = ""27"" THEN push (c) FI; 
+                        LEAVE prove goals 
+             END SELECT; 
+             IF tracing THEN line FI; 
+             IF   is error 
+             THEN put error; clear error; putline (""4""{cleop}) 
+             FI 
+        FI 
+   PER. 
+ 
+ write answers: 
+   write ("   "); 
+   IF   fc(root).environment = nil 
+   THEN IF free of errors THEN put ("yes") ELSE put ("no") FI 
+   ELSE write environment list (root) 
+   FI. 
+ 
+ remove token: 
+   look ahead empty:= TRUE. 
+ 
+ENDPROC prolog again; 
+ 
+PROC prolog: prolog (last param) ENDPROC prolog; 
+  
+BOOL PROC prove: 
+   enable stop; 
+   initialize prove; 
+   find potential candidates. 
+ 
+ handle remaining subgoals: 
+   { all subgoals to the left are solved } 
+   IF   subgoals remain 
+   THEN get candidates 
+   ELSE LEAVE prove WITH FALSE 
+   FI. 
+ 
+ find potential candidates: 
+   REP  try one candidate PER; TRUE. 
+ 
+ try one candidate: 
+   { all candidates tried do not unify with the current goal } 
+   IF   head of one candidate unifies with the current goal 
+   THEN push frame; 
+        handle remaining subgoals 
+   ELSE backtrack to the parent of the current goal 
+   FI. 
+ 
+ backtrack to the parent of the current goal: 
+   { none of the candidates unify with the current goal } 
+   IF   prooftree exhausted 
+   THEN LEAVE prove WITH TRUE 
+   ELSE pop frame 
+   FI. 
+ 
+ prooftree exhausted: fsp = 1. 
+ 
+ initialize prove: 
+   TERM VAR curr call; 
+   FRAME VAR curr frame, top frame; 
+   EXPRESSIONS VAR last ep; 
+   IF   fsp = nil 
+   THEN curr frame:= root; 
+        push frame; 
+        handle remaining subgoals 
+   ELSE IF tracing THEN line FI; 
+        backtrack to the parent of the current goal 
+   FI. 
+ 
+ head of one candidate unifies with the current goal: 
+   son  { curr frame is the resulting next son }. 
+  
+ subgoals remain: 
+   select frame {(curr frame, curr call)}. 
+ 
+ push frame: 
+   fsp INCR 1; 
+   fsc(fsp).frame:= curr frame; 
+   fsc(fsp).goalframe:= nil; 
+   fsc(fsp).last tp:= tp; 
+   fsc(fsp).last kp:= kp; 
+   fsc(fsp).last fp:= fp; 
+   fsc(fsp).last np:= np. 
+ 
+ pop frame: 
+   { fsp <> nil } 
+   top frame:= fsc(fsp).frame; 
+   curr frame:= fc(top frame).father; 
+   reinsert current call as subgoal; 
+   curr call:= fc(top frame).call; 
+   candidates:= fc(top frame).rest; 
+   cut level:= fc(top frame).level; 
+   tp:= fsc(fsp).last tp; 
+   kp:= fsc(fsp).last kp; 
+   fp:= fsc(fsp).last fp; 
+   np:= fsc(fsp).last np; 
+   fsp DECR 1; 
+   IF   tracing CAND inference level > 0 CAND NOT testing 
+   THEN write (""13""5""3""5""); inference level DECR 1 
+   FI; 
+   undo bindings (fc(top frame).reset). 
+ 
+ reinsert current call as subgoal:  
+   IF   fsc(fsp).goalframe <> nil 
+   THEN fc(fsc(fsp).goalframe).subgoals:= fsc(fsp).removed goal 
+   FI. 
+  
+ select frame: 
+   REP 
+       IF   next call 
+       THEN LEAVE select frame WITH TRUE 
+       FI; 
+       curr frame:= fc(curr frame).father 
+   UNTIL curr frame = nil PER; 
+   FALSE. 
+ 
+ next call: 
+   ts:= fc(curr frame).subgoals; 
+   IF   ts = nil 
+   THEN FALSE 
+   ELSE remove subgoals; TRUE 
+   FI. 
+ 
+ remove subgoals: 
+   curr call:= TERM:(tcsymbolISUBts, tcargumentsISUBts, tcarityISUBts); 
+   fc(curr frame).subgoals:= (tcrestISUB(ts)) ; 
+   fsc(fsp).goalframe:= curr frame; 
+   fsc(fsp).removed goal:= ts. 
+ 
+ get candidates: 
+   initialize clauses; 
+   WHILE more knowledge 
+   REP  find next clause candidate in knowledge base PER 
+   { candidates = a list of clauses which may be unifiable with curr call } . 
+ 
+ initialize clauses: 
+   fc(curr frame).level:= cut level; 
+   cut level:= curr frame; 
+   IF   curr call.arity = var 
+   THEN IF   bound (curr call, curr frame, curr call, ts) THEN FI; 
+        IF   curr call.arity = var 
+        THEN take goal itself as candidate; LEAVE get candidates 
+        FI 
+   FI; 
+   k:= knowledge base; 
+   found:= FALSE; 
+   candidates:= nil. 
+ 
+ take goal itself as candidate: 
+   new kp (candidates); 
+   replace (kcfirst, candidates, goal itself); 
+   replace (kcrest, candidates, nil). 
+ 
+ goal itself: 
+   new tp (ts); 
+   replace(tcsymbol,ts,curr call.symbol); 
+   replace(tcarguments,ts, curr call.arguments); 
+   replace(tcarity,ts, curr call.arity); 
+   replace(tcrest,ts, nil); 
+   ts. 
+ 
+ find next clause candidate in knowledge base: 
+   IF   (tcsymbolISUB((kcfirstISUB(k)) )) = curr call.symbol 
+   THEN found:= TRUE; 
+        IF   (tcarityISUB((kcfirstISUB(k)) ))  = curr call.arity 
+        THEN insert clause in candidates 
+        FI 
+   ELIF found 
+   THEN LEAVE get candidates 
+   FI; 
+   k:= (kcrestISUB(k)) . 
+ 
+ more knowledge: k <> nil. 
+ 
+ insert clause in candidates: 
+   kl:= candidates; 
+   new kp (candidates); 
+   replace(kcfirst,candidates,kcfirstISUBk); 
+   replace(kcrest, candidates, kl). 
+ 
+ son: 
+   { If rules has n sons, then this refinement will return TRUE the first 
+     n times, it is called and FALSE forever after. 
+     IF son then curr frame has become a frame for the next son. 
+     So this refinement helps to construct the prooftree. 
+   } 
+ 
+   IF   candidates = nil 
+   THEN FALSE 
+   ELSE create next son 
+   FI. 
+ 
+ create next son: 
+   initialize son; 
+   REP try to unify curr call with candidates 
+   UNTIL candidates exhausted PER; 
+   { not unified } 
+   forget son. 
+  
+ initialize son: 
+   last ep:= ep; 
+   new (fp, res frame); 
+   fc(res frame).environment:= nil. 
+ 
+ try to unify curr call with candidates: 
+   k:= (kcfirstISUB(candidates)) ; 
+   IF 
+   unify (curr call, 
+          curr frame, 
+          TERM:(tcsymbolISUBk, tcargumentsISUBk, tcarityISUBk), 
+          res frame) 
+   THEN 
+        IF tracing THEN trace unification results FI; 
+        apply rule; 
+        fill result frame 
+   ELSE remove curr call from candidates 
+   FI. 
+ 
+ candidates exhausted: candidates = nil. 
+ 
+ forget son: 
+   fp DECR 1; FALSE. 
+ 
+ fill result frame: 
+   ts:= (kcfirstISUB(candidates)) ; 
+   fc(res frame):= FRAMECELL:(curr call, 
+                              curr frame, 
+                              tcrestISUBts, 
+                              fc(res frame).environment, 
+                              last ep, 
+                              (kcrestISUB(candidates)) , 
+                              cut level); 
+   curr frame:= res frame; 
+   LEAVE son WITH TRUE. 
+ 
+ remove curr call from candidates: 
+   candidates:= (kcrestISUB(candidates)) ; 
+   LEAVE try to unify curr call with candidates. 
+  
+ apply rule: 
+   SELECT   curr call.symbol OF 
+   CASE cons: {cons, to construct lists, see PROC unify} 
+   CASE cut:  fc(res frame):= FRAMECELL:(curr call, curr frame, nil, 
+                fc(res frame).environment, last ep, nil, cut level); 
+              curr frame:= res frame; 
+              FOR ts FROM fp DOWNTO cut level 
+              REP fc(ts).rest:= nil PER; 
+              LEAVE son WITH TRUE 
+   CASE bye:  IF   curr call.arity = 0 
+              THEN push (""13""); 
+                   finish:= TRUE 
+              FI 
+   CASE list: IF   curr call.arity = 0 COR curr call.arity = 1 
+              THEN found:= TRUE; 
+                   IF   curr call.arity = 0 
+                   THEN pattern:= cut 
+                   ELSE value (argfirst, t, curr frame); 
+                        pattern:= t.symbol 
+                   FI; 
+                   write knowledgebase (knowledge base) 
+              FI 
+   CASE call: undo bindings (last ep); 
+              new tp (ts); 
+              replace(tcrest,ts, fc(curr frame).subgoals); 
+              fc(curr frame).subgoals:= ts; 
+              value (argfirst, t, curr frame); 
+              t.arguments:= revers (t.arguments); 
+              replace(tcsymbol,ts, t.symbol); 
+              replace(tcarguments,ts, t.arguments); 
+              replace(tcarity,ts, t.arity); 
+              LEAVE son WITH TRUE 
+   CASE xpar: {X parameter of call} 
+   CASE writ: IF   curr call.arity = 1 
+              THEN value (argfirst, t, curr frame); 
+                   quoting:= FALSE; 
+                   write term backward (t); write (" "); 
+                   quoting:= TRUE 
+              FI 
+   CASE wriq: IF   curr call.arity = 1 
+              THEN value (argfirst, t, curr frame); 
+                   write term backward (t); write (" ") 
+              FI 
+   CASE read: IF   curr call.arity <> 1 
+              THEN 
+              ELIF argfirst.arity = var 
+              THEN initiate read terms (ts, 
+                      name (symboltable,argfirst.symbol)); 
+                   read term (t); 
+                   nc(fc(curr frame).environment).first.substitute:= t 
+              ELSE syntax error ("read parameter must be variable") 
+              FI 
+   CASE get0, get: 
+              IF   curr call.arity <> 1 
+              THEN 
+              ELIF argfirst.arity = var 
+              THEN getchar (command); 
+                   WHILE curr call.symbol = get 
+                   CAND code(command) < 32 
+                   REP getchar (command) PER; 
+                   t.arity:= integer; 
+                   t.arguments:= nil; 
+                   t.symbol:= code (command); 
+                   nc(fc(curr frame).environment).first.substitute:= t 
+              ELSE syntax error ("get parameter must be variable") 
+              FI 
+   CASE put0: value (argfirst, t, curr frame); 
+              IF   curr call.arity = 1 CAND t.arity = integer 
+              THEN write (code (t.symbol)) 
+              FI 
+   CASE incr: IF   curr call.arity = 1 
+              THEN 
+                   value(argfirst, t, curr frame); 
+                   t.symbol INCR 1; 
+                   IF   t.arity = integer 
+                  CAND argfirst.arity = var 
+                   THEN k:= fc(curr frame).environment; 
+                        nc(k).first.substitute:= t; 
+                   ELSE syntax error ("integer variable expected") 
+              FI   FI 
+   CASE ass:  IF   curr call.arity = 1 
+              THEN value (argfirst,t,currframe); 
+                   IF   t.symbol = nil 
+                   CAND t.arguments > nil 
+                   THEN assertz (t.arguments); 
+                        IF   free of errors 
+                        THEN reset tp:= tp; 
+                             reset kp:= kp; 
+                             reset symboltable:= symboltable 
+                        FI 
+                   ELSE syntax error ("parameter must be a list") 
+              FI   FI 
+   CASE assa: IF   curr call.arity = 1 
+              THEN value (argfirst,t,currframe); 
+                   IF   t.symbol = nil 
+                   CAND t.arguments > nil 
+                   THEN asserta (t.arguments); 
+                        IF   free of errors 
+                        THEN reset tp:= tp; 
+                             reset kp:= kp; 
+                             reset symboltable:= symboltable 
+                        FI 
+                   ELSE syntax error ("parameter must be a list") 
+              FI   FI 
+   CASE retr: IF   curr call.arity = 1 
+              THEN value (argfirst,t,currframe); 
+                   IF   t.symbol = nil 
+                   CAND t.arguments > nil 
+                   THEN i:= rule count; 
+                        retract (t.arguments); 
+                        IF   i <> rule count 
+                        THEN remove curr call from candidates 
+                        FI 
+                   ELSE syntax error ("parameter must be a list") 
+              FI   FI 
+   CASE vari: IF   curr call.arity = 1 
+              THEN value (argfirst, t, curr frame); 
+                   IF   t.arity <> var 
+                   THEN remove curr call from candidates 
+                   FI 
+              FI 
+   CASE is:   IF   curr call.arity = 2 
+              THEN disable stop; 
+                   t.symbol:= arith (TERM:(tcsymbolISUBargrest, 
+                                           tcargumentsISUBargrest, 
+                                           tcarityISUBargrest), 
+                                     curr frame); 
+                   IF is error THEN put error; clear error FI; 
+                   enable stop; 
+                   t.arity := integer; 
+                   t.arguments:= nil; 
+                   IF   unify (argfirst, curr frame, t, curr frame) 
+                   THEN LEAVE apply rule 
+              FI   FI; 
+              remove curr call from candidates 
+   CASE ypar: {Y parameter of is} 
+   CASE dif:  IF   curr call.arity = 2 CAND 
+              unify (argfirst, 
+                     curr frame, 
+                     TERM:(tcsymbolISUBargrest, 
+                           tcargumentsISUBargrest, 
+                           tcarityISUBargrest), 
+                     curr frame) 
+              THEN remove curr call from candidates 
+              FI 
+   CASE leq:  IF   curr call.arity = 2 
+              THEN get operands; 
+                   IF   t.arity = integer 
+                   THEN IF   t.symbol <= t2.symbol 
+                        THEN LEAVE apply rule 
+                        FI 
+                   ELIF name (symboltable,  t.symbol)  <= 
+                        name (symboltable, t2.symbol) 
+                   THEN LEAVE apply rule 
+              FI   FI; 
+              remove curr call from candidates 
+   CASE eq:   IF   curr call.arity = 2 
+              THEN get operands; 
+                   IF   NOT ( t = t2 ) 
+                   THEN remove curr call from candidates 
+              FI   FI 
+   CASE univ: IF   curr call.arity = 2 
+              CAND np > fsc(fsp).last np 
+              THEN 
+                   get operands; 
+                   IF   t2.arity = var CAND t.arity >= 0 
+                   THEN new tp (ts); 
+                        replace (tcsymbol,ts,t.symbol); 
+                        replace (tcarguments, ts, nil); 
+                        replace (tcarity,ts,0); 
+                        replace (tcrest,ts,revers(t.arguments)); 
+                        nc(np).first.substitute.arguments:= ts; 
+                        nc(np).first.substitute.symbol:= nil; 
+                        nc(np).first.substitute.arity:= t.arity + 1 
+                   ELIF t.arity = var CAND t2.arity > 0 
+                   CAND t2.symbol <= cons 
+                   THEN np DECR 1; 
+                        t2. arguments:= revers(t2.arguments); 
+                        nc(np).first.substitute.symbol:= 
+                          tcsymbol ISUB t2.arguments; 
+                        nc(np).first.substitute.arguments:= 
+                          tcrest ISUB t2.arguments; 
+                        nc(np).first.substitute.arity:= t2.arity - 1; 
+                        np INCR 1 
+                   ELSE syntax error ("wrong parameter after =..") 
+              FI   FI 
+   CASE clau: get operands; 
+              IF   curr call.arity = 2 
+              THEN 
+                   IF   t.arity < 0 
+                   THEN syntax error ("clause with wrong parameter") 
+                   ELSE find clause; 
+                        k:= tcrest ISUB (kcfirstISUBk); 
+                        t3.symbol:= nil; 
+                        t3.arguments:= k; 
+                        t3.arity:= no of terms (k); 
+                        IF   NOT unify (t2, res frame, 
+                                        t3, curr frame) 
+                        THEN remove curr call from candidates 
+                        FI 
+                   FI 
+              FI 
+   CASE claupar: { anonymous parameter of clause } 
+   CASE nam:  IF   curr call.arity = 2 
+              THEN get operands; 
+                   IF   t.arity = var 
+                   CAND t2.symbol = nil 
+                   THEN command:= ""; 
+                        k:= t2.arguments; 
+                        REP command:= code (tcsymbolISUBk) + command; 
+                            k:= tcrestISUBk 
+                        UNTIL k <= nil PER; 
+                        t.symbol:= link (symboltable, command); 
+                        IF   t.symbol = 0 
+                        THEN insert (symboltable, command, t.symbol); 
+                        FI; 
+                        t.arity:= 0; 
+                        t.arguments:= nil; 
+                        nc(fc(curr frame).environment).first.substitute:= t 
+                   ELIF t2.arity = var 
+                   CAND t.arity = 0 
+                   THEN command:= name (symboltable, t.symbol); 
+                        ts:= nil; 
+                        FOR k FROM 1 UPTO length(command) 
+                        REP new tp (i); 
+                            IF   ts = nil 
+                            THEN ts:= i 
+                            ELSE replace (tcrest, j, i) 
+                            FI; 
+                            j:= i; 
+                            replace (tcrest, i, nil); 
+                            replace (tcarity, i, integer); 
+                            replace (tcarguments, i, nil); 
+                            replace (tcsymbol, i, code (command SUB k)) 
+                        PER; 
+                        t3.arity:= length(command); 
+                        t3.arguments:= ts; 
+                        t3.symbol:= nil; 
+                        IF unify (t2, res frame, t3, curr frame) THEN FI 
+                   ELSE syntax error ("name insufficient parameters") 
+              FI   FI 
+   CASE argi: get operands; 
+              IF   curr call.arity = 3 
+              THEN k:= argrest; 
+                   value (TERM:(tcsymbolISUB(tcrestISUB(k)), 
+                                tcargumentsISUB(tcrestISUB(k)), 
+                                tcarityISUB(tcrestISUB(k))), 
+                          t3, 
+                          curr frame); 
+                   IF   t.arity <> integer COR t2.arity <= 0 
+                   COR  t.symbol <= 0 COR t.symbol > t2.arity 
+                   THEN syntax error ("arg with wrong parameter") 
+                   ELSE 
+                        FOR k FROM t2.arity DOWNTO ( t.symbol + 1) 
+                        REP  IF   t2.arguments <= nil 
+                             THEN syntax error ("out of range"); 
+                                  LEAVE apply rule 
+                             FI; 
+                             t2.arguments:= tcrestISUB(t2.arguments) 
+                        PER; 
+                        IF   t3.arity = var 
+                        THEN nc(fc(curr frame).environment).first.substitute 
+                             := TERM:(tcsymbolISUBt2.arguments, 
+                                      tcargumentsISUBt2.arguments, 
+                                      tcarityISUBt2.arguments) 
+                        ELIF NOT unify (TERM:(tcsymbolISUBt2.arguments, 
+                                              tcargumentsISUBt2.arguments, 
+                                              tcarityISUBt2.arguments), 
+                                        curr frame, 
+                                        t3, 
+                                        curr frame) 
+                        THEN remove curr call from candidates 
+                        FI 
+                   FI 
+              FI 
+   CASE zpar: {z parameter of arg} 
+   CASE func: IF   curr call.arity = 3 
+              THEN 
+                   get operands; 
+                   k:= argrest; 
+                   value (TERM:(tcsymbolISUB(tcrestISUB(k)), 
+                                tcargumentsISUB(tcrestISUB(k)), 
+                                tcarityISUB(tcrestISUB(k))), 
+                          t3, 
+                          curr frame); 
+                   IF   t2.arity = var 
+                   THEN IF   t3.arity = var 
+                        THEN 
+                             t2.symbol:= argfirst.symbol; 
+                             t2.arity := 0; 
+                             nc(nc(fc(curr frame).environment).rest).first. 
+                               substitute:= t2; 
+                             k:= tcrestISUB(k); 
+                             t3.symbol:= argfirst.arity; 
+                             t3.arity := integer; 
+                             nc(fc(curr frame).environment).first. 
+                               substitute:= t3 
+                        ELIF t3.arity = integer 
+                        CAND t.arity = t3.symbol 
+                        THEN t.arity:= 0; 
+                             t.arguments:= nil; 
+                             nc(fc(curr frame).environment).first. 
+                               substitute:= t 
+                        ELSE remove curr call from candidates 
+                        FI 
+                   ELIF ( t.arity = var)  
+                   CAND (t2.arity = 0) 
+                   CAND (t3.arity = integer) 
+                   THEN  t2.arity:= t3.symbol; 
+                        FOR k FROM 1 UPTO t3.symbol 
+                        REP new tp (ts); 
+                            replace (tcarity, ts, var); 
+                            anonym value DECR 1; 
+                            replace (tcsymbol, ts, anonym value); 
+                            replace (tcarguments, ts, nil); 
+                            replace (tcrest, ts, t2.arguments); 
+                            t2.arguments:= ts 
+                        PER; 
+                        nc(fc(curr frame).environment).first. 
+                          substitute:= t2 
+                   ELIF t2.arity <= 0 
+                   THEN IF   t.symbol = t2.symbol 
+                        THEN IF   t.arity  = t3.symbol 
+                             CAND t3.arity = integer 
+                             THEN 
+                             ELIF t3.arity = var 
+                             THEN t3.arity := integer; 
+                                  t3.symbol:= t.arity; 
+                                  nc(fc(curr frame).environment).first. 
+                                    substitute:= t3 
+                             ELSE remove curr call from candidates 
+                             FI 
+                        ELSE remove curr call from candidates 
+                        FI 
+                   ELSE syntax error ("wrong functor parameters") 
+              FI   FI 
+   CASE elan: disable stop; 
+              lernsequenz auf taste legen ("q","break"13""); 
+              SELECT 
+              pos("consult,reconsult,sysout,sysin,forget,trace,line,abolish," 
+                  ,name (symboltable, argfirst.symbol) + ",") OF 
+              CASE 01: consult (arg1) 
+              CASE 09: reconsult (arg1) 
+              CASE 19: sysout (arg1) 
+              CASE 26: sysin (arg1) 
+              CASE 32: forget (arg1, quiet) 
+              CASE 39: trace (arg1) 
+              CASE 45: line 
+              CASE 50: value (TERM:(tcsymbolISUBargrest, 
+                                    tcargumentsISUBargrest, 
+                                    tcarityISUBargrest), 
+                                    t, 
+                                    curr frame); 
+                       abolish (t.symbol) 
+              OTHERWISE do (elan command) 
+              ENDSELECT; 
+              lernsequenz auf taste legen ("q","bye"13""); 
+              IF is error THEN put error; clear error FI; 
+              enable stop 
+   END SELECT. 
+ 
+ get operands: 
+   value (argfirst, t, curr frame); 
+   value (TERM:(tcsymbolISUBargrest, 
+                tcargumentsISUBargrest, 
+                tcarityISUBargrest), 
+          t2, 
+          curr frame). 
+ 
+ argfirst:TERM:(tcsymbolISUBcurr call.arguments, 
+                tcargumentsISUBcurr call.arguments, 
+                tcarityISUBcurr call.arguments). 
+ 
+ argrest:       tcrestISUBcurr call.arguments. 
+ 
+ arg1: value (TERM:(tcsymbolISUBargrest, 
+                    tcargumentsISUBargrest, 
+                    tcarityISUBargrest), 
+              t, 
+              curr frame); 
+       name(symboltable, t.symbol). 
+ 
+find clause: 
+   k:= knowledgebase; 
+   WHILE k <> nil 
+   REP 
+       ts:= kcfirstISUBk; 
+       IF   TERM:(tcsymbolISUBts,tcargumentsISUBts,tcarityISUBts) = t 
+       THEN LEAVE find clause 
+       FI; 
+       k:= kcrestISUBk 
+   PER; 
+   remove curr call from candidates; 
+   LEAVE apply rule. 
+ 
+ elan command: 
+   command:= ""; 
+   ts:= curr call.arguments; 
+   WHILE ts <> nil 
+   REP value (TERM:(tcsymbolISUBts, 
+                    tcargumentsISUBts, 
+                    tcarityISUBts), 
+              t, 
+              curr frame); 
+       command CAT name (symboltable, t.symbol); 
+       found:= ts = curr call.arguments; 
+       ts:= tcrestISUB(ts); 
+       IF   found 
+       THEN IF ts > nil THEN command CAT "(""" FI 
+       ELIF ts = nil 
+       THEN command CAT """)" 
+       ELSE command CAT """,""" 
+       FI 
+   PER; 
+   command. 
+ 
+ trace unification results: 
+   inference level INCR 1; 
+   write term (curr call); write ("="); 
+   value (TERM:(tcsymbolISUB(kcfirstISUB(candidates)) , 
+                tcargumentsISUB(kcfirstISUB(candidates)) , 
+                tcarityISUB(kcfirstISUB(candidates)) ), t, res frame); 
+   write term backward (t); 
+   IF   testing 
+   THEN ts:= ep; 
+        IF ts > last ep THEN write (" with ") FI; 
+        list expressions 
+   FI; 
+   line. 
+ 
+ list expressions: 
+   WHILE ts > last ep 
+   REP  k:= fc(ec(ts).index).environment; 
+        WHILE nc(k).first.variable.symbol <> ec(ts).term.symbol 
+        REP k:= nc(k).rest PER; 
+        write term (ec(ts).term); write ("="); 
+        write term (nc(k).first.substitute); write (" "); 
+        ts DECR 1 
+   PER. 
+ 
+ENDPROC prove; 
+  
+BOOL PROC unify (TERM CONST t1, FRAME CONST f1, 
+                 TERM CONST t2, FRAME CONST f2): 
+ 
+   { Unifies the expressions <t1,f1^.environment> and <t2,f2^.environment>, 
+     If unification succeeds, both environments are updated. } 
+ 
+{}{inference count INCR 1;} 
+   IF   f1 = f2 CAND t1 = t2 
+   THEN TRUE 
+   ELIF t1.arity = var 
+   THEN TERM  VAR t; 
+        FRAME VAR f; 
+        IF   bound (t1, f1, t,  f) 
+        THEN unify (t,  f,  t2, f2) 
+     {  ELIF occurs (t1, f1, t2, f2) THEN FALSE } 
+        ELSE bind expression 1; 
+             push expression 1; 
+             TRUE 
+        FI 
+   ELIF t2.arity = var 
+   THEN IF   bound (t2, f2, t,  f) 
+        THEN unify (t,  f,  t1, f1) 
+     {  ELIF occurs (t2, f2, t1, f1) THEN FALSE } 
+        ELSE bind expression 2; 
+             push expression 2; 
+             TRUE 
+        FI 
+   ELIF t1.symbol = t2.symbol 
+   CAND t1.arity  = t2.arity 
+   THEN constant or compound term 
+   ELIF t1.symbol = cons CAND t2.symbol = nil 
+   CAND t1.arity  = 2    CAND t2.arguments > nil 
+   CAND unify (TERM:(tcsymbolISUBt1.arguments, 
+                     tcargumentsISUBt1.arguments, 
+                     tcarityISUBt1.arguments), 
+               f1, 
+               TERM:(tcsymbolISUBt2.arguments, 
+               tcargumentsISUBt2.arguments, 
+               tcarityISUBt2.arguments), 
+               f2) 
+   THEN construct list 1 
+   ELIF t2.symbol = cons CAND t1.symbol = nil 
+   CAND t2.arity  = 2    CAND t1.arguments > nil 
+   CAND unify (TERM:(tcsymbolISUBt2.arguments, 
+                     tcargumentsISUBt2.arguments, 
+                     tcarityISUBt2.arguments), 
+               f2, 
+               TERM:(tcsymbolISUBt1.arguments, 
+                     tcargumentsISUBt1.arguments, 
+                     tcarityISUBt1.arguments), 
+               f1) 
+   THEN construct list 2 
+   ELSE FALSE 
+   FI. 
+ 
+constant or compound term: 
+   { arguments of t1 and t2 are properly instantiated by the parser } 
+   EXPRESSIONS VAR last ep:= ep; 
+   TERMS VAR x:= t1.arguments, y:= t2.arguments; 
+   WHILE x <> nil 
+   REP IF   unify (TERM:(tcsymbolISUBx, tcargumentsISUBx, tcarityISUBx), 
+                   f1, 
+                   TERM:(tcsymbolISUBy, tcargumentsISUBy, tcarityISUBy), 
+                   f2) 
+       THEN x:= tcrestISUB(x); 
+            y:= tcrestISUB(y) 
+       ELSE undo bindings (last ep); 
+            LEAVE unify WITH FALSE 
+       FI 
+   PER; 
+   TRUE. 
+ 
+ construct list 1: 
+   last ep:= ep; 
+   IF   t2.symbol = cons 
+   THEN TERM VAR tail:= TERM:(tcsymbolISUB(tcrestISUB(t2.arguments)), 
+                              tcargumentsISUB(tcrestISUB(t2.arguments)), 
+                              tcarityISUB(tcrestISUB(t2.arguments))); 
+   ELSE tail:= TERM: (nil, (tcrestISUB(t2.arguments)) , 
+                      no of terms (t2.arguments) - 1); 
+   FI; 
+   IF   bound (TERM:(tcsymbolISUB(tcrestISUB(t1.arguments)) , 
+                     tcargumentsISUB(tcrestISUB(t1.arguments)) , 
+                     tcarityISUB(tcrestISUB(t1.arguments)) ), 
+               f1, 
+               t, 
+               f) 
+   THEN IF   unify (t, f, tail, f2) 
+        THEN TRUE 
+        ELSE undo bindings (last ep); FALSE 
+        FI 
+   ELSE bind tail 1; 
+        push tail 1; 
+        TRUE 
+   FI. 
+ 
+ construct list 2: 
+   last ep:= ep; 
+   IF   t1.symbol = cons 
+   THEN tail:= TERM:(tcsymbolISUB(tcrestISUB(t1.arguments)) , 
+                     tcargumentsISUB(tcrestISUB(t1.arguments)) , 
+                     tcarityISUB(tcrestISUB(t1.arguments)) ); 
+   ELSE tail:= TERM: (nil, tcrestISUB(t1.arguments), 
+                      no of terms (t1.arguments) - 1); 
+   FI; 
+   IF   bound (TERM:(tcsymbolISUB(tcrestISUB(t2.arguments)) , 
+                     tcargumentsISUB(tcrestISUB(t2.arguments)) , 
+                     tcarityISUB(tcrestISUB(t2.arguments)) ), 
+               f2, 
+               t, 
+               f) 
+   THEN IF   unify (t, f, tail, f1) 
+        THEN TRUE 
+        ELSE undo bindings (last ep); FALSE 
+        FI 
+   ELSE bind tail 2; 
+        push tail 2; 
+        TRUE 
+   FI. 
+  
+ bind expression 1: 
+   { bind the expression <t1, f1> to <t2, f2> in the environment <f1> } 
+   new environment n; 
+   nc(n).first:= SUBSTITUTION:(t1, t2, f2); 
+   nc(n).rest :=fc(f1).environment; 
+   fc(f1).environment:= n. 
+ 
+ bind expression 2: 
+   new environment n; 
+   nc(n).first:= SUBSTITUTION:(t2, t1, f1); 
+   nc(n).rest :=fc(f2).environment; 
+   fc(f2).environment:= n. 
+ 
+ bind tail 1: 
+   new environment n; 
+   nc(n).first:= SUBSTITUTION:( 
+                    TERM:(tcsymbolISUB(tcrestISUB(t1.arguments)), 
+                          tcargumentsISUB(tcrestISUB(t1.arguments)) , 
+                          tcarityISUB(tcrestISUB(t1.arguments)) ), 
+                    tail, 
+                    f2); 
+   nc(n).rest :=fc(f1).environment; 
+   fc(f1).environment:= n. 
+ 
+ bind tail 2: 
+   new environment n; 
+   nc(n).first:= SUBSTITUTION:( 
+                    TERM:(tcsymbolISUB(tcrestISUB(t2.arguments)) , 
+                    tcargumentsISUB(tcrestISUB(t2.arguments)) , 
+                    tcarityISUB(tcrestISUB(t2.arguments)) ), 
+                    tail, 
+                    f1); 
+   nc(n).rest :=fc(f2).environment; 
+   fc(f2).environment:= n. 
+ 
+ push expression 1: 
+   ep INCR 1; 
+   ec(ep):= EXPRESSION:(t1, f1). 
+ 
+ push expression 2: 
+   ep INCR 1; 
+   ec(ep):= EXPRESSION:(t2, f2). 
+ 
+ push tail 1: 
+   ep INCR 1; 
+   ec(ep):= EXPRESSION:(TERM:(tcsymbolISUB(tcrestISUB(t1.arguments)) , 
+                              tcargumentsISUB(tcrestISUB(t1.arguments)) , 
+                              tcarityISUB(tcrestISUB(t1.arguments)) ), 
+                        f1). 
+ 
+ push tail 2: 
+   ep INCR 1; 
+   ec(ep):= EXPRESSION:(TERM:(tcsymbolISUB(tcrestISUB(t2.arguments)) , 
+                              tcargumentsISUB(tcrestISUB(t2.arguments)) , 
+                              tcarityISUB(tcrestISUB(t2.arguments)) ), 
+                        f2). 
+ 
+ new environment n: 
+   ENVIRONMENT VAR n; 
+   IF np = limit THEN pegeloverflow ELSE np INCR 1; n:= np FI 
+ENDPROC unify; 
+ 
+BOOL OP = (TERM CONST t1, t2): { INLINE; } 
+   { Two terms are equal iff their printed representations are 
+     indistinguishable. Don't confuse with equal expressions. } 
+ 
+   IF   ( t1.symbol = t2.symbol ) 
+   CAND ( t1.arity  = t2.arity  ) 
+   THEN IF   t1.arguments = 0 
+        THEN terms are variables or constants 
+        ELSE terms are compound 
+        FI 
+   ELSE FALSE 
+   FI. 
+ 
+ terms are variables or constants: TRUE. 
+ 
+ terms are compound: 
+   TERMS VAR x:= t1.arguments, 
+             y:= t2.arguments; 
+   WHILE x <> nil 
+   REP   IF   recursive equal (TERM:(tcsymbolISUBx, 
+                                     tcargumentsISUBx, 
+                                     tcarityISUBx), 
+                               TERM:(tcsymbolISUBy, 
+                                     tcargumentsISUBy, 
+                                     tcarityISUBy)) 
+         THEN x:= tcrestISUB(x); 
+              y:= tcrestISUB(y) 
+         ELSE LEAVE = WITH FALSE 
+         FI 
+   PER;  TRUE. 
+ENDOP =; 
+ 
+BOOL PROC recursive equal (TERM CONST t1, t2): t1=t2 
+ENDPROC recursive equal; 
+  
+PROC undo bindings (EXPRESSIONS CONST last ep): 
+   { Remove the binding for each of the expressions } 
+   WHILE ep > last ep 
+   REP remove matching substitutions; 
+       remove expression 
+   PER. 
+ 
+ remove matching substitutions: 
+   { with variable equal to term t from environment env } 
+   TERM VAR t:= ec(ep).term; 
+   ENVIRONMENT VAR n:= env, last:= nil; 
+   WHILE n <> nil 
+   REP IF   nc(n).first.variable.symbol = t.symbol 
+       THEN forget n 
+       ELSE last:= n 
+       FI; 
+       n:= nc(n).rest 
+   PER. 
+ 
+ forget n: 
+   IF   last = nil 
+   THEN env := nc(n).rest 
+   ELSE nc(last).rest:= nc(n).rest 
+   FI; 
+   IF n = np THEN np DECR 1 FI. 
+ 
+ env: fc(ec(ep).index).environment.  
+ 
+ remove expression: 
+   { Removes the first expression from e recovering the space used } 
+   ep DECR 1. 
+ 
+END PROC undo bindings; 
+ 
+PROC consult (TEXT CONST knowledge): 
+   { asserts the clauses from the file into knowledge base } 
+{} enable stop; 
+   IF   NOT exists (knowledge) 
+   THEN syntax error ("consulting file not existing"); LEAVE consult 
+   FI; 
+   last param (knowledge); 
+   TERMS VAR clauses; 
+   BOOL VAR single:= TRUE; 
+   rule count:= 0; 
+   initiate read terms (knowledge, clauses); 
+   WHILE look ahead <> end of input 
+   REP rule count INCR 1; 
+       cout (rule count); 
+       read clause; 
+       assertz (clauses); 
+       clauses:= nil 
+   PER; 
+   remove token; 
+   IF   anything noted 
+   THEN modify (file); 
+        note edit (file) 
+   FI; 
+   IF   free of errors 
+   THEN reset tp:= tp; 
+        reset kp:= kp; 
+        reset symboltable:= symboltable; 
+        put (rule count) 
+   ELSE put (0); from file:= FALSE 
+   FI; 
+   putline ("rules inserted."); 
+   line . 
+ 
+ read clause: 
+   TERM VAR term; 
+   IF   single 
+   THEN read term (term); 
+        IF   term.arity = var 
+        THEN syntax error ("clause starts with variable") 
+        ELIF name (symboltable, term.symbol) = ":-" 
+        THEN read terms (clauses); 
+             call terms (clauses); 
+             LEAVE consult 
+        FI; 
+        IF   look ahead = colon 
+        THEN remove token; 
+             read terms (clauses) 
+        FI 
+   ELIF look ahead = semicolon 
+   THEN remove token; 
+        read terms (clauses) 
+   FI; 
+   IF   look ahead = semicolon 
+   THEN single:= FALSE 
+   ELIF look ahead = period 
+   THEN single:= TRUE; 
+        remove token 
+   ELSE syntax error ("period or semicolon expected") 
+   FI; 
+   insert term in clauses. 
+ 
+ insert term in clauses: 
+   TERMS VAR tmp; 
+   new tp (tmp); 
+   replace(tcsymbol,tmp,term.symbol); 
+   replace(tcarguments,tmp,term.arguments); 
+   replace(tcarity,tmp,term.arity); 
+   replace(tcrest,tmp, clauses); 
+   clauses:= tmp. 
+ 
+ remove token: 
+   look ahead empty:= TRUE. 
+ 
+END PROC consult; 
+ 
+PROC reconsult (TEXT CONST knowledge): 
+   { asserts the clauses from the file into knowledge base } 
+{} enable stop; 
+   IF   NOT exists (knowledge) 
+   THEN syntax error ("reconsulting file not existing"); LEAVE reconsult 
+   FI; 
+   last param (knowledge); 
+   TERMS VAR clauses; 
+   BOOL VAR single:= TRUE; 
+   rule count:= 0; 
+   initiate read terms (knowledge, clauses); 
+   WHILE look ahead <> end of input 
+   REP rule count INCR 1; 
+       cout (rule count); 
+       read clause; 
+       abolish (tcsymbol ISUB clauses); 
+       clauses:= nil 
+   PER; 
+   remove token; 
+   consult (knowledge). 
+ 
+ read clause: 
+   TERM VAR term; 
+   IF   single 
+   THEN read term (term); 
+        IF   term.arity = var 
+        THEN syntax error ("clause starts with variable") 
+        ELIF name (symboltable, term.symbol) = ":-" 
+        THEN read terms (clauses); 
+             call terms (clauses); 
+             LEAVE reconsult 
+        FI; 
+        IF   look ahead = colon 
+        THEN remove token; 
+             read terms (clauses) 
+        FI 
+   ELIF look ahead = semicolon 
+   THEN remove token; 
+        read terms (clauses) 
+   FI; 
+   IF   look ahead = semicolon 
+   THEN single:= FALSE 
+   ELIF look ahead = period 
+   THEN single:= TRUE; 
+        remove token 
+   ELSE syntax error ("period or semicolon expected") 
+   FI; 
+   insert term in clauses. 
+ 
+ insert term in clauses: 
+   TERMS VAR tmp; 
+   new tp (tmp); 
+   replace(tcsymbol,tmp,term.symbol); 
+   replace(tcarguments,tmp,term.arguments); 
+   replace(tcarity,tmp,term.arity); 
+   replace(tcrest,tmp, clauses); 
+   clauses:= tmp. 
+ 
+ remove token: 
+   look ahead empty:= TRUE. 
+ 
+END PROC reconsult; 
+ 
+PROC assertz (TERMS CONST clause): 
+   { Inserts the clause into the knowledge base before the first clause 
+     beginning with the same functor. 
+     Clauses beginning with the same functor are assumed to be listed 
+     consecutively. 
+   } 
+   CLAUSES VAR c1, c2, c3; 
+   IF   free of errors 
+   THEN IF   freep > nil 
+        THEN c3:= freec(freep); 
+             freep DECR 1; 
+             IF reset freep > freep THEN reset freep:= freep FI 
+        ELSE new kp (c3) 
+        FI; 
+        replace(kcfirst,c3, clause); 
+        IF   knowledge base = nil 
+        COR  (tcsymbolISUB((kcfirstISUB(knowledgebase)) )) = 
+             (tcsymbolISUB(clause)) 
+        THEN insert on top 
+        ELSE c1:= knowledge base; 
+             REP find and insert clause PER 
+        FI 
+   FI. 
+ 
+ find and insert clause: 
+   c2:= (kcrestISUB(c1)) ; 
+   IF   c2 = nil 
+   THEN insert on top 
+   ELIF (tcsymbolISUB((kcfirstISUB(c2)) )) = (tcsymbolISUB(clause)) 
+   THEN insert before 
+   FI; 
+   c1:= c2. 
+ 
+ insert on top: 
+   replace(kcrest,c3, knowledge base); 
+   knowledge base:= c3; 
+   LEAVE assertz. 
+ 
+ insert before: 
+   replace(kcrest,c3, c2); 
+   replace(kcrest,c1, c3); 
+   LEAVE assertz. 
+ 
+ENDPROC assertz; 
+  
+PROC asserta (TERMS CONST clause): 
+   { Inserts the clause into the knowledge base after the last clause 
+     beginning with the same functor. 
+     Clauses beginning with the same functor are assumed to be listed 
+     consecutively. 
+   } 
+   CLAUSES VAR c1, c2, c3; 
+   IF   free of errors 
+   THEN IF   freep > nil 
+        THEN c3:= freec(freep); 
+             freep DECR 1; 
+             IF reset freep > freep THEN reset freep:= freep FI 
+        ELSE new kp (c3) 
+        FI; 
+        replace(kcfirst,c3, clause); 
+        IF   knowledge base = nil 
+        THEN replace(kcrest,c3, knowledge base); 
+             knowledge base:= c3 
+        ELSE c1:= knowledge base; 
+             REP find and insert clause PER 
+        FI 
+   FI. 
+ 
+ find and insert clause: 
+   c2:= (kcrestISUB(c1)) ; 
+   IF   c2 = nil 
+   THEN append after c1 
+   ELIF (tcsymbolISUB((kcfirstISUB(c2)) )) = (tcsymbolISUB(clause)) 
+   THEN insert behind 
+   FI; 
+   c1:= c2. 
+ 
+ append after c1: 
+   replace(kcrest,c1, clause); 
+   LEAVE asserta. 
+ 
+ insert behind: 
+   REP  c1:= c2; 
+        c2:= (kcrestISUB(c1)) ; 
+   UNTIL (tcsymbolISUB((kcfirstISUB(c2)) )) <> (tcsymbolISUB(clause)) 
+   PER; 
+   replace(kcrest,c3, c2); 
+   replace(kcrest,c1, c3); 
+   LEAVE asserta. 
+ 
+ENDPROC asserta; 
+  
+PROC retract (TERMS CONST clause): 
+   { Retracts the clause from the knowledge base. } 
+   CLAUSES VAR c1:= knowledge base, c2; 
+   IF   free of errors 
+   THEN IF   c1 = nil 
+        THEN rule count DECR 1 
+        ELIF c1 > build ins CAND terms eq ((kcfirstISUB(c1)) , clause) 
+        THEN retract top 
+        ELSE REP find and retract clause PER 
+        FI 
+   FI. 
+ 
+ find and retract clause: 
+   c2:= (kcrestISUB(c1)) ; 
+   IF   c2 = nil 
+   THEN rule count DECR 1; 
+        LEAVE retract 
+   ELIF c2 > build ins CAND terms eq ((kcfirstISUB(c2)) , clause)  
+   THEN retract c2 
+   FI; 
+   c1:= c2. 
+ 
+ retract top: 
+   freep INCR 1; 
+   reset freep:= freep; 
+   freec(freep):= knowledge base; 
+   knowledge base:= (kcrestISUB(knowledge base)) ; 
+   LEAVE retract. 
+ 
+ retract c2: 
+   replace(kcrest,c1, (kcrestISUB(c2)) ); 
+   freep INCR 1; 
+   reset freep:= freep; 
+   freec(freep):= c2; 
+   LEAVE retract. 
+ 
+ENDPROC retract; 
+  
+PROC abolish (SYMBOL CONST clause): 
+   { Retracts all the clauses with this name from the knowledge base. } 
+{} enable stop; 
+   CLAUSES VAR c1:= knowledge base, c2; 
+   IF   free of errors 
+   THEN REP 
+          IF   c1 = nil 
+          THEN rule count DECR 1; 
+               LEAVE abolish 
+          ELIF c1 = knowledgebase CAND c1 > build ins 
+          CAND (tcsymbol ISUB(kcfirstISUBc1)) = clause 
+          THEN retract top; 
+               c1:= knowledgebase 
+          ELSE find and retract clause 
+          FI 
+        PER 
+   FI. 
+ 
+ find and retract clause: 
+   c2:= kcrestISUBc1 ; 
+   IF   c2 = nil 
+   THEN rule count DECR 1; 
+        LEAVE abolish 
+   ELIF c2 > build ins 
+   CAND (tcsymbol ISUB(kcfirstISUBc2)) = clause  
+   THEN retract c2 
+   ELSE c1:= c2 
+   FI. 
+ 
+ retract top: 
+   freep INCR 1; 
+   reset freep:= freep; 
+   freec(freep):= knowledge base; 
+   knowledge base:= (kcrestISUB(knowledge base)). 
+ 
+ retract c2: 
+   replace(kcrest,c1, (kcrestISUB(c2)) ); 
+   freep INCR 1; 
+   reset freep:= freep; 
+   freec(freep):= c2. 
+ 
+ENDPROC abolish; 
+  
+BOOL PROC terms eq (TERMS CONST a, b): 
+   IF   a = b 
+   THEN TRUE 
+   ELIF a = 0 COR b = 0 
+   THEN FALSE 
+   ELIF TERM:(tcsymbolISUBa, 
+              tcargumentsISUBa, 
+              tcarityISUBa) = 
+        TERM:(tcsymbolISUBb, 
+              tcargumentsISUBb, 
+              tcarityISUBb) 
+   THEN terms eq ((tcrestISUB(a)) , (tcrestISUB(b)) ) 
+   ELSE FALSE 
+   FI 
+ENDPROC terms eq; 
+ 
+PROC value (TERM CONST t, TERM VAR r, FRAME CONST f): 
+   { sets r to the value of t in f^.environment } 
+{} enable stop; 
+   IF   t.arguments = 0 
+   THEN IF   t.arity = var 
+        THEN variable term 
+        ELSE constant term 
+        FI 
+   ELSE compound term 
+   FI. 
+ 
+ constant term: r:= t. 
+ 
+ variable term: 
+   TERM VAR t1, t2; 
+   FRAME VAR f1; 
+   IF   bound (t, f, t1, f1) 
+   THEN value (t1, r, f1) 
+   ELSE r:= t 
+   FI. 
+ 
+ compound term: 
+   INT VAR step:= 3; 
+   TERMS VAR ts:= t.arguments; 
+   r.arguments:= nil; 
+   WHILE ts <> nil 
+   REP  value (TERM:(tcsymbolISUBts, 
+                     tcargumentsISUBts, 
+                     tcarityISUBts), 
+               t1, 
+               f); 
+        IF   stepping 
+        CAND step = 1 CAND t.symbol = cons CAND t1.symbol = nil 
+        THEN step:= 0; 
+             value (t1, t2, f); 
+             ts:= t2.arguments 
+        ELSE ts:= tcrestISUB(ts); 
+             push term in arguments 
+        FI; 
+   PER; 
+   IF   step = 0 
+   THEN r.symbol:= nil 
+   ELSE r.symbol:= t.symbol 
+   FI; 
+   r.arity:= no of terms (r.arguments). 
+ 
+ stepping: 
+   IF step > 1 THEN step DECR 1; TRUE ELSE FALSE FI. 
+ 
+ push term in arguments: 
+   TERMS VAR term; 
+   new tp (term); 
+   replace(tcsymbol,term, t1.symbol); 
+   replace(tcarguments,term, t1.arguments); 
+   replace(tcarity,term, t1.arity); 
+   replace(tcrest,term, r.arguments); 
+   r.arguments:= term. 
+ENDPROC value; 
+ 
+BOOL PROC bound (TERM CONST t1, FRAME CONST f1, 
+                 TERM VAR   t2, FRAME VAR   f2): 
+   { returns TRUE iff the expression <t1, f1^.environment> is bound and 
+     assigns <t2, f2^.environment> the expression to which it is bound. } 
+   ENVIRONMENT VAR n:= fc(f1).environment; 
+   SUBSTITUTION VAR sub; 
+   WHILE n <> nil 
+   REP sub:= nc(n).first; 
+       IF   t1.symbol = sub.variable.symbol 
+       THEN t2:= sub.substitute; 
+            f2:= sub.others; 
+            LEAVE bound WITH TRUE 
+       ELSE n:= nc(n).rest 
+       FI 
+   PER; 
+   FALSE 
+ENDPROC bound; 
+  
+PROC append term (TERM CONST appendix, TERMS VAR list): 
+   TERMS VAR term, last term; 
+   IF   list = nil 
+   THEN new tp (term); 
+        list:= term 
+   ELSE term:= list; 
+        REP  last term:= term; 
+             term:= tcrestISUB(term) 
+        UNTILterm = nil PER; 
+        new tp (term); 
+        replace(tcrest,last term, term); 
+   FI; 
+   replace(tcsymbol,term,appendix.symbol); 
+   replace(tcarguments,term,appendix.arguments); 
+   replace(tcarity,term,appendix.arity); 
+   replace(tcrest,term, nil) 
+END PROC append term; 
+ 
+TERMS PROC revers (TERMS CONST ts): 
+   IF   ts <= nil 
+   THEN ts 
+   ELSE TERMS VAR reverted:= revers ((tcrestISUB(ts)) ); 
+        append term (TERM:(tcsymbolISUBts, 
+                           revers (tcargumentsISUBts), 
+                           tcarityISUBts), 
+                     reverted); 
+        reverted 
+   FI 
+ENDPROC revers; 
+ 
+PROC call terms (TERMS VAR ts): 
+  TEXT VAR old:= sysout; 
+  forget ("$sysin$",quiet); 
+  sysout ("$sysin$"); 
+  WHILE ts > nil 
+  REP write term (TERM:(tcsymbolISUBts, 
+                        tcargumentsISUBts, 
+                        tcarityISUBts)); 
+      line; 
+      ts:= tcrestISUB(ts) 
+  PER; 
+  write ("elan(sysin,())."); 
+  sysout (old); 
+  sysin  ("$sysin$") 
+ENDPROC call terms; 
+ 
+PROC write environment list (FRAME CONST frame): 
+   write environment list (frame, fc(frame).environment); 
+ENDPROC write environment list; 
+ 
+PROC write environment list (FRAME CONST frame, ENVIRONMENT CONST en): 
+   IF en <> nil 
+   THEN write environment list (frame, nc(en).rest); 
+        write term (nc(en).first.variable);   write (" = "); 
+        value (nc(en).first.variable, t, frame); 
+        write term backward (t); 
+        IF en <> fc(frame).environment THEN write (", ") FI 
+   FI 
+ENDPROC write environment list; 
+ 
+PROC write knowledge base (CLAUSES CONST k): 
+   TERMS VAR t:= (kcfirstISUB(k)) ; 
+   IF   t > nil CAND k <= reset kp CAND k > build ins 
+   CAND (pattern = cut COR pattern = (tcsymbolISUB(t)) 
+        ) 
+   THEN found:= FALSE; 
+        IF   (kcrestISUB(k))  > nil 
+        THEN write knowledge base ((kcrestISUB(k)) ) 
+        FI; 
+        write term (TERM:(tcsymbolISUBt, tcargumentsISUBt, tcarityISUBt)); 
+        t:= (tcrestISUB(t)) ; 
+        IF   t > nil 
+        THEN write (":- "); 
+             write terms 
+        FI; 
+        write ("."); 
+        line 
+   ELIF (found COR k <= build ins) CAND (kcrestISUB(k))  > nil 
+   THEN write knowledge base ((kcrestISUB(k)) ) 
+   FI. 
+ 
+ write terms: 
+   BOOL VAR once:= FALSE; 
+   WHILE t <> nil 
+   REP  IF once THEN write (", ") ELSE once:= TRUE FI; 
+        write term (TERM:(tcsymbolISUBt, tcargumentsISUBt, tcarityISUBt)); 
+        t:= (tcrestISUB(t)) ; 
+   PER. 
+ENDPROC write knowledge base; 
+ 
+PROC write symbol (TERM CONST t): 
+   TEXT VAR w1, w2:= name (symboltable, t.symbol); 
+   IF   quoting 
+   THEN scan (w2); 
+        next symbol (w1, i); INT VAR i; 
+        IF   w1 = w2 CAND i <> num 
+        THEN write (w2) 
+        ELSE write (""""); write (w2); write ("""") 
+        FI 
+   ELSE write (w2) 
+   FI 
+ENDPROC write symbol; 
+ 
+PROC write term backward (TERM CONST t): 
+   IF   t.arity = integer 
+   THEN write (text (t.symbol)) 
+   ELIF t.symbol <= cons 
+   THEN IF   t.symbol < 0 
+        THEN write ("_"+text(-t.symbol)) 
+        ELSE write ("["); 
+             write subterms backward (t, t.arguments); write ("]") 
+        FI 
+   ELSE 
+        write symbol (t); 
+        IF   t.arguments <> nil 
+        THEN compound term 
+        FI 
+   FI. 
+ 
+ compound term: 
+   write ("("); write subterms backward (t, t.arguments); write (")"). 
+ 
+ENDPROC write term backward;  
+ 
+PROC write subterms backward (TERM CONST t, TERMS CONST ts): 
+   IF   ts = nil 
+   THEN 
+   ELSE write subterms backward (t, (tcrestISUB(ts)) ); 
+        write term backward ( 
+              TERM:(tcsymbolISUBts, tcargumentsISUBts, tcarityISUBts)); 
+        IF   ts <> t.arguments 
+        THEN IF t.symbol = cons THEN write ("|") ELSE write (",") FI 
+        FI 
+   FI 
+ENDPROC write subterms backward; 
+ 
+PROC write term (TERM CONST t): 
+   IF   t.arity = integer 
+   THEN write (text (t.symbol)) 
+   ELIF t.symbol <= cons 
+   THEN IF   t.symbol < 0 
+        THEN write ("_"+text(-t.symbol)) 
+        ELSE write ("["); write terms; write ("]") 
+        FI 
+   ELSE 
+        write symbol (t); 
+        IF   t.arguments <> nil 
+        THEN compound term 
+        FI 
+   FI. 
+ 
+ compound term: 
+   write ("("); write terms; write (")"). 
+ 
+ write terms: 
+   TERMS VAR ts:= t.arguments; 
+   WHILE ts <> nil 
+   REP  write term ( 
+              TERM:(tcsymbolISUBts, tcargumentsISUBts, tcarityISUBts)); 
+        ts:= tcrestISUB(ts); 
+        IF   ts <> nil 
+        THEN IF t.symbol = cons THEN write ("|") ELSE write (",") FI 
+        FI 
+   PER. 
+ 
+ENDPROC write term;  
+ 
+PROC read consult list: 
+   TERM VAR t; 
+   TERMS CONST old tp:= tp; 
+   WHILE filename read REP PER; 
+   IF   look ahead <> close bracket 
+   THEN syntax error ("closing bracket expected") 
+   FI; 
+   remove token; 
+   reset symboltable:= symboltable; 
+   TERMS CONST ts:= tp; 
+   tp:= old tp; 
+   consult list (ts); 
+   from file:= FALSE. 
+ 
+ filename read: 
+   BOOL VAR was minus:= FALSE; 
+   IF   look ahead = minus 
+   THEN remove token; 
+        was minus:= TRUE 
+   FI; 
+   IF   look ahead = identifier 
+   THEN new tp (tp); 
+        read term (t); 
+        replace(tcsymbol,tp, t.symbol); 
+        replace(tcarguments,tp, t.arguments); 
+        replace(tcarity,tp, t.arity); 
+        IF was minus THEN replace(tcarity,tp, var); 
+        FI; 
+        IF   NOT exists (name (symboltable, (tcsymbolISUB(tp)) 
+                        )) 
+        THEN syntax error ("file does not exist"); FALSE 
+        ELIF look ahead = comma THEN remove token; TRUE 
+        ELSE TRUE 
+        FI 
+   ELSE FALSE 
+   FI . 
+ 
+ remove token: 
+   look ahead empty:= TRUE. 
+ENDPROC read consult list; 
+ 
+PROC consult list (TERMS CONST ts): 
+   IF   ts > tp 
+   THEN TERM VAR term:= 
+        TERM:(tcsymbolISUBts, tcargumentsISUBts, tcarityISUBts); 
+        consult list (ts-1); 
+        IF   free of errors 
+        THEN TEXT VAR fname:= name (symboltable, term.symbol); 
+             IF   term.arity = var 
+             THEN put ("reconsulting"); putline (fname); reconsult (fname) 
+             ELSE put (  "consulting"); putline (fname);   consult (fname) 
+             FI 
+        FI 
+   FI 
+ENDPROC consult list; 
+ 
+PROC initiate read terms (TERMS VAR ts, TEXT CONST prompter): 
+   enable stop; 
+   look ahead empty:= TRUE; ahead empty:= TRUE; 
+   from file:= FALSE; 
+   TEXT VAR inputline; 
+   IF   prompter = "-" 
+   THEN inputline:= "" 
+   ELSE inputline:= ""13"" 
+   FI; 
+   REP 
+       WHILE sysin = "" CAND is escape 
+       REP   write (""13""15"gib kommando: "); 
+             get command; 
+             IF   inputline = "" 
+             THEN write (""14""3""3"") 
+             ELSE write (""14""13""10""); 
+                  IF   prompter = "-" 
+                  THEN lernsequenz auf taste legen ("k", inputline); 
+                  FI; 
+                  disable stop; 
+                  lernsequenz auf taste legen ("q","break"13""); 
+                  do (inputline); 
+                  lernsequenz auf taste legen ("q","bye"13""); 
+                  IF   is error 
+                  THEN put (errormessage); clear error 
+                  FI; 
+                  enable stop; 
+             FI; 
+             write (""13""10""5"?"); 
+             write (prompter); 
+             write (" ") 
+       PER; 
+       getline (inputline); 
+       IF   inputline <> "" 
+       CAND (inputline SUB length (inputline)) <> "." 
+       THEN inputline CAT "." 
+       FI; 
+       scan (inputline); 
+       ts:= nil 
+   UNTIL inputline <> "" PER; 
+   IF   prompter = "-" 
+   THEN lernsequenz auf taste legen ("k", inputline) 
+   FI. 
+ 
+ is escape: 
+   REP  IF   inputline = ""13"" 
+        THEN write (""13""10""5"?"); 
+             write (prompter); 
+             write (" ") 
+        ELIF inputline = "?" 
+        THEN putline ("?"); inform; push (""13"") 
+        FI; 
+        getchar (inputline) 
+   UNTIL pos ("?"13"", inputline) = 0 
+   PER; 
+   IF   inputline = ""27"" 
+   THEN getchar (inputline); 
+        IF   inputline = ""27"" 
+        THEN TRUE 
+        ELSE push (inputline); push (""27""); FALSE 
+        FI 
+   ELSE push (inputline); FALSE 
+   FI. 
+ 
+ get command: 
+   getchar (inputline); 
+   IF   inputline = ""27"" 
+   THEN getchar (inputline); 
+        IF   inputline = ""27"" 
+        THEN inputline:= ""; 
+             line 
+        ELSE push (inputline); 
+             push (""27""); 
+             getline (inputline) 
+        FI 
+   ELSE push (inputline); 
+        getline (inputline) 
+   FI. 
+ 
+ENDPROC initiate read terms; 
+ 
+PROC initiate read terms (TEXT CONST knowledge, TERMS VAR ts): 
+   look ahead empty:= TRUE; ahead empty:= TRUE; 
+   file:= sequential file (input, knowledge); 
+   from file:= TRUE; 
+   scan (file); 
+   ts:= nil 
+ENDPROC initiate read terms; 
+ 
+PROC read terms (TERMS VAR ts): 
+   { the actual parameter for ts should be initiated < ts:=nil > 
+     at top level of recursion 
+   } 
+   TERM VAR t; 
+   WHILE look ahead <> close paren CAND look ahead <> close bracket 
+    CAND look ahead <> period 
+   REP  read term (t); 
+        append term (t, ts) 
+   UNTIL end of list PER. 
+ 
+ end of list: 
+   IF   look ahead = comma 
+   THEN remove comma; 
+        FALSE 
+   ELSE TRUE 
+   FI. 
+ 
+ remove comma: look ahead empty:= TRUE. 
+ 
+ENDPROC read terms; 
+  
+PROC read term (TERM VAR t): 
+   IF   look ahead = open paren 
+   THEN remove token; 
+        read term (t); 
+        transform infix to prefix (t, 0); 
+        IF   look ahead = close paren 
+        THEN remove token 
+        ELSE syntax error ("closing parentheses missing") 
+        FI 
+   ELSE read prefix term (t); 
+        transform infix to prefix (t, 0) 
+   FI . 
+ 
+ remove token: look ahead empty:= TRUE . 
+ENDPROC read term; 
+ 
+PROC transform infix to prefix (TERM VAR t, INT CONST last prio): 
+     SELECT look ahead OF 
+     CASE minus, plus, times, slash, less, equal, uneq, grt, eqeq, eqdotdot, 
+          boldvar: 
+          operator:= look ahead value; 
+          IF   last prio <= priority (operator) 
+          THEN 
+               remove token; 
+               IF   look ahead = open paren 
+               THEN read term (t2); 
+               ELSE read prefix term (t2); 
+               FI; 
+               IF   last prio < priority (operator) 
+               THEN transform infix to prefix (t2, priority (operator)); 
+               FI; 
+               form result; 
+               transform infix to prefix (t, last prio) 
+          FI 
+     ENDSELECT. 
+ 
+ form result: 
+     second operand; 
+     first operand; 
+     prefix. 
+ 
+second operand: 
+     TERMS VAR p2; 
+     TERM VAR t2; 
+     new tp (p2); 
+     replace(tcsymbol, p2, t2.symbol); 
+     replace(tcarguments, p2, t2.arguments); 
+     replace(tcarity, p2, t2.arity); 
+     replace(tcrest, p2, nil). 
+ 
+first operand: 
+     TERMS VAR p1; 
+     new tp (p1); 
+     replace(tcsymbol, p1, t.symbol); 
+     replace(tcarguments, p1, t.arguments); 
+     replace(tcarity, p1, t.arity); 
+     replace(tcrest, p1, p2). 
+ 
+prefix: 
+     INT VAR operator; 
+     t.symbol:= operator; 
+     t.arguments:= p1; 
+     t.arity:= 2. 
+ 
+ remove token: 
+   look ahead empty:= TRUE. 
+ 
+ENDPROC transform infix to prefix; 
+ 
+INT PROC priority (INT CONST operator): 
+   SELECT operator OF 
+   CASE times, slash, mod:  7 
+   CASE minus, plus:        6 
+   CASE 9,10,11,12,13:      5 
+   OTHERWISE                2 
+   ENDSELECT 
+ENDPROC priority; 
+ 
+PROC read prefix term (TERM VAR t): 
+   SELECT look ahead OF 
+   CASE exclamation:  term is cut 
+   CASE bold var:     term is a variable 
+   CASE underscore:   term is anonym 
+   CASE number:       term is number 
+   CASE identifier, 
+        minus, plus, times, slash, less, equal, uneq, grt, eqeq, eqdotdot: 
+                      IF   look ahead = minus 
+                      THEN remove token; 
+                           IF   look ahead = number  {monadic minus} 
+                           THEN look ahead value:= - look ahead value; 
+                                term is number; 
+                                LEAVE read prefix term 
+                           FI 
+                      ELSE remove token 
+                      FI; 
+                      term is identifier; 
+                      IF   look ahead = open paren 
+                      THEN term is compound 
+                    { ELSE term is a constant } 
+                      FI 
+   CASE open bracket: term is list 
+   CASE colon:        term is colon 
+   OTHERWISE          syntax error ("wrong expression"); 
+                      t:= TERM:(nil, nil, 0) 
+   ENDSELECT. 
+ 
+ term is cut: 
+   remove token; 
+   t:= TERM:(cut, nil, 0). 
+ 
+ term is a variable: 
+   remove token; 
+   t:= TERM:(look ahead value, nil, var). 
+ 
+ term is anonym: 
+   remove token; 
+   anonym value DECR 1; 
+   t:= TERM:(anonym value, nil, var). 
+ 
+ term is number: 
+   remove token; 
+   t:= TERM:(look ahead value, nil, integer). 
+ 
+ term is identifier: 
+   t:= TERM:(look ahead value, nil, 0). 
+ 
+ term is list: 
+   remove token; 
+   t:= TERM:(nil, nil, 0); 
+   IF   look ahead = close bracket 
+   THEN remove token 
+   ELSE non empty list 
+   FI. 
+ 
+ non empty list: 
+   TERM VAR t1; 
+   read term (t1); 
+   append term (t1, t.arguments); 
+   IF   look ahead = close bracket 
+   THEN remove token; 
+        t.arity:= 1 
+   ELSE list with more than one element 
+   FI. 
+ 
+ list with more than one element: 
+   IF   look ahead = stroke 
+   THEN t.symbol:= cons 
+   ELIF look ahead <> comma CAND look ahead <> colon 
+   THEN syntax error ("comma missing") 
+   FI; 
+   term is compound list. 
+ 
+ term is compound list: 
+   remove token; 
+   read terms (t.arguments); 
+   t.arity:= no of terms (t.arguments); 
+   IF   look ahead = close bracket 
+   THEN remove token 
+   ELSE syntax error ("closing bracket missing") 
+   FI. 
+ 
+ term is compound: 
+   remove token; 
+   read terms (t.arguments); 
+   t.arity:= no of terms (t.arguments); 
+   IF   look ahead = close paren 
+   THEN remove token 
+   ELSE syntax error ("closing parentheses missing") 
+   FI. 
+ 
+ term is colon: 
+   remove token; 
+   INT VAR i:= link (symboltable, ":-"); 
+   IF   i = 0 
+   THEN insert (symboltable, ":-", i) 
+   FI; 
+   t:= TERM:(i, nil, 0). 
+ 
+ remove token: 
+   look ahead empty:= TRUE. 
+ 
+ENDPROC read prefix term;  
+ 
+INT PROC no of terms (TERMS CONST ts): 
+   INT VAR i:= 0, t:=ts; 
+   WHILE t <> nil 
+   REP  t:= (tcrestISUB(t)) ; 
+        i INCR 1 
+   PER; 
+   i 
+ENDPROC no of terms; 
+  
+INT PROC arith (TERM CONST term, FRAME CONST curr frame):  
+   TERM VAR t; 
+   IF   term.arity = var 
+   THEN value (term, t, curr frame) 
+   ELSE t:= term 
+   FI; 
+   IF   t.arity = integer 
+   THEN t.symbol 
+   ELIF t.arity = var 
+   THEN syntax error ("free variable in arith expression"); 0 
+   ELIF t.arity = 1 
+   THEN SELECT t.symbol OF 
+        CASE plus:    arith (t1, curr frame) 
+        CASE minus: - arith (t1, curr frame) 
+        OTHERWISE syntax error ("unknown arith operator"); 0 
+        ENDSELECT 
+   ELIF t.arity = 2 
+   THEN SELECT t.symbol OF 
+        CASE plus:  arith (t1, curr frame)  +  arith (t2, curr frame) 
+        CASE minus: arith (t1, curr frame)  -  arith (t2, curr frame) 
+        CASE times: arith (t1, curr frame)  *  arith (t2, curr frame) 
+        CASE slash: arith (t1, curr frame) DIV arith (t2, curr frame) 
+        CASE mod:   arith (t1, curr frame) MOD arith (t2, curr frame) 
+        OTHERWISE syntax error ("unknown arith operator"); 0 
+        ENDSELECT 
+   ELSE syntax error ("wrong arith expression"); 0 
+   FI. 
+ 
+ t1: TERM:(tcsymbolISUBt.arguments, 
+           tcargumentsISUBt.arguments, 
+           tcarityISUBt.arguments) . 
+ 
+ t2: TERM:(tcsymbolISUB(tcrestISUB(t.arguments)) , 
+           tcargumentsISUB(tcrestISUB(t.arguments)) , 
+           tcarityISUB(tcrestISUB(t.arguments)) ) . 
+ 
+ENDPROC arith; 
+ 
+TOKEN PROC look ahead : 
+   { Returns the token in the look ahead.  
+     If the look ahead is empty it calls the scanner 
+     to get the next symbol, 
+     which is then placed into the look ahead. 
+   } 
+   SYMBOLTYPE VAR symboltype; 
+   IF   look ahead empty 
+   THEN look ahead empty:= FALSE; 
+        get next symbol; 
+        store the symbol 
+   FI; 
+   look ahead token. 
+ 
+ get next symbol: 
+   IF   ahead empty 
+   THEN IF   from file 
+        THEN next symbol (file, look ahead symbol, symboltype) 
+        ELSE next symbol (look ahead symbol, symboltype) 
+        FI 
+   ELSE ahead empty:= TRUE; 
+        look ahead symbol:= ahead symbol; 
+        symboltype:= ahead symboltype 
+   FI. 
+ 
+ store the symbol: 
+   SELECT symboltype OF 
+   CASE tag,tex:     look ahead token:= identifier; 
+                     IF   look ahead symbol = "" 
+                     THEN look ahead value:= 0; 
+                     ELSE install 
+                     FI 
+   CASE num:         look ahead token:= number; 
+                     look ahead value:= int(look ahead symbol) 
+   CASE bold:        look ahead token:= bold var; 
+                     install 
+   CASE operator:    look ahead token:= 
+                     pos  ("|!:-+*/_<=<>==..", look ahead symbol); 
+                     IF   look ahead token = equal 
+                     THEN get next symbol; 
+                          IF   symboltype = operator 
+                          CAND look ahead symbol = "=" 
+                          THEN look ahead token:= eqeq; 
+                               look ahead symbol:= "==" 
+                          ELIF look ahead symbol = "." 
+                          THEN get next symbol; 
+                               IF   look ahead symbol = "." 
+                               THEN look ahead token:= eqdotdot; 
+                                    look ahead symbol:= "=.." 
+                               ELSE syntax error ("second period missing") 
+                               FI 
+                          ELSE ahead symbol:= look ahead symbol; 
+                               ahead symboltype:= symboltype; 
+                               ahead empty:= FALSE; 
+                               look ahead symbol:= "="; 
+                               look ahead token := equal 
+                          FI 
+                     FI; 
+                     IF   look ahead token > 3 
+                     THEN install 
+                     FI 
+   CASE delimiter:   look ahead token:= 
+                     pos ("|!:-+*/_<=<>==..,;()[]", look ahead symbol); 
+                     SELECT look ahead token OF 
+                     CASE colon: minus must follow 
+                     CASE 0:     syntax error ("wrong delimiter") 
+                     ENDSELECT 
+   CASE endoffile:   look ahead token:= end of input 
+   CASE within com:  look ahead token:= end of input; 
+                     syntax error ("within comment") 
+   CASE within tex:  look ahead token:= end of input; 
+                     syntax error ("within text") 
+   ENDSELECT. 
+ 
+ minus must follow: 
+   get next symbol; 
+   IF  look ahead symbol <> "-" 
+   THEN syntax error ("minus after colon expected") FI. 
+ 
+ install: 
+   look ahead value:= link (symboltable, look ahead symbol); 
+   IF   look ahead value = 0 
+   THEN insert(symboltable,look ahead symbol,look ahead value) 
+   FI. 
+ENDPROC look ahead; 
+ 
+PROC inform: 
+   enable stop; 
+   put ("  "); 
+   put (clock(0) - start time); put ("SEC"); 
+   IF   inference count > 0 CAND clock(0) > start time 
+   THEN 
+        put (inference count); put ("inferences"); 
+        put (int (real (inference count) / (clock(0) - start time))); 
+        put ("LIPS") 
+   FI; 
+   FOR k FROM 2 UPTO fsp 
+   REP line; 
+       FRAME CONST f:= fsc(k).frame; 
+       INT CONST ind:= fc(f).level; 
+       IF   ind <= 40 
+       THEN write (ind*" ") 
+       ELSE write (text(ind) + ":  ") 
+       FI; 
+       value (fc(f).call, t, fc(f).father); 
+       write term backward (t) 
+   PER; 
+   IF   testing 
+   THEN put(tp); put(kp); put(fp); put(fsp); put(np); put(ep) 
+   FI; 
+   line 
+ENDPROC inform; 
+ 
+PROC syntax error (TEXT CONST message): 
+   free of errors:= FALSE; 
+   write ("!- "); 
+   write note (message); 
+   write note (" at '"); 
+   write note (look ahead symbol); 
+   write note ("' "); 
+   IF   from file 
+   THEN write note ("in rule "); write note (rule count); 
+        write note ("line "); write note (lineno(file) - 1) 
+   FI; 
+   look ahead empty:= TRUE; 
+   line; note line 
+ENDPROC syntax error; 
+ 
+PROC write note (TEXT CONST t): 
+     write (t); 
+     IF from file THEN note (t) FI 
+ENDPROC write note; 
+ 
+PROC write note (INT CONST i): 
+     put (i); 
+     IF from file THEN note (i) FI 
+ENDPROC write note; 
+ 
+PROC trace (TEXT CONST on): 
+     testing:= test on; 
+     tracing:= trace on. 
+     trace on: pos (on, "on") > 0. 
+     test on : pos (on, "test") > 0 
+ENDPROC trace; 
+ 
+PROC new kp (INT VAR pointer): 
+     kp INCR 1; pointer:= kp; 
+     IF   length (kcfirst) < 2*kp 
+     THEN IF   kp > 15990 
+          THEN pegel overflow 
+          ELSE kcfirst CAT "1234567890123456"; 
+               kcrest  CAT "1234567890123456"; 
+     FI   FI 
+ENDPROC new kp; 
+ 
+PROC new tp (INT VAR pointer): 
+     tp INCR 1; pointer:= tp; 
+     IF   length (tcsymbol) < 2*tp 
+     THEN IF   tp = 15990 
+          THEN pegel overflow 
+          ELSE tcsymbol CAT "1234567890123456"; 
+               tcarguments CAT "1234567890123456"; 
+               tcarity CAT "1234567890123456"; 
+               tcrest CAT "1234567890123456" 
+     FI   FI 
+ENDPROC new tp; 
+ 
+PROC new (INT VAR pegel, pointer): 
+     IF   pegel = limit 
+     THEN pegel overflow 
+     ELSE pegel INCR 1; pointer:= pegel 
+     FI 
+ENDPROC new; 
+ 
+PROC pegeloverflow: line; write ("   "); 
+     put(tp); put(kp); put(fp); put(fsp); put(np); put(ep); 
+     errorstop ("pegeloverflow") 
+ENDPROC pegeloverflow; 
+  
+ 
+{                                                            
+Programmtransformation: 
+ 
+   PASCAL mit Pointer ==>  ELAN 
+ 
+ 
+1. Rekursive Datentypen: 
+ 
+   type t = ^tcell;   ==>  LET T = INT; 
+ 
+                         { schwache Datenabstraktion mit LET ist besser, 
+                           weil keine neuen Zugriffsprozeduren erforderlich. 
+ 
+                           GLOBAL: 
+                         } 
+                           LET nil = 0, limit <= 500; 
+                           ROW limit TCELL VAR tc;     { t cell     } 
+                           INT VAR tp:= nil;           { t pegel    } 
+ 
+ 
+2. Deklaration: 
+ 
+   var x : t;         ==>  T VAR x;    { Type checking selber machen ! } 
+ 
+ 
+3. Pointer-Initialisierung: 
+ 
+   x:= nil;           ==>  x:= nil; 
+ 
+ 
+4. Allokation: 
+ 
+   new (x);           ==>  new (tp,x); 
+ 
+   dispose (x);       ==>  kommt nicht vor 
+ 
+ 
+5. Applikation: 
+ 
+   x^.feld            ==>  TERMSCELL:(TERM:(tcsymbolISUBx, tcargumentsISUBx, tcarityISUBx), tcrestISUBx).feld 
+ 
+   WITH               ==>  Refinement verwenden 
+ 
+{ Programmtransformation  ROW limit TERMSCELL VAR tc => TEXT VAR } 
+   T1; 
+   "new (tp, " CA "new tp ("; 
+   T1; 
+   REP 
+        col(1); 
+        D    "tc("; 
+        IF   at ("tc(tc(") 
+        THEN D "tc("; 
+             attest; 
+             col(1); 
+             D "tc(" 
+        FI; 
+        attest 
+   UNTIL eof PER 
+.  
+attest: 
+IF   at ("tc("+any**1+").first."+any**2+":="+any**3+";"+any**4) 
+THEN C ("replace(tc"+match(2)+","+match(1)+","+match(3)+");"+match(4)) 
+ELIF at ("tc("+any**1+").rest:="+any**3+";"+any**4) 
+THEN C ("replace(tcrest,"+match(1)+","+match(3)+");"+match(4)) 
+ELIF at ("tc("+any**1+").first:="+any**3+";"+any**4) 
+THEN C ("replace(tcsymbol,"+match(1)+","+match(3)+ 
+   ".symbol); replace(tcarguments,"+match(1)+","+match(3)+ 
+   ".arguments); replace(tcarity,"+match(1)+","+match(3)+ 
+   ".arity);"+match(4)) 
+ELIF at ("tc("+any**1+").first."+any**2+" "+any**4) 
+THEN C ("(tc"+match(2)+"ISUB("+match(1)+")) "+match(4)) 
+ELIF at ("tc("+any**1+").rest"+any**4) 
+THEN C ("(tcrestISUB("+match(1)+")) "+match(4)) 
+ELIF at ("tc("+any**1+").first).first"+any**4) 
+THEN C ("TERM:(tcsymbolISUB"+match(1)+ 
+   ").first, tcargumentsISUB"+match(1)+ 
+   ").first, tcarityISUB"+match(1)+").first)"+match(4)) 
+ELIF at ("tc("+any**1+").first"+any**4) 
+THEN C ("TERM:(tcsymbolISUB"+match(1)+ 
+   ", tcargumentsISUB"+match(1)+", tcarityISUB"+match(1)+")"+match(4)) 
+ELIF at ("tc("+any**1+"):= TERMSCELL:("+any**2+","+any**3+")"+any**4) 
+THEN C ("replace(tcsymbol,"+match(1)+","+match(2)+ 
+   ".symbol); replace(tcarguments,"+match(1)+","+match(2)+ 
+   ".arguments); replace(tcarity,"+match(1)+","+match(2)+ 
+   ".arity); replace(tcrest,"+match(1)+","+match(3)+")"+match(4)) 
+ELIF at ("tc("+any**1+")"+any**4) 
+THEN C ("TERMSCELL:(TERM:(tcsymbolISUB"+match(1)+ 
+              ", tcargumentsISUB"+match(1)+", tcarityISUB"+match(1) 
+         +"), tcrestISUB"+match(1)+")" +match(4)) 
+ELIF NOT eof 
+THEN stop 
+FI; 
+col(col-1); D("*"); C "" 
+.  
+ 
+}  
+ 
+END PACKET prolog; 
+  
+{ TEST } 
+lernsequenz auf taste legen ("7",""124""); 
+lernsequenz auf taste legen ("ü",""91""); 
+lernsequenz auf taste legen ("+",""93""); 
+

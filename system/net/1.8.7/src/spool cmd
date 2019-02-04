@@ -1,0 +1,112 @@
+PACKET spool cmd                                    (* Autor: R. Ruland  *)
+                                                    (* Stand: 01.04.86   *)
+       DEFINES killer,
+               first,
+               start,
+               stop,
+               halt,
+               wait for halt :
+ 
+LET error nak          = 2 ,
+
+    entry line code    = 23 ,
+    killer code        = 24 , 
+    first code         = 25 ,
+    start code         = 26 , 
+    stop code          = 27 ,
+    halt code          = 28 ,
+    wait for halt code = 29 ;
+ 
+DATASPACE VAR ds;
+
+BOUND STRUCT (TEXT entry line, INT index) VAR control msg;
+BOUND TEXT VAR error msg ;
+ 
+INT VAR reply;
+ 
+INITFLAG VAR in this task := FALSE;
+ 
+ 
+PROC control spool (TASK CONST spool, INT CONST control code,
+                    TEXT CONST question, BOOL CONST leave) :
+ 
+  enable stop;
+  initialize control msg;
+  WHILE valid spool entry
+    REP IF control question THEN control spool entry FI PER;
+ 
+  . initialize control msg :
+      IF NOT initialized (in this task) THEN ds := nilspace FI;
+      forget (ds); ds := nilspace; control msg := ds;
+      control msg. entry line := "";
+      control msg. index      := 0;
+      say (""13""10"");
+ 
+  . valid spool entry :
+      call (spool, entry line code, ds, reply);
+      IF reply = error nak
+         THEN error msg := ds;
+              errorstop (error msg);
+      FI;
+      control msg. index <> 0
+ 
+   . control question :
+       say (control msg. entry line);
+       yes (question) 
+ 
+  . control spool entry :
+      call (spool, control code, ds, reply);
+      IF reply = error nak
+         THEN error msg := ds;
+              errorstop (error msg);
+      FI;
+      IF leave THEN LEAVE control spool FI;
+ 
+END PROC control spool;
+ 
+ 
+PROC killer (TASK CONST spool) :
+ 
+  control spool (spool, killer code, "   loeschen", FALSE)
+ 
+END PROC killer;
+ 
+ 
+PROC first (TASK CONST spool) :
+ 
+  control spool (spool, first code, "   als erstes", TRUE)
+ 
+END PROC first;
+
+ 
+PROC start (TASK CONST spool) :
+ 
+  call (stop  code, "", spool);
+  call (start code, "", spool);
+ 
+END PROC start;
+ 
+ 
+PROC stop (TASK CONST spool) :
+ 
+  call (stop code, "", spool);
+ 
+END PROC stop;
+ 
+ 
+PROC halt (TASK CONST spool) :
+ 
+  call (halt code, "", spool);
+ 
+END PROC halt;
+ 
+ 
+PROC wait for halt (TASK CONST spool) :
+ 
+  call (wait for halt code, "", spool);
+ 
+END PROC wait for halt;
+ 
+ 
+END PACKET spool cmd;
+

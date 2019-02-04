@@ -1,0 +1,138 @@
+(* ------------------- VERSION 2 vom 21.04.86 ------------------- *)
+PACKET cryptograf DEFINES                     (* Autor: J.Liedtke *)
+
+  crypt ,
+  decrypt :
+ 
+TEXT VAR char , in buffer, out buffer ;
+INT VAR in pos , key index ;
+DATASPACE VAR scratch space ;
+FILE VAR in, out;
+ 
+PROC crypt (TEXT CONST file, key) :
+ 
+  open (file) ;
+  initialize crypt (key) ;
+  WHILE NOT eof REP
+    read char ;
+    crypt char ;
+    write char
+  PER ;
+  close (file) .
+ 
+crypt char :
+  char := code (( character + random char + key char ) MOD 250) ;
+  IF key index = LENGTH key
+    THEN key index := 1
+    ELSE key index INCR 1
+  FI .
+ 
+character   : code (char) .
+ 
+random char : random (0,250).
+ 
+key char    : code (key SUB key index) .
+ 
+ENDPROC crypt ;
+ 
+PROC decrypt (TEXT CONST file, key) :
+ 
+  open (file) ;
+  initialize crypt (key) ;
+  WHILE NOT eof REP
+    read char ;
+    decrypt char ;
+    write char
+  PER ;
+  close (file) .
+ 
+decrypt char :
+  char := code (( character - random char - key char ) MOD 250) ;
+  IF key index = LENGTH key
+    THEN key index := 1
+    ELSE key index INCR 1
+  FI .
+ 
+character   : code (char) .
+ 
+random char : random (0,250) .
+ 
+key char    : code (key SUB key index) .
+ 
+ENDPROC decrypt ;
+ 
+PROC initialize crypt (TEXT CONST key) :
+ 
+  INT VAR random key := 0 ;
+  FOR key index FROM 1 UPTO LENGTH key REP
+    random key := (random key + code (key SUB key index)) MOD 32000
+  PER ;
+  initialize random (random key) ;
+  key index := 1
+ 
+ENDPROC initialize crypt ;
+ 
+PROC open (TEXT CONST source file) :
+ 
+  in := sequential file (input, source file) ;
+  getline (in, in buffer) ;
+  in pos := 1 ;
+  forget (scratch space) ; 
+  scratch space := nilspace ; 
+  out := sequential file (output, scratch space) ;
+  out buffer := "" .
+ 
+ENDPROC open ;
+ 
+PROC close (TEXT CONST source file) :
+ 
+  IF out buffer <> ""
+    THEN putline (out, out buffer)
+  FI ;
+  forget (source file, quiet) ;
+  copy (scratch space, source file) ;
+  forget (scratch space) .
+ 
+ENDPROC close ;
+ 
+BOOL PROC eof :
+ 
+  IF in pos > LENGTH in buffer
+    THEN eof (in)
+    ELSE FALSE
+  FI
+ 
+ENDPROC eof ;
+ 
+PROC read char :
+ 
+  IF in pos > 250
+    THEN getline (in, in buffer) ;
+         in pos := 1 ;
+         read char
+  ELIF in pos > LENGTH in buffer
+    THEN in pos := 1 ;
+         getline (in, in buffer) ;
+         char := ""13""
+    ELSE char := in buffer SUB in pos ;
+         in pos INCR 1
+  FI .
+ 
+ENDPROC read char ;
+ 
+PROC write char :
+ 
+  IF char = ""13""
+    THEN putline (out, out buffer) ;
+         out buffer := ""
+    ELSE out buffer CAT char
+  FI ;
+  IF LENGTH out buffer = 250
+    THEN putline (out, out buffer) ;
+         out buffer := ""
+  FI .
+ 
+ENDPROC write char ;
+ 
+ENDPACKET cryptograf ;
+

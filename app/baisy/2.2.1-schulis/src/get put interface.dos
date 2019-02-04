@@ -1,0 +1,103 @@
+PACKET dosgetputDEFINES logmodus,opendosdisk,closedosdisk,accessdosdisk,
+openfetchdosfile,closefetchdosfile,catnextfetchdoscluster,
+readnextfetchdoscluster,waslastfetchcluster,opensavedosfile,
+writenextsavedoscluster,closesavedosfile,erasedosfile,alldosfiles,
+alldossubdirs,dosfileexists,doslist,cleardosdisk,formatdosdisk:BOOL VAR 
+logflag:=FALSE ;PROC logmodus(BOOL CONST status):logflag:=statusEND PROC 
+logmodus;LET maxclustersize=8192,realspersector=64;LET CLUSTER =BOUND STRUCT 
+(ALIGN dummy,ROW maxclustersizeREAL clusterrow);CLUSTER VAR cluster;
+DATASPACE VAR clusterds;INITFLAG VAR clusterdsused:=FALSE ;TEXT VAR 
+convertbuffer;INT VAR convertbufferlength;PROC initclusterhandle:IF 
+initialized(clusterdsused)THEN forget(clusterds)FI ;clusterds:=nilspace;
+cluster:=clusterds;convertbuffer:="";convertbufferlength:=0.END PROC 
+initclusterhandle;PROC catclustertext(REAL CONST clusterno,TEXT VAR 
+destination,INT CONST to):readdiskcluster(clusterds,2,clusterno);
+initconvertbuffer;INT VAR i;FOR iFROM 1UPTO sectorspercluster*realspersector
+REP replace(convertbuffer,i,cluster.clusterrow[i])PER ;destinationCAT subtext
+(convertbuffer,1,to).initconvertbuffer:IF convertbufferlength<clustersize
+THEN convertbufferCAT (clustersize-convertbufferlength)*"*";
+convertbufferlength:=clustersizeFI .END PROC catclustertext;PROC 
+writetexttocluster(REAL CONST clusterno,TEXT CONST string):IF LENGTH string<
+clustersizeTHEN executewritetext(text(string,clustersize))ELSE 
+executewritetext(string)FI ;writediskcluster(clusterds,2,clusterno).END PROC 
+writetexttocluster;PROC executewritetext(TEXT CONST string):INT VAR i;FOR i
+FROM 1UPTO sectorspercluster*realspersectorREP cluster.clusterrow[i]:=string
+RSUB iPER .END PROC executewritetext;BOOL VAR diskopen:=FALSE ;TEXT VAR 
+actpath;REAL VAR lastaccesstime;PROC opendosdisk(TEXT CONST path):IF logflag
+THEN dump("open dos disk",path)FI ;enablestop;closework;initclusterhandle;
+actpath:=path;diskopen:=TRUE END PROC opendosdisk;PROC closedosdisk:IF 
+logflagTHEN dump("close dos disk","")FI ;enablestop;diskopen:=FALSE ;
+closework;initclusterhandle;clearfatds;initdirds.END PROC closedosdisk;PROC 
+accessdosdisk:enablestop;IF NOT diskopenTHEN errorstop(
+"DOS-Arbeit nicht eröffnet")FI ;IF workclosedCOR (
+lastaccessmorethan5secondsagoCAND diskchanged)THEN openeudisk;opendosdisk;
+readfat;opendir(actpath);lastaccesstime:=clock(1);openworkFI .
+lastaccessmorethan5secondsago:abs(clock(1)-lastaccesstime)>5.0.diskchanged:
+IF hdversionTHEN FALSE ELSE lastaccesstime:=clock(1);NOT firstfatblockokFI .
+END PROC accessdosdisk;REAL VAR nextfetchcluster,fetchrest;PROC 
+openfetchdosfile(TEXT CONST filename):IF logflagTHEN dump(
+"open fetch dos file",filename)FI ;enablestop;accessdosdisk;fileinfo(filename
+,nextfetchcluster,fetchrest).END PROC openfetchdosfile;BOOL PROC 
+waslastfetchcluster:IF logflagTHEN dump("was last fetch cluster","")FI ;
+islastfatchainentry(nextfetchcluster)OR fetchrest<=0.0.END PROC 
+waslastfetchcluster;PROC catnextfetchdoscluster(TEXT VAR buffer):IF logflag
+THEN dump("cat next fetch dos cluster","")FI ;enablestop;IF 
+waslastfetchclusterTHEN errorstop("fetch nach Dateiende")FI ;IF fetchrest<
+real(clustersize)THEN catclustertext(nextfetchcluster,buffer,int(fetchrest));
+fetchrest:=0.0ELSE catclustertext(nextfetchcluster,buffer,clustersize);
+fetchrestDECR real(clustersize)FI ;lastaccesstime:=clock(1);nextfetchcluster
+:=fatentry(nextfetchcluster).END PROC catnextfetchdoscluster;PROC 
+readnextfetchdoscluster(DATASPACE VAR readds,INT VAR startpage):IF logflag
+THEN dump("read next fetch dos cluster",startpage)FI ;enablestop;IF 
+waslastfetchclusterTHEN errorstop("fetch nach Dateiende")FI ;readdiskcluster(
+readds,startpage,nextfetchcluster);lastaccesstime:=clock(1);startpageINCR 
+sectorspercluster;nextfetchcluster:=fatentry(nextfetchcluster);IF fetchrest<
+real(clustersize)THEN fetchrest:=0.0ELSE fetchrestDECR real(clustersize)FI .
+END PROC readnextfetchdoscluster;PROC closefetchdosfile:IF logflagTHEN dump(
+"close fetch dos file","")FI ;END PROC closefetchdosfile;TEXT VAR savename;
+REAL VAR firstsavecluster,lastsavecluster,savesize;PROC opensavedosfile(TEXT 
+CONST filename):IF logflagTHEN dump("open save dos file",filename)FI ;
+enablestop;accessdosdisk;IF fileexists(filename)OR subdirexists(filename)
+THEN errorstop("die Datei """+filename+""" gibt es schon")FI ;savename:=
+filename;firstsavecluster:=-1.0;savesize:=0.0.END PROC opensavedosfile;PROC 
+writenextsavedoscluster(TEXT CONST buffer):IF logflagTHEN dump(
+"write next save dos cluster","")FI ;enablestop;REAL CONST savecluster:=
+availablefatentry;writetexttocluster(savecluster,buffer);lastaccesstime:=
+clock(1);savesizeINCR real(LENGTH buffer);IF firstsavecluster<2.0THEN 
+firstsavecluster:=saveclusterELSE fatentry(lastsavecluster,savecluster)FI ;
+fatentry(savecluster,lastfatchainentry);lastsavecluster:=savecluster.END 
+PROC writenextsavedoscluster;PROC writenextsavedoscluster(DATASPACE CONST 
+saveds,INT VAR startpage):IF logflagTHEN dump("write next save dos cluster",
+startpage)FI ;enablestop;REAL CONST savecluster:=availablefatentry;
+writediskcluster(saveds,startpage,savecluster);lastaccesstime:=clock(1);
+startpageINCR sectorspercluster;savesizeINCR real(clustersize);IF 
+firstsavecluster<2.0THEN firstsavecluster:=saveclusterELSE fatentry(
+lastsavecluster,savecluster)FI ;fatentry(savecluster,lastfatchainentry);
+lastsavecluster:=savecluster.END PROC writenextsavedoscluster;PROC 
+closesavedosfile:IF logflagTHEN dump("close save dos file","")FI ;enablestop;
+IF firstsavecluster<2.0THEN LEAVE closesavedosfileFI ;fatentry(
+lastsavecluster,lastfatchainentry);writefat;insertdirentry(savename,
+firstsavecluster,savesize);lastaccesstime:=clock(1).END PROC closesavedosfile
+;PROC erasedosfile(TEXT CONST filename):IF logflagTHEN dump("erase dos file",
+filename)FI ;enablestop;accessdosdisk;REAL VAR firstcluster,size;fileinfo(
+filename,firstcluster,size);deletedirentry(filename);erasefatchain(
+firstcluster);writefat;lastaccesstime:=clock(1).END PROC erasedosfile;
+THESAURUS PROC alldosfiles:IF logflagTHEN dump("all dosfile","")FI ;
+enablestop;accessdosdisk;allfiles.END PROC alldosfiles;THESAURUS PROC 
+alldossubdirs:IF logflagTHEN dump("all subdirs","")FI ;enablestop;
+accessdosdisk;allsubdirs.END PROC alldossubdirs;BOOL PROC dosfileexists(TEXT 
+CONST filename):IF logflagTHEN dump("dos file exists",filename)FI ;enablestop
+;accessdosdisk;fileexists(filename).END PROC dosfileexists;PROC doslist(
+DATASPACE VAR listds):IF logflagTHEN dump("dos list","")FI ;enablestop;
+accessdosdisk;dirlist(listds).END PROC doslist;PROC cleardosdisk:IF logflag
+THEN dump("clear dos disk","")FI ;enablestop;IF hdversionTHEN errorstop(
+"nicht implementiert")ELSE accessdosdisk;formatdir;formatfat;lastaccesstime:=
+clock(1)FI .END PROC cleardosdisk;PROC formatdosdisk(INT CONST formatcode):
+IF logflagTHEN dump("format dos disk ("+text(formatcode)+")","")FI ;
+enablestop;IF NOT diskopenTHEN errorstop("DOS-Arbeit nicht eröffnet")FI ;IF 
+hdversionTHEN errorstop("nicht implementiert")ELSE doformatFI .doformat:IF 
+bpbexists(formatcode)THEN closework;formatarchive(formatcode);openeudisk;
+writebpb(formatcode);opendosdisk;formatdir;formatfat;openworkELSE errorstop(
+"Format unzulässig")FI ;lastaccesstime:=clock(1).END PROC formatdosdisk;END 
+PACKET dosgetput;
+

@@ -1,0 +1,584 @@
+PACKET character buffer                            (* Autor : J.Durchholz *) 
+                                                   (* Datum : 09.05.1984  *) 
+    DEFINES                                        (* Version 1.7.2       *) 
+                                      (* 21.2.83. hey 293, 450,97,361 *)
+  get char, 
+  line nr, 
+  init char buffer: 
+ 
+ 
+TEXT VAR buffer; 
+INT VAR pointer, 
+        line; 
+ 
+ 
+INT PROC line nr: 
+  line 
+END PROC line nr; 
+ 
+ 
+PROC init char buffer: 
+  buffer := ""; 
+  pointer := 1; 
+  line := 0; 
+END PROC init char buffer; 
+ 
+ 
+PROC get char (FILE VAR f, TEXT VAR char): 
+  IF buffer empty THEN 
+    try to find nonempty line and put it into buffer; 
+    char := " "; 
+    pointer := 1 
+  ELSE 
+    char := buffer SUB pointer; 
+    pointer INCR 1 
+  FI. 
+ 
+buffer empty: 
+  pointer > length (buffer). 
+ 
+try to find nonempty line and put it into buffer: 
+  REP 
+    IF eof (f) THEN 
+      char := ""; 
+      LEAVE get char 
+    FI; 
+    get line (f, buffer); 
+    line INCR 1 
+  UNTIL buffer <> "" PER. 
+ 
+END PROC get char; 
+ 
+ 
+END PACKET character buffer; 
+ 
+ 
+ 
+ 
+PACKET lisp io                                      (* Autor: J.Durchholz *) 
+                                                    (* Datum: 10.09.1982  *) 
+    DEFINES                                         (* Version 4.1.3      *) 
+                                                    (* Änderung: notebook *)
+  put,  note,                                       (*    13.3.86  I. Ley *)
+  verbose lisp output, 
+  get, 
+  get all: 
+ 
+ 
+BOOL VAR verbose :: FALSE; 
+ 
+ 
+PROC verbose lisp output (BOOL CONST b): 
+  verbose := b 
+END PROC verbose lisp output; 
+ 
+BOOL PROC verbose lisp output: 
+  verbose 
+END PROC verbose lisp output; 
+ 
+ 
+PROC put (SYM CONST sym): 
+  IF atom (sym) THEN 
+    put atom 
+  ELSE 
+    put structure 
+  FI. 
+ 
+put atom: 
+  IF is named atom (sym) THEN 
+    put (name (sym)) 
+  ELIF is int pair (sym) THEN 
+    put (int 1 (sym)) 
+  ELIF is text (sym) THEN 
+    IF verbose THEN 
+      TEXT VAR buffer :: text (sym); 
+      change all (buffer, """", """"""); 
+      buffer CAT """"; 
+      put ("""" + buffer) 
+    ELSE 
+      write (text (sym)) 
+    FI 
+  ELIF is character (sym) THEN 
+    IF verbose THEN 
+      buffer := "'"; 
+      buffer CAT code (character (sym)); 
+      buffer CAT "'"; 
+      put (buffer) 
+    ELSE 
+      out (code (character (sym))) 
+    FI 
+  ELSE 
+    put (""15"UNBEKANNTER_ATOM_TYP"14"") 
+  FI. 
+ 
+put structure: 
+  put ("("); 
+  SYM VAR actual node := sym; 
+  REP 
+    put (head (actual node)); 
+    actual node := tail (actual node) 
+  UNTIL atom (actual node) PER; 
+  IF NOT null (actual node) THEN 
+    put ("."); 
+    put (actual node) 
+  FI; 
+  put (")"). 
+ 
+END PROC put; 
+ 
+PROC put (FILE VAR f, SYM CONST sym): 
+  IF atom (sym) THEN 
+    put atom 
+  ELSE 
+    put structure 
+  FI. 
+ 
+put atom: 
+  IF is named atom (sym) THEN 
+    put (f, name (sym)) 
+  ELIF is int pair (sym) THEN 
+    put (f, int 1 (sym)) 
+  ELIF is text (sym) THEN 
+    IF verbose THEN 
+      TEXT VAR buffer :: text (sym); 
+      change all (buffer, """", """"""); 
+      buffer CAT """"; 
+      put (f, """" + buffer) 
+    ELSE 
+      put (f, text (sym)) 
+    FI 
+  ELIF is character (sym) THEN 
+    IF verbose THEN 
+      buffer := "'"; 
+      buffer CAT code (character (sym)); 
+      buffer CAT "'"; 
+      put (f,  buffer) 
+    ELSE 
+      put (f,  code (character (sym))) 
+    FI 
+  ELSE 
+    put ( f, ""15"UNBEKANNTER_ATOM_TYP"14"") 
+  FI. 
+ 
+put structure: 
+  put (f, "("); 
+  SYM VAR actual node := sym; 
+  REP 
+    put (f, head (actual node)); 
+    actual node := tail (actual node) 
+  UNTIL atom (actual node) PER; 
+  IF NOT null (actual node) THEN 
+    put (f, "."); 
+    put (f, actual node) 
+  FI; 
+  put (f, ")"). 
+ 
+END PROC put; 
+ 
+ PROC note (SYM CONST sym): 
+  IF atom (sym) THEN 
+    note atom 
+  ELSE 
+    note structure 
+  FI. 
+ 
+note atom: 
+  IF is named atom (sym) THEN 
+    note ( name (sym)) 
+  ELIF is int pair (sym) THEN 
+    note (int 1 (sym)) 
+  ELIF is text (sym) THEN 
+    IF verbose THEN 
+      TEXT VAR buffer :: text (sym); 
+      change all (buffer, """", """"""); 
+      buffer CAT """"; 
+      note ( """" + buffer) 
+    ELSE 
+      note ( text (sym)) 
+    FI 
+  ELIF is character (sym) THEN 
+    IF verbose THEN 
+      buffer := "'"; 
+      buffer CAT code (character (sym)); 
+      buffer CAT "'"; 
+      note ( buffer) 
+    ELSE 
+      note ( code (character (sym))) 
+    FI 
+  ELSE 
+    note ( ""15"UNBEKANNTER_ATOM_TYP"14"") 
+  FI. 
+ 
+note structure: 
+  note ( "("); 
+  SYM VAR actual node := sym; 
+  REP 
+    note ( head (actual node)); 
+    actual node := tail (actual node) 
+  UNTIL atom (actual node) PER; 
+  IF NOT null (actual node) THEN 
+    note ( "."); 
+    note ( actual node) 
+  FI; 
+  note ( ")"). 
+ 
+END PROC note; 
+ 
+PROC get (FILE VAR f, SYM VAR s): 
+  initialize scanner (f); 
+  IF NOT get s expression (s) THEN 
+    error ("LISP-Ausdruck erwartet") 
+  FI; 
+  scanner postprocessing (f) 
+END PROC get; 
+ 
+ 
+(**************************** parser for 'get' ****************************) 
+ 
+ 
+LET end of file type = 0, 
+    name type = 1, 
+    text type = 2, 
+    character type = 3, 
+    int type = 4, 
+    other char type = 5; 
+ 
+ 
+BOOL PROC get s expression (SYM VAR s): 
+  (* The boolean result indicates wether the error has not occurred that  *) 
+  (* 'get next symbol' was called, but then the symbol was not expected   *) 
+  (* and thus could not be processed.                                     *) 
+  get next symbol; 
+  SELECT symbol type OF 
+    CASE end of file type: FALSE 
+    CASE name type: s := new atom (symbol); TRUE 
+    CASE text type: s := sym (symbol); TRUE 
+    CASE character type: s := sym character (code (symbol)); TRUE 
+    CASE int type: s := sym (int (symbol), -1); TRUE 
+    CASE other char type: get structure 
+    OTHERWISE error ("EINLESEFEHLER: unbekannter Symboltyp: " + 
+                     text (symbol type)); TRUE 
+  END SELECT. 
+ 
+get structure: 
+  IF symbol <> "(" THEN 
+    FALSE 
+  ELSE 
+    get list; 
+    IF symbol type <> other char type OR symbol <> ")" THEN 
+      error (">> ) << erwartet"); 
+      FALSE 
+    ELSE 
+      TRUE 
+    FI 
+  FI. 
+ 
+get list: 
+  SYM VAR father, son; 
+  IF get s expression (son) THEN 
+    get list elements; 
+  ELSE 
+    s := nil 
+  FI. 
+ 
+get list elements: 
+  father := cons (son, nil); 
+  s := father; 
+  WHILE get s expression (son) REP 
+    set tail (father, cons (son, nil)); 
+    father := tail (father) 
+  PER; 
+  IF symbol type = other char type AND symbol = "." THEN 
+    IF get s expression (son) THEN 
+      set tail (father, son); 
+      get next symbol 
+    ELSE 
+      error ("LISP-Ausdruck nach dem Punkt erwartet") 
+    FI 
+  FI. 
+ 
+END PROC get s expression; 
+ 
+ 
+(********************* scanner for 'get x espression' *********************) 
+ 
+ 
+FILE VAR infile; 
+ 
+ 
+PROC initialize scanner (FILE CONST f): 
+  infile := f; 
+  no input errors := TRUE; 
+  init char buffer; 
+  get char (infile, actual char) 
+END PROC initialize scanner; 
+ 
+ 
+PROC scanner postprocessing (FILE VAR f): 
+  f := infile 
+END PROC scanner postprocessing; 
+ 
+ 
+TEXT VAR symbol; INT VAR symbol type; 
+ 
+ 
+PROC get next symbol: 
+  skip blanks; 
+  IF actual char = "" THEN 
+    symbol := "DATEIENDE"; 
+    symbol type := end of file type 
+  ELIF is letter THEN 
+    get name 
+  ELIF is digit or sign THEN 
+    get integer 
+  ELIF is double quote THEN 
+    get text 
+  ELIF is single quote THEN 
+    get character 
+  ELSE 
+    get other char 
+  FI .
+ 
+is letter: 
+  IF "a" <= actual char AND actual char <= "z" THEN 
+    actual char := code (code (actual char) - code ("a") + code ("A")); 
+    TRUE 
+  ELSE 
+    "§" <= actual char AND actual char <= "Z" 
+  FI. 
+ 
+get name: 
+  symbol type := name type; 
+  symbol := actual char; 
+  REP 
+    get char (infile, actual char); 
+    IF is neither letter nor digit THEN 
+      LEAVE get name 
+    FI; 
+    symbol CAT actual char 
+  PER. 
+ 
+is neither letter nor digit: 
+  NOT (is letter OR is digit OR is underscore). 
+ 
+is digit: 
+  "0" <= actual char AND actual char <= "9". 
+ 
+is underscore: 
+  actual char = "_". 
+ 
+is digit or sign: 
+  is digit OR actual char = "+" OR actual char = "-". 
+ 
+get integer: 
+  symbol type := int type; 
+  IF actual char = "+" THEN 
+    get char (infile, actual char); 
+    skip blanks; 
+    symbol := actual char 
+  ELIF actual char = "-" THEN 
+    symbol := "-"; 
+    get char (infile, actual char); 
+    skip blanks; 
+    symbol CAT actual char 
+  ELSE 
+    symbol := actual char 
+  FI; 
+  REP 
+    get char (infile, actual char); 
+    IF NOT is digit THEN 
+      LEAVE get integer 
+    FI; 
+    symbol CAT actual char 
+  PER. 
+ 
+is double quote: 
+  actual char = """". 
+ 
+get text: 
+  symbol := ""; 
+  symbol type := text type; 
+  REP 
+    get char (infile, actual char); 
+    IF is double quote THEN 
+      get char (infile, actual char); 
+      IF NOT is double quote THEN LEAVE get text 
+      FI 
+    ELIF actual char = ""    THEN LEAVE get text  (*hey*)
+    FI; 
+    symbol CAT actual char 
+  PER. 
+ 
+is single quote: 
+  actual char = "'". 
+ 
+get character: 
+  symbol type := character type; 
+  get char (infile, symbol); 
+  get char (infile, actual char); 
+  IF actual char <> "'" THEN 
+    error (">> ' << erwartet") 
+  ELSE 
+    get char (infile, actual char) 
+  FI. 
+ 
+get other char: 
+  symbol type := other char type; 
+  symbol := actual char; 
+  get char (infile, actual char). 
+ 
+END PROC get next symbol; 
+ 
+ 
+TEXT VAR actual char; 
+ 
+ 
+PROC skip blanks: 
+  INT VAR comment depth :: 0; 
+  WHILE is comment OR actual char = " " REP 
+    get char (infile, actual char) 
+  PER. 
+ 
+is comment: 
+  IF actual char = "{" THEN 
+    comment depth INCR 1; 
+    TRUE 
+  ELIF actual char = "}" THEN 
+    IF comment depth = 0 THEN 
+      error (">> { << fehlt") 
+    ELSE 
+      comment depth DECR 1 
+    FI; 
+    TRUE 
+  ELSE 
+    IF comment depth > 0 THEN 
+      IF actual char = "" THEN 
+        error ("DATEIENDE im Kommentar"); 
+        FALSE 
+      ELSE 
+        TRUE 
+      FI 
+    ELSE 
+      FALSE 
+    FI 
+  FI. 
+ 
+END PROC skip blanks; 
+ 
+ 
+BOOL VAR no input errors; 
+FILE VAR errors; 
+ 
+ 
+PROC error (TEXT CONST error message): 
+  out ("FEHLER in Zeile "); 
+  out (text (line nr)); 
+  out (" bei >> "); 
+  out (symbol); 
+  out (" << : "); 
+  out (error message); 
+  line; 
+  IF no input errors THEN 
+    no input errors := FALSE; 
+    errors := notefile; modify(errors);
+    headline (errors, "Einlesefehler"); output(errors)
+  FI; 
+  write (errors, "FEHLER in Zeile "); 
+  write (errors, text (line nr)); 
+  write (errors, " bei >> "); 
+  write (errors, symbol); 
+  write (errors, " << : "); 
+  write (errors, error message); 
+  line (errors) 
+END PROC error; 
+ 
+ 
+PROC get (SYM VAR sym):     (*hey*)
+  disable stop; 
+  FILE VAR in  :: sequential file (modify, "LISP INPUT"), 
+           out :: notefile; modify (out);
+  headline (out,"LISP OUTPUT");
+  headline (in, "LISP INPUT");
+  noteedit (in);
+  input (in); 
+  get (in, sym); 
+  WHILE NOT no input errors AND NOT is error REP 
+    modify (errors);
+    headline (errors, " LISP-Fehlermeldungen"); 
+    headline (in, " Bitte KORREKTEN LISP-Ausdruck"); 
+    noteedit (in); 
+    headline (errors, "notebook"); 
+    input (in); 
+    get (in, sym) 
+  PER; 
+END PROC get; 
+ 
+ 
+PROC get all (FILE VAR f, SYM VAR sym): 
+  get (f, sym); 
+  skip blanks; 
+  IF NOT eof (infile) THEN 
+    error ("Hinter dem letzten Symbol des LISP-Ausdruck stehen noch Zeichen") 
+  FI 
+END PROC get all; 
+ 
+ 
+END PACKET lisp io; 
+ 
+ 
+ 
+PACKET lisp integer                                 (* Autor: J.Durchholz *) 
+                                                    (* Datum: 30.08.1982  *) 
+    DEFINES                                         (* Version 1.1.2      *) 
+ 
+  sum, 
+  difference, 
+  product, 
+  quotient,
+  remainder:
+ 
+SYM PROC sum (SYM CONST summand list): 
+  INT VAR result := 0; 
+  SYM VAR list rest := summand list; 
+  WHILE NOT atom (list rest) REP 
+    result INCR int 1 (head (list rest)); 
+    list rest := tail (list rest) 
+  PER; 
+  IF NOT null (list rest) THEN 
+    error stop ("Summandenliste endet falsch") 
+  FI ;
+  sym (result, -1) 
+END PROC sum; 
+ 
+ 
+SYM PROC difference (SYM CONST minuend, subtrahend): 
+  sym (int 1 (minuend) - int 1 (subtrahend), -1) 
+END PROC difference; 
+ 
+ 
+SYM PROC product (SYM CONST factor list): 
+  INT VAR result := 1; 
+  SYM VAR list rest := factor list; 
+  WHILE NOT atom (list rest) REP 
+    result := result * int 1 (head (list rest)); 
+    list rest := tail (list rest) 
+  PER; 
+  IF NOT null (list rest) THEN 
+    error stop ("Faktorenliste endet falsch") 
+  FI; 
+  sym (result, -1) 
+END PROC product; 
+ 
+ 
+SYM PROC quotient (SYM CONST dividend, divisor): 
+  sym (int 1 (dividend) DIV int 1 (divisor), -1) 
+END PROC quotient; 
+ 
+ 
+SYM PROC remainder(SYM CONST dividend, divisor): 
+  sym (int 1 (dividend) MOD int 1 (divisor), -1) 
+END PROC remainder;
+ 
+ 
+END PACKET lisp integer; 
+

@@ -1,0 +1,67 @@
+PACKET dossingleDEFINES /,dos,providedoschannel,archive,reserve,release,save,
+fetch,erase,check,exists,ALL ,SOME ,clear,list,format:LET stdarchivechannel=
+31,mainchannel=1;INT VAR doschannel:=stdarchivechannel;INT VAR fetchsavemodus
+;TYPE DOSTASK =TEXT ;DOSTASK CONST dos:="DOS";OP :=(DOSTASK VAR d,TEXT CONST 
+t):CONCR (d):=tEND OP :=;DOSTASK OP /(TEXT CONST text):DOSTASK VAR d;CONCR (d
+):=text;dEND OP /;BOOL PROC isdostask(DOSTASK CONST d):CONCR (d)="DOS"END 
+PROC isdostask;PROC providedoschannel(INT CONST channelno):doschannel:=
+channelnoEND PROC providedoschannel;DATASPACE VAR space:=nilspace;forget(
+space);PROC reserve(TEXT CONST string,DOSTASK CONST task):IF isdostask(task)
+THEN fetchsavemodus:=savefetchmode(string);opendosdisk(path(string))ELSE 
+errorstop("die angesprochene Task existiert nicht")FI .END PROC reserve;PROC 
+archive(TEXT CONST string,DOSTASK CONST task):reserve(string,task)END PROC 
+archive;PROC release(DOSTASK CONST task):IF isdostask(task)THEN closedosdisk
+ELSE errorstop("die angesprochene Task existiert nicht")FI .END PROC release;
+PROC fetch(TEXT CONST name,DOSTASK CONST from):IF isdostask(from)THEN 
+fetchfromdosdiskELSE errorstop("die angesprochene Task existiert nicht")FI .
+fetchfromdosdisk:IF NOT exists(name)COR overwritepermittedTHEN dofetchFI .
+overwritepermitted:say("eigene Datei """);say(name);yes(
+""" auf der Diskette ueberschreiben").dofetch:lastparam(name);disablestop;
+continue(doschannel);fetch(dosname(name,readmodus),space,fetchsavemodus);
+continue(mainchannel);IF NOT iserrorTHEN forget(name,quiet);copy(space,name)
+FI ;forget(space).END PROC fetch;PROC erase(TEXT CONST name,DOSTASK CONST 
+task):IF isdostask(task)THEN doerasedosfileELSE errorstop(
+"die angesprochene Task existiert nicht")FI .doerasedosfile:IF NOT exists(
+name,/"DOS")THEN errorstop("die Datei """+name+""" gibt es nicht")ELIF yes(
+""""+dosname(name,readmodus)+""" auf Der Diskette loeschen")THEN disablestop;
+continue(doschannel);erasedosfile(dosname(name,readmodus));continue(
+mainchannel)FI .END PROC erase;PROC save(TEXT CONST name,DOSTASK CONST task):
+IF isdostask(task)THEN savetodosdiskELSE errorstop(
+"die angesprochene Task existiert nicht")FI .savetodosdisk:TEXT CONST 
+savefilename:=dosname(name,writemodus);disablestop;continue(doschannel);IF 
+NOT dosfileexists(savefilename)COR overwritepermittedTHEN IF dosfileexists(
+savefilename)THEN erasedosfile(savefilename)FI ;save(savefilename,old(name),
+fetchsavemodus);FI ;continue(mainchannel).overwritepermitted:continue(
+mainchannel);BOOL CONST result:=yes(""""+savefilename+
+""" auf der Diskette ueberschreiben");continue(doschannel);result.END PROC 
+save;PROC check(TEXT CONST name,DOSTASK CONST from):IF isdostask(from)THEN 
+disablestop;continue(doschannel);checkfile(dosname(name,readmodus));continue(
+mainchannel)ELSE errorstop("die angesprochene Task existiert nicht")FI .END 
+PROC check;BOOL PROC exists(TEXT CONST name,DOSTASK CONST task):IF isdostask(
+task)THEN disablestop;continue(doschannel);BOOL VAR dummy:=dosfileexists(
+dosname(name,readmodus));continue(mainchannel);enablestop;dummyELSE errorstop
+("die angesprochene Task existiert nicht");FALSE FI .END PROC exists;PROC 
+list(DOSTASK CONST from):forget(space);space:=nilspace;FILE VAR listfile:=
+sequentialfile(output,space);list(listfile,from);modify(listfile);show(
+listfile);forget(space).ENDPROC list;PROC list(FILE VAR listfile,DOSTASK 
+CONST from):IF isdostask(from)THEN listdosdiskELSE errorstop(
+"die angesprochene Task existiert nicht")FI .listdosdisk:disablestop;continue
+(doschannel);doslist(space);continue(mainchannel);enablestop;output(listfile)
+;FILE VAR listsource:=sequentialfile(output,space);TEXT VAR line;WHILE NOT 
+eof(listsource)REP getline(listsource,line);putline(listfile,line)PER .END 
+PROC list;THESAURUS OP ALL (DOSTASK CONST task):IF isdostask(task)THEN 
+disablestop;continue(doschannel);THESAURUS VAR dummy:=alldosfiles;continue(
+mainchannel);enablestop;dummyELSE errorstop(
+"die angesprochene Task existiert nicht");emptythesaurusFI .END OP ALL ;
+THESAURUS OP SOME (DOSTASK CONST task):IF isdostask(task)THEN disablestop;
+continue(doschannel);THESAURUS VAR dummy:=alldosfiles;continue(mainchannel);
+enablestop;SOME dummyELSE errorstop("die angesprochene Task existiert nicht")
+;emptythesaurusFI .END OP SOME ;PROC clear(DOSTASK CONST task):IF isdostask(
+task)THEN cleardiskELSE errorstop("die angesprochene Task existiert nicht")
+FI .cleardisk:disablestop;IF yes("Diskette loeschen")THEN continue(doschannel
+);cleardosdisk;continue(mainchannel)FI .END PROC clear;PROC format(INT CONST 
+formatcode,DOSTASK CONST task):IF isdostask(task)THEN formatdiskELSE 
+errorstop("die angesprochene Task existiert nicht")FI .formatdisk:disablestop
+;IF yes("Diskette formatieren")THEN continue(doschannel);formatdosdisk(
+formatcode);continue(mainchannel)FI .END PROC format;END PACKET dossingle;
+

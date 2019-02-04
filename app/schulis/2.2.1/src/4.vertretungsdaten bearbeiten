@@ -1,0 +1,279 @@
+PACKET vertretungsdatenbearbeitenDEFINES vertretungsdatenbearbeiteneingang,
+vertretungsdatenbearbeitenstart,vertretungsdatenentfernenstart,
+vertretungsdatenentfernen,vertretungsdatenzeileeinfuegen,
+vertretungsdatenspeichern:LET maskeeingang=
+"ms vertretungsdaten bearbeiten eingang";LET maskebearb=
+"ms vertretungsdaten bearbeiten";LET fnrauswahlparaphe=2,fnrstartparaphe=3,
+fnrauswahldatum=4,fnrstartdatum=5,fnrauswahlentfernen=6,fnrentfernendatum=7;
+LET feldanzmaskeeingang=7;ROW feldanzmaskeeingangTEXT VAR feldbs1;LET 
+felderprozeile=6;LET ersteseingabefeld=2;LET erstestabellenfeld=2;LET 
+meldnrungueltigerschluessel=55,meldnrungueltigeauswahl=56,
+meldnrplausiwirdgeprueft=57,meldnrloeschen=61,meldnrnichtloeschen=62,
+meldnrloeschfrage=65,meldnrloeschenmitdatum=83,meldnrvertretunggibtsschon=88,
+meldnrdatumfehltzurestangaben=129,meldnrungueltigesdatum=157,
+meldnrdatenwerdengespeichert=301,meldnrdatenwerdennichtgespeichert=303,
+meldnrletztezeilenichteinfuegen=314,meldnrfalschetastezuankreuz=318,
+meldnrfalscheausfuellung=319,meldnrungueltigeparaphe=344;LET 
+sachgebietanrechnungskennz="c02 anrechnung vertret";LET kennzhell="#";LET 
+erstesdatum="01.01.00",erstestunde=1,samstagstd=6,stundenprotag=12;LET 
+trenner="�",punkt=".";LET logbucheintrag=
+"Anw. 4.6.2 Vertretungen eingegeben oder geändert";INT VAR zugriff;BOOL VAR 
+eingangsmaskenfehler:=FALSE ;INT VAR pruefstatus:=0,letztecursorfnr:=
+fnrauswahlparaphe;INT VAR aktzeile;INT VAR ifnr;TEXT VAR startparaphe,
+startdatum,entfernendatum;TEXT VAR nfparaphe,nfdatum,nftagstd;TEXT VAR 
+gueltigeanrechnungskennz:="",gueltigeparaphen:="";INT VAR izeile,
+anzahlgezeigtezeilen,anzahleingegebenezeilen;LET zeilenanzahl=18;ROW 
+zeilenanzahlSTRUCT (TEXT datum,TEXT tag,TEXT stunde,TEXT paraphe,TEXT art,
+TEXT lv,TEXT tagstd)VAR bszeile;BOOL VAR leerenbszeigen;
+initfelderdeseingangsbildschirms;initbszeilepuffer;PROC 
+vertretungsdatenbearbeiteneingang:standardstartproc(maskeeingang);
+wertedeseingangsbildschirmsholen;infeld(fnrauswahlparaphe);
+standardfelderausgeben;infeld(letztecursorfnr);standardnprocEND PROC 
+vertretungsdatenbearbeiteneingang;PROC vertretungsdatenbearbeitenstart:
+eingangsbehandlung(1);IF eingangsmaskenfehlerTHEN infeld(pruefstatus);return(
+1)ELSE wertedeseingangsbildschirmsmerken;zugriffaufvertretungsdatenbestimmen;
+erstensatzlesen;standardstartproc(maskebearb);bsfuellen;infeld(
+ersteseingabefeld);standardnprocFI .zugriffaufvertretungsdatenbestimmen:IF 
+standardmaskenfeld(fnrauswahlparaphe)=""THEN zugriff:=dnrvertretungenELSE 
+zugriff:=ixvparFI .erstensatzlesen:inittupel(dnrvertretungen);IF zugriff=
+ixvparTHEN putwert(fnrvparaphe,startparaphe)ELSE putwert(fnrvdatum,startdatum
+)FI ;search(zugriff,FALSE );leerenbszeigen:=dbstatus<>ok;IF dbstatus=0THEN 
+IF zugriff=dnrvertretungenTHEN IF startdatum<>erstesdatumAND startdatum<>wert
+(fnrvdatum)THEN pred(zugriff)FI ELIF zugriff=ixvparTHEN IF startparaphe<>""
+AND startparaphe<>wert(fnrvparaphe)THEN pred(zugriff)FI FI FI .END PROC 
+vertretungsdatenbearbeitenstart;PROC bsfuellen:izeile:=0;IF NOT 
+leerenbszeigenTHEN startebildschirmblock(zugriff,zeilenanzahl-1);
+bildschirmblock(PROC satzmerken,BOOL PROC (INT CONST )satzzubehandeln,0);IF 
+dbstatus=0THEN succ(zugriff);IF dbstatus<>0THEN inittupel(dnrvertretungen);
+FI ELSE inittupel(dnrvertretungen);FI ;merkesatzalsnachfolgerELSE nfdatum:=
+erstesdatumFI ;evtlleerzeilenhinzufuegen;
+werteausbszeileinstandardfeldersetzen;infeld(1);standardfelderausgeben;.
+evtlleerzeilenhinzufuegen:anzahlgezeigtezeilen:=izeile;WHILE izeile<
+zeilenanzahlREP izeileINCR 1;bszeile(izeile).datum:="";bszeile(izeile).tag:=
+"  ";bszeile(izeile).stunde:="";bszeile(izeile).paraphe:="";bszeile(izeile).
+art:="";bszeile(izeile).lv:="";bszeile(izeile).tagstd:="";PER .
+werteausbszeileinstandardfeldersetzen:ifnr:=erstestabellenfeld;FOR izeile
+FROM 1UPTO zeilenanzahlREP standardmaskenfeld(bszeile(izeile).datum,ifnr);
+standardmaskenfeld(bszeile(izeile).tag,ifnr+1);standardmaskenfeld(bszeile(
+izeile).stunde,ifnr+2);standardmaskenfeld(bszeile(izeile).paraphe,ifnr+3);
+standardmaskenfeld(bszeile(izeile).art,ifnr+4);standardmaskenfeld(bszeile(
+izeile).lv,ifnr+5);ifnrINCR felderprozeilePER .merkesatzalsnachfolger:nfdatum
+:=wert(fnrvdatum);nftagstd:=wert(fnrvtagstd);nfparaphe:=wert(fnrvparaphe).
+END PROC bsfuellen;BOOL PROC satzzubehandeln(INT CONST dummynr):IF NOT (
+izeile<zeilenanzahlCAND dbstatus=ok)THEN LEAVE satzzubehandelnWITH FALSE FI ;
+TRUE .END PROC satzzubehandeln;PROC satzmerken:izeileINCR 1;bszeile(izeile).
+datum:=ausgabedatum;bszeile(izeile).tag:=namedestags(tagnummer(wert(fnrvdatum
+)));bszeile(izeile).stunde:=text(ausgabestd);bszeile(izeile).paraphe:=wert(
+fnrvparaphe);bszeile(izeile).art:=wert(fnrvanrechnung);bszeile(izeile).lv:=
+wert(fnrvveranstaltung);bszeile(izeile).tagstd:=wert(fnrvtagstd).ausgabedatum
+:subtext(wert(fnrvdatum),1,2)+subtext(wert(fnrvdatum),4,5)+subtext(wert(
+fnrvdatum),7,8).ausgabestd:INT VAR ausgabezeit:=intwert(fnrvtagstd)MOD 
+stundenprotag;IF ausgabezeit=0THEN stundenprotagELSE ausgabezeitFI .END PROC 
+satzmerken;PROC vertretungsdatenentfernenstart:eingangsbehandlung(2);IF 
+eingangsmaskenfehlerTHEN infeld(pruefstatus);return(1)ELSE 
+wertedeseingangsbildschirmsmerken;FOR ifnrFROM fnrauswahlparapheUPTO 
+fnrstartdatumREP feldschutz(ifnr)PER ;feldschutz(fnrentfernendatum);infeld(
+fnrauswahlentfernen);standardmeldung(meldnrloeschfrage,"");standardnprocFI 
+END PROC vertretungsdatenentfernenstart;PROC vertretungsdatenentfernen(BOOL 
+CONST entfernen):IF entfernenTHEN standardmeldung(meldnrloeschen,"");
+entfernendervertretungsdatenvornehmenELSE standardmeldung(meldnrnichtloeschen
+,"")FI ;enter(2).entfernendervertretungsdatenvornehmen:TEXT VAR 
+gelesenesdatum,datuminmeldung:="";INT VAR stichdatum:=datum(entfernendatum);
+first(dnrvertretungen);gelesenesdatum:=wert(fnrvdatum);WHILE dbstatus=0CAND 
+datum(gelesenesdatum)<stichdatumREP delete(dnrvertretungen);IF gelesenesdatum
+<>datuminmeldungTHEN datuminmeldung:=gelesenesdatum;standardmeldung(
+meldnrloeschenmitdatum,datuminmeldung+kennzhell)FI ;succ(dnrvertretungen);
+gelesenesdatum:=wert(fnrvdatum)PER END PROC vertretungsdatenentfernen;PROC 
+vertretungsdatenzeileeinfuegen(BOOL CONST einfuegen):INT VAR erstefnr;IF 
+einfuegenTHEN zeileeinfuegenELSE zeileloeschenFI ;return(1).zeileeinfuegen:
+aktzeile:=bearbeitungszeilezufeld(infeld);IF aktzeile=zeilenanzahlTHEN 
+standardmeldung(meldnrletztezeilenichteinfuegen,"");LEAVE zeileeinfuegenFI ;
+IF bszeile(zeilenanzahl).datum<>""THEN merkeverdraengtensatzalsnachfolgesatz;
+anzahlgezeigtezeilen:=zeilenanzahlFI ;FOR izeileFROM zeilenanzahl-1DOWNTO 
+aktzeile+1REP zeileiminternenpufferverschieben;
+wertederzeileaufdembildschirmverschiebenPER ;izeile:=aktzeile+1;
+leerzeileschreiben;werteineingefuegterzeilevermerken;neuezeilenausgeben.
+merkeverdraengtensatzalsnachfolgesatz:startdatum:=bszeile(zeilenanzahl).datum
+;nfdatum:=subtext(startdatum,1,2)+punkt+subtext(startdatum,3,4)+punkt+subtext
+(startdatum,5,6);nfparaphe:=bszeile(zeilenanzahl).paraphe;nftagstd:=bszeile(
+zeilenanzahl).tagstd.zeileiminternenpufferverschieben:bszeile(izeile+1).datum
+:=bszeile(izeile).datum;bszeile(izeile+1).tag:=bszeile(izeile).tag;bszeile(
+izeile+1).stunde:=bszeile(izeile).stunde;bszeile(izeile+1).paraphe:=bszeile(
+izeile).paraphe;bszeile(izeile+1).art:=bszeile(izeile).art;bszeile(izeile+1).
+lv:=bszeile(izeile).lv;bszeile(izeile+1).tagstd:=bszeile(izeile).tagstd;.
+wertederzeileaufdembildschirmverschieben:FOR ifnrFROM erstesfeldderzeileUPTO 
+letztesfeldderzeileREP standardmaskenfeld(standardmaskenfeld(ifnr),ifnr+
+felderprozeile)PER .erstesfeldderzeile:(izeile-1)*felderprozeile+
+erstestabellenfeld.letztesfeldderzeile:erstesfeldderzeile+felderprozeile-1.
+werteineingefuegterzeilevermerken:bszeile(izeile).datum:="";bszeile(izeile).
+tag:="  ";bszeile(izeile).stunde:="";bszeile(izeile).paraphe:="";bszeile(
+izeile).art:="";bszeile(izeile).lv:="";bszeile(izeile).tagstd:="";.
+zeileloeschen:izeile:=bearbeitungszeilezufeld(infeld);leerzeileschreiben;
+neuezeilenausgeben.leerzeileschreiben:erstefnr:=erstesfeldderzeile;
+standardmaskenfeld("",erstefnr);standardmaskenfeld("  ",erstefnr+1);FOR ifnr
+FROM erstefnr+2UPTO letztesfeldderzeileREP standardmaskenfeld("",ifnr)PER .
+neuezeilenausgeben:infeld(erstefnr);standardfelderausgeben;infeld(erstefnr).
+END PROC vertretungsdatenzeileeinfuegen;INT PROC bearbeitungszeilezufeld(INT 
+CONST feldnr):((feldnr-erstestabellenfeld)DIV felderprozeile)+1END PROC 
+bearbeitungszeilezufeld;PROC vertretungsdatenspeichern(BOOL CONST speichern):
+IF speichernTHEN standardmeldung(meldnrplausiwirdgeprueft,"");plausipruefung
+ELSE pruefstatus:=0FI ;IF pruefstatus<>0THEN infeld(pruefstatus);return(1)
+ELSE datenspeichern(speichern);IF nachfolgesatzvorhandenTHEN 
+holewertedesnachfolgersatzes;search(dnrvertretungen,TRUE );IF dbstatus<>0
+THEN search(dnrvertretungen,FALSE )FI ;izeile:=0;IF satzzubehandeln(izeile)
+THEN changeindex;leerenbszeigen:=FALSE ;naechstenbildschirmzeigenELSE enter(2
+)FI ELIF letzteeingabezeilegefuelltTHEN leerenbszeigen:=TRUE ;
+naechstenbildschirmzeigenELSE enter(2)FI ;FI .nachfolgesatzvorhanden:nfdatum
+<>erstesdatum.letzteeingabezeilegefuellt:standardmaskenfeld((zeilenanzahl-1)*
+felderprozeile+ersteseingabefeld)<>"".holewertedesnachfolgersatzes:putwert(
+fnrvdatum,nfdatum);putwert(fnrvtagstd,nftagstd);putwert(fnrvparaphe,nfparaphe
+).naechstenbildschirmzeigen:bsfuellen;infeld(ersteseingabefeld);return(1).
+END PROC vertretungsdatenspeichern;PROC datenspeichern(BOOL CONST speichern):
+IF speichernTHEN standardmeldung(meldnrdatenwerdengespeichert,"");
+datenspeicherungdurchfuehrenELSE standardmeldung(
+meldnrdatenwerdennichtgespeichert,"")FI END PROC datenspeichern;PROC 
+datenspeicherungdurchfuehren:FOR izeileFROM 1UPTO zeilenanzahlREP 
+holevergleichswerte;IF vertretungseintragloeschenTHEN aenderungszeileanzeigen
+;altevertretungloeschenELIF vertretungseintrageinfuegenTHEN 
+aenderungszeileanzeigen;neuevertretungeinfuegenELIF 
+vertretungseintragueberschreibenTHEN aenderungszeileanzeigen;
+altevertretungupdateFI PER ;logeintrag(logbucheintrag).holevergleichswerte:
+INT VAR prueffnr:=datumfnrin(izeile);TEXT VAR pruefdatum:=standardmaskenfeld(
+prueffnr);TEXT VAR altesdatum:=bszeile(izeile).datum.
+vertretungseintragloeschen:pruefdatum=""CAND altesdatum<>"".
+altevertretungloeschen:setzealtesuchwerteindbpuffer;search(dnrvertretungen,
+TRUE );IF dbstatus=0THEN delete(dnrvertretungen)FI .
+vertretungseintrageinfuegen:pruefdatum<>""CAND altesdatum="".
+neuevertretungeinfuegen:setzeneuewerteindbpuffer;insert(dnrvertretungen).
+vertretungseintragueberschreiben:NOT (standardmaskenfeld(prueffnr)=bszeile(
+izeile).datumCAND standardmaskenfeld(prueffnr+2)=bszeile(izeile).stundeCAND 
+standardmaskenfeld(prueffnr+3)=bszeile(izeile).parapheCAND standardmaskenfeld
+(prueffnr+4)=bszeile(izeile).artCAND standardmaskenfeld(prueffnr+5)=bszeile(
+izeile).lv).altevertretungupdate:setzealtesuchwerteindbpuffer;search(
+dnrvertretungen,TRUE );setzeneuewerteindbpuffer;update(dnrvertretungen).
+setzealtesuchwerteindbpuffer:pruefdatum:=bszeile(izeile).datum;pruefdatum:=
+subtext(pruefdatum,1,2)+punkt+subtext(pruefdatum,3,4)+punkt+subtext(
+pruefdatum,5,6);putwert(fnrvdatum,pruefdatum);putwert(fnrvtagstd,bszeile(
+izeile).tagstd);putwert(fnrvparaphe,bszeile(izeile).paraphe).
+setzeneuewerteindbpuffer:pruefdatum:=standardmaskenfeld(prueffnr);pruefdatum
+:=subtext(pruefdatum,1,2)+punkt+subtext(pruefdatum,3,4)+punkt+subtext(
+pruefdatum,5,6);putwert(fnrvdatum,pruefdatum);putintwert(fnrvtagstd,
+wochenstunde);putwert(fnrvparaphe,standardmaskenfeld(prueffnr+3));putwert(
+fnrvanrechnung,standardmaskenfeld(prueffnr+4));putwert(fnrvveranstaltung,
+standardmaskenfeld(prueffnr+5));.wochenstunde:(tagnummer(pruefdatum)-1)*
+stundenprotag+int(standardmaskenfeld(prueffnr+2)).END PROC 
+datenspeicherungdurchfuehren;PROC aenderungszeileanzeigen:infeld((izeile-1)*
+felderprozeile+ersteseingabefeld)END PROC aenderungszeileanzeigen;INT PROC 
+datumfnrin(INT CONST zeilennr):(zeilennr-1)*felderprozeile+ersteseingabefeld
+END PROC datumfnrin;INT PROC tagnummer(TEXT CONST datumsangabe):(datum(
+datumsangabe)+5)MOD 7END PROC tagnummer;TEXT PROC namedestags(INT CONST 
+tagesnummer):SELECT tagesnummerOF CASE 0:"So"CASE 1:"Mo"CASE 2:"Di"CASE 3:
+"Mi"CASE 4:"Do"CASE 5:"Fr"CASE 6:"Sa"OTHERWISE ""END SELECT .END PROC 
+namedestags;PROC eingangsbehandlung(INT CONST art):LET bearbeiten=1,entfernen
+=2;reinitparsing;eingangsmaskenfehler:=FALSE ;ankreuzfelderpruefen;IF 
+mehralseineauswahlangekreuztTHEN standardmeldung(meldnrungueltigeauswahl,"");
+pruefstatus:=fnrauswahlparaphe;eingangsmaskenfehler:=TRUE ;LEAVE 
+eingangsbehandlungFI ;IF entfernenpruefungTHEN IF ankreuz1THEN ankreuzfehler(
+fnrauswahlparaphe);LEAVE eingangsbehandlungELIF ankreuz2THEN ankreuzfehler(
+fnrauswahldatum);LEAVE eingangsbehandlungFI ELIF bearbeitenpruefungTHEN IF 
+ankreuz3THEN ankreuzfehler(fnrauswahlentfernen);LEAVE eingangsbehandlungFI 
+FI ;IF bearbeitenpruefungTHEN IF ankreuz1THEN IF standardmaskenfeld(
+fnrstartdatum)<>""THEN eintragfehler(fnrstartdatum);LEAVE eingangsbehandlung
+ELIF standardmaskenfeld(fnrentfernendatum)<>""THEN eintragfehler(
+fnrentfernendatum);LEAVE eingangsbehandlungFI ;startparaphe:=
+standardmaskenfeld(fnrstartparaphe);ELIF ankreuz2THEN IF standardmaskenfeld(
+fnrstartparaphe)<>""THEN eintragfehler(fnrstartparaphe);LEAVE 
+eingangsbehandlungELIF standardmaskenfeld(fnrentfernendatum)<>""THEN 
+eintragfehler(fnrentfernendatum);LEAVE eingangsbehandlungFI ;IF 
+standardmaskenfeld(fnrstartdatum)=""THEN startdatum:=erstesdatum;ELSE 
+standardpruefe(6,fnrstartdatum,0,0,"",pruefstatus);IF pruefstatus<>0THEN 
+eingangsmaskenfehler:=TRUE ;LEAVE eingangsbehandlungELSE startdatum:=
+standardmaskenfeld(fnrstartdatum);startdatum:=subtext(startdatum,1,2)+punkt+
+subtext(startdatum,3,4)+punkt+subtext(startdatum,5,6)FI ;FI ;FI ;FI ;IF 
+entfernenpruefungTHEN IF standardmaskenfeld(fnrstartparaphe)<>""THEN 
+eintragfehler(fnrstartparaphe);LEAVE eingangsbehandlungELIF 
+standardmaskenfeld(fnrstartdatum)<>""THEN eintragfehler(fnrstartdatum);LEAVE 
+eingangsbehandlungFI ;standardpruefe(6,fnrentfernendatum,0,0,"",pruefstatus);
+IF pruefstatus<>0THEN eingangsmaskenfehler:=TRUE ELSE entfernendatum:=
+standardmaskenfeld(fnrentfernendatum);entfernendatum:=subtext(entfernendatum,
+1,2)+punkt+subtext(entfernendatum,3,4)+punkt+subtext(entfernendatum,5,6)FI ;
+FI ;.ankreuzfelderpruefen:INT VAR summe:=0;IF ankreuz1THEN summeINCR 1FI ;IF 
+ankreuz2THEN summeINCR 1FI ;IF ankreuz3THEN summeINCR 1FI .
+mehralseineauswahlangekreuzt:summe<>1.ankreuz1:standardmaskenfeld(
+fnrauswahlparaphe)<>"".ankreuz2:standardmaskenfeld(fnrauswahldatum)<>"".
+ankreuz3:standardmaskenfeld(fnrauswahlentfernen)<>"".bearbeitenpruefung:art=
+bearbeiten.entfernenpruefung:art=entfernen.END PROC eingangsbehandlung;PROC 
+ankreuzfehler(INT CONST fehlerfeld):pruefstatus:=fehlerfeld;
+eingangsmaskenfehler:=TRUE ;standardmeldung(meldnrfalschetastezuankreuz,"").
+END PROC ankreuzfehler;PROC eintragfehler(INT CONST fehlerfeld):pruefstatus:=
+fehlerfeld;eingangsmaskenfehler:=TRUE ;standardmeldung(
+meldnrfalscheausfuellung,"").END PROC eintragfehler;PROC plausipruefung:
+pruefstatus:=0;vertretungseintraegepruefen;IF eingabefehlerTHEN LEAVE 
+plausipruefungFI ;datenkonsistenzpruefen;IF eingabefehlerTHEN LEAVE 
+plausipruefungFI .eingabefehler:pruefstatus<>0.END PROC plausipruefung;PROC 
+vertretungseintraegepruefen:anzahleingegebenezeilen:=0;IF gueltigeparaphen=""
+THEN holegueltigeparaphenFI ;IF gueltigeanrechnungskennz=""THEN 
+holegueltigeanrechnungskennzFI ;FOR izeileFROM 1UPTO zeilenanzahlREP IF 
+datumsfehlerTHEN LEAVE vertretungseintraegepruefenFI PER .datumsfehler:INT 
+VAR prueffnr:=datumfnrin(izeile);TEXT VAR pruefdatum:=standardmaskenfeld(
+prueffnr);IF pruefdatumleerTHEN IF eintraginfolgefelderderzeileTHEN 
+pruefstatus:=prueffnr;standardmeldung(meldnrdatumfehltzurestangaben,"");TRUE 
+ELSE FALSE FI ELSE standardpruefe(6,prueffnr,0,0,"",pruefstatus);IF 
+pruefstatus<>0THEN TRUE ELSE pruefdatum:=subtext(pruefdatum,1,2)+punkt+
+subtext(pruefdatum,3,4)+punkt+subtext(pruefdatum,5,6);IF tagnummer(pruefdatum
+)=0THEN pruefstatus:=prueffnr;standardmeldung(meldnrungueltigesdatum,"");
+TRUE ELIF stundeungueltigTHEN TRUE ELIF parapheungueltigTHEN standardmeldung(
+meldnrungueltigeparaphe,"");pruefstatus:=prueffnr+3;TRUE ELIF 
+anrechnungskennzungueltigTHEN standardmeldung(meldnrungueltigerschluessel,"")
+;pruefstatus:=prueffnr+4;TRUE ELSE anzahleingegebenezeilenINCR 1;FALSE FI FI 
+FI .pruefdatumleer:pruefdatum="".eintraginfolgefelderderzeile:
+standardmaskenfeld(prueffnr+2)<>""COR standardmaskenfeld(prueffnr+3)<>""COR 
+standardmaskenfeld(prueffnr+4)<>""COR standardmaskenfeld(prueffnr+5)<>"".
+stundeungueltig:INT VAR ug,og,wochentagnr;standardpruefe(2,prueffnr+2,0,0,"",
+pruefstatus);IF pruefstatus<>0THEN TRUE ELSE wochentagnr:=tagnummer(
+pruefdatum);IF wochentagnr=6THEN og:=samstagstdELSE og:=stundenprotagFI ;ug:=
+erstestunde;standardpruefe(3,prueffnr+2,ug,og,"",pruefstatus);pruefstatus<>0
+FI .parapheungueltig:pos(gueltigeparaphen,trenner+standardmaskenfeld(prueffnr
++3)+trenner)=0.anrechnungskennzungueltig:pos(gueltigeanrechnungskennz,trenner
++standardmaskenfeld(prueffnr+4)+trenner)=0.END PROC 
+vertretungseintraegepruefen;PROC datenkonsistenzpruefen:FOR izeileFROM 1UPTO 
+zeilenanzahlREP IF zeileungueltigTHEN pruefstatus:=prueffnr;standardmeldung(
+meldnrvertretunggibtsschon,"");LEAVE datenkonsistenzpruefenFI PER .
+zeileungueltig:IF leerzeileTHEN FALSE ELIF 
+zeileistimschluesselunveraendertgebliebenTHEN FALSE ELSE 
+ergebnisderpruefungzeileschongespeichertFI .leerzeile:INT VAR prueffnr:=
+datumfnrin(izeile);TEXT VAR pruefdatum:=standardmaskenfeld(prueffnr);
+pruefdatum="".zeileistimschluesselunveraendertgeblieben:standardmaskenfeld(
+prueffnr)=bszeile(izeile).datumCAND standardmaskenfeld(prueffnr+2)=bszeile(
+izeile).stundeCAND standardmaskenfeld(prueffnr+3)=bszeile(izeile).paraphe.
+ergebnisderpruefungzeileschongespeichert:neuewerteindbpuffersetzen;search(
+dnrvertretungen,TRUE );dbstatus=0.neuewerteindbpuffersetzen:pruefdatum:=
+subtext(pruefdatum,1,2)+punkt+subtext(pruefdatum,3,4)+punkt+subtext(
+pruefdatum,5,6);putwert(fnrvdatum,pruefdatum);putintwert(fnrvtagstd,
+wochenstunde);putwert(fnrvparaphe,standardmaskenfeld(prueffnr+3)).
+wochenstunde:(tagnummer(pruefdatum)-1)*stundenprotag+int(standardmaskenfeld(
+prueffnr+2)).END PROC datenkonsistenzpruefen;PROC holegueltigeparaphen:
+gueltigeparaphen:=trenner;inittupel(dnrlehrer);statleseschleife(dnrlehrer,"",
+"",fnrlparaphe,fnrlparaphe,PROC paraphelesen)END PROC holegueltigeparaphen;
+PROC paraphelesen(BOOL VAR b):IF dbstatus<>0THEN b:=TRUE ELSE 
+gueltigeparaphenCAT wert(fnrlparaphe);gueltigeparaphenCAT trennerFI END PROC 
+paraphelesen;PROC holegueltigeanrechnungskennz:gueltigeanrechnungskennz:=
+trenner;inittupel(dnrschluessel);statleseschleife(dnrschluessel,
+sachgebietanrechnungskennz,"",fnrschlsachgebiet,fnrschlschluessel,PROC 
+anrechnungskennzlesen)END PROC holegueltigeanrechnungskennz;PROC 
+anrechnungskennzlesen(BOOL VAR b):IF dbstatus<>0COR wert(fnrschlsachgebiet)<>
+sachgebietanrechnungskennzTHEN b:=TRUE ELSE gueltigeanrechnungskennzCAT wert(
+fnrschlschluessel);gueltigeanrechnungskennzCAT trennerFI END PROC 
+anrechnungskennzlesen;PROC initfelderdeseingangsbildschirms:INT VAR i;FOR i
+FROM 1UPTO feldanzmaskeeingangREP feldbs1(i):=""PER END PROC 
+initfelderdeseingangsbildschirms;PROC wertedeseingangsbildschirmsmerken:INT 
+VAR i;letztecursorfnr:=infeld;FOR iFROM 1UPTO feldanzmaskeeingangREP feldbs1(
+i):=standardmaskenfeld(i)PER END PROC wertedeseingangsbildschirmsmerken;PROC 
+wertedeseingangsbildschirmsholen:INT VAR i;FOR iFROM 1UPTO 
+feldanzmaskeeingangREP standardmaskenfeld(feldbs1(i),i)PER END PROC 
+wertedeseingangsbildschirmsholen;PROC initbszeilepuffer:FOR izeileFROM 1UPTO 
+zeilenanzahlREP bszeile(izeile).datum:="";bszeile(izeile).tag:="";bszeile(
+izeile).stunde:="";bszeile(izeile).paraphe:="";bszeile(izeile).art:="";
+bszeile(izeile).lv:="";bszeile(izeile).tagstd:="";PER END PROC 
+initbszeilepuffer;END PACKET vertretungsdatenbearbeiten
+

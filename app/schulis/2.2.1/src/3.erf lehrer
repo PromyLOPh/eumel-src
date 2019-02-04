@@ -1,0 +1,134 @@
+PACKET erflehrerDEFINES erfassunglehrer:LET trenner=" = ",komma=", ",leer="",
+trennerfuerimbestand="�",dateinameschluessel="Schlüssel",dateinamefaecher=
+"Fächer",null=0;LET maskenname="ms erf lehrer",fnrletztesfeld=32,fnrparaphe=2
+,fnrfamilienname=3,fnrrufname=4,fnrnamenszusatz=5,fnramtsbezeichnung=6,
+fnrgeschlecht=7,fnrstrasseundnummer=8,fnrplzundort=9,fnrtelefon=10,
+fnrlehrbeffach=11,fnrlehrbefart=12,fnrpflichtstunden=23,fnrermaessigung=24,
+fnrermaessigungsgrund=25,fnrsprechzeiten=32,anzlehrbefprolehrer=6,
+anzermprolehrer=4;LET untergrenze=0,obergrenze=99,paraphenlaenge=4,
+bestandermgrund="c02 persoenl ermaess",bestandartlehrbef=
+"c02 art lehrbefaehigung",meldungparaphezulang=178,meldungzugeschlecht=55,
+meldungzumbestand=55,meldungzusollstunden=175,meldungzulehrbeffach=177,
+meldungzufachdoppelt=176;ROW anzlehrbefprolehrerSTRUCT (TEXT fach,art)VAR 
+altelehrbefaehigungen;TEXT VAR alteparaphe;INT VAR sollstunden;PROC 
+erfassunglehrer(INT CONST proznr):reinitparsing;SELECT proznrOF CASE 1:
+setzeerfassungsparameterCASE 2:zeigelehrerzurbearbeitungCASE 3:
+pruefeplausibilitaetCASE 4:setzewertefuerdbspeicherungCASE 5:
+setzeidentiobjektfuerobjektlisteCASE 6:lehrerlesenCASE 7:lehreraendernCASE 8:
+lehrereinfuegenCASE 9:lehrerloeschenEND SELECT END PROC erfassunglehrer;PROC 
+setzeerfassungsparameter:systemdboff;setzeerfassungsparameter(dnrlehrer,
+maskenname,fnrletztesfeld).END PROC setzeerfassungsparameter;PROC 
+zeigelehrerzurbearbeitung:INT VAR i;alteparaphe:=wert(fnrlparaphe);
+setzeerfassungsfeld(wert(fnrlparaphe),fnrparaphe);setzeerfassungsfeld(wert(
+fnrlfamname),fnrfamilienname);setzeerfassungsfeld(wert(fnrlrufname),
+fnrrufname);setzeerfassungsfeld(wert(fnrlzusatz),fnrnamenszusatz);
+setzeerfassungsfeld(wert(fnrlamtsbeztitel),fnramtsbezeichnung);
+setzeerfassungsfeld(wert(fnrlgeschlecht),fnrgeschlecht);setzeerfassungsfeld(
+wert(fnrlpflichtstd),fnrpflichtstunden);FOR iFROM 0UPTO anzermprolehrer-1REP 
+setzeerfassungsfeld(wert(fnrlerm1+2*i),fnrermaessigung+2*i);
+setzeerfassungsfeld(wert(fnrlermgrund1+2*i),fnrermaessigungsgrund+2*i)PER ;
+FOR iFROM 0UPTO 5REP setzeerfassungsfeld(altelehrbefaehigungen(i+1).fach,
+fnrlehrbeffach+2*i);setzeerfassungsfeld(altelehrbefaehigungen(i+1).art,
+fnrlehrbefart+2*i)PER ;setzeerfassungsfeld(wert(fnrlsprechzeit),
+fnrsprechzeiten);setzeerfassungsfeld(wert(fnrlstrnr),fnrstrasseundnummer);
+setzeerfassungsfeld(wert(fnrlplzort),fnrplzundort);setzeerfassungsfeld(wert(
+fnrltelnr),fnrtelefon)END PROC zeigelehrerzurbearbeitung;PROC 
+pruefeplausibilitaet:INT VAR i,j,fehlerstatus;pruefe(1,erfassungsmaske,PROC 
+erfassungswert,fnrparaphe,null,null,leer,fehlerstatus);IF fehlerstatus<>0
+THEN setzefehlerstatus(fehlerstatus);LEAVE pruefeplausibilitaetFI ;IF length(
+erfassungswert(fnrparaphe))>paraphenlaengeTHEN meldeauffaellig(
+erfassungsmaske,meldungparaphezulang);setzefehlerstatus(fnrparaphe);LEAVE 
+pruefeplausibilitaetFI ;pruefe(1,erfassungsmaske,PROC erfassungswert,
+fnrfamilienname,null,null,leer,fehlerstatus);IF fehlerstatus<>0THEN 
+setzefehlerstatus(fehlerstatus);LEAVE pruefeplausibilitaetFI ;IF 
+erfassungswert(fnrgeschlecht)<>"m"AND erfassungswert(fnrgeschlecht)<>"w"THEN 
+meldeauffaellig(erfassungsmaske,meldungzugeschlecht);setzefehlerstatus(
+fnrgeschlecht);LEAVE pruefeplausibilitaetFI ;FOR iFROM 0UPTO 
+anzlehrbefprolehrer-1REP IF erfassungswert(fnrlehrbefart+2*i)<>""THEN IF 
+erfassungswert(fnrlehrbeffach+2*i)=""THEN meldeauffaellig(erfassungsmaske,
+meldungzulehrbeffach);setzefehlerstatus(fnrlehrbeffach+2*i);LEAVE 
+pruefeplausibilitaetFI ;IF NOT imbestand(bestandartlehrbef+
+trennerfuerimbestand+erfassungswert(fnrlehrbefart+2*i),dateinameschluessel)
+THEN meldeauffaellig(erfassungsmaske,meldungzumbestand);setzefehlerstatus(
+fnrlehrbefart+2*i);LEAVE pruefeplausibilitaetFI FI ;IF erfassungswert(
+fnrlehrbeffach+2*i)<>""THEN FOR jFROM i+1UPTO anzlehrbefprolehrer-1REP IF 
+erfassungswert(fnrlehrbeffach+2*i)=erfassungswert(fnrlehrbeffach+2*j)THEN 
+meldeauffaellig(erfassungsmaske,meldungzufachdoppelt);setzefehlerstatus(
+fnrlehrbeffach+2*i);LEAVE pruefeplausibilitaetFI PER ;IF NOT imbestand(
+erfassungswert(fnrlehrbeffach+2*i),dateinamefaecher)THEN meldeauffaellig(
+erfassungsmaske,meldungzumbestand);setzefehlerstatus(fnrlehrbeffach+2*i);
+LEAVE pruefeplausibilitaetFI FI PER ;IF erfassungswert(fnrpflichtstunden)<>""
+THEN pruefe(2,erfassungsmaske,PROC erfassungswert,fnrpflichtstunden,null,null
+,leer,fehlerstatus);IF fehlerstatus<>0THEN setzefehlerstatus(fehlerstatus);
+LEAVE pruefeplausibilitaetFI ;pruefe(3,erfassungsmaske,PROC erfassungswert,
+fnrpflichtstunden,untergrenze,obergrenze,leer,fehlerstatus);IF fehlerstatus<>
+0THEN setzefehlerstatus(fehlerstatus);LEAVE pruefeplausibilitaetFI ;FI ;
+sollstunden:=int(erfassungswert(fnrpflichtstunden));FOR iFROM 0UPTO 
+anzermprolehrer-1REP IF erfassungswert(fnrermaessigung+2*i)<>""THEN pruefe(2,
+erfassungsmaske,PROC erfassungswert,fnrermaessigung+2*i,null,null,leer,
+fehlerstatus);IF fehlerstatus<>0THEN setzefehlerstatus(fehlerstatus);LEAVE 
+pruefeplausibilitaetFI ;pruefe(3,erfassungsmaske,PROC erfassungswert,
+fnrermaessigung+2*i,untergrenze,obergrenze,leer,fehlerstatus);IF fehlerstatus
+<>0THEN setzefehlerstatus(fehlerstatus);LEAVE pruefeplausibilitaetFI ;FI ;
+sollstunden:=sollstunden-int(erfassungswert(fnrermaessigung+2*i));IF 
+sollstunden<0THEN meldeauffaellig(erfassungsmaske,meldungzusollstunden);
+setzefehlerstatus(fnrermaessigung+2*i);LEAVE pruefeplausibilitaetFI ;IF 
+erfassungswert(fnrermaessigungsgrund+2*i)<>""THEN IF NOT imbestand(
+bestandermgrund+trennerfuerimbestand+erfassungswert(fnrermaessigungsgrund+2*i
+),dateinameschluessel)THEN meldeauffaellig(erfassungsmaske,meldungzumbestand)
+;setzefehlerstatus(fnrermaessigungsgrund+2*i);LEAVE pruefeplausibilitaetFI 
+FI PER END PROC pruefeplausibilitaet;PROC setzewertefuerdbspeicherung:INT 
+VAR i;putwert(fnrlparaphe,erfassungswert(fnrparaphe));putwert(fnrlfamname,
+erfassungswert(fnrfamilienname));putwert(fnrlrufname,erfassungswert(
+fnrrufname));putwert(fnrlzusatz,erfassungswert(fnrnamenszusatz));putwert(
+fnrlamtsbeztitel,erfassungswert(fnramtsbezeichnung));putwert(fnrlgeschlecht,
+erfassungswert(fnrgeschlecht));putintwert(fnrlsollstd,sollstunden);putwert(
+fnrlpflichtstd,erfassungswert(fnrpflichtstunden));FOR iFROM 0UPTO 
+anzermprolehrer-1REP putwert(fnrlerm1+2*i,erfassungswert(fnrermaessigung+2*i)
+);putwert(fnrlermgrund1+2*i,erfassungswert(fnrermaessigungsgrund+2*i))PER ;
+putwert(fnrlsprechzeit,erfassungswert(fnrsprechzeiten));putwert(fnrlstrnr,
+erfassungswert(fnrstrasseundnummer));putwert(fnrlplzort,erfassungswert(
+fnrplzundort));putwert(fnrltelnr,erfassungswert(fnrtelefon))END PROC 
+setzewertefuerdbspeicherung;PROC setzeidentiobjektfuerobjektliste:LET 
+trennsymbolfuerobli="$";TEXT VAR identizeile;identizeile:=wert(fnrlparaphe)+
+trenner+wert(fnrlfamname)+komma+wert(fnrlrufname);setzeidentiwert(
+identizeilemitschluesselanhang).identizeilemitschluesselanhang:identizeile+
+trennsymbolfuerobli+wert(fnrlparaphe).END PROC 
+setzeidentiobjektfuerobjektliste;PROC lehrerlesen:INT VAR i,j;putwert(
+fnrlparaphe,schluessel);search(dnrlehrer,TRUE );IF dbstatus=okTHEN 
+saveupdateposition(dnrlehrer);putwert(fnrlbparaphe,schluessel);putwert(
+fnrlbfach,leer);search(ixlbpar);i:=0;WHILE dbstatus=okCAND i<
+anzlehrbefprolehrerCAND wert(fnrlbparaphe)=schluesselREP i:=i+1;
+altelehrbefaehigungen(i).fach:=wert(fnrlbfach);altelehrbefaehigungen(i).art:=
+wert(fnrlbart);succ(ixlbpar);PER ;FOR jFROM i+1UPTO anzlehrbefprolehrerREP 
+altelehrbefaehigungen(j).fach:="";altelehrbefaehigungen(j).art:=""PER ;
+dbstatus(ok)FI END PROC lehrerlesen;PROC lehreraendern:INT VAR i;
+restoreupdateposition(dnrlehrer);update(dnrlehrer);logbucheintrag("Änderung")
+;FOR iFROM 0UPTO anzlehrbefprolehrer-1REP IF alteparaphe<>schluesselCOR 
+erfassungswert(fnrlehrbeffach+2*i)<>altelehrbefaehigungen(i+1).fachCOR 
+erfassungswert(fnrlehrbefart+2*i)<>altelehrbefaehigungen(i+1).artTHEN IF 
+altelehrbefaehigungen(i+1).fach=leerCAND erfassungswert(fnrlehrbeffach+2*i)<>
+leerTHEN putwert(fnrlbfach,erfassungswert(fnrlehrbeffach+2*i));putwert(
+fnrlbart,erfassungswert(fnrlehrbefart+2*i));putwert(fnrlbparaphe,schluessel);
+insert(dnrlehrbefaehigungen)ELSE putwert(fnrlbfach,altelehrbefaehigungen(i+1)
+.fach);putwert(fnrlbparaphe,alteparaphe);putwert(fnrlbart,
+altelehrbefaehigungen(i+1).art);IF erfassungswert(fnrlehrbeffach+2*i)=leer
+THEN delete(dnrlehrbefaehigungen)ELSE search(dnrlehrbefaehigungen,TRUE );IF 
+dbstatus=okTHEN putwert(fnrlbfach,erfassungswert(fnrlehrbeffach+2*i));putwert
+(fnrlbart,erfassungswert(fnrlehrbefart+2*i));putwert(fnrlbparaphe,schluessel)
+;update(dnrlehrbefaehigungen)FI FI FI ;dbstatus(ok)FI PER END PROC 
+lehreraendern;PROC lehrereinfuegen:INT VAR i;insert(dnrlehrer);logbucheintrag
+("Neueinfügen");FOR iFROM 0UPTO anzlehrbefprolehrer-1REP IF erfassungswert(
+fnrlehrbeffach+2*i)<>""THEN putwert(fnrlbfach,erfassungswert(fnrlehrbeffach+2
+*i));putwert(fnrlbart,erfassungswert(fnrlehrbefart+2*i));putwert(fnrlbparaphe
+,schluessel);insert(dnrlehrbefaehigungen)FI PER END PROC lehrereinfuegen;
+PROC lehrerloeschen:delete(dnrlehrer);logbucheintrag("Entfernen");putwert(
+fnrlbparaphe,schluessel);putwert(fnrlbfach,leer);search(ixlbpar);WHILE 
+dbstatus=okCAND wert(fnrlbparaphe)=schluesselREP delete(dnrlehrbefaehigungen)
+;succ(ixlbpar);PER ;dbstatus(ok)END PROC lehrerloeschen;PROC logbucheintrag(
+TEXT CONST logergaenzung):TEXT VAR eintrag:="Anw. 3.1.1 ";eintragCAT 
+logergaenzung;eintragCAT " """;eintragCAT schluessel;eintragCAT """  """;
+eintragCAT wert(fnrlfamname);eintragCAT """";logeintrag(eintrag)END PROC 
+logbucheintrag;TEXT PROC schluessel:erfassungswert(fnrparaphe)END PROC 
+schluessel;END PACKET erflehrer
+

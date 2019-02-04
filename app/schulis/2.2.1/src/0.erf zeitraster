@@ -1,0 +1,145 @@
+PACKET erfzeitrasterDEFINES zeitrasterveraendern,zeitrasterspeichern,
+zeitrasteruebernehmen,zeitrasterkopieren:LET trenner="�",niltext="",
+titelanfang="Zeitraster für das ",titelmitte=". Halbjahr ",
+trennerfuerschuljahr="/",null=0,eins=1;LET fnrfueruebernehmen=2,
+fnrfuergeplbearb=3,fnrfueraktbearb=4,fnrcursorruhepos=5,maske="ms zeitraster"
+,fnrerstertagesteil=2,wochentage=6,stundenprowochentag=12,stundenamsamstag=6,
+vormittagsstunden=6,nachmittagsstunden=6,zeitfelderprowochentag=24,
+felderprowochentag=36,datensaetzepromaske=66,erstesfeldfuersamstag=182;LET 
+textschuljahr="Schuljahr",textschulhalbjahr="Schulhalbjahr";LET 
+kennungvormittag="v",kennungnachmittag="n",allekennungen="vnx",
+kennungmoerstestd=1;LET meldungeingabesinnlos=56,meldungfalschekennung=55,
+meldungfalschezeitangabe=54,meldungzeitangabezulang=341,
+meldungfalschezeitfolge=342,meldungplausi=57,meldungdatenfehlen=68,
+meldungfrageuebernehmen=300,meldunguebernehmen=301,meldungfeldfuellen=52,
+meldungspeicherfehler=73,meldungspeicherung=50;TEXT VAR schuljahr:=niltext,
+halbjahr:=niltext;BOOL VAR datenvorhanden,datenlueckenhaft;ROW 
+datensaetzepromaskeTEXT VAR alteszeitraster;INT VAR aktindex;PROC 
+zeitrasterveraendern:INT VAR i,j,aktfnr;IF standardmaskenfeld(
+fnrfueruebernehmen)=niltextAND (standardmaskenfeld(fnrfuergeplbearb)<>niltext
+XOR standardmaskenfeld(fnrfueraktbearb)<>niltext)THEN schuljahr:=
+schulkenndatum(textschuljahr);halbjahr:=schulkenndatum(textschulhalbjahr);IF 
+standardmaskenfeld(fnrfuergeplbearb)<>niltextTHEN geplanteshjundsjberechnen(
+halbjahr,schuljahr)FI ;standardstartproc(maske);
+standardkopfmaskeaktualisieren(titelanfang+halbjahr+titelmitte+text(schuljahr
+,2)+trennerfuerschuljahr+subtext(schuljahr,3));aktindex:=null;inittupel(
+dnrzeitraster);statleseschleife(dnrzeitraster,schuljahr,halbjahr,fnrzrsj,
+fnrzrhj,PROC fuellemaskeundpuffer);datenvorhanden:=aktindex>null;
+datenlueckenhaft:=datenvorhandenCAND aktindex<datensaetzepromaske;IF NOT 
+datenvorhandenTHEN aktfnr:=fnrerstertagesteil;FOR iFROM einsUPTO wochentage-
+einsREP FOR jFROM einsUPTO vormittagsstundenREP standardmaskenfeld(
+kennungvormittag,aktfnr);aktfnrINCR einsPER ;FOR jFROM einsUPTO 
+nachmittagsstundenREP standardmaskenfeld(kennungnachmittag,aktfnr);aktfnr
+INCR einsPER ;aktfnrINCR zeitfelderprowochentag;PER ;FOR iFROM einsUPTO 
+stundenamsamstagREP standardmaskenfeld(kennungvormittag,aktfnr);aktfnrINCR 
+einsPER ;FI ;standardnprocELSE standardmeldung(meldungeingabesinnlos,niltext)
+;IF standardmaskenfeld(fnrfueruebernehmen)=niltextTHEN infeld(
+fnrfuergeplbearb)ELSE infeld(fnrfueruebernehmen)FI ;return(1)FI END PROC 
+zeitrasterveraendern;PROC zeitrasterspeichern:INT VAR fehlerstatus:=null,
+aktfnr,aktfnrbeginn,aktfnrende,beginnzeit,endezeit,i;pruefeplausibilitaet;IF 
+fehlerstatus<>nullTHEN infeld(fehlerstatus);return(1);LEAVE 
+zeitrasterspeichernELSE speicherungdurchfuehrenFI ;enter(2).
+pruefeplausibilitaet:standardmeldung(meldungplausi,niltext);FOR iFROM null
+UPTO datensaetzepromaske-einsREP aktfnr:=fnrerstertagesteil+iMOD 
+stundenprowochentag+(iDIV stundenprowochentag)*felderprowochentag;IF aktfnr>=
+erstesfeldfuersamstagTHEN aktfnrbeginn:=aktfnr+stundenamsamstag;aktfnrende:=
+aktfnrbeginn+stundenamsamstagELSE aktfnrbeginn:=aktfnr+stundenprowochentag;
+aktfnrende:=aktfnrbeginn+stundenprowochentagFI ;IF standardmaskenfeld(aktfnr)
+=niltextTHEN standardmeldung(meldungfeldfuellen,niltext);fehlerstatus:=aktfnr
+;LEAVE pruefeplausibilitaetFI ;IF pos(allekennungen,standardmaskenfeld(aktfnr
+))=nullTHEN standardmeldung(meldungfalschekennung,niltext);fehlerstatus:=
+aktfnr;LEAVE pruefeplausibilitaetFI ;beginnzeit:=int(standardmaskenfeld(
+aktfnrbeginn));IF falschezeitangabe(beginnzeit,aktfnrbeginn,fehlerstatus)
+THEN LEAVE pruefeplausibilitaetFI ;endezeit:=int(standardmaskenfeld(
+aktfnrende));IF falschezeitangabe(endezeit,aktfnrende,fehlerstatus)THEN 
+LEAVE pruefeplausibilitaetFI ;IF beginnzeit>endezeitAND endezeit>0THEN 
+standardmeldung(meldungfalschezeitfolge,niltext);fehlerstatus:=aktfnrbeginn;
+LEAVE pruefeplausibilitaetFI PER .speicherungdurchfuehren:standardmeldung(
+meldungspeicherung,niltext);FOR aktindexFROM einsUPTO datensaetzepromaskeREP 
+berechnemaskenunddbgroessen;IF datenvorhandenTHEN IF stundewurdeveraendert
+THEN infeld(aktfnr);putwert(fnrzrsj,schuljahr);putwert(fnrzrhj,halbjahr);
+putintwert(fnrzrtagstunde,aktindex);search(dnrzeitraster,true);putwert(
+fnrzrkennungteil,standardmaskenfeld(aktfnr));putwert(fnrzrbeginnuhr,
+standardmaskenfeld(aktfnrbeginn));putwert(fnrzrendeuhr,standardmaskenfeld(
+aktfnrende));IF dbstatus<>nullTHEN insert(dnrzeitraster)ELSE update(
+dnrzeitraster)FI ;speicherfehlerabfangenFI ELSE infeld(aktfnr);putwert(
+fnrzrsj,schuljahr);putwert(fnrzrhj,halbjahr);putintwert(fnrzrtagstunde,
+aktindex);putwert(fnrzrkennungteil,standardmaskenfeld(aktfnr));putwert(
+fnrzrbeginnuhr,standardmaskenfeld(aktfnrbeginn));putwert(fnrzrendeuhr,
+standardmaskenfeld(aktfnrende));insert(dnrzeitraster)FI PER .
+berechnemaskenunddbgroessen:aktfnr:=fnrerstertagesteil+(aktindex-eins)MOD 
+stundenprowochentag+((aktindex-eins)DIV stundenprowochentag)*
+felderprowochentag;IF aktfnr>=erstesfeldfuersamstagTHEN aktfnrbeginn:=aktfnr+
+stundenamsamstag;aktfnrende:=aktfnrbeginn+stundenamsamstagELSE aktfnrbeginn:=
+aktfnr+stundenprowochentag;aktfnrende:=aktfnrbeginn+stundenprowochentagFI ;.
+stundewurdeveraendert:datenlueckenhaftCOR standardmaskenfeld(aktfnr)+trenner+
+standardmaskenfeld(aktfnrbeginn)+trenner+standardmaskenfeld(aktfnrende)<>
+alteszeitraster(aktindex).speicherfehlerabfangen:IF dbstatus<>nullTHEN 
+standardmeldung(meldungspeicherfehler,niltext);return(1);LEAVE 
+zeitrasterspeichernFI .END PROC zeitrasterspeichern;PROC zeitrasterkopieren:
+TEXT VAR tagesteil,beginn,ende;INT VAR i,j,aktfnr:=fnrerstertagesteil;FOR i
+FROM 0UPTO stundenprowochentag-1REP aktfnr:=fnrerstertagesteil+i;tagesteil:=
+standardmaskenfeld(aktfnr);aktfnrINCR stundenprowochentag;beginn:=
+standardmaskenfeld(aktfnr);aktfnrINCR stundenprowochentag;ende:=
+standardmaskenfeld(aktfnr);aktfnrINCR stundenprowochentag;FOR jFROM 1UPTO 
+wochentage-2REP standardmaskenfeld(tagesteil,aktfnr);aktfnrINCR 
+stundenprowochentag;standardmaskenfeld(beginn,aktfnr);aktfnrINCR 
+stundenprowochentag;standardmaskenfeld(ende,aktfnr);aktfnrINCR 
+stundenprowochentagPER ;IF i<stundenamsamstagTHEN standardmaskenfeld(
+tagesteil,aktfnr);aktfnrINCR stundenamsamstag;standardmaskenfeld(beginn,
+aktfnr);aktfnrINCR stundenamsamstag;standardmaskenfeld(ende,aktfnr)FI PER ;
+return(1);END PROC zeitrasterkopieren;PROC zeitrasteruebernehmen(BOOL CONST 
+hauptaktion):INT VAR posi,i;TEXT VAR satz;BOOL VAR ueberschreiben;IF NOT 
+hauptaktionTHEN IF NOT eingangsmaskerichtigangekreuztTHEN standardmeldung(
+meldungeingabesinnlos,niltext);infeld(fnrfueruebernehmen);return(1);LEAVE 
+zeitrasteruebernehmenFI ;schuljahr:=schulkenndatum(textschuljahr);halbjahr:=
+schulkenndatum(textschulhalbjahr);fuelledenpuffermitdemzeitraster;IF 
+datenvorhandenTHEN standardmeldung(meldungfrageuebernehmen,niltext);
+feldschutz(fnrfueruebernehmen);feldschutz(fnrfuergeplbearb);feldschutz(
+fnrfueraktbearb);feldfrei(fnrcursorruhepos);infeld(fnrcursorruhepos);
+standardnproc;ELSE standardmeldung(meldungdatenfehlen,niltext);infeld(
+fnrfueruebernehmen);return(1)FI ELSE standardmeldung(meldunguebernehmen,
+niltext);geplanteshjundsjberechnen(halbjahr,schuljahr);
+testeobdatenschonvorhanden;FOR iFROM einsUPTO aktindexREP 
+ladedendatenbankpuffer;IF ueberschreibenCAND dbstatus=nullTHEN update(
+dnrzeitraster)ELSE insert(dnrzeitraster)FI ;speicherfehlerabfangen;PER ;enter
+(2)FI .eingangsmaskerichtigangekreuzt:standardmaskenfeld(fnrfueruebernehmen)
+<>niltextAND standardmaskenfeld(fnrfuergeplbearb)=niltextAND 
+standardmaskenfeld(fnrfueraktbearb)=niltext.fuelledenpuffermitdemzeitraster:
+aktindex:=null;inittupel(dnrzeitraster);statleseschleife(dnrzeitraster,
+schuljahr,halbjahr,fnrzrsj,fnrzrhj,PROC fuellenurpuffer);datenvorhanden:=
+aktindex>null.testeobdatenschonvorhanden:putwert(fnrzrsj,schuljahr);putwert(
+fnrzrhj,halbjahr);putintwert(fnrzrtagstunde,kennungmoerstestd);search(
+dnrzeitraster,TRUE );ueberschreiben:=dbstatus=null.ladedendatenbankpuffer:
+putwert(fnrzrsj,schuljahr);putwert(fnrzrhj,halbjahr);satz:=alteszeitraster(i)
+;posi:=pos(satz,trenner);putwert(fnrzrtagstunde,text(satz,posi-eins));IF 
+ueberschreibenTHEN search(dnrzeitraster,TRUE )FI ;satz:=subtext(satz,posi+
+eins);posi:=pos(satz,trenner);putwert(fnrzrkennungteil,text(satz,posi-eins));
+satz:=subtext(satz,posi+eins);posi:=pos(satz,trenner);putwert(fnrzrbeginnuhr,
+text(satz,posi-eins));satz:=subtext(satz,posi+eins);putwert(fnrzrendeuhr,satz
+).speicherfehlerabfangen:IF ueberschreibenCAND dbstatus<>nullTHEN 
+standardmeldung(meldungspeicherfehler,niltext);infeld(fnrfueruebernehmen);
+return(1);LEAVE zeitrasteruebernehmenFI .END PROC zeitrasteruebernehmen;PROC 
+fuellemaskeundpuffer(BOOL VAR b):INT VAR feldnr,feldnr2;IF wert(fnrzrsj)>
+schuljahrCOR wert(fnrzrhj)>halbjahrCOR dbstatus<>0THEN b:=TRUE ELSE feldnr:=
+fnrerstertagesteil+aktindexMOD stundenprowochentag+(aktindexDIV 
+stundenprowochentag)*felderprowochentag;aktindexINCR eins;alteszeitraster(
+aktindex):=wert(fnrzrkennungteil)+trenner+wert(fnrzrbeginnuhr)+trenner+wert(
+fnrzrendeuhr);standardmaskenfeld(wert(fnrzrkennungteil),feldnr);IF feldnr>=
+erstesfeldfuersamstagTHEN feldnrINCR stundenamsamstag;feldnr2:=feldnr+
+stundenamsamstagELSE feldnrINCR stundenprowochentag;feldnr2:=feldnr+
+stundenprowochentagFI ;standardmaskenfeld(wert(fnrzrbeginnuhr),feldnr);
+standardmaskenfeld(wert(fnrzrendeuhr),feldnr2);FI END PROC 
+fuellemaskeundpuffer;PROC fuellenurpuffer(BOOL VAR b):IF wert(fnrzrsj)>
+schuljahrCOR wert(fnrzrhj)>halbjahrCOR dbstatus<>0THEN b:=TRUE ELSE aktindex
+INCR eins;alteszeitraster(aktindex):=wert(fnrzrtagstunde)+trenner+wert(
+fnrzrkennungteil)+trenner+wert(fnrzrbeginnuhr)+trenner+wert(fnrzrendeuhr)FI 
+END PROC fuellenurpuffer;BOOL PROC falschezeitangabe(INT CONST zeit,fnr,INT 
+VAR status):IF standardmaskenfeld(fnr)=niltextTHEN LEAVE falschezeitangabe
+WITH FALSE FI ;IF length(standardmaskenfeld(fnr))>4THEN standardmeldung(
+meldungzeitangabezulang,niltext);status:=fnr;LEAVE falschezeitangabeWITH 
+TRUE FI ;standardpruefe(2,fnr,null,null,niltext,status);IF status<>nullTHEN 
+LEAVE falschezeitangabeWITH TRUE FI ;IF zeit<nullOR zeitMOD 100>59OR zeitDIV 
+100>24THEN standardmeldung(meldungfalschezeitangabe,niltext);status:=fnr;
+TRUE ELSE FALSE FI END PROC falschezeitangabe;END PACKET erfzeitraster;
+

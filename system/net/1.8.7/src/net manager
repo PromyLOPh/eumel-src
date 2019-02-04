@@ -1,0 +1,797 @@
+PACKET net manager DEFINES stop,net manager,frei, routen aufbauen, 
+ (*   175 net manager   8 (!)   *)
+                           start,
+                           definiere netz,
+                           aktiviere netz,
+                           list option,
+                           erlaube, sperre, starte kanal, routen: 
+ 
+TEXT VAR stand := "Netzsoftware vom  10.06.87  "; 
+                 (*Heinrichs     *)           
+LET
+    maxstat = 127,
+    ack = 0,
+(*  nak = 1, *)
+    error nak = 2,
+(*  zeichen eingang = 4, *)
+    list code = 15,
+(*  fetch code = 11, *)
+    freigabecode = 29,
+    tabellencode = 500,
+    continue code = 100,
+    erase code = 14,
+    report code = 99, 
+    abgleichcode = 98,
+    neue routen code = 97,
+    dr verwaltungslaenge = 8,
+
+    (* Codes der Verbindungsebene *) 
+ 
+    task id code = 6, 
+    name code = 7, 
+    task info code = 8, 
+    routen liefern code = 9, 
+ 
+    (* Weitergabecodes für Netzknoten *)
+
+    route code = 1001,
+    out code = 1003,
+
+    (* Typen von Kommunikationsströmen *)
+
+    zustellung = 1,
+    call im wait = 3,
+    call im abbruch = 4, 
+    call in zustellung = 5;
+
+LET STEUER =
+      STRUCT ( 
+      INT  head, 
+           zwischenziel,
+           zielrechner, 
+           quellrechner,
+           strom,
+      INT  sequenz,
+           seiten nummer,
+      TASK quelle,ziel,
+      INT  sende code); 
+ 
+LET INFO = STRUCT (STEUER steuer, INT typ,maxseq); 
+ 
+LET PARA = STRUCT (TASK quelle, ziel, INT sendecode, zielstation); 
+ 
+ 
+TASK VAR sohn;
+INT VAR strom,c,kanalmode, rzaehler := 20;
+BOUND STRUCT (ROW maxstat INT port, 
+              ROW maxstat INT zwischen)  VAR route;
+ 
+  
+TASK PROC netport (INT CONST ziel): 
+   INT VAR kan := route.port (ziel) AND 255; 
+   IF kan < 1 OR kan > 15
+   THEN 
+     niltask 
+   ELSE 
+     IF NOT exists (nettask (kan)) 
+     THEN 
+       access catalogue;
+       nettask (kan) := task (kan); 
+       IF NOT (nettask (kan) < father) THEN nettask (kan) := niltask FI; 
+     FI; 
+     nettask (kan) 
+   FI
+END PROC netport; 
+ 
+PROC frei (INT CONST stat,lvl): 
+  DATASPACE VAR ds := nilspace;
+  BOUND STRUCT (INT x,y) VAR msg := ds;
+  msg.x := stat; msg.y := lvl;
+  INT VAR return;
+  call (netport (stat), freigabecode, ds, return) ;
+  forget (ds)
+END PROC frei; 
+ 
+PROC net manager (DATASPACE VAR ds, INT CONST order, phase, TASK CONST
+                  ordertask):
+ 
+    IF order = report code AND ordertask < myself
+    THEN 
+      IF storage (old("report")) > 20 THEN forget ("report", quiet) FI;
+      FILE VAR rp := sequential file (output, "report");
+      BOUND TEXT VAR rpt := ds;
+      putline (rp, rpt);
+      send (ordertask, ack, ds)
+    ELIF order = abgleichcode AND ordertask < myself
+    THEN  
+      BOUND STRUCT (INT ende, zwischen) VAR x := ds; 
+      route.port (x.ende) := channel (ordertask);
+      route.zwischen (x.ende) := x.zwischen;
+      send (ordertask, ack, ds)
+    ELIF order = neue routen code AND ordertask < myself
+    THEN
+      forget ("port intern");
+      copy (ds,"port intern");
+      route := old ("port intern");
+      send (ordertask, ack, ds)
+    ELIF station (ordertask) = station (myself)
+    THEN
+      IF ordertask < myself
+      OR order = list code
+      OR order > continue code
+      THEN
+        IF order = list code 
+        THEN
+          enable stop;
+          forget (ds); ds := old ("report");
+          FILE VAR ff := sequential file (output,ds);
+          putline (ff,"bekannte Stationen:");
+          stationen; line (ff); putline (ff,"--------");
+          putline (ff,"Eingestellte Netzmodi:"); 
+          kanaele ; 
+          paketgroessen; 
+          line (ff); putline (ff,"********"); 
+          putline (ff,stand);
+          putline (ff,"Rechner "+text(station(myself))+"  um "+time of day);
+          send (ordertask, ack, ds)
+        ELSE
+        free manager (ds,order,phase,order task) 
+        FI
+      ELSE
+      errorstop ("nur 'list' ist erlaubt")
+      FI
+    FI .
+  
+stationen: 
+INT VAR stat; 
+INT VAR mystation := station (myself);
+FOR stat FROM 1 UPTO maxstat REP 
+  IF route.port (stat) > 0 AND stat <> mystation 
+  THEN 
+    put (ff,text(stat)+"("+text (route.port (stat) AND 255)+","+
+    text(route.zwischen(stat))+")") 
+  FI 
+PER. 
+ 
+paketgroessen: 
+ 
+  line(ff); 
+  put (ff, "Nutzlaenge bei indirekter Verbindung "+ 
+           text (data length via node) + " Byte "); line (ff). 
+ 
+kanaele: 
+   INT VAR portnummer; 
+   TASK VAR tsk; 
+   FOR portnummer FROM 1 UPTO 15 REP 
+      tsk := task (portnummer);
+      IF tsk < myself THEN beschreibe kanal FI; 
+   PER. 
+ 
+beschreibe kanal: 
+   putline (ff, name (tsk) + " haengt an Kanal " + text (channel (tsk))
+                + ", " + mode text (netz mode (portnummer))).
+ 
+END PROC net manager; 
+
+TASK VAR cd,stask;
+ROW maxstat INT VAR erlaubt; 
+
+PROC communicate: 
+  enable stop;
+  INT VAR scode, merken :=0;
+  DATASPACE VAR dr := nilspace;
+  neuer start (quit max, kanalmode); 
+REP 
+  forget (dr); 
+  telegrammfreigabe; 
+  wait (dr, scode, stask); 
+  cd := collected destination;
+  IF weiterleitung steht noch aus
+  THEN 
+    send (netport (merken), out code, mds, reply); 
+    IF reply <> -2 THEN forget (mds); merken := 0 FI 
+  FI;
+  IF zeichen da OR zeit abgelaufen 
+  THEN 
+    packet
+  ELIF cd = myself 
+  THEN 
+    netz info und steuerung 
+  ELSE
+    sendung untersuchen (stask, cd, scode, dr)
+  FI 
+PER. 
+ 
+telegrammfreigabe: 
+   INT VAR dummy; 
+   control (22,0,0,dummy). 
+ 
+zeichen da: scode < 0 . 
+ 
+zeit abgelaufen: scode = ack AND cd = myself. 
+
+packet: 
+    INT VAR snr, ant,err;
+    TASK VAR quelle, ziel;
+    snr := 0;
+    IF NOT zeichen da THEN routen erneuern FI;
+    REP 
+      IF NOT zeichen da
+      THEN 
+        forget (dr);
+        zeitueberwachung (snr, quelle, ziel, ant, dr); 
+      ELIF NOT weiterleitung steht noch aus
+      THEN
+        packet eingang (snr, quelle, ziel, ant, dr); 
+      FI;
+      IF snr = 1000
+      THEN
+        packet weiterleiten
+      ELIF snr > 0
+      THEN 
+        IF ant > 6 AND erlaubt(station (quelle)) < 0 
+        THEN unerlaubt
+        ELSE
+          send (quelle,ziel,ant,dr,err); 
+          fehlerbehandlung ;
+        FI
+      FI 
+    UNTIL snr = 0 OR zeichen da PER.
+ 
+routen erneuern: 
+  rzaehler DECR 1; 
+  IF rzaehler = 0 
+  THEN 
+    rzaehler := 20; 
+    neue routen holen
+  FI. 
+
+weiterleitung steht noch aus: merken <> 0. 
+ 
+packet weiterleiten: 
+  INT VAR reply;
+  IF NOT ((route.port (ant) AND 255) = channel OR route.port (ant) < 0)
+  THEN 
+    send (netport (ant), out code, dr, reply);
+    IF reply = -2 
+    THEN
+      merken := ant; 
+      DATASPACE VAR mds := dr 
+    FI
+  ELSE
+    report ("Weiterleitung nicht möglich für "+text(ant)) 
+  FI.
+
+fehlerbehandlung: 
+  IF ok oder ziel nicht da THEN loesche verbindung (snr) FI. 
+ 
+ok oder ziel nicht da: err=0 OR err=-1. 
+
+netz info und steuerung: 
+    IF scode = list code THEN   list status 
+  ELIF scode = erase code THEN strom beenden
+  ELIF scode = freigabe code AND stask = father THEN freigabelevel 
+  ELIF scode >= route code THEN weitergaben
+  ELIF scode > tabellencode THEN routen ausliefern
+  ELSE forget (dr); ablehnen ("nicht möglich") 
+  FI. 
+  
+weitergaben: 
+  IF stask < father
+  THEN 
+    IF scode = out code 
+    THEN 
+      BOUND INT VAR stx lng := dr; 
+      INT VAR decoded lng := stx lng; 
+      decode packet length (decoded lng); 
+      transmit header (dr); 
+      blockout (dr,1,drverwaltungslaenge,decoded lng); 
+      transmit trailer  
+    ELIF scode = route code 
+    THEN 
+      BOUND PARA VAR parah := dr; 
+      PARA VAR para := parah; 
+      pingpong (stask, ack, dr, reply); 
+      neue sendung (para.quelle, para.ziel, para.sendecode, 
+                    para.zielstation, dr); 
+      forget (dr); dr := nilspace; 
+      send (stask, ack, dr) 
+    FI
+  ELSE 
+    forget (dr); 
+    ablehnen ("nicht Sohn von "+name(father)) 
+  FI. 
+  
+routen ausliefern: 
+  neue sendung (stask, myself, -routen liefern code, scode-tabellencode,dr). 
+  
+freigabelevel: 
+  BOUND STRUCT (INT stat,lvl) VAR lv := dr; 
+  IF lv.stat > 0 AND lv.stat <= maxstat THEN erlaubt (lv.stat) := lv.lvl FI; 
+  send (stask,ack,dr). 
+ 
+unerlaubt: 
+  report ("Fremdzugriff von "+text(station (quelle))+" auf "+nam(ziel)
+          +" code "+text(ant)); 
+  loesche verbindung (snr);
+  forget (dr); dr := nilspace;
+  BOUND TEXT VAR errtxt := dr; 
+  errtxt:="Kein Zugriff auf Station "+text (station (myself)); 
+  neue sendung (ziel, quelle, error nak, station (quelle), dr). 
+ 
+strom beenden:
+  BOUND TEXT VAR stromtext := dr;
+  INT VAR erase strom := int (stromtext);
+  forget (dr);
+  strom := erase strom;
+  IF falsche stromnummer THEN ablehnen ("Strom gibt es nicht")
+  ELSE 
+    BOUND INFO VAR v := verbindung (strom); 
+  IF
+    stask < supervisor OR stask = vx.quelle OR stask = vx.ziel
+  THEN
+    loeschen
+  ELSE ablehnen ("Nur Empfänger/Absender darf löschen")
+  FI
+  FI. 
+ 
+loeschen:
+  IF sendeeintrag  THEN
+    IF callee (vx.quelle) = vx.ziel THEN absender warnen FI;
+    loesche verbindung (strom)
+  ELSE
+    IF callee (vx.ziel) = vx.quelle THEN warnen FI; 
+    loesche verbindung (strom)
+  FI; 
+  dr := nilspace;
+  send (stask,ack,dr).
+
+absender warnen:
+ dr := nilspace;
+ send(vx.ziel,vx.quelle,1,dr,err) .
+ 
+warnen:
+ dr := nilspace;
+errtxt := dr; errtxt:= "Station antwortet nicht"; 
+send (vx.quelle,vx.ziel,error nak, dr, err). 
+ 
+falsche stromnummer: strom < 1 OR strom > max verbindungsnummer.
+sendeeintrag: vx.quellrechner = station (myself).
+vx: v.steuer.
+END PROC communicate; 
+ 
+PROC list option: 
+  begin ("net list",PROC list net, sohn) 
+END PROC list option; 
+ 
+PROC list net: 
+  disable stop;
+  DATASPACE VAR ds ;
+  INT VAR scode;
+  REP
+    wait (ds, scode, stask); 
+    forget (ds); ds := nilspace;
+    FILE VAR f := sequential file (output, ds); 
+    list (f, father);
+    list netports; 
+    IF is error THEN clear error; 
+                     forget(ds); 
+                     ds := nilspace; 
+                     f := sequential file (output, ds); 
+                     output (f); putline (f,errormessage); 
+                     clear error 
+    FI; 
+    send (stask, ack, ds) 
+  PER. 
+ 
+list netports: 
+  INT VAR k; 
+  FOR k FROM 1 UPTO 15 REP
+    TASK VAR tsk := task (k); 
+    IF tsk < father  
+    THEN 
+      putline (f, name (tsk)); 
+      list (f,tsk) 
+    FI 
+  PER. 
+ 
+END PROC list net; 
+ 
+PROC neue routen holen: 
+    forget ("port intern", quiet); 
+    fetch ("port intern"); 
+    route := old ("port intern"); 
+    neue routen
+END PROC neue routen holen; 
+ 
+PROC sendung untersuchen (TASK CONST q, z, INT CONST cod, DATASPACE VAR dr): 
+  IF z = collector 
+  THEN 
+    verbindungsebene 
+  ELIF station (z) <> 0
+  THEN
+    sendung (q,z,cod,station (z),dr)
+  ELSE
+    ablehnen ("Station 0")
+  FI.
+
+verbindungsebene: 
+  IF cod = 256 THEN name von fremdstation
+  ELIF cod > 256
+  THEN
+    taskinfo fremd 
+  ELIF callee (q) = z  (* gegen errornak an collector *)
+  THEN
+    task id von fremd
+  FI.
+
+taskinfo fremd: sendung  (q, collector,  -task info code,cod-256,dr).
+
+task id von fremd: sendung  (q, collector, -task id code, zielstation, dr) .
+
+name von fremdstation:
+  BOUND TASK VAR tsk := dr;
+  TASK VAR tsk1 := tsk;
+  forget (dr); 
+  dr := nilspace; 
+  sendung  (q, tsk1, -name code, station (tsk1), dr).
+
+zielstation: cod.
+END PROC sendung untersuchen;
+
+PROC sendung (TASK CONST q, z, INT CONST code, z stat, DATASPACE VAR dr):
+  IF z stat < 1 OR z stat > maxstat
+  THEN
+    ablehnen ("ungültige Stationsnummer");
+    LEAVE sendung
+  FI;
+  INT VAR reply;
+  INT VAR rp := route.port (z stat) AND 255;
+  IF rp = 255 THEN neue routen holen ;rp := route.port (z stat) AND 255 FI;
+  IF rp = channel
+  THEN
+     sendung selbst betreiben
+  ELIF rp > 0 AND rp < 16
+  THEN
+     sendung weitergeben
+  ELSE
+     ablehnen ("Station "+text(z stat)+" gibt es nicht")
+  FI.
+
+sendung selbst betreiben:
+  neue sendung (q, z, code, z stat, dr). 
+
+sendung weitergeben:
+  DATASPACE VAR ds := nilspace;
+  BOUND PARA VAR p := ds;
+  p.quelle := q;
+  p.ziel := z;
+  p.zielstation := z stat;
+  p.sendecode := code;
+  call (netport (z stat), route code, ds, reply);
+  forget (ds);
+  pingpong (netport (z stat), 0, dr, reply);
+  forget (dr);
+  IF reply < 0 THEN ablehnen ("netport "+text(route.port(zstat)AND255)
+                    + " fehlt") FI
+END PROC sendung; 
+
+PROC ablehnen (TEXT CONST t):
+  DATASPACE VAR vdr := nilspace;
+  BOUND TEXT VAR errtxt := vdr; 
+  INT VAR err;
+  errtxt := t;
+  send (cd,stask, error nak, vdr,err);
+  forget (vdr).
+END PROC ablehnen;
+
+PROC stop: 
+  access catalogue;
+  IF exists task ("net timer") 
+  THEN 
+    TASK VAR nets := father (/"net timer"); 
+  ELSE
+    nets := myself
+  FI; 
+  nets := son (nets);
+  WHILE NOT (nets = niltask) REP 
+    IF text (name (nets),3) = "net" OR name (nets) = "router" 
+    THEN
+      end (nets) 
+    FI; 
+    nets := brother (nets)
+  PER 
+END PROC stop; 
+ 
+PROC list status: 
+ 
+  DATASPACE VAR ds := nilspace; 
+  FILE VAR f:=sequential file (output, ds);
+  line(f); 
+  FOR strom FROM 1 UPTO max verbindungsnummer REP 
+    IF strom > 0 THEN 
+    BOUND INFO VAR v := verbindung (strom);
+    IF vx.strom <> 0 THEN info FI 
+    FI; 
+  PER; 
+  send (stask, ack, ds). 
+ 
+info: 
+  put (f,"Strom "+text(strom));
+  put (f,"(sqnr"+text(vx.sequenz)+"/"+text (v.maxseq)+")"); 
+  IF sendeeintrag THEN sendeinfo ELSE empfangsinfo FI; 
+  line (f). 
+ 
+sendeeintrag: vx.quellrechner = station(myself) . 
+ 
+sendeinfo: 
+  IF v.typ = call im wait THEN put (f,"erwartet Antwort von")
+  ELIF v.typ = call in zustellung THEN put (f,"Ziel busy. Zielstation:") 
+  ELIF v.typ = call im abbruch THEN put (f,"wird gelöscht bei Antwort von") 
+  ELSE put (f,"sendet an") 
+  FI; 
+  put (f,vx.zielrechner); 
+  put (f,". Absender ist """+nam (vx.quelle)+"""."). 
+ 
+empfangsinfo: 
+  IF v.typ = zustellung THEN 
+  put (f,"Sendung noch nicht zustellbar")
+  ELSE
+  put (f,"empfängt von");
+  put (f,vx.quellrechner); 
+  FI;
+  put (f,". Empfaenger ist """+nam (vx.ziel)+""".").
+
+vx: v.steuer.
+END PROC list status; 
+ 
+INT VAR quitmax := 3;
+
+ROW 15 TASK VAR net task;  
+ROW 15 INT VAR netz mode; 
+
+PROC erlaube (INT CONST von, bis):
+  IF ein kanal gestartet
+  THEN
+    putline ("Warnung: 'erlaube' muß vor 'starte kanal'")
+  FI;
+  test (von); test (bis);
+  INT VAR i;
+  FOR i FROM von UPTO bis REP erlaubt (i) := 0 PER 
+END PROC erlaube;
+
+PROC sperre  (INT CONST von, bis):
+  IF ein kanal gestartet
+  THEN
+    putline ("Warnung: 'sperre' muß vor 'starte kanal'")
+  FI;
+  test (von); test (bis);
+  INT VAR i;
+  FOR i FROM von UPTO bis REP erlaubt (i) :=-1 PER 
+END PROC sperre ;
+
+BOOL VAR  alte routen, ein kanal gestartet; 
+ 
+PROC definiere netz: 
+  stop;
+  INT VAR i;
+  FOR i FROM 1 UPTO 15 REP net task (i) := niltask PER; 
+  ein kanal gestartet := FALSE;
+  FILE VAR s := sequential file (output,"report"); 
+  putline (s," N e u e r   S t a r t " + date + " " + time of day ); 
+  alte routen := exists ("port intern");
+  IF alte routen
+  THEN
+    route := old ("port intern")
+  ELSE
+    route := new ("port intern"); 
+    initialize routes
+  FI. 
+ 
+  initialize routes: 
+     FOR i FROM 1 UPTO maxstat REP 
+        route.zwischen(i) := i 
+     PER. 
+ 
+END PROC definiere netz; 
+ 
+PROC starte kanal (INT CONST k,modus,stroeme): 
+  ein kanal gestartet := TRUE;
+  IF exists (canal (k)) THEN end (canal (k)) FI;
+  IF stroeme <= 0 THEN errorstop ("3.Parameter negativ") FI; 
+  quitmax := stroeme;
+  c := k; 
+  IF c < 1 OR c > 15 THEN errorstop ("unzulässiger Kanal:"+text(c)) FI; 
+  kanalmode := modus; 
+  IF kanalmode < 1 OR kanalmode > max mode 
+        THEN errorstop ("unzulässiger Netzbetriebsmodus:"+text(kanalmode)) 
+        ELSE netz mode (c) := kanalmode 
+  FI; 
+  IF NOT exists task ("net port") 
+  THEN
+    begin ("net port",PROC net io, net task (c));
+    define collector (/"net port")
+  ELSE 
+    begin ("net port "+text (c),PROC net io, net task (c))
+  FI. 
+END PROC starte kanal;
+
+PROC routen (INT CONST von, bis, kanal, zw): 
+  INT VAR i;
+  IF kanal < 0 OR kanal > 15 THEN errorstop ("Kanal unzulässig") FI;
+  test (von); test (bis); 
+  FOR i FROM von UPTO bis REP 
+      route.port (i) := kanal+256; 
+      IF zw=0
+      THEN 
+        route.zwischen (i) := i  
+      ELSE 
+        test (zw);
+        route.zwischen (i) := zw
+      FI 
+  PER. 
+END PROC routen; 
+ 
+PROC routen (INT CONST von, bis, kanal): 
+  routen (von, bis, kanal, 0) 
+END PROC routen;
+
+PROC test (INT CONST station): 
+  IF station < 1 OR station > maxstat 
+  THEN 
+    errorstop (text (station) + " als Stationsnummer unzulässig") 
+  FI 
+END PROC test; 
+ 
+PROC aktiviere netz: 
+vorgegebene routen pruefen; 
+IF existstask ("net timer") THEN end (/"net timer") FI;
+begin ("net timer",PROC timer,sohn);
+IF NOT alte routen 
+THEN 
+  routen aufbauen
+ELSE
+  IF online THEN break FI
+FI. 
+
+vorgegebene routen pruefen: 
+  INT VAR i; 
+  FOR i FROM 1 UPTO maxstat REP 
+    INT VAR s := route.port (i) AND 255; 
+    IF s > 0 AND s <= 15 CAND nettask (s) = niltask 
+    THEN 
+      errorstop ("Kanal "+text(s)+" nicht gestartet, steht aber in Routen") 
+    FI 
+  PER.
+END PROC aktiviere netz; 
+ 
+ 
+PROC routen aufbauen: 
+  alte routen := TRUE;
+  c := channel;
+  break (quiet);
+  begin ("router", PROC rout0, sohn). 
+END PROC routen aufbauen; 
+ 
+PROC rout0: 
+  disable stop; 
+  rout; 
+  IF is error 
+  THEN 
+    put error 
+  FI; 
+  end (myself) 
+END PROC rout0; 
+ 
+PROC rout:
+  IF c>0 THEN continue (c) FI;
+  clear error;   enable stop;
+  fetch ("port intern");
+  route := old ("port intern"); 
+  routen aufbauen;
+  ds := old ("port intern");
+  call (father, neue routen code, ds, reply). 
+ 
+routen aufbauen:
+  access catalogue; 
+  TASK VAR port := brother (myself); 
+  WHILE NOT (port = niltask) REP 
+    IF text (name (port),8) = "net port" THEN nachbarn FI; 
+    port := brother (port) 
+  PER; 
+  IF online THEN putline ("Fertig. Weiter mit SV !") FI. 
+
+aenderbar: route.port (st) < 256.
+
+nachbarn:  
+  INT VAR st,reply; 
+  FOR st FROM 1 UPTO maxstat REP 
+    IF erlaubt (st) >= 0 AND st <> station (myself) AND aenderbar
+    THEN 
+      IF online THEN put (name (port)); put (st) FI;
+      DATASPACE VAR ds := nilspace; 
+        call (port, tabellencode+st, ds, reply);
+        IF reply = ack 
+        THEN 
+          BOUND STRUCT (ROW maxstat INT port, 
+                        ROW maxstat INT zwischen)  VAR fremd := ds; 
+          route.port (st) := channel(port); 
+          route.zwischen (st) := st; 
+          indirekte ziele 
+        ELIF reply < 0
+        THEN
+          errorstop ("netz läuft nicht (Kanalnummer falsch)")
+        ELSE 
+          BOUND TEXT VAR xt := ds;
+          IF online THEN put (xt) FI;
+        FI;
+      IF online THEN line FI;
+      forget (ds) 
+    FI
+  PER. 
+ 
+indirekte ziele:   
+  INT VAR kanal := fremd.port (station (myself)) AND 255;
+  INT VAR ind; 
+  FOR ind FROM 1 UPTO maxstat REP 
+    IF ind bei st bekannt AND NOT ((fremd.port (ind) AND 255) = kanal)
+      AND route.port (ind) < 256
+    THEN 
+      route.port (ind) := channel (port); 
+      route.zwischen (ind) := st 
+    FI 
+  PER.
+ 
+ind bei st bekannt: NOT (fremd.port (ind) = -1).
+ 
+END PROC rout;
+
+
+PROC timer: 
+  disable stop;
+  access catalogue;
+  INT VAR old session := 1;
+  REP 
+    IF session <> old session
+    THEN
+      define collector (/"net port");
+      old session := session
+    FI;
+    clear error;
+    pause (30); 
+    sende tick an alle ports 
+  PER.
+ 
+sende tick an alle ports :
+  TASK VAR fb := son (father); 
+  REP 
+   IF NOT exists (fb) THEN access catalogue;LEAVE sende tick an alle portsFI;
+   IF channel (fb) > 0
+   THEN 
+     DATASPACE VAR ds := nilspace;
+     send (fb, ack, ds); 
+     pause (10)
+   FI;
+   fb := brother (fb) 
+  UNTIL fb = niltask PER. 
+ 
+END PROC timer; 
+
+PROC net io:
+  disable stop; 
+  set net mode (kanalmode); 
+  fetch ("port intern"); 
+  route := old ("port intern");
+  commanddialogue (FALSE); 
+  continue (c);
+  communicate;
+  TEXT VAR emsg := "++++++ "+error message +" Zeile "+text(errorline);
+  clear error; 
+  report (emsg);
+  end (myself) 
+END PROC net io; 
+ 
+PROC start: run ("netz") END PROC start; 
+ 
+END PACKET net manager;
+

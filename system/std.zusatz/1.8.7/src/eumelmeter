@@ -1,0 +1,131 @@
+                                              (* Author: J.Liedtke*)
+PACKET eumelmeter DEFINES                     (* Stand:  11.10.83 *)
+ 
+     init log ,
+     log :
+ 
+ 
+LET snapshot interval = 590.0 ;
+
+REAL VAR next snapshot time ,
+         time        , timex ,
+         paging wait , paging wait x ,
+         paging busy , paging busy x ,
+         fore cpu    , fore cpu x ,
+         back cpu    , back cpu x ,
+         system cpu  , system cpu x ,
+         delta t ;
+INT VAR storage max, used ;
+TEXT VAR record ;
+
+PROC init log :
+
+  time        := clock (1) ;
+  paging wait := clock (2) ;
+  paging busy := clock (3) ;
+  fore cpu    := clock (4) ;
+  back cpu    := clock (5) ;
+  system cpu  := clock (6) ;
+  next snapshot time := time + snapshot interval
+
+ENDPROC init log ;
+
+PROC log (INT CONST active terminals, active background) :
+
+  new snapshot time if was clock reset ;
+  IF clock (1) >= next snapshot time
+    THEN save values ;
+         get new values ;
+         create stat record ;
+         put log (record) ;
+         define next snapshot time
+  FI .
+
+new snapshot time if was clock reset :
+  IF clock (1) < next snapshot time - snapshot interval 
+    THEN next snapshot time := clock (1)
+  FI .
+
+save values :
+  time x := time ;
+  paging wait x := paging wait ;
+  paging busy x := paging busy ;
+  fore cpu x    := fore cpu ;
+  back cpu x    := back cpu ;
+  system cpu x  := system cpu .
+
+get new values :
+  time := clock (1) ;
+  paging wait := clock (2) ;
+  paging busy := clock (3) ;
+  fore cpu    := clock (4) ;
+  back cpu    := clock (5) ;
+  system cpu  := clock (6) ;
+  storage (storage max, used) .
+
+create stat record :
+  record :=  text (used, 5) ;
+  record CAT text (active terminals,3) ;
+  record CAT text (active background,3) ;
+  delta t := (time - time x) ;
+  percent (paging wait, paging wait x) ;
+  percent (paging busy, paging busy x) ;
+  percent (fore cpu, fore cpu x) ;
+  percent (back cpu, back cpu x) ;
+  percent (system cpu, system cpu x) ;
+  percent (last, 0.0) ;
+  percent (nutz, 0.0) .
+
+last :   paging wait  + paging busy  + fore cpu  + back cpu  + system cpu
+       - paging waitx - paging busyx - fore cpux - back cpux - system cpux .
+
+nutz :   time  - paging wait  - system cpu
+       - timex + paging waitx + system cpux .
+
+define next snapshot time :
+  next snapshot time := time + snapshot interval .
+ 
+ENDPROC log ;
+
+PROC percent (REAL CONST neu, alt ) :
+
+  record CAT text ( (neu-alt) / delta t * 100.0, 6,1) + "%"
+
+ENDPROC percent ;
+
+ENDPACKET eumelmeter ;
+ 
+INT VAR active terminals , active background ;
+
+task password ("-") ;
+break ;
+command dialogue (FALSE) ;
+forget ("eumelmeter") ;
+init log ;
+REP
+  pause (6000) ;
+  count active processes (active terminals, active background) ;
+  log (active terminals, active background)
+PER ;
+
+PROC count active processes (INT VAR active terminals, active background) :
+ 
+  active terminals := 0 ;
+  active background := 0 ;
+  TASK VAR process := myself ;
+  REP
+    next active (process) ;
+    IF user process 
+      THEN IF process at terminal
+             THEN active terminals INCR 1
+             ELSE active background INCR 1
+           FI
+    FI
+  UNTIL process = myself PER .
+
+user process :         NOT (process < supervisor) .
+
+process at terminal :  channel (process) >= 0 .
+
+ENDPROC count active processes ;
+

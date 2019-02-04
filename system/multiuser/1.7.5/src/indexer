@@ -1,0 +1,1142 @@
+(* ------------------- VERSION 59 vom 21.02.86 -------------------- *)
+PACKET index program DEFINES outline,
+                             index,
+                             index merge:
+
+(* Programm zur Behandlung von Indizes aus Druckdateien
+   Autor: Rainer Hahn
+   Stand: 1.7.1 (Febr. 1984)
+          1.7.4 (Maerz 1985) 'outline'
+*)
+
+LET escape            = ""27"",
+    blank             = " ",
+    trenn k           = ""220"",
+    trennzeichen      = ""221"",
+    minuszeichen      = ""45"",
+    kommando zeichen  = "#",
+    trenner           = " ...",
+    ziffernanfang     = "...  ",
+    ziffern           = "1234567890",
+    ib0               = 1,
+    ib1               = 2,
+    ib2               = 3,
+    ie0               = 4,
+    ie1               = 5,
+    ie2               = 6,
+    max indizes       = 10, (* !!Anzahl möglichetr Indizes *)
+    punkt grenze      = 50,
+    leer              = 0,
+    fuellend          = 1,
+    nicht angekoppelt = 2;
+ 
+INT VAR  seiten nr,
+         zeilen nr,
+         erste fehler zeilennr,
+         zeilen seit index begin,
+         von,
+         komm anf,
+         komm ende,
+         kommando index,
+         index nr,
+         inhalt nr,
+         anz params,
+         anz zwischenspeicher,
+         y richtung; 
+ 
+BOOL VAR outline modus,
+         inhaltsverzeichnis offen;
+
+TEXT VAR dummy,
+         dummy2,
+         fehlerdummy,
+         einrueckung,
+         akt zeile,
+         zweite zeile,
+         akt index,
+         zweiter index,
+         zeile,
+         kommando,
+         datei name,
+         kommando liste :: "ib:1.012ie:4.012",
+         par1,
+         par2;
+ 
+FILE VAR eingabe file,
+         ausgabe file;
+
+ROW max indizes FILE VAR f;
+
+ROW max indizes TEXT VAR zwischenspeicher;
+
+LET SAMMLER = STRUCT (TEXT index text,
+                      TEXT seitennummer zusatz,
+                      INT  zustand);
+ 
+ROW max indizes SAMMLER VAR sammler;
+
+(******************************* outline-Routine **********************)
+
+PROC outline:
+  outline (last param)
+END PROC outline;
+
+PROC outline (TEXT CONST eingabe datei):
+  outline modus := TRUE;
+  disable stop;
+  do outline (eingabe datei);
+  IF is error
+    THEN put error;
+         clear error
+  FI;
+  enable stop;
+  IF anything noted
+    THEN to line (eingabe file, erste fehler zeilennr);
+         note edit (eingabe file)
+    ELSE to line (eingabe file, 1);
+         last param (eingabe datei + ".outline")
+  FI;
+  line
+END PROC outline;
+
+PROC do outline (TEXT CONST eingabe datei):
+  enable stop;
+  IF exists (eingabe datei)
+    THEN initialisiere bildschirm;
+         deaktiviere sammler;
+         anfrage auf inhaltsverzeichnis;
+         einrichten fuer zeilennummer ausgabe;
+         richte dateien ein;
+         verarbeite datei;
+    ELSE errorstop ("Datei nicht vorhanden")
+  FI;
+  cursor (1, y richtung + 1).
+
+initialisiere bildschirm:
+  eingabe file := sequential file (modify, eingabe datei);
+  page;
+  put ("OUTLINE"); put ("( für"); put (lines (eingabe file)); put ("Zeilen):");
+  put (eingabe datei);
+  put ("->"); out (eingabe datei); out (".outline");
+  cursor (1, 3).
+
+anfrage auf inhaltsverzeichnis:
+  put ("Bitte Index-Nr. für Inhaltsverzeichnis:");
+  dummy := "9";
+  REP
+    editget (dummy);
+    inhalt nr := int (dummy);
+    IF last conversion ok AND inhalt nr > 0 AND inhalt nr < 10
+      THEN LEAVE anfrage auf inhaltsverzeichnis
+      ELSE line; put ("Nr. zwischen 0 und 9, bitte nochmal:")
+    FI
+  END REP.
+
+einrichten fuer zeilennummer ausgabe:
+  line (2);
+  INT VAR x;
+  get cursor (x, y richtung).
+
+richte dateien ein:
+  inhaltsverzeichnis offen := FALSE;
+  anz zwischenspeicher := 0;
+  einrueckung := "";
+  erste fehler zeilennr := 0;
+  ggf ueberschreibe anfrage (eingabe datei + ".outline");
+  ausgabe file := sequential file (output, eingabe datei + ".outline");
+  to line (eingabe file, 1);
+  col (eingabe file, 1).
+
+verarbeite datei:
+  REP
+    suche naechste zeile mit kommandozeichen;
+    IF pattern found
+      THEN verarbeite ggf index kommandos
+    FI;
+    IF line no (eingabe file) = lines (eingabe file)
+      THEN LEAVE verarbeite datei
+      ELSE down (eingabe file);
+           col (eingabe file, 1)
+    FI
+  END REP.
+
+verarbeite ggf index kommandos:
+  komm anf := col (eingabe file);
+  von := komm anf;
+  REP
+    WHILE komm anf <> 0 REP
+      komplettiere alle fuellenden sammler (von, komm anf - 1);
+      entschluessele kommando;
+      von := komm ende + 1;
+      setze kommando um
+    END REP;
+    IF alle sammler leer
+      THEN LEAVE verarbeite ggf index kommandos
+      ELSE fuelle sammler mit restzeile und lese naechste zeile
+    FI
+ UNTIL line no (eingabe file) = lines (eingabe file) END REP.
+
+setze kommando um:
+  SELECT kommando index OF
+  CASE ib0, ib1, ib2:
+    zeilen seit index begin := 0;
+    IF anz params = 0
+      THEN index nr := 1
+      ELSE index nr := int (par1)
+    FI;
+    index anfang;
+  CASE ie0, ie1, ie2:
+    IF anz params = 0
+      THEN index nr := 1
+      ELSE index nr := int (par1)
+    FI;
+    index ende;
+  OTHERWISE
+  END SELECT.
+
+index anfang:
+  IF gueltiger index
+    THEN fange neuen index an
+    ELSE fehler (18, par1)
+  FI.
+
+fange neuen index an:
+  IF sammler fuellend (index nr)
+    THEN fehler (20, text (index nr))
+  ELIF index ist inhaltsverzeichnis
+    THEN stelle einrueckung fest;
+         sammler [index nr] . index text := einrueckung;
+         einrueckung CAT "   ";
+         inhaltsverzeichnis offen := TRUE
+  ELIF index ist hauptindex
+    THEN sammler [index nr] . index text := einrueckung;
+    ELSE sammler [index nr] . index text := einrueckung;
+         sammler [index nr] . index text CAT text (index nr);
+         sammler [index nr] . index text CAT " --> "
+  FI;
+  sammler [index nr] . zustand := fuellend.
+
+stelle einrueckung fest:
+  einrueckung := "";
+  INT VAR punkt pos :: pos (zeile, ".");
+  WHILE punkt pos <> 0 REP
+    einrueckung CAT "   ";
+    punkt pos := pos (zeile, ".", punkt pos + 1)
+  END REP.
+
+index ende:
+  IF gueltiger index
+    THEN IF sammler fuellend (index nr)
+           THEN IF kommando index = ie2
+                  THEN sammler [index nr] . index text CAT par2;
+                FI;
+                leere sammler in outline datei (index nr)
+           ELSE fehler (21, text (index nr))
+          FI
+    ELSE fehler (18, text (index nr))
+  FI;
+  sammler [index nr] . zustand := leer.
+
+index ist inhaltsverzeichnis:
+  index nr = inhalt nr.
+
+index ist hauptindex:
+  index nr = 1.
+END PROC do outline;
+
+PROC leere sammler in outline datei (INT CONST nr):
+  IF index ist inhaltsverzeichnis
+    THEN line (ausgabe file);
+         putline (ausgabe file, sammler [nr] . index text);
+         inhaltsverzeichnis offen := FALSE;
+         leere zwischenspeicher
+  ELIF inhaltsverzeichnis offen
+    THEN fuelle zwischenspeicher
+    ELSE putline (ausgabe file, sammler [nr] . index text)
+  FI;
+  sammler [nr] . zustand := leer.
+
+index ist inhaltsverzeichnis:
+  nr = inhalt nr.
+
+leere zwischenspeicher:
+  INT VAR i;
+  FOR i FROM 1 UPTO anz zwischenspeicher REP
+    putline (ausgabe file, zwischenspeicher [i])
+  END REP;
+  anz zwischenspeicher := 0.
+
+fuelle zwischenspeicher:
+  anz zwischenspeicher INCR 1;
+  IF anz zwischenspeicher <= max indizes
+    THEN zwischenspeicher [anz zwischenspeicher] := sammler [nr] . index text
+  FI.
+END PROC leere sammler in outline datei;
+
+(********************* Utility Routinen *****************************)
+
+PROC ggf ueberschreibe anfrage (TEXT CONST d):
+  yrichtung INCR 1;
+  cursor (1, yrichtung);
+  IF exists (d)
+    THEN IF yes (d + " überschreiben")
+           THEN forget (d, quiet)
+           ELSE put ("wird angefügt")
+         FI
+  FI;
+  IF outline modus
+    THEN line
+    ELSE cursor (7, 3)
+  FI
+END PROC ggf ueberschreibe anfrage;
+
+BOOL PROC gueltiger index:
+  last conversion ok AND index nr > 0 AND index nr <= max indizes
+END PROC gueltiger index;
+
+PROC suche naechste zeile mit kommandozeichen:
+  TEXT VAR steuerzeichen :: incharety;
+  IF steuerzeichen = escape
+    THEN errorstop ("Abbruch durch ESC")
+  FI;
+  downety (eingabe file, "#", lines (eingabe file));
+  read record (eingabe file, zeile);
+  zeilen nr := line no (eingabe file);
+  cout (zeilen nr);
+END PROC suche naechste zeile mit kommandozeichen;
+
+PROC entschluessele kommando:
+  komm ende := pos (zeile, kommando zeichen, komm anf + 1);
+  IF komm ende <> 0 
+    THEN hole kommando text; 
+         TEXT CONST kommando anfangs zeichen :: kommando SUB 1;
+         IF pos ("-/"":*", kommando anfangs zeichen) = 0
+           THEN analysiere kommando
+         FI;
+         komm anf := pos (zeile, kommando zeichen, komm ende + 1);
+    ELSE fehler (2, ""); 
+         komm anf := 0;
+         LEAVE entschluessele kommando
+  END IF. 
+ 
+hole kommando text: 
+  kommando := subtext (zeile, komm anf + 1, komm ende - 1). 
+ 
+analysiere kommando:
+  kommando index := 0;
+  analyze command (kommando liste, kommando, 3,
+                   kommando index, anz params, par1, par2);
+  disable stop; 
+  command error; 
+  IF is error 
+    THEN dummy := error message;
+         clear error;
+         dummy CAT " -> ";
+         dummy CAT kommando;
+         fehler (22, dummy);
+         enable stop; 
+         komm anf := 0;
+         kommando index := 0;
+         LEAVE entschluessele kommando
+  END IF; 
+  enable stop
+END PROC entschluessele kommando;
+
+PROC fuelle sammler mit restzeile und lese naechste zeile:
+  restzeile auffuellen;
+  naechste zeile und zaehlen;
+  zeilen seit index begin INCR 1;
+  von := pos (zeile, ""33"", ""255"", 1);
+  komm anf := pos (zeile, kommando zeichen, von);
+  IF zeilen seit index begin > 10 (* !!Anzahl Zeilen!! *)
+    THEN index aufnahme stoppen;
+         fehler (17, "");
+         LEAVE fuelle sammler mit restzeile und lese naechste zeile
+  ELIF seitenbegrenzung
+    THEN index aufnahme stoppen;
+         fehler (7, "");
+  END IF.
+
+restzeile auffuellen:
+  IF silbentrennung
+    THEN IF durch silbentrennung gewandeltes k
+           THEN replace (zeile, length (zeile) - 1, "c")
+         FI;
+        komplettiere alle fuellenden sammler (von, length (zeile) - 1)
+  ELIF bindestrich
+    THEN komplettiere alle fuellenden sammler (von, length (zeile));
+    ELSE komplettiere alle fuellenden sammler (von, length (zeile));
+         zeile := " ";
+         komplettiere alle fuellenden sammler (1, 1)
+  END IF.
+ 
+silbentrennung: 
+  (zeile SUB length (zeile)) = trennzeichen. 
+ 
+durch silbentrennung gewandeltes k:
+  (zeile SUB length (zeile) - 1) = trenn k.
+
+bindestrich:
+  (zeile SUB length (zeile)) = minuszeichen AND
+      (zeile SUB length (zeile) - 1) <> blank. 
+END PROC fuelle sammler mit restzeile und lese naechste zeile;
+
+(**************************** index routine *************************) 
+ 
+PROC index: 
+  index (last param) 
+END PROC index; 
+ 
+PROC index (TEXT CONST eingabe datei): 
+  outline modus := FALSE;
+  last param (eingabe datei);
+  disable stop;
+  suche indizes (eingabe datei); 
+    IF is error 
+      THEN put error; 
+           clear error;
+    FI;
+  enable stop;
+  nachbehandlung. 
+ 
+nachbehandlung:
+  IF anything noted
+    THEN to line (eingabe file, erste fehler zeilennr);
+         note edit (eingabe file)
+    ELSE to line (eingabe file, 1)
+  FI;
+  line.
+END PROC index;
+ 
+(************************** eigentliche index routine *****************) 
+ 
+PROC suche indizes (TEXT CONST eingabe datei):
+  enable stop;
+  IF exists (eingabe datei)
+    THEN IF pos (eingabe datei, ".p") = 0 
+           THEN errorstop ("Datei ist keine Druckdatei") 
+         FI;
+         eingabe file := sequential file (modify, eingabe datei); 
+         datei name := eingabe datei;
+         erste fehler zeilennr := 0;
+         initialisiere bildschirm; 
+         deaktiviere sammler;
+         verarbeite datei;
+         sortiere die index dateien;
+    ELSE errorstop ("Datei existiert nicht") 
+  END IF. 
+ 
+initialisiere bildschirm: 
+  page;
+  put ("INDEX"); put ("(für"); put (lines (eingabe file)); put ("Zeilen):");
+  put (eingabe datei); 
+  cursor (1, 3);
+  out ("Zeile:      "); 
+  out ("Seite:"); 
+  y richtung := 4;
+  cursor (7, 3).
+ 
+verarbeite datei:
+  lese bis erste seitenbegrenzung;
+  WHILE NOT eof (eingabe file) REP
+     lese bis naechste seitenbegrenzung;
+     setze seiten nr;
+     gehe auf erste textzeile zurueck;
+     verarbeite indizes dieser seite
+  END REP.
+ 
+lese bis erste seitenbegrenzung: 
+  to line (eingabe file, 1); 
+  col (eingabe file, 1);
+  read record (eingabe file, zeile);
+  zeilen nr := 1;
+  cout (1);
+  REP
+     IF eof (eingabe file)
+       THEN errorstop ("Datei ist keine Druckdatei")
+     ELIF seitenbegrenzung
+       THEN LEAVE lese bis erste seitenbegrenzung
+       ELSE naechste zeile und zaehlen
+     END IF
+  END REP.
+ 
+lese bis naechste seitenbegrenzung:
+  IF line no (eingabe file) >= lines (eingabe file)
+    THEN LEAVE verarbeite datei
+    ELSE down (eingabe file)
+  FI;
+  INT VAR erste textzeile := line no (eingabe file);
+  down (eingabe file, "#page##----", lines (eingabe file));
+  IF pattern found
+    THEN read record (eingabe file, zeile)
+    ELSE LEAVE verarbeite datei
+  FI.
+
+gehe auf erste textzeile zurueck: 
+  to line (eingabe file, erste textzeile); 
+  read record (eingabe file, zeile);
+  zeilennr := lineno (eingabe file);
+  cout (zeilennr). 
+ 
+verarbeite indizes dieser seite: 
+  REP
+    suche naechste zeile mit kommandozeichen;
+    IF seitenbegrenzung 
+      THEN LEAVE verarbeite indizes dieser seite 
+    FI;
+    verarbeite index kommandos der naechsten zeilen;
+    IF seitenbegrenzung
+      THEN LEAVE verarbeite indizes dieser seite
+    FI;
+    down (eingabe file);
+    col (eingabe file, 1)
+  END REP.
+ 
+verarbeite index kommandos der naechsten zeilen:
+  komm anf := col (eingabe file);
+  von      := komm anf;
+  REP
+    WHILE komm anf <> 0 REP
+      komplettiere alle fuellenden sammler (von, komm anf - 1);
+      entschluessele kommando;
+      von := komm ende + 1;
+      setze kommando um
+    END REP;
+    IF alle sammler leer
+      THEN LEAVE verarbeite index kommandos der naechsten zeilen
+      ELSE fuelle sammler mit restzeile und lese naechste zeile
+    END IF
+  UNTIL seitenbegrenzung ENDREP;
+  fehler (7, "").
+ 
+setze kommando um: 
+SELECT kommando index OF 
+CASE ib0, ib1, ib2: 
+  zeilen seit index begin := 0;
+  IF anz params = 0
+    THEN index nr := 1
+    ELSE index nr := int (par1)
+  FI;
+  index anfang;
+CASE ie0, ie1, ie2:
+  IF anz params = 0
+    THEN index nr := 1
+    ELSE index nr := int (par1)
+  FI;
+  index ende;
+OTHERWISE
+ENDSELECT. 
+
+index anfang: 
+  IF gueltiger index
+    THEN fange neuen index an
+    ELSE fehler (18, par1)
+  END IF.
+ 
+fange neuen index an: 
+  IF sammler fuellend (index nr) 
+    THEN fehler (20, text (index nr))
+    ELSE fuelle sammler mit (index nr, ""); 
+         IF anz params = 2 
+           THEN zusatz an seitennummer (index nr, par2) 
+           ELSE zusatz an seitennummer (index nr, "") 
+         END IF
+  END IF.
+ 
+index ende: 
+  IF gueltiger index
+    THEN schreibe fuellenden sammler
+    ELSE fehler (18, text (index nr))
+  END IF.
+ 
+schreibe fuellenden sammler: 
+  IF sammler fuellend (index nr) 
+    THEN IF anz params = 2 
+           THEN fuelle sammler mit (index nr, par2) 
+         ENDIF;
+         schreibe sammler (index nr); 
+    ELSE fehler (21, text (index nr))
+  END IF.
+END PROC suche indizes; 
+ 
+(********************* Service Routinen ************************) 
+ 
+BOOL PROC seitenbegrenzung: 
+ subtext (zeile, 2, 5) = "page" AND subtext (zeile, 8, 12) = "-----"
+END PROC seitenbegrenzung;
+ 
+PROC setze seiten nr:
+  seiten nr := int (subtext (zeile, ziffern anfang, ziffernende));
+  cursor (20, 3);
+  put (seiten nr);
+  cursor (7, 3).
+ 
+ziffern anfang:
+  pos (zeile, "0", "9", 10).
+ 
+ziffern ende:
+  pos (zeile, " ", ziffern anfang) - 1
+END PROC setze seiten nr;
+ 
+PROC naechste zeile und zaehlen:
+  zeilen nr INCR 1;
+  cout (zeilen nr);
+  naechste zeile
+END PROC naechste zeile und zaehlen;
+ 
+PROC naechste zeile:
+  down (eingabe file);
+  read record (eingabe file, zeile);
+  col (eingabe file, 1)
+END PROC naechste zeile; 
+ 
+(**************************** Fehler - Routine *********************) 
+ 
+PROC fehler (INT CONST nr, TEXT CONST addition):
+  IF erste fehler zeilennr = 0
+    THEN erste fehler zeilennr := zeilen nr
+  FI;
+  yrichtung INCR 1; 
+  IF yrichtung > 23
+    THEN yrichtung := 23;
+  FI;
+  cursor (1, yrichtung); 
+  fehler melden;
+  fehlermeldung auf terminal ausgeben;
+  IF outline modus
+    THEN line
+    ELSE cursor (7, 3)
+  FI.
+ 
+fehler melden:
+  report text processing error (nr, zeilen nr, fehlerdummy, addition).
+ 
+fehlermeldung auf terminal ausgeben: 
+  out (fehlerdummy); 
+END PROC fehler;
+ 
+PROC warnung (INT CONST nr, TEXT CONST addition):
+  IF erste fehler zeilennr = 0
+    THEN erste fehler zeilennr := zeilen nr
+  FI;
+  yrichtung INCR 1; 
+  IF yrichtung > 23 
+    THEN yrichtung := 23;
+  FI;
+  cursor (1, yrichtung); 
+  fehler melden;
+  meldung auf terminal ausgeben;
+  IF outline modus
+    THEN line
+    ELSE cursor (7, 3)
+  FI.
+ 
+fehler melden:
+  report text processing warning (nr, zeilen nr, fehlerdummy, addition).
+ 
+meldung auf terminal ausgeben: 
+  out (fehlerdummy); 
+END PROC warnung;
+ 
+(************************** Sammler-Dienste **************************)
+ 
+PROC index aufnahme stoppen:
+  zeile := "INDEX FEHLER";
+  komplettiere alle fuellenden sammler (1, length (zeile));
+  schreibe alle sammler;
+  read record (eingabe file, zeile)
+END PROC index aufnahme stoppen;
+ 
+PROC deaktiviere sammler:
+  INT VAR i; 
+  FOR i FROM 1 UPTO max indizes REP 
+    sammler [i] . zustand := nicht angekoppelt 
+  END REP 
+END PROC deaktiviere sammler; 
+ 
+BOOL PROC sammler fuellend (INT CONST nr): 
+  sammler [nr] . zustand = fuellend 
+END PROC sammler fuellend; 
+ 
+BOOL PROC sammler angekoppelt (INT CONST nr): 
+  NOT (sammler [nr] . zustand = nicht angekoppelt)
+END PROC sammler angekoppelt; 
+ 
+BOOL PROC alle sammler leer: 
+  INT VAR i; 
+  FOR i FROM 1 UPTO max indizes REP 
+    IF sammler [i] . zustand = fuellend
+      THEN LEAVE alle sammler leer WITH FALSE 
+    END IF 
+  END REP; 
+  TRUE 
+END PROC alle sammler leer; 
+ 
+PROC komplettiere alle fuellenden sammler (INT CONST von pos, bis pos): 
+  INT VAR i; 
+  IF von pos > bis pos
+    THEN LEAVE komplettiere alle fuellenden sammler
+  FI;
+  dummy := subtext (zeile, von pos, bis pos);
+  FOR i FROM 1 UPTO max indizes REP 
+    IF sammler [i] . zustand = fuellend
+      THEN sammler [i] . index text CAT dummy;
+    FI 
+  END REP;
+END PROC komplettiere alle fuellenden sammler; 
+ 
+PROC fuelle sammler mit (INT CONST nr, TEXT CONST dazu):
+  IF sammler [nr] . zustand = nicht angekoppelt
+    THEN ankoppeln;
+         sammler [nr] . index text := dazu
+  ELIF sammler [nr] . zustand = leer
+    THEN sammler [nr] . index text := dazu
+  ELIF sammler fuellend (nr)
+    THEN sammler [nr] . index text CAT dazu 
+  END IF;
+  sammler [nr] . zustand := fuellend.
+ 
+ankoppeln:
+  yrichtung INCR 1;
+  cursor (1, yrichtung);
+  put ("Indizes");
+  put (nr);
+  put ("gehen in Datei:");
+  dummy := datei name;
+  IF subtext (dummy, length (dummy) - 1) = ".p" 
+    THEN replace (dummy, length (dummy) - 1, ".i") 
+    ELSE dummy CAT ".i"; 
+  END IF;
+  dummy CAT text (nr); 
+  out (dummy);
+  ggf ueberschreibe anfrage (dummy);
+  f [nr] := sequential file (output, dummy);
+  copy attributes (eingabe file, f[nr]);
+  cursor (7, 3)
+END PROC fuelle sammler mit;
+ 
+PROC zusatz an seitennummer (INT CONST nr, TEXT CONST zus text): 
+  sammler [nr] . seitennummer zusatz := zus text 
+END PROC zusatz an seitennummer; 
+ 
+PROC schreibe sammler (INT CONST nr):
+  entferne leading blanks;
+  IF outline modus
+    THEN leere sammler in outline datei (nr)
+    ELSE fuege punkte an;
+         fuege seiten nr an;
+         fuege zusatz an seitennummer an;
+         fuege absatzzeichen an;
+         leere sammler
+  FI.
+
+entferne leading blanks: 
+  WHILE (aufgesammelter text SUB 1) = blank REP 
+    delete char (aufgesammelter text, 1) 
+  END REP. 
+ 
+fuege punkte an: 
+  aufgesammelter text CAT trenner;
+  IF length (aufgesammelter text) < punkt grenze 
+    THEN dummy := (punkt grenze - length (aufgesammelter text)) * ".";
+         aufgesammelter text CAT dummy
+  END IF; 
+  aufgesammelter text CAT "  ".
+ 
+fuege seiten nr an:
+  aufgesammelter text CAT text (seiten nr).
+ 
+fuege zusatz an seitennummer an: 
+  aufgesammelter text CAT sammler [nr]. seitennummer zusatz. 
+ 
+fuege absatzzeichen an: 
+  aufgesammelter text CAT blank.
+ 
+leere sammler: 
+  putline (f [nr], aufgesammelter text);
+  sammler [nr] . zustand := leer.
+ 
+aufgesammelter text: 
+  sammler [nr] . index text
+END PROC schreibe sammler; 
+ 
+PROC schreibe alle sammler: 
+  INT VAR i; 
+  FOR i FROM 1 UPTO max indizes REP 
+    IF sammler fuellend (i) 
+      THEN schreibe sammler (i) 
+    END IF 
+  END REP 
+END PROC schreibe alle sammler;
+ 
+(**************** Sortieren und Indizes zusammenfuehren ***************) 
+ 
+PROC sortiere die index dateien: 
+INT VAR i; 
+  FOR i FROM 1 UPTO max indizes REP 
+    IF index datei erstellt 
+      THEN sortiere diese datei
+    END IF 
+  END REP. 
+ 
+index datei erstellt: 
+  sammler angekoppelt (i). 
+ 
+sortiere diese datei:
+  y richtung INCR 1; 
+  cursor (1, yrichtung);
+  dummy := datei name; 
+  IF subtext (dummy, length (dummy) - 1) = ".p" 
+    THEN replace (dummy, length (dummy) - 1, ".i") 
+    ELSE dummy CAT ".i"; 
+  END IF;
+  dummy CAT text (i);
+  put (dummy);
+  IF yes ("sortieren") 
+    THEN lex sort (dummy);
+         eintraege zusammenziehen (dummy)
+  END IF;
+END PROC sortiere die index dateien; 
+ 
+PROC eintraege zusammenziehen (TEXT CONST fname):
+  FILE VAR sorted file :: sequential file (modify, fname);
+  INT VAR i :: 1;
+  to line (sorted file, 1);
+  read record (sorted file, akt zeile);
+  akt index := subtext (akt zeile, 1, pos (akt zeile, trenner) - 1);
+  down (sorted file);
+  WHILE NOT eof (sorted file) REP
+    read record (sorted file, zweite zeile);
+    zweiter index := subtext (zweitezeile, 1, pos (zweitezeile, trenner)-1);
+    i INCR 1;
+    cout (i);
+    IF akt index LEXEQUAL zweiter index
+      THEN fuege seitennummern von zweite in akt zeile ein
+      ELSE akt zeile := zweite zeile;
+           akt index := zweiter index
+    FI;
+    down (sorted file)
+  END REP;
+  to line (sorted file, 1).
+
+fuege seitennummern von zweite in akt zeile ein:
+  hole seitennummer der zweiten zeile;
+  fuege in akt zeile ein;
+  delete record (sorted file);
+  up (sorted file);
+  write record (sorted file, akt zeile).
+
+hole seitennummer der zweiten zeile:
+  INT VAR von := pos (zweite zeile, ziffernanfang) + length (ziffernanfang),
+          bis := von;
+  WHILE pos (ziffern, zweite zeile SUB bis) <> 0 REP
+    bis INCR 1
+  END REP;
+  bis DECR 1;
+  INT VAR zweite nummer := int( subtext (zweite zeile, von, bis));
+  TEXT VAR zweiter nummern text :=
+                    subtext (zweite zeile, von, length (zweite zeile) - 1).
+
+fuege in akt zeile ein:
+  suche einfuege position in akt zeile;
+  fuege ein.
+
+suche einfuege position in akt zeile:
+  INT VAR einfuege pos :=
+                    pos (akt zeile, ziffernanfang) + length (ziffernanfang);
+  von := einfuege pos;
+  REP
+    hole neue nummer;
+  UNTIL am ende der zeile END REP.
+
+am ende der zeile:
+  von >= length (akt zeile).
+
+hole neue nummer:
+  bis := von;
+  WHILE pos (ziffern, akt zeile SUB bis) <> 0 REP
+    bis INCR 1
+  END REP;
+  bis DECR 1;
+  IF bis < von
+    THEN bis := von
+  FI;
+  INT VAR neue nummer := int (subtext (akt zeile, von, bis));
+  IF zweite nummer = neue nummer
+    THEN fuege ggf zweiten nummern text mit textanhang ein
+  ELIF zweite nummer > neue nummer
+    THEN einfuege pos := von;
+         von := pos (akt zeile, ", ", bis) + 2;
+         IF von <= 2
+           THEN von := length (akt zeile)
+         FI
+    ELSE einfuege pos := von;
+         LEAVE suche einfuege position in akt zeile
+  FI.
+
+fuege ggf zweiten nummern text mit textanhang ein:
+  bis := pos (akt zeile, ", ", von);
+  IF bis <= 0
+    THEN bis := length (akt zeile);
+  FI;
+  IF die beiden nummern sind mit textanhang gleich
+    THEN LEAVE fuege in akt zeile ein
+    ELSE einfuege pos := von;
+         LEAVE suche einfuege position in akt zeile
+  FI.
+
+die beiden nummern sind mit textanhang gleich:
+  zweiter nummern text = subtext (akt zeile, von, bis - 1).
+
+fuege ein:
+  IF am ende der zeile
+    THEN change (akt zeile, length (akt zeile), length (akt zeile), ", ");
+         akt zeile CAT (zweiter nummern text + " ")
+    ELSE zweiter nummern text CAT ", ";
+         change
+          (akt zeile, einfuege pos, einfuege pos -1, zweiter nummern text);
+  FI.
+END PROC eintraege zusammenziehen;
+
+(*********************** merge routine *********************) 
+ 
+PROC index merge (TEXT CONST i1, i2):
+  disable stop;
+    indizes zusammenziehen (i1, i2);
+    IF is error
+      THEN put error; 
+           clear error;
+      ELSE last param (i2)
+    FI;
+  enable stop;
+  line.
+END PROC index merge; 
+ 
+PROC indizes zusammenziehen (TEXT CONST i1, i2): 
+  enable stop; 
+  ueberschrift schreiben;
+  dateien assoziieren; 
+  i1 vor i2 einfuegen;
+  sortieren; 
+  forget (i1).
+ 
+dateien assoziieren: 
+  IF exists (i1) 
+    THEN eingabe file := sequential file (modify, i1) 
+    ELSE errorstop (i1 + "existiert nicht")
+  END IF; 
+  IF exists (i2) 
+    THEN f[2] := sequential file (modify, i2) 
+    ELSE errorstop (i2 + "existiert nicht") 
+  END IF.
+
+ueberschrift schreiben: 
+  page; 
+  put ("INDEX MERGE:"); put (i1); put ("-->"); put (i2);
+  cursor (1, 3); 
+  yrichtung := 3.
+ 
+i1 vor i2 einfuegen:
+  to first record (eingabe file); 
+  to first record (f [2]);
+  zeilen nr := 0; 
+  WHILE NOT eof (eingabe file) REP
+    zeilennr INCR 1; 
+    cout (zeilennr);
+    read record (eingabe file, zeile);
+    insert record (f [2]);
+    write record (f[2], zeile);
+    down (f[2]);
+    down (eingabe file);
+  END REP.
+
+sortieren: 
+  y richtung INCR 1; 
+  cursor (1, yrichtung);
+  put (i2); 
+  IF yes ("sortieren") 
+    THEN lex sort (i2);
+         eintraege zusammenziehen (i2)
+  END IF
+END PROC indizes zusammenziehen;
+END PACKET index program;
+
+PACKET columns DEFINES col put, col get, col lineform, col autoform:
+ 
+INT VAR ende pos,
+        anfangs pos;
+ 
+FILE VAR file, spaltenfile; 
+ 
+TEXT VAR dummy, 
+         spalte, 
+         zeile; 
+ 
+LET geschuetztes blank = ""223"",
+    blank              = " ";
+
+BOOL VAR spalte loeschen;
+
+DATASPACE VAR local space := nilspace;
+
+PROC col lineform:
+  spalte loeschen := TRUE;
+  columns put;
+  file := sequential file (modify, local space);
+  lineform (spaltenfile);
+  col get
+END PROC col lineform;
+
+PROC col autoform:
+  spalte loeschen := TRUE;
+  columns put;
+  file := sequential file (modify, local space);
+  autoform (spaltenfile);
+  col get
+END PROC col autoform;
+
+PROC col put:
+  spalte loeschen := yes ("Spalte löschen");
+  columns put
+END PROC col put;
+
+PROC columns put:
+  IF aktueller editor > 0 AND mark 
+    THEN editor bereich bearbeiten 
+    ELSE errorstop ("col put arbeitet nur auf markierten Bereich im Editor") 
+  FI. 
+ 
+editor bereich bearbeiten: 
+    file := editfile; 
+    anfangs pos einholen;
+    ende pos einholen;
+    INT VAR letzte zeile := line no (file),
+            erste zeile  := mark line no (file);
+    to line (file, erste zeile);
+    col (file, 1);
+    spalten put;
+    to line (file, erste zeile);
+    col (file, anfangs pos);
+    mark (false);
+    ueberschrift neu.
+
+anfangs pos einholen:
+  anfangs pos := mark col (file).
+
+ende pos einholen:
+  ende pos := col (file) - 1;
+  IF ende pos < anfangs pos
+    THEN errorstop ("Markierungsende muß rechts vom -anfang sein")
+  FI.
+
+spalten put:
+  spaltendatei einrichten;
+  satznr neu;
+  WHILE line no (file) <= letzte zeile REP
+    satznr zeigen;
+    read record (file, zeile);
+    spalte herausholen;
+    spalte schreiben;
+    down (file)
+  END REP.
+
+spaltendatei einrichten:
+  forget (local space);
+  local space := nilspace;
+  spaltenfile := sequential file (output, local space).
+
+spalte herausholen:
+  spalte := subtext (zeile, anfangs pos, ende pos);
+  IF spalte loeschen
+    THEN change (zeile, anfangs pos, ende pos, "");
+         write record (file, zeile)
+  FI;
+  WHILE length (spalte) > 1 AND (spalte SUB length (spalte)) = blank REP
+    delete char (spalte, length (spalte))
+  END REP;
+  IF spaltenende ist geschuetztes blank
+    THEN delete char (spalte, length (spalte));
+         spalte CAT " "
+  FI.
+
+spalte schreiben:
+  putline (spaltenfile, spalte).
+
+spaltenende ist geschuetztes blank:
+  (spalte SUB length (spalte)) = geschuetztes blank.
+END PROC columns put;
+
+PROC col get:
+  IF aktueller editor > 0
+    THEN editor bereich bearbeiten
+    ELSE errorstop ("col put kann nur im Editor aufgerufen werden")
+  FI;
+  columns get;
+  alles neu.
+
+editor bereich bearbeiten:
+  file := editfile; 
+  spaltenfile := sequential file (input, local space).
+
+columns get:
+  anfangs pos := col (file) - 1;
+  spaltenbreite feststellen;
+  col (file, 1);
+  satznr neu;
+  WHILE NOT eof (spaltenfile) REP
+    satznr zeigen;
+    getline (spaltenfile, spalte);
+    read record (file, zeile);
+    spalte ggf verbreitern;
+    zeile ggf verbreitern;
+    spalte in zeile einfuegen;
+    zeile schreiben;
+    down (file);
+    IF eof (file)
+      THEN errorstop ("Spalte hat zu viele Zeilen für die Datei")
+    FI
+  END REP.
+
+zeile ggf verbreitern:
+  WHILE length (zeile) < anfangs pos REP
+    zeile CAT blank
+  END REP.
+
+spaltenbreite feststellen:
+  INT VAR anz spaltenzeichen :: 0;
+  WHILE NOT eof (spaltenfile) REP
+    getline (spaltenfile, spalte);
+    IF length (spalte) > anz spaltenzeichen
+      THEN anz spaltenzeichen := length (spalte)
+    FI
+  END REP;
+  spaltenfile := sequential file (input, local space).
+
+spalte ggf verbreitern:
+  IF (spalte SUB length (spalte)) = blank
+    THEN delete char (spalte, length (spalte));
+         spalte CAT geschuetztes blank
+  FI;
+  IF anzufuegende spalte soll nicht ans zeilenende
+    THEN spalte verbreitern
+  FI.
+
+anzufuegende spalte soll nicht ans zeilenende:
+  anfangs pos <= length (zeile).
+
+spalte verbreitern:
+  WHILE length (spalte) < anz spaltenzeichen REP
+    spalte CAT blank
+  END REP.
+
+spalte in zeile einfuegen:
+  dummy := subtext (zeile, 1, anfangs pos);
+  dummy CAT spalte;
+  dummy CAT subtext (zeile, anfangs pos + 1);
+  zeile := dummy.
+
+zeile schreiben:
+  write record (file, zeile).
+END PROC col get;
+END PACKET columns;
+

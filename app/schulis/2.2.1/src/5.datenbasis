@@ -1,0 +1,62 @@
+PACKET datenbasisDEFINES statdatenbasisstartproc,statdatenbasisnproc,
+statdatenbasisaufbereiten,statdatenbasisentfernen,
+statdatenbasisentfernenmeldung,statdatenbasisnichtentfernen,
+statdatenbasisermitteln,statdatenbasisvorhanden:LET datenbasisname=
+"STATISTIK.basis",statistikserver="statistik server",maskedatenbasis=
+"mst datenbasis bereitstellen",niltext="",meldungzusatz="+",meldungstichtag=
+"zum Stichtag ",meldungnichtda="nicht                ",mnichts="+      +",
+mstart="�����������",mkeinedaten=68,mentfernenfrage=470,mkeinebasis=471,
+mbasisentfernt=472,mbasisnichtentfernt=473,maufbereitung=474,mabbruch=475,
+mbasisfertig=476,fstatnr=2,fcursor=3,filesize=4000,tupelstackgroesse=5;FILE 
+VAR basis;BOOL VAR datenbasisda;TEXT VAR datenbasisstichtag;PROC 
+statdatenbasisstartproc:enablestop;standardstartproc(maskedatenbasis);
+statdatenbasisermitteln(fstatnr);statdatenbasisnproc;END PROC 
+statdatenbasisstartproc;PROC statdatenbasisnproc:infeld(fstatnr);
+standardfelderausgeben;infeld(fcursor);standardnproc;END PROC 
+statdatenbasisnproc;PROC statdatenbasisermitteln(INT CONST feldnr):forget(
+datenbasisname,quiet);datenbasisda:=existstask(statistikserver)CAND exists(
+datenbasisname,task(statistikserver));IF datenbasisdaTHEN fetch(
+datenbasisname,task(statistikserver));basis:=sequentialfile(modify,
+datenbasisname);tofirstrecord(basis);readrecord(basis,datenbasisstichtag);
+datenbasisstichtag:=meldungstichtag+datenbasisstichtag;forget(datenbasisname,
+quiet);ELSE datenbasisstichtag:=meldungnichtdaFI ;standardmaskenfeld(
+datenbasisstichtag,feldnr);END PROC statdatenbasisermitteln;BOOL PROC 
+statdatenbasisvorhanden:datenbasisdaEND PROC statdatenbasisvorhanden;PROC 
+statdatenbasisentfernenmeldung:IF datenbasisdaTHEN standardmeldung(
+mentfernenfrage,niltext);infeld(fcursor);ELSE standardmeldung(mkeinebasis,
+niltext);leave(1);FI END PROC statdatenbasisentfernenmeldung;PROC 
+statdatenbasisentfernen:datenbasisloeschen;standardmeldung(mbasisentfernt,
+datenbasisstichtag+meldungzusatz);statdatenbasisermitteln(fstatnr);leave(2);
+END PROC statdatenbasisentfernen;PROC statdatenbasisnichtentfernen:
+standardmeldung(mbasisnichtentfernt,datenbasisstichtag+meldungzusatz);leave(2
+);END PROC statdatenbasisnichtentfernen;PROC datenbasisloeschen:BOOL CONST 
+comdia:=commanddialogue;IF datenbasisdaCAND exists(datenbasisname,task(
+statistikserver))THEN commanddialogue(FALSE );erase(datenbasisname,task(
+statistikserver));commanddialogue(comdia);FI ;END PROC datenbasisloeschen;
+PROC statdatenbasisaufbereiten:BOOL VAR schuelerda,abbruch:=FALSE ;INT VAR 
+anzahltupel:=tupelstackgroesse,bearbeitetetupel:=tupelstackgroesse,
+schuelerzahl:=0;IF datenbasisdaTHEN standardmeldung(mbasisentfernt,
+datenbasisstichtag+meldungzusatz);ELSE standardmeldung(maufbereitung,date+
+meldungzusatz);FI ;schuelerlesenvorbereiten;IF schuelerdaTHEN 
+datenbasisaufbereiten;FI ;IF NOT schuelerdaTHEN standardmeldung(mkeinedaten,
+niltext);ELIF abbruchTHEN standardmeldung(mabbruch,niltext);forget(
+datenbasisname,quiet);ELSE datenbasisloeschen;datenbasissichern;
+statdatenbasisermitteln(fstatnr);standardmeldung(mbasisfertig,niltext);FI ;
+leave(1).datenbasisaufbereiten:forget(datenbasisname,quiet);basis:=
+sequentialfile(output,datenbasisname);putline(basis,date);standardmeldung(
+maufbereitung,date+meldungzusatz);out(mstart);REP putline(basis,
+statdatenbasiszeile);schuelerzahlINCR 1;cout(schuelerzahl);naechsterschueler;
+UNTIL bestandendePER .schuelerindex:ixsustatfamrufgeb.
+schuelerlesenvorbereiten:inittupel(dnrdiffdaten);inittupel(dnrhalbjahresdaten
+);inittupel(dnrschulen);inittupel(dnrschueler);parsenooffields(50);
+systemdboff;search(schuelerindex,FALSE );schuelerda:=dbstatus=ok;
+setzebestandende(NOT schuelerda).naechsterschueler:IF bearbeitetetupel=
+anzahltupelTHEN IF anzahltupel<>tupelstackgroesseTHEN setzebestandende(TRUE )
+;ELIF NOT abbruchgewuenschtTHEN einpaarschuelerholen;FI ;ELSE multisucc;
+bearbeitetetupelINCR 1;FI .einpaarschuelerholen:anzahltupel:=
+tupelstackgroesse;scanstatus(ok);multisucc(schuelerindex,anzahltupel);IF 
+anzahltupel>0THEN multisucc;bearbeitetetupel:=1;ELSE setzebestandende(TRUE )
+FI .abbruchgewuenscht:abbruch:=lines(basis)>=filesize;abbruch.
+datenbasissichern:save(datenbasisname,task(statistikserver)).END PROC 
+statdatenbasisaufbereiten;END PACKET datenbasis;
+

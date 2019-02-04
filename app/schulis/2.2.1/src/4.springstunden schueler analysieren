@@ -1,0 +1,137 @@
+PACKET springstundenschuelerDEFINES springstundenschuelerausfuehren:LET 
+fnrakthj=3,fnrohneminiplan=4,minitagestr="!",minivornachmtr=" ",
+miniunterricht="*",minisprstd="o",minifrei=".",ausgabeparam="#",leerzeile=" "
+,laengelv=8,laengeschgrbez=9,tageprowoche=6,stdprotag=12,letztestunde=66,
+meldungbearbwird=352,meldungwarten=69,meldungkeineschueler=332,
+meldungkeinzeitraster=336,meldungserverfehler=376,meldungkeinstdplan=366,
+meldungkeinesugruppen=334,meldungzuvielesugruppen=356,meldungkeinelv=326,
+meldungzuvielelv=358,meldungbasisinkon=378,meldungstdplauswvorber=384,
+kennunglv="L",kennunggesp="x",kennungvorm="v",kennungnachm="n",dateiname=
+"Liste der Springstunden",ueberschrift=
+"Springstunden der Schülergruppen Sek.1 für das Schulhalbjahr ",unterstrich=
+"---------------------------------------------------------------------",
+legende1="In den Mini-Stundenplänen bedeuten:",legende2=
+"""  Unterricht für die Schülergruppe",legende3=
+"""  Springstunde für die Schülergruppe",legende4=
+"""  andere Zeiten ohne Unterricht",legende5=
+"    ""x""  gesperrte Zeiten aufgrund des Zeitrasters",legende6=
+"""  Trennzeichen Vor- und Nachmittag",legende7=
+"""  Trennzeichen Unterrichtstage",legende8="Zeitraster der Schule:",legende9
+="Mo            Di            Mi            Do            Fr            Sa",
+ausgabewstd=" Wstd.  ",vorgabetage=" 0 Tage (0 v/ 0 n)  ",vorgabesprstd1=
+" Springstd. (",vorgabesprstd2=" x1/ ",vorgabesprstd3=" x2/ ",vorgabesprstd4=
+" xgr.)",posunttage=2,posvormtage=10,posnachmtage=15,schuljahr="Schuljahr",
+halbjahr="Schulhalbjahr",schulname="Schulname",schulort="Schulort";TEXT VAR 
+schgrbez,schj,schhj,ausgabetage,ausgabesprstd,miniplan:="",iminiplan,
+ausgminiplan,tagesplan,zeile,vormnachmwechsel:="",relzeit,zeichen;TEXT VAR 
+kvn,kzt,kaktvn;INT VAR i,j,wstd,stdverschiebung,erstepos,letztepos,mittag,
+anzunttage,anzvormtage,anznachmtage,anzsprstd,anzsprstd1,anzsprstd2,
+anzsprstdx,sprstdlaenge,indextagesanf,fstat;BOOL VAR miniplanausgabe:=FALSE ,
+erstenichtvormstd:=TRUE ,keinmittag:=TRUE ,keinschueler:=TRUE ;FILE VAR datei
+;PROC springstundenschuelerausfuehren:standardmeldung(meldungwarten,"");
+miniplanausgabe:=FALSE ;schj:=schulkenndatum(schuljahr);schhj:=schulkenndatum
+(halbjahr);IF standardmaskenfeld(fnrakthj)=""THEN geplanteshjundsjberechnen(
+schhj,schj)FI ;IF standardmaskenfeld(fnrohneminiplan)=""THEN miniplanausgabe
+:=TRUE ;FI ;erstelleminiplan;stundenplanhalbjahrsetzen(schhj,schj);
+standardmeldung(meldungstdplauswvorber,"");
+stundenplanbasisundstundenplanholen(fstat);IF fstat<>0CAND fstat<>8THEN 
+meldungausgeben(fstat);return(1);LEAVE springstundenschuelerausfuehrenFI ;
+inittupel(dnraktschuelergruppen);IF records(dnraktschuelergruppen)=0.0THEN 
+standardmeldung(meldungkeineschueler,"");return(1);LEAVE 
+springstundenschuelerausfuehrenELSE bereiteprotokollvor;keinschueler:=TRUE ;
+statleseschleife(dnraktschuelergruppen,schj,schhj,fnrsgrpsj,fnrsgrphj,PROC 
+schueler);IF keinschuelerTHEN standardmeldung(meldungkeineschueler,"");return
+(1);LEAVE springstundenschuelerausfuehrenFI FI ;zeigedatei(dateiname,"vr").
+bereiteprotokollvor:forget(dateiname,quiet);datei:=sequentialfile(output,
+dateiname);putline(datei,schulkenndatum(schulname));putline(datei,text(
+schulkenndatum(schulort),65)+date);putline(datei,leerzeile);putline(datei,
+ueberschrift+schhj+". "+text(schj,2)+"/"+subtext(schj,3));putline(datei,
+unterstrich);putline(datei,leerzeile);IF miniplanausgabeTHEN putline(datei,
+legende1);putline(datei,"    """+miniunterricht+legende2);putline(datei,
+"    """+minisprstd+legende3);putline(datei,"    """+minifrei+legende4);
+putline(datei,legende5);putline(datei,"    """+minivornachmtr+legende6);
+putline(datei,"    """+minitagestr+legende7);putline(datei,leerzeile);putline
+(datei,legende8);putline(datei,legende9);bereiteplanauf(miniplan);putline(
+datei,ausgminiplan);putline(datei,leerzeile)FI .erstelleminiplan:miniplan:=""
+;vormnachmwechsel:="";IF records(dnrzeitraster)=0.0THEN standardmeldung(
+meldungkeinzeitraster,"");return(1);LEAVE springstundenschuelerausfuehrenFI ;
+erstenichtvormstd:=TRUE ;inittupel(dnrzeitraster);statleseschleife(
+dnrzeitraster,schj,schhj,dnrzeitraster+1,dnrzeitraster+2,PROC zeitrasterdaten
+);IF length(miniplan)<letztestundeTHEN standardmeldung(meldungkeinzeitraster,
+"");return(1);LEAVE springstundenschuelerausfuehrenFI .END PROC 
+springstundenschuelerausfuehren;PROC schueler(BOOL VAR b):IF wert(fnrsgrpsj)
+<>schjCOR wert(fnrsgrphj)<>schhjCOR intwert(fnrsgrpjgst)>10COR dbstatus<>0
+THEN b:=TRUE ELSE schgrbez:=jgstaufber(wert(fnrsgrpjgst))+wert(fnrsgrpkennung
+);standardmeldung(meldungbearbwird,schgrbez+ausgabeparam);wstd:=
+anzahlverplstden(schgrbez);zeile:=text(schgrbez,laengeschgrbez);zeileCAT text
+(wstd,2);zeileCAT ausgabewstd;untersuchetage;zeileCAT ausgabetage;
+untersuchesprstden;zeileCAT ausgabesprstd;putline(datei,zeile);IF 
+miniplanausgabeTHEN bereiteplanauf(iminiplan);changeall(ausgminiplan,
+kennungvorm,minifrei);changeall(ausgminiplan,kennungnachm,minifrei);putline(
+datei,ausgminiplan)FI ;line(datei);IF keinschuelerTHEN keinschueler:=FALSE 
+FI FI .untersuchetage:ausgabetage:=vorgabetage;IF anzunttage<>0THEN replace(
+ausgabetage,posunttage,text(anzunttage))FI ;IF anzvormtage<>0THEN replace(
+ausgabetage,posvormtage,text(anzvormtage))FI ;IF anznachmtage<>0THEN replace(
+ausgabetage,posnachmtage,text(anznachmtage))FI .untersuchesprstden:anzsprstd
+:=0;anzsprstd1:=0;anzsprstd2:=0;anzsprstdx:=0;FOR iFROM 1UPTO tageprowoche
+REP erstepos:=0;letztepos:=0;indextagesanf:=(i-1)*stdprotag;tagesplan:=
+subtext(iminiplan,indextagesanf+1,i*stdprotag);ermittlerandundsprstdenPER .
+ermittlerandundsprstden:erstepos:=pos(tagesplan,miniunterricht);IF erstepos<>
+0THEN ermittleletztestd;ermittlevormnachmwechsel;ermittlespringstdFI .
+ermittleletztestd:FOR jFROM stdprotagDOWNTO 1REP IF (tagesplanSUB j)=
+miniunterrichtTHEN letztepos:=j;LEAVE ermittleletztestdFI PER .
+ermittlevormnachmwechsel:mittag:=0;FOR jFROM 12DOWNTO 1REP IF (miniplanSUB 
+indextagesanf+j)=kennungvormTHEN mittag:=j;LEAVE ermittlevormnachmwechselFI 
+PER .ermittlespringstd:keinmittag:=TRUE ;FOR jFROM letzteposDOWNTO erstepos
+REP IF (tagesplanSUB j)=kennungvormCOR (tagesplanSUB j)=kennungnachmCOR (
+tagesplanSUB j)=kennunggespTHEN anzsprstdINCR 1;sprstdlaengeINCR 1;IF 
+miniplanausgabeTHEN replace(iminiplan,indextagesanf+j,minisprstd);FI ;IF j=
+mittag+1COR j=mittagTHEN IF keinmittagTHEN anzsprstdINCR 1;sprstdlaengeINCR 1
+;keinmittag:=FALSE ;FI FI ELSE IF sprstdlaenge=1THEN anzsprstd1INCR 1ELIF 
+sprstdlaenge=2THEN anzsprstd2INCR 1ELIF sprstdlaenge>2THEN anzsprstdxINCR 1
+FI ;sprstdlaenge:=0;FI PER ;IF keinmittagCAND erstepos<=mittagCAND letztepos>
+mittagTHEN anzsprstdINCR 1;anzsprstd1INCR 1FI ;ausgabesprstd:=text(anzsprstd,
+2)+vorgabesprstd1+text(anzsprstd1,2)+vorgabesprstd2+text(anzsprstd2,2)+
+vorgabesprstd3+text(anzsprstdx,2)+vorgabesprstd4.END PROC schueler;PROC 
+bereiteplanauf(TEXT CONST plan):ausgminiplan:=plan;stdverschiebung:=0;FOR i
+FROM 1UPTO length(vormnachmwechsel)DIV 3REP relzeit:=vormnachmwechselSUB i*3-
+2;relzeitCAT (vormnachmwechselSUB i*3-1);zeichen:=vormnachmwechselSUB i*3;
+insertchar(ausgminiplan,zeichen,int(relzeit)+stdverschiebung);stdverschiebung
+INCR 1PER ;END PROC bereiteplanauf;PROC zeitrasterdaten(BOOL VAR b):IF wert(
+fnrzrsj)<>schjCOR wert(fnrzrhj)<>schhjCOR dbstatus<>0THEN b:=TRUE ELSE kvn:=
+wert(fnrzrkennungteil);kzt:=text(wert(fnrzrtagstunde),2);miniplanCAT kvn;IF 
+kvn<>kennungvormTHEN IF erstenichtvormstdTHEN kaktvn:=kzt;erstenichtvormstd:=
+FALSE FI ELSE erstenichtvormstd:=TRUE FI ;IF int(kzt)MOD stdprotag=1CAND kzt
+<>"1 "THEN IF kaktvn<>""THEN vormnachmwechselCAT kaktvn;vormnachmwechselCAT 
+minivornachmtr;kaktvn:=""FI ;vormnachmwechselCAT kzt;vormnachmwechselCAT 
+minitagestrFI #IF kzt=text(letztestunde)THEN IF kaktvn<>""THEN 
+vormnachmwechselCAT kaktvn;vormnachmwechselCAT minivornachmtr;kaktvn:=""FI 
+FI #FI END PROC zeitrasterdaten;INT PROC anzahlverplstden(TEXT CONST schgr):
+TEXT VAR stundenplan:=erstelleallezeiten(schgr),unttage:=tageprowoche*"0",
+vormtage:=tageprowoche*"0",nachmtage:=tageprowoche*"0";INT VAR einspos:=1,
+anzeinsen:=0,wochentag;iminiplan:=miniplan;anzunttage:=0;anzvormtage:=0;
+anznachmtage:=0;WHILE einspos<>0REP einspos:=pos(stundenplan,"1",einspos);IF 
+einspos<>0THEN anzeinsenINCR 1;replace(iminiplan,einspos,miniunterricht);
+wochentag:=(einspos-1)DIV stdprotag+1;IF (unttageSUB wochentag)="0"THEN 
+replace(unttage,wochentag,"1");anzunttageINCR 1FI ;IF (vormtageSUB wochentag)
+="0"CAND vormittagsunterrichtTHEN replace(vormtage,wochentag,"1");anzvormtage
+INCR 1FI ;IF (nachmtageSUB wochentag)="0"CAND nachmittagsunterrichtTHEN 
+replace(nachmtage,wochentag,"1");anznachmtageINCR 1FI ;einsposINCR 1FI PER ;
+anzeinsen.vormittagsunterricht:(miniplanSUB einspos)=kennungvorm.
+nachmittagsunterricht:(miniplanSUB einspos)=kennungnachm.END PROC 
+anzahlverplstden;TEXT PROC erstelleallezeiten(TEXT CONST schgruppe):TEXT VAR 
+allelv:=lvderschuelergruppe(schgruppe),allezeiten,aktzeiten:="",aktlv;INT 
+VAR i,einspos:=1;aktlv:=text(allelv,laengelv);allezeiten:=allezeitenvon(
+kennunglv,aktlv);FOR iFROM 2UPTO length(allelv)DIV laengelvREP aktlv:=subtext
+(allelv,(i-1)*laengelv+1,i*laengelv);aktzeiten:=allezeitenvon(kennunglv,aktlv
+);einspos:=1;WHILE einspos<>0REP einspos:=pos(aktzeiten,"1",einspos);IF 
+einspos<>0THEN IF (allezeitenSUB einspos)="0"THEN replace(allezeiten,einspos,
+"1");FI ;einsposINCR 1FI ;PER ;PER ;allezeitenEND PROC erstelleallezeiten;
+PROC meldungausgeben(INT VAR fstat):IF fstat=2THEN standardmeldung(
+meldungserverfehler,"");ELIF fstat=3THEN standardmeldung(meldungkeinstdplan,
+"");ELIF fstat=4THEN standardmeldung(meldungkeinesugruppen,"");ELIF fstat=5
+THEN standardmeldung(meldungzuvielesugruppen,"")ELIF fstat=6THEN 
+standardmeldung(meldungkeinelv,"")ELIF fstat=7THEN standardmeldung(
+meldungzuvielelv,"")ELIF fstat=9THEN standardmeldung(meldungbasisinkon,"");
+FI END PROC meldungausgeben;END PACKET springstundenschueler;
+

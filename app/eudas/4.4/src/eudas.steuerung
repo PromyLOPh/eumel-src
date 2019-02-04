@@ -1,0 +1,2761 @@
+PACKET eudas steuerung
+
+(*************************************************************************)
+(*                                                                       *)
+(*     Menuesteuerung von EUDAS                                          *)
+(*                                                                       *)
+(*     Version 09                                                        *)
+(*                                                                       *)
+(*     Autor: Thomas Berlage                                             *)
+(*     Stand: 01.10.87                                                   *)
+(*                                                                       *)
+(*************************************************************************)
+
+  DEFINES
+
+  eudas,
+
+  einzelsicherung,
+  suchen,
+  aendern,
+  einfuegen,
+  prueffehler editieren,
+  feldstruktur,
+
+  dateiverwaltung,
+  archivverwaltung,
+
+  edit,
+  dateinamen anfordern,
+  ausfuehrung,
+  einzelausfuehrung :
+
+
+(**************************** Variablen ***********************************)
+
+LET
+  file typ = 1003,
+  eudas typ = 3243;
+
+LET
+  niltext = "",
+  blank = " ",
+  esc z = ""27"z",
+  cleop = ""4"",
+  cleol = ""5"";
+
+
+FILE VAR test file;
+
+DATASPACE VAR test ds;
+
+INT VAR
+  belegter heap,
+  test version := dateiversion - 1;
+
+FENSTER VAR
+  ganz,
+  links,
+  rechts,
+  fuss;
+
+TEXT VAR
+  feldpuffer;
+
+fenster initialisieren (ganz);
+fenster initialisieren (links);
+fenster initialisieren (rechts);
+fenster initialisieren (fuss);
+fenstergroesse setzen (ganz, 1, 2, 79, 23);
+fenstergroesse setzen (links, 1, 2, 15, 22);
+fenstergroesse setzen (rechts, 16, 2, 64, 22);
+fenstergroesse setzen (fuss, 1, 24, 79, 1);
+dialogfenster (16, 2, 64, 22);
+anzeigefenster (16, 2, 64, 23);
+uebersichtsfenster (1, 2, 79, 23);
+
+
+(*************************** EUDAS ***************************************)
+
+TEXT VAR
+  fusszeile;
+
+BOOL VAR
+  eudas schon aktiv := FALSE;
+
+LET
+  menue 1 =  #1001#
+    "EUDAS.Öffnen",
+  menue 2 =  #1002#
+    "EUDAS.Einzelsatz",
+  menue 3 =  #1003#
+    "EUDAS.Gesamtdatei",
+  menue 4 =  #1004#
+    "EUDAS.Drucken",
+  menue 5 =  #1005#
+    "EUDAS.Dateien",
+  menue 6 =  #1006#
+    "EUDAS.Archiv";
+
+LET
+  kein rekursiver aufruf =  #1007#
+    "EUDAS kann nicht unter EUDAS aufgerufen werden",
+  suchmuster eingeben =  #1008#
+    "Suchbedingung einstellen",
+  alle saetze drucken =  #1009#
+    "Alle Saetze drucken",
+  alle markierten saetze drucken =  #1010#
+    "Alle markierten Satze drucken",
+  einzelsatz drucken =  #1011#
+    "Aktuellen Satz drucken",
+  uebersicht wiederholen =  #1012#
+    "Mit neuer Auswahl noch einmal",
+  akt datei =  #1013#
+    "Akt.Datei: ",
+  datum doppelpunkt =  #1014#
+    " Datum: ";
+
+
+PROC version ausgeben :
+
+  cursor (30, 6);
+  out ("EEEEE U   U DDDD    A    SSSS");
+  cursor (30, 7);
+  out ("E     U   U D   D  A A  S");
+  cursor (30, 8);
+  out ("EEE   U   U D   D AAAAA  SSS");
+  cursor (30, 9);
+  out ("E     U   U D   D A   A     S");
+  cursor (30, 10);
+  out ("EEEEE  UUU  DDDD  A   A SSSS");
+  cursor (30, 12);
+  out ("Version 4.4");
+  cursor (30, 13);
+  out ("Stand: 01.10.87");
+  cursor (30, 15);
+  out ("(C) COPYRIGHT:");
+  cursor (30, 16);
+  out ("Thomas Berlage");
+  cursor (30, 17);
+  out ("Software-Systeme")
+
+END PROC version ausgeben;
+
+PROC eudas :
+
+  IF aktueller editor > 0 THEN
+    eudas kurzabfrage
+  ELIF eudas schon aktiv THEN
+    errorstop (kein rekursiver aufruf)
+  ELSE
+    eudas aufrufen
+  END IF .
+
+eudas aufrufen :
+  page; bildschirm neu;
+  version ausgeben;
+  belegter heap := heap size;
+  fusszeile aufbauen;
+  disable stop;
+  eudas schon aktiv := TRUE;
+  menue anbieten (ROW 6 TEXT : (menue 1, menue 2, menue 3,
+                                menue 4, menue 5, menue 6),
+                  links, TRUE,
+                  PROC (INT CONST, INT CONST) eudas interpreter);
+  eudas schon aktiv := FALSE;
+  enable stop;
+  auf sicherung ueberpruefen;
+  page; bildschirm neu
+
+END PROC eudas;
+
+PROC eudas kurzabfrage :
+
+  TEXT VAR gewaehlte feldnamen;
+  bild frei;
+  auf sicherung ueberpruefen;
+  IF nicht alle gesichert THEN
+    LEAVE eudas kurzabfrage
+  END IF;
+  oeffnen im menue (FALSE);
+  auf satz (1);
+  feldauswahl fuer uebersicht (gewaehlte feldnamen);
+  REP
+    ggf suchmuster eingeben;
+    uebersicht (gewaehlte feldnamen, PROC uebersicht hilfe);
+    bild frei;
+    saetze drucken
+  UNTIL nicht noch einmal END REP;
+  dateien loeschen (FALSE) .
+
+nicht alle gesichert :
+  INT VAR datei nr;
+  FOR datei nr FROM 1 UPTO anzahl dateien REP
+    IF inhalt veraendert (datei nr) THEN
+      LEAVE nicht alle gesichert WITH TRUE
+    END IF
+  END REP;
+  FALSE .
+
+ggf suchmuster eingeben :
+  IF ja (suchmuster eingeben, "JA/Suchmuster") THEN
+    suchen; alles neu
+  END IF .
+
+saetze drucken :
+  IF markierte saetze = 0 CAND alle drucken THEN
+    dateinamen anfordern (name des druckmusters);
+    einzelausfuehrung (PROC (TEXT CONST) drucke uebersicht, file typ);
+  ELIF markierte saetze > 0 CAND alle markierten drucken THEN
+    dateinamen anfordern (name des druckmusters);
+    einzelausfuehrung (PROC (TEXT CONST) drucke uebersicht, file typ);
+    markierungen loeschen
+  ELIF einzelsatz THEN
+    markierungen loeschen; markierung aendern;
+    dateinamen anfordern (name des druckmusters);
+    einzelausfuehrung (PROC (TEXT CONST) drucke uebersicht, file typ);
+    markierungen loeschen
+  END IF .
+
+alle drucken :
+  ja (alle saetze drucken, "JA/alle Satze") .
+
+alle markierten drucken :
+  ja (alle markierten saetze drucken, "JA/alle markierten") .
+
+einzelsatz :
+  ja (einzelsatz drucken, "JA/Einzelsatz drucken") .
+
+nicht noch einmal :
+  NOT ja (uebersicht wiederholen, "JA/noch einmal") .
+
+END PROC eudas kurzabfrage;
+
+PROC bild frei :
+
+  bildschirm neu;
+  cursor (1, 1);
+  out (cleop);
+  cursor (15, 1);
+  23 TIMESOUT (""10":"8"")
+
+END PROC bild frei;
+
+PROC drucke uebersicht (TEXT CONST dateiname) :
+
+  bild frei fuer uebersetzung;
+  disable stop;
+  drucke (dateiname);
+  uebersetzungsfehler behandeln;
+  bild frei
+
+END PROC drucke uebersicht;
+
+PROC eudas interpreter (INT CONST menuenr, wahl nr) :
+
+  enable stop;
+  SELECT menuenr OF
+  CASE 0 : waehlbarkeit setzen
+  CASE 1 : oeffnen interpreter (wahl nr)
+  CASE 2 : anzeigen interpreter (wahl nr)
+  CASE 3 : bearbeiten interpreter (wahl nr)
+  CASE 4 : drucken interpreter (wahl nr)
+  CASE 5 : dateiverwaltung (wahl nr)
+  CASE 6 : archivverwaltung (wahl nr)
+  END SELECT .
+
+waehlbarkeit setzen :
+  IF anzahl dateien = 0 THEN
+    oeffnen sperre (FALSE);
+    aendern sperre (FALSE)
+  ELIF NOT aendern erlaubt THEN
+    aendern sperre (FALSE)
+  END IF;
+  ketten koppeln sperre;
+  waehlbar (6, 6, ziel ist manager);
+  waehlbar (6, 9, NOT ziel ist manager);
+  IF single user THEN
+    waehlbar (1, 8, FALSE);   (* Manager *)
+    waehlbar (6, 7, FALSE)    (* Zielarchiv *)
+  END IF .
+
+single user :
+  FALSE .
+
+END PROC eudas interpreter;
+
+PROC oeffnen sperre (BOOL CONST wie) :
+
+  INT VAR i;
+  waehlbar (1, 4, wie);
+  waehlbar (1, 5, wie);
+  waehlbar (1, 7, wie);
+  FOR i FROM 1 UPTO 11 REP
+    waehlbar (2, i, wie)
+  END REP;
+  waehlbar (3, 1, wie);
+  waehlbar (3, 4, wie);
+  waehlbar (3, 6, wie);
+  waehlbar (4, 1, wie)
+
+END PROC oeffnen sperre;
+
+PROC ketten koppeln sperre :
+
+  BOOL VAR wie := anzahl dateien = 1 AND aendern erlaubt;
+  waehlbar (1, 6, wie);
+  waehlbar (3, 5, wie);
+  wie := anzahl dateien > 0 AND anzahl dateien < 10 AND NOT auf koppeldatei;
+  waehlbar (1, 2, wie);
+  waehlbar (1, 3, wie)
+
+END PROC ketten koppeln sperre;
+
+PROC aendern sperre (BOOL CONST wie) :
+
+  INT VAR i;
+  FOR i FROM 7 UPTO 10 REP
+    waehlbar (2, i, wie)
+  END REP;
+  waehlbar (3, 2, wie);
+  waehlbar (3, 3, wie)
+
+END PROC aendern sperre;
+
+PROC fusszeile aufbauen :
+
+  fenster veraendert (fuss);
+  fusszeile := ""6""23""0"";
+  fusszeile CAT akt datei;
+  IF anzahl dateien > 0 THEN
+    fusszeile CAT """";
+    fusszeile CAT eudas dateiname (1);
+    fusszeile CAT """"
+  END IF;
+  IF anzahl dateien > 1 THEN
+    fusszeile CAT " .. "
+  END IF;
+  fusszeile CAT ""5""6""23"";
+  fusszeile CAT code (79 - length (date) - length (datum doppelpunkt));
+  fusszeile CAT datum doppelpunkt;
+  fusszeile CAT date
+
+END PROC fusszeile aufbauen;
+
+PROC fusszeile ausgeben (TEXT CONST prompt, inhalt) :
+
+  BOOL VAR fuss veraendert;
+  fensterzugriff (fuss, fuss veraendert);
+  IF fuss veraendert THEN
+    out (fusszeile);
+    cursor (35, 24);
+    out (prompt);
+    IF inhalt <> niltext THEN
+      out (""""); outsubtext (inhalt, 1, 22 - length (prompt)); out (""" ")
+    END IF
+  END IF
+
+END PROC fusszeile ausgeben;
+
+
+(**************************** Menue 'Oeffnen' *****************************)
+
+THESAURUS VAR zusaetzliche namen := empty thesaurus;
+
+BOOL VAR
+  nach aendern fragen,
+  multi user manager eingestellt := FALSE;
+
+TASK VAR multi user manager;
+
+TEXT VAR
+  manager taskname := niltext,
+  herkunftszeichen := niltext;
+
+LET
+  p manager =  #1015#
+    " Manager: ",
+  keine sicherung noetig =  #1017#
+    "Keine Sicherung noetig.",
+  arbeitskopien loeschen =  #1018#
+    "Interne Arbeitskopien loeschen",
+  t arbeitskopie =  #1019#
+    "Arbeitskopie ",
+  t unveraendert =  #1020#
+    " unveraendert.",
+  t veraendert =  #1021#
+    " veraendert! Sichern",
+  alte version ueberschreiben =  #1022#
+    "Alte Version ueberschreiben",
+  unter dem namen =  #1023#
+    "Sondern unter dem Namen:",
+  ueberschreiben =  #1024#
+    " ueberschreiben",
+  sortierung wiederherstellen =  #1025#
+    "Datei wieder sortieren",
+  t notizen ansehen =  #1026#
+    "Notizen",
+  name task =  #1027#
+    "Name Managertask:",
+  task existiert nicht =  #1028#
+    "Task existiert nicht !",
+  wollen sie etwas veraendern =  #1029#
+    "Wollen Sie etwas veraendern (eine Arbeitskopie anlegen)",
+  markierungen geloescht =  #1030#
+    "Alle Markierungen gelöscht.",
+  t pruefbedingungen =  #1032#
+    "Pruefbedingungen",
+  felder aendern =  #1033#
+    "Feldnamen oder Feldtypen aendern",
+  t feldnamen anfuegen =  #1034#
+    "Feldnamen anfuegen",
+  neuer feldname =  #1035#
+    "Neuer Feldname:",
+  neuer typ =  #1036#
+    "Neuer Typ (TEXT,DIN,ZAHL,DATUM):",
+  neue feldnamen eingeben =  #1037#
+    "Neue Feldnamen",
+  id text =  #1038#
+    "TEXT",
+  id din =  #1039#
+    "DIN",
+  id zahl =  #1040#
+    "ZAHL",
+  id datum =  #1041#
+    "DATUM",
+  alte feldreihenfolge aendern =  #1042#
+    "Alte Feldreihenfolge aendern",
+  speicherengpass =  #1043#
+    ""7"ACHTUNG: System voll, Dateien loeschen!";
+
+
+PROC oeffnen interpreter (INT CONST wahl nr) :
+
+  SELECT wahl nr OF
+  CASE 0 : auf geschlossene datei pruefen
+  CASE 1 : neue datei oeffnen
+  CASE 2 : datei ketten
+  CASE 3 : datei koppeln
+  CASE 4 : aktuelle datei sichern
+  CASE 5 : notizen editieren
+  CASE 6 : feldstruktur aendern
+  CASE 7 : pruefbedingungen aendern
+  CASE 8 : multi user manager einstellen
+  OTHERWISE ggf dialogfenster loeschen
+  END SELECT;
+  fusszeile ausgeben (p manager, manager taskname);
+  storage kontrollieren;
+  heap kontrollieren .
+
+auf geschlossene datei pruefen :
+  IF anzahl dateien = 0 THEN
+    eudas interpreter (0, 0)
+  END IF .
+
+neue datei oeffnen :
+  auf sicherung ueberpruefen;
+  oeffnen im menue (TRUE);
+  push (2) .
+
+datei ketten :
+  disable stop;
+  manager pre;
+  ausfuehrung (PROC (TEXT CONST) ketten, eudas typ);
+  manager post;
+  enable stop;
+  ketten koppeln sperre .
+
+datei koppeln :
+  disable stop;
+  manager pre;
+  ausfuehrung (PROC (TEXT CONST) koppeln, eudas typ);
+  manager post;
+  enable stop;
+  ketten koppeln sperre .
+
+aktuelle datei sichern :
+  IF aendern erlaubt THEN
+    einzeldateien abfragen
+  ELSE
+    dialog; out (keine sicherung noetig);
+    dateien aus manager loeschen
+  END IF;
+  sperre setzen .
+
+einzeldateien abfragen :
+  INT VAR datei nr;
+  FOR datei nr FROM 1 UPTO anzahl dateien REP
+    einzelsicherung (datei nr)
+  END REP;
+  IF ja (arbeitskopien loeschen, "JA/Dateien loeschen") THEN
+    dateien aus manager zuruecksichern;
+    dateien loeschen (TRUE)
+  END IF .
+
+sperre setzen :
+  IF anzahl dateien = 0 THEN
+    oeffnen sperre (FALSE);
+    aendern sperre (FALSE)
+  END IF;
+  ketten koppeln sperre;
+  fusszeile aufbauen .
+
+dateien aus manager loeschen :
+  INT CONST vorhandene dateien := anzahl dateien;
+  dateien loeschen (FALSE);
+  FOR datei nr FROM 1 UPTO vorhandene dateien REP
+    IF manager herkunft (datei nr) THEN
+      loeschen (eudas dateiname (datei nr))
+    END IF
+  END REP .
+
+notizen editieren :
+  notizen ansehen;
+  dialogfenster loeschen .
+
+feldstruktur aendern :
+  zugriff (PROC (EUDAT VAR) feldstruktur) .
+
+pruefbedingungen aendern :
+  pruefbedingungen;
+  dialogfenster loeschen .
+
+multi user manager einstellen :
+  manager taskname := "";
+  fenster veraendert (fuss);
+  editget (name task, manager taskname, "", "GET/multi task");
+  IF manager taskname = "" THEN
+    multi user manager eingestellt := FALSE
+  ELIF exists (/manager taskname) THEN
+    multi user manager := task (manager taskname);
+    multi user manager eingestellt := TRUE
+  ELSE
+    multi user manager eingestellt := FALSE;
+    manager taskname := "";
+    errorstop (task existiert nicht)
+  END IF .
+
+heap kontrollieren :
+  IF heap size - belegter heap > 4 THEN
+    collect heap garbage;
+    belegter heap := heap size
+  END IF .
+
+ggf dialogfenster loeschen :
+  IF wahl nr = -1 THEN
+    dialogfenster loeschen;
+    fenster veraendert (fuss);
+    LEAVE oeffnen interpreter
+  END IF .
+
+END PROC oeffnen interpreter;
+
+PROC auf sicherung ueberpruefen :
+
+  BOOL VAR notwendig := FALSE;
+  IF aendern erlaubt THEN
+    wirklich pruefen
+  END IF;
+  IF notwendig THEN dialog (* Leerzeile *) END IF .
+
+wirklich pruefen :
+  INT VAR datei nr;
+  FOR datei nr FROM 1 UPTO anzahl dateien REP
+    IF inhalt veraendert (datei nr) THEN
+      einzelsicherung (datei nr);
+      notwendig := TRUE;
+      ggf last param korrigieren
+    END IF
+  END REP .
+
+ggf last param korrigieren :
+  IF datei nr = 1 CAND std = eudas dateiname (1) THEN
+    last param (niltext)
+  END IF .
+
+END PROC auf sicherung ueberpruefen;
+
+PROC einzelsicherung (INT CONST datei nr) :
+
+  frage zusammenbauen;
+  IF inhalt veraendert (datei nr) THEN
+    IF ja (frage, "JA/sichere") THEN
+      sicherung durchfuehren
+    END IF
+  ELSE
+    dialog; out (frage)
+  END IF .
+
+frage zusammenbauen :
+  TEXT VAR frage := t arbeitskopie;
+  frage CAT textdarstellung (eudas dateiname (datei nr));
+  IF inhalt veraendert (datei nr) THEN
+    frage CAT t veraendert
+  ELSE
+    frage CAT t unveraendert
+  END IF .
+
+sicherung durchfuehren :
+  TEXT VAR name := eudas dateiname (datei nr);
+  IF ja (alte version ueberschreiben, "JA/alte version") THEN
+    forget (name, quiet)
+  ELIF manager herkunft (datei nr) THEN
+    errorstop (niltext)
+  ELSE
+    neuen namen erfragen
+  END IF;
+  sichere (datei nr, name);
+  eventuell sortierung wiederherstellen .
+
+neuen namen erfragen :
+  edit get (unter dem namen, name, "", "GET/Sicherungsname");
+  IF exists (name) THEN
+    eventuell ueberschreiben
+  END IF .
+
+eventuell ueberschreiben :
+  IF ja (textdarstellung (name) + ueberschreiben, "JA/ueber") THEN
+    forget (name, quiet)
+  ELSE
+    einzelsicherung (datei nr);
+    LEAVE einzelsicherung
+  END IF .
+
+eventuell sortierung wiederherstellen :
+  EUDAT VAR eudat;
+  oeffne (eudat, name);
+  IF war sortiert CAND soll sortiert werden THEN
+    bitte warten;
+    sortiere (eudat)
+  END IF .
+
+war sortiert :
+  sortierreihenfolge (eudat) <> niltext CAND unsortierte saetze (eudat) > 0 .
+
+soll sortiert werden :
+  ja (sortierung wiederherstellen, "JA/Sicherungssortierung") .
+
+END PROC einzelsicherung;
+
+PROC oeffnen im menue (BOOL CONST aendern fragen) :
+
+  IF aendern erlaubt THEN
+    dateien aus manager zuruecksichern
+  END IF;
+  dateien loeschen (TRUE);
+  oeffnen sperre (FALSE);
+  aendern sperre (FALSE);
+  forget (test ds);
+  disable stop;
+  manager pre;
+  nach aendern fragen := aendern fragen;
+  einzelausfuehrung (PROC (TEXT CONST) oeffnen, eudas typ);
+  manager post;
+  ketten koppeln sperre;
+  enable stop;
+  IF anzahl dateien > 0 THEN
+    oeffnen sperre (TRUE);
+    aendern sperre (aendern erlaubt)
+  END IF
+
+END PROC oeffnen im menue;
+
+PROC manager pre :
+
+  IF multi user manager eingestellt THEN
+    zusaetzliche namen := ALL multi user manager
+  END IF
+
+END PROC manager pre;
+
+PROC manager post :
+
+  zusaetzliche namen := empty thesaurus;
+  fusszeile aufbauen
+
+END PROC manager post;
+
+PROC dateien aus manager zuruecksichern :
+
+  INT VAR datei nr;
+  FOR datei nr FROM 1 UPTO anzahl dateien REP
+    IF manager herkunft (datei nr) THEN
+      save oder free an manager
+    END IF
+  END REP .
+
+save oder free an manager :
+  IF in manager ueberschreiben THEN
+    disable stop;
+    set command dialogue false;
+    save (eudas dateiname (datei nr), multi user manager);
+    reset command dialogue;
+    enable stop;
+    forget (eudas dateiname (datei nr), quiet)
+  ELSE
+    free (eudas dateiname (datei nr), multi user manager)
+  END IF;
+  herkunft eintragen (datei nr, FALSE) .
+
+in manager ueberschreiben :
+  exists (eudas dateiname (datei nr)) .
+
+END PROC dateien aus manager zuruecksichern;
+
+PROC multi datei loeschen :
+
+  IF manager herkunft (anzahl dateien) AND aendern erlaubt THEN
+    forget (eudas dateiname (anzahl dateien), quiet)
+  END IF
+
+END PROC multi datei loeschen;
+
+PROC oeffnen (TEXT CONST dateiname) :
+
+  BOOL VAR auch aendern;
+  eventuell neu einrichten;
+  oeffne (dateiname, auch aendern);
+  multi datei loeschen .
+
+eventuell neu einrichten :
+  IF datei existiert nicht AND nach aendern fragen THEN
+    frage ob einrichten (dateiname);
+    EUDAT VAR eudat;
+    oeffne (eudat, dateiname);
+    feldstruktur (eudat);
+    auch aendern := TRUE
+  ELSE
+    auch aendern :=
+      nach aendern fragen CAND ja (wollen sie etwas veraendern, "JA/oeffne");
+    aus manager besorgen (dateiname, auch aendern)
+  END IF .
+
+datei existiert nicht :
+  NOT exists (dateiname) AND NOT (zusaetzliche namen CONTAINS dateiname) .
+
+END PROC oeffnen;
+
+PROC ketten (TEXT CONST dateiname) :
+
+  aus manager besorgen (dateiname, aendern erlaubt);
+  kette (dateiname);
+  multi datei loeschen
+
+END PROC ketten;
+
+PROC koppeln (TEXT CONST dateiname) :
+
+  aus manager besorgen (dateiname, aendern erlaubt);
+  kopple (dateiname);
+  multi datei loeschen
+
+END PROC koppeln;
+
+PROC aus manager besorgen (TEXT CONST dateiname, BOOL CONST mit lock) :
+
+  BOOL VAR herkunft := FALSE;
+  IF multi user manager eingestellt THEN
+    manager abfragen
+  END IF;
+  herkunft eintragen (anzahl dateien + 1, herkunft) .
+
+manager abfragen :
+  IF (zusaetzliche namen CONTAINS dateiname) CAND
+    (NOT exists (dateiname) COR eigene datei ueberschreiben) THEN
+    IF mit lock THEN
+      lock (dateiname, multi user manager)
+    END IF;
+    forget (dateiname, quiet);
+    fetch (dateiname, multi user manager);
+    herkunft := TRUE
+  END IF .
+
+eigene datei ueberschreiben :
+  ja (textdarstellung (dateiname) + t im system ueberschreiben, "JA/fetch") .
+
+END PROC aus manager besorgen;
+
+PROC herkunft eintragen (INT CONST dateiindex, BOOL CONST herkunft) :
+
+  WHILE length (herkunftszeichen) < dateiindex REP
+    herkunftszeichen CAT blank
+  END REP;
+  replace (herkunftszeichen, dateiindex, entsprechendes zeichen) .
+
+entsprechendes zeichen :
+  IF herkunft THEN
+    "-"
+  ELSE
+    blank
+  END IF .
+
+END PROC herkunft eintragen;
+
+BOOL PROC manager herkunft (INT CONST dateiindex) :
+
+  IF length (herkunftszeichen) < dateiindex THEN
+    FALSE
+  ELSE
+    (herkunftszeichen SUB dateiindex) <> blank
+  END IF
+
+END PROC manager herkunft;
+
+PROC notizen ansehen :
+
+  notizen lesen (3, feldpuffer);
+  DATASPACE VAR ds := nilspace;
+  FILE VAR f := sequential file (output, ds);
+  disable stop;
+  headline (f, t notizen ansehen);
+  notizen anbieten (f, feldpuffer, ganz, "EDIT/Notizen");
+  forget (ds);
+  enable stop;
+  IF aendern erlaubt THEN
+    notizen aendern (3, feldpuffer)
+  END IF
+
+END PROC notizen ansehen;
+
+PROC notizen anbieten (FILE VAR f, TEXT VAR puffer,
+                       FENSTER CONST edit fenster, TEXT CONST hilfsname) :
+
+  LET trennzeichen = "#-#";
+  enable stop;
+  notizen in datei;
+  datei editieren;
+  notizen aus datei .
+
+notizen in datei :
+  INT VAR
+    von := 1,
+    bis;
+  REP
+    bis := pos (puffer, trennzeichen, von);
+    IF bis = 0 THEN
+      putline (f, subtext (puffer, von))
+    ELSE
+      putline (f, subtext (puffer, von, bis - 1))
+    END IF;
+    von := bis + 3
+  UNTIL bis = 0 OR von > length (puffer) END REP .
+
+datei editieren :
+  modify (f);
+  edit (f, edit fenster, hilfsname, TRUE) .
+
+notizen aus datei :
+  TEXT VAR zeile;
+  puffer := niltext;
+  input (f);
+  WHILE NOT eof (f) REP
+    getline (f, zeile);
+    blank entfernen;
+    puffer CAT zeile;
+    puffer CAT trennzeichen
+  END REP .
+
+blank entfernen :
+  IF (zeile SUB length (zeile)) = blank THEN
+    zeile := subtext (zeile, 1, length (zeile) - 1)
+  END IF .
+
+END PROC notizen anbieten;
+
+PROC feldstruktur (EUDAT VAR eudat) :
+
+  SATZ VAR satz;
+  feldnamen lesen (eudat, satz);
+  IF feldnamen anfuegen THEN
+    feldnamen editieren
+  END IF;
+  IF ja (felder aendern, "JA/Feldaendern") THEN
+    auswahl zu aendernder felder
+  END IF .
+
+feldnamen anfuegen :
+  IF felderzahl (satz) > 0 THEN
+    ja (t feldnamen anfuegen, "JA/feldnamen") 
+  ELSE
+    TRUE
+  END IF .
+
+feldnamen editieren :
+  DATASPACE VAR ds := nilspace;
+  FILE VAR f := sequential file (output, ds);
+  disable stop;
+  feldnamen anbieten (f, satz);
+  forget (ds);
+  enable stop;
+  feldnamen aendern (eudat, satz) .
+
+auswahl zu aendernder felder :
+  feldtypen dazuschreiben;
+  auswahl anbieten ("EUDAS-Felder", rechts, "AUSWAHL/Felder",
+                     PROC (TEXT VAR, INT CONST) aus sammel);
+  INT VAR feldnr := 1;
+  WHILE wahl (feldnr) > 0 REP
+    ein feld aendern;
+    feldnr INCR 1
+  END REP;
+  feldnamen aendern (eudat, satz) .
+
+feldtypen dazuschreiben :
+  satz initialisieren (sammel);
+  FOR feldnr FROM 1 UPTO felderzahl (satz) REP
+    feld lesen (satz, feldnr, feldpuffer);
+    feld aendern (sammel, feldnr, info + textdarstellung (feldpuffer))
+  END REP .
+
+info :
+  "(" + typtext (feldinfo (eudat, feldnr)) + ") " .
+
+ein feld aendern :
+  TEXT VAR feldname;
+  feld lesen (satz, wahl (feldnr), feldname);
+  editget (neuer feldname, feldname, "", "GET/feldname");
+  feld aendern (satz, wahl (feldnr), feldname);
+  TEXT VAR typ := typtext (feldinfo (eudat, wahl (feldnr)));
+  REP
+    editget (neuer typ, typ, "", "GET/feldtyp")
+  UNTIL texttyp (typ) >= -1 END REP;
+  feldinfo (eudat, wahl (feldnr), texttyp (typ)) .
+
+END PROC feldstruktur;
+
+PROC pruefbedingungen :
+
+  enable stop;
+  DATASPACE VAR ds := nilspace;
+  FILE VAR f := sequential file (output, ds);
+  headline (f, t pruefbedingungen);
+  notizen lesen (1, feldpuffer);
+  disable stop;
+  notizen anbieten (f, feldpuffer, ganz, "EDIT/Pruefbed");
+  forget (ds);
+  enable stop;
+  IF aendern erlaubt THEN
+    notizen aendern (1, feldpuffer)
+  END IF .
+
+END PROC pruefbedingungen;
+
+PROC feldnamen anbieten (FILE VAR f, SATZ VAR satz) :
+
+  enable stop;
+  neue namen editieren;
+  neue namen zurueckschreiben .
+
+neue namen editieren :
+  modify (f);
+  headline (f, neue feldnamen eingeben);
+  edit (f, rechts, "EDIT/Feldnamen", TRUE) .
+
+neue namen zurueckschreiben :
+  INT VAR feldnr := felderzahl (satz);
+  input (f);
+  WHILE NOT eof (f) REP
+    getline (f, feldpuffer);
+    blank entfernen;
+    feldnr INCR 1;
+    feld aendern (satz, feldnr, feldpuffer)
+  END REP .
+
+blank entfernen :
+  IF (feldpuffer SUB length (feldpuffer)) = blank THEN
+    feldpuffer := subtext (feldpuffer, 1, length (feldpuffer) - 1)
+  END IF .
+
+END PROC feldnamen anbieten;
+
+TEXT PROC typtext (INT CONST typ) :
+
+  SELECT typ + 1 OF
+  CASE 0 : id text
+  CASE 1 : id din
+  CASE 2 : id zahl
+  CASE 3 : id datum
+  OTHERWISE niltext
+  END SELECT
+
+END PROC typtext;
+
+INT PROC texttyp (TEXT CONST t) :
+
+  IF t = id text THEN -1
+  ELIF t = id din THEN 0
+  ELIF t = id zahl THEN 1
+  ELIF t = id datum THEN 2
+  ELSE -2
+  END IF
+
+END PROC texttyp;
+
+PROC storage kontrollieren :
+
+  INT VAR size, used;
+  storage (size, used);
+  IF used > size THEN
+    neuer dialog; dialog;
+    out (speicherengpass)
+  END IF
+
+END PROC storage kontrollieren;
+
+
+(************************* Menue 'Einzelsatz' *****************************)
+
+BOOL VAR
+  satz leer,
+  umgeschaltet aus einfuegen := FALSE,
+  umgeschaltet aus aendern := FALSE;
+
+LET
+  aendern status =  #1044#
+"SATZ AENDERN:    Abbruch: ESC h    Beenden: ESC q    Hilfe: ESC ?",
+  einfuegen status =  #1045#
+"SATZ EINFUEGEN:    Abbruch: ESC h    Beenden: ESC q    Hilfe: ESC ?",
+  suchen status =  #1046#
+"SUCHMUSTER EINGEBEN:    Abbruch: ESC h    Beenden: ESC q    Hilfe: ESC ?",
+  umschalten auf =  #1047#
+    "Umschalten auf Koppeldatei ",
+  koppelfelder uebernehmen =  #1048#
+    "Koppelfelder uebernehmen",
+  ungueltige satznummer =  #1049#
+    "Ungueltige Satznummer",
+  neue satznummer =  #1050#
+    "Neue Satznummer:",
+  t bitte warten =  #1051#
+    " Bitte warten.. ",
+  wzk =  #1052#
+    "wzK",
+  wz =  #1053#
+    "wz";
+
+LET
+  blanks unten links = ""6""23""0"              :",
+  blanks unten ganz  = ""6""23""0"              :"5"";
+
+
+PROC anzeigen interpreter (INT CONST wahl nr) :
+
+  SELECT wahl nr OF
+  CASE 0 : anzeige einschalten
+  CASE 1 : einen satz weiter
+  CASE 2 : einen satz zurueck
+  CASE 3 : direkt auf satz
+  CASE 4 : saetze auswaehlen
+  CASE 5 : auswahlbedingung loeschen
+  CASE 6 : aktuelle markierung aendern
+  CASE 7 : neuen satz einfuegen
+  CASE 8 : aktuellen satz aendern
+  CASE 9 : einzelsatz tragen
+  CASE 10: einzelsatz holen
+  CASE 11: felder auswaehlen
+  CASE 12: esc oben
+  CASE 13: esc unten
+  CASE 14: esc 1
+  CASE 15: esc 9
+  CASE 16: esc k
+  OTHERWISE anzeige update
+  END SELECT;
+  storage kontrollieren .
+
+anzeige einschalten :
+  exit zeichen (wz) .
+
+einen satz weiter :
+  bitte warten;
+  weiter (2);
+  bild ausgeben (FALSE) .
+
+einen satz zurueck :
+  bitte warten;
+  zurueck (2);
+  bild ausgeben (FALSE) .
+
+saetze auswaehlen :
+  suchen;
+  bild ausgeben (TRUE) .
+
+auswahlbedingung loeschen :
+  suchbedingung loeschen;
+  bild ausgeben (FALSE) .
+
+direkt auf satz :
+  TEXT VAR nr := niltext;
+  fusszeile ganz loeschen;
+  editget (neue satznummer, nr, "", "GET/auf satz");
+  INT CONST ziel := int (nr);
+  IF nr = niltext THEN
+    bild ausgeben (FALSE)
+  ELIF last conversion ok THEN
+    auf satz (ziel);
+    bild ausgeben (FALSE)
+  ELSE
+    errorstop (ungueltige satznummer)
+  END IF .
+
+neuen satz einfuegen :
+  einfuegen;
+  bild ausgeben (TRUE) .
+
+aktuellen satz aendern :
+  aendern;
+  bild ausgeben (TRUE) .
+
+aktuelle markierung aendern :
+  markierung aendern;
+  bild ausgeben (FALSE) .
+
+einzelsatz tragen :
+  last param darf nicht geoeffnet sein;
+  fusszeile ganz loeschen;
+  dateinamen anfordern (name der zieldatei);
+  einzelausfuehrung (PROC (TEXT CONST) trage satz und frage, eudas typ);
+  bild ausgeben (TRUE) .
+
+einzelsatz holen :
+  last param darf nicht geoeffnet sein;
+  fusszeile ganz loeschen;
+  dateinamen anfordern (name der quelldatei);
+  einzelausfuehrung (PROC (TEXT CONST) hole satz, eudas typ);
+  bild ausgeben (TRUE) .
+
+felder auswaehlen :
+  TEXT VAR wahlvektor;
+  fusszeile ganz loeschen;
+  felder waehlen lassen (wahlvektor);
+  IF wahlvektor <> niltext THEN
+    feldauswahl (wahlvektor)
+  END IF;
+  bild ausgeben (TRUE) .
+
+esc oben :
+  rollcursor;
+  rollen (-23);
+  IF anzahl dateien > 0 THEN
+    bild ausgeben (FALSE)
+  END IF .
+
+esc unten :
+  rollcursor;
+  rollen (23);
+  IF anzahl dateien > 0 THEN
+    bild ausgeben (FALSE)
+  END IF .
+
+esc 1 :
+  rollcursor;
+  rollen (-9999);
+  IF anzahl dateien > 0 THEN
+    bild ausgeben (FALSE)
+  END IF .
+
+esc 9 :
+  rollcursor;
+  rollen (9999);
+  IF anzahl dateien > 0 THEN
+    bild ausgeben (FALSE)
+  END IF .
+
+esc k :
+  IF auf koppeldatei THEN
+    zurueckschalten
+  ELSE
+    auf koppeldatei umschalten
+  END IF;
+  IF anzahl dateien > 0 THEN
+    bild ausgeben (TRUE)
+  END IF .
+
+zurueckschalten :
+  IF (umgeschaltet aus aendern OR umgeschaltet aus einfuegen) THEN
+    fragen ob koppelfelder uebernehmen;
+    wieder in alte operation
+  ELSE
+    auf koppeldatei (0)
+  END IF;
+  ketten koppeln sperre .
+
+fragen ob koppelfelder uebernehmen :
+  fusszeile ganz loeschen;
+  IF NOT dateiende CAND ja (koppelfelder uebernehmen, "JA/uebernehmen") THEN
+    auf koppeldatei (1)
+  ELSE
+    auf koppeldatei (0)
+  END IF .
+
+wieder in alte operation :
+  umgeschaltet aus einfuegen := FALSE;
+  IF umgeschaltet aus aendern THEN
+    umgeschaltet aus aendern := FALSE;
+    aendern
+  ELSE
+    einfuegen intern (TRUE)
+  END IF .
+
+anzeige update :
+  IF wahl nr = -2 THEN
+    IF anzahl dateien > 0 THEN
+      fusszeile links loeschen;
+      bild ausgeben (FALSE)
+    ELSE
+      fusszeile ganz loeschen
+    END IF
+  ELSE
+    dialogfenster loeschen;
+    fenster veraendert (fuss)
+  END IF .
+
+fusszeile links loeschen :
+  out (blanks unten links) .
+
+fusszeile ganz loeschen :
+  out (blanks unten ganz) .
+
+END PROC anzeigen interpreter;
+
+PROC suchen :
+
+  disable stop;
+  exit zeichen ("");
+  status anzeigen (suchen status);
+  suchen (PROC suchen hilfe);
+  exit zeichen (wz)
+
+END PROC suchen;
+
+PROC suchen hilfe :
+
+  hilfe anbieten ("EDIT/Suchen", rechts)
+
+END PROC suchen hilfe;
+
+PROC bitte warten :
+
+  status anzeigen (t bitte warten)
+
+END PROC bitte warten;
+
+PROC einfuegen :
+
+  einfuegen intern (FALSE)
+
+END PROC einfuegen;
+
+PROC einfuegen intern (BOOL CONST nach umschalten) :
+
+  BOOL VAR weiter aendern := nach umschalten;
+  exit zeichen setzen;
+  REP
+    status anzeigen (einfuegen status);
+    IF weiter aendern THEN
+      aendern (PROC einfuegen hilfe);
+      weiter aendern := FALSE
+    ELSE
+      einfuegen (PROC einfuegen hilfe)
+    END IF;
+    satz untersuchen;
+    exit zeichen bei einfuegen behandeln
+  END REP .
+
+exit zeichen bei einfuegen behandeln :
+  SELECT pos (wzk, exit durch) OF
+  CASE 0 : IF satz leer THEN
+             satz loeschen
+           END IF;
+           LEAVE einfuegen intern
+  CASE 1 : IF satz leer THEN
+             satz loeschen
+           ELSE
+             bitte warten; weiter (2)
+           END IF
+  CASE 2 : IF satz leer THEN
+             satz loeschen
+           ELSE
+             bitte warten; zurueck (2)
+           END IF
+  CASE 3 : auf koppeldatei umschalten;
+           IF auf koppeldatei THEN
+             umgeschaltet aus einfuegen := TRUE;
+             LEAVE einfuegen intern
+           END IF;
+           weiter aendern := TRUE
+  END SELECT .
+
+END PROC einfuegen intern;
+
+PROC einfuegen hilfe :
+
+  hilfe anbieten ("EDIT/Einfuegen", rechts)
+
+END PROC einfuegen hilfe;
+
+PROC exit zeichen setzen :
+
+  IF anzahl koppeldateien > 0 AND NOT auf koppeldatei THEN
+    exit zeichen (wzk)
+  ELSE
+    exit zeichen (wz)
+  END IF
+
+END PROC exit zeichen setzen;
+
+PROC aendern :
+
+  exit zeichen setzen;
+  kommando auf taste legen ("F", "prueffehler editieren");
+  REP
+    status anzeigen (aendern status);
+    aendern (PROC aendern hilfe);
+    satz untersuchen;
+    exit zeichen bei aendern behandeln
+  END REP .
+
+exit zeichen bei aendern behandeln :
+  SELECT pos (wzk, exit durch) OF
+  CASE 0 : IF satz leer THEN
+             satz loeschen
+           END IF;
+           LEAVE aendern
+  CASE 1 : IF satz leer THEN
+             satz loeschen
+           ELSE
+             bitte warten; weiter (2)
+           END IF
+  CASE 2 : IF satz leer THEN
+             satz loeschen
+           ELSE
+             bitte warten; zurueck (2)
+           END IF
+  CASE 3 : auf koppeldatei umschalten;
+           IF auf koppeldatei THEN
+             umgeschaltet aus aendern := TRUE;
+             LEAVE aendern
+           END IF
+  END SELECT .
+
+END PROC aendern;
+
+PROC aendern hilfe :
+
+  hilfe anbieten ("EDIT/Aendern", rechts)
+
+END PROC aendern hilfe;
+
+PROC prueffehler editieren :
+
+  IF test version = datei version THEN
+    modify (test file);
+    edit (test file)
+  END IF
+
+END PROC prueffehler editieren;
+
+PROC auf koppeldatei umschalten :
+
+  INT VAR datei nr := folgedatei (0);
+  WHILE datei nr > 0 REP
+    out (blanks unten ganz);
+    IF auf diese datei schalten THEN
+      auf koppeldatei (datei nr);
+      ketten koppeln sperre;
+      LEAVE auf koppeldatei umschalten
+    END IF;
+    datei nr := folgedatei (datei nr)
+  END REP .
+
+auf diese datei schalten :
+  ja (umschalten auf + textdarstellung (eudas dateiname (datei nr)),
+      "JA/umschalten") .
+
+END PROC auf koppeldatei umschalten;
+
+PROC zeilenrest ausgeben (TEXT CONST zeile, INT CONST dummy) :
+
+  outsubtext (zeile, anfang); out (cleol) .
+
+anfang :
+  pos (zeile, blank, 6) + 1 + dummy - dummy .
+
+END PROC zeilenrest ausgeben;
+
+PROC satz untersuchen :
+
+  feld bearbeiten (1, PROC (TEXT CONST, INT CONST, INT CONST) ob leer)
+
+END PROC satz untersuchen;
+
+PROC ob leer (TEXT CONST satz, INT CONST von, bis) :
+
+  satz leer := von < 3 OR von > length (satz) + bis - bis
+
+END PROC ob leer;
+
+PROC rollcursor :
+
+  cursor (15, 24)
+
+END PROC rollcursor;
+
+PROC trage satz und frage (TEXT CONST dateiname) :
+
+  IF exists (dateiname) THEN
+    teste auf offen
+  ELSE
+    frage ob einrichten (dateiname)
+  END IF;
+  bitte warten;
+  trage satz (dateiname) .
+
+teste auf offen :
+  IF index der arbeitskopie (dateiname) <> 0 THEN
+    errorstop (nicht in offene datei)
+  END IF .
+
+END PROC trage satz und frage;
+
+PROC felder waehlen lassen (TEXT VAR wahlvektor) :
+
+  auswahl anbieten ("EUDAS-Anzeigefelder", rechts, "AUSWAHL/Anzeigefelder",
+                    PROC (TEXT VAR, INT CONST) gib namen);
+  wahlvektor := niltext;
+  INT VAR nr := 1;
+  WHILE wahl (nr) > 0 REP
+    wahlvektor CAT code (wahl (nr));
+    nr INCR 1
+  END REP
+
+END PROC felder waehlen lassen;
+
+
+(************************* Menue 'Gesamtdatei' ***************************)
+
+LET
+  felder auswaehlen =  #1054#
+    "Angezeigte Felder auswaehlen",
+  aufsteigend sortieren =  #1055#
+    " aufsteigend sortieren";
+
+DATASPACE VAR
+  kopier ds;
+
+
+PROC bearbeiten interpreter (INT CONST wahl nr) :
+
+  SELECT wahl nr OF
+  CASE 1 : saetze kopieren
+  CASE 2 : saetze tragen
+  CASE 3 : nach vorschrift aendern
+  CASE 4 : uebersicht ausgeben
+  CASE 5 : datei sortieren
+  CASE 6 : alle markierungen loeschen
+  OTHERWISE ggf dialogfenster loeschen
+  END SELECT;
+  storage kontrollieren .
+
+saetze tragen :
+  last param darf nicht geoeffnet sein;
+  dateinamen anfordern (name der zieldatei);
+  einzelausfuehrung (PROC (TEXT CONST) trage saetze, eudas typ) .
+
+saetze kopieren :
+  last param darf nicht geoeffnet sein;
+  dateinamen anfordern (name der zieldatei);
+  einzelausfuehrung (PROC (TEXT CONST) kopiere saetze, eudas typ);
+  dialogfenster loeschen;
+  fusszeile ausgeben ("", "") .
+
+nach vorschrift aendern :
+  dateinamen anfordern (name der verarbeitungsvorschrift);
+  ausfuehrung (PROC (TEXT CONST) verarbeite mit edit, file typ);
+  dialogfenster loeschen;
+  fusszeile ausgeben ("", "") .
+
+uebersicht ausgeben :
+  TEXT VAR uebersichtsauswahl;
+  feldauswahl fuer uebersicht (uebersichtsauswahl);
+  uebersicht (uebersichtsauswahl, PROC uebersicht hilfe);
+  dialogfenster loeschen;
+  fusszeile ausgeben ("", "") .
+
+datei sortieren :
+  zugriff (PROC (EUDAT VAR) einzelsortiere) .
+
+alle markierungen loeschen :
+  markierungen loeschen;
+  dialog; out (markierungen geloescht) .
+
+ggf dialogfenster loeschen :
+  IF wahl nr = -1 THEN
+    dialogfenster loeschen;
+    fenster veraendert (fuss)
+  ELIF wahl nr = -2 THEN
+    fusszeile ausgeben ("", "")
+  END IF .
+
+END PROC bearbeiten interpreter;
+
+PROC last param darf nicht geoeffnet sein :
+
+  IF index der arbeitskopie (std) <> 0 THEN
+    last param (niltext)
+  END IF
+
+END PROC last param darf nicht geoeffnet sein;
+
+PROC trage saetze (TEXT CONST dateiname) :
+
+  BOOL VAR mit test;
+  IF exists (dateiname) THEN
+    teste auf offen;
+    frage ob testen
+  ELSE
+    frage ob einrichten (dateiname);
+    mit test := FALSE
+  END IF;
+  BOOL CONST mit sortieren := ja (sortierfrage, "JA/sortieren");
+  bitte warten;
+  ggf datei initialisieren;
+  trage (dateiname, test file, mit test);
+  fehlerzahl ausgeben;
+  IF mit sortieren THEN
+    EUDAT VAR eudat;
+    oeffne (eudat, dateiname);
+    sortiere (eudat)
+  END IF .
+
+teste auf offen :
+  IF index der arbeitskopie (dateiname) <> 0 THEN
+    errorstop (nicht in offene datei)
+  END IF .
+
+frage ob testen :
+  mit test := ja (pruefbedingungen testen, "JA/testen") .
+
+ggf datei initialisieren :
+  IF mit test THEN
+    forget (test ds);
+    test ds := nilspace;
+    test file := sequential file (output, test ds);
+    test version := datei version
+  ELSE
+    forget (test ds);
+    test version := datei version - 1
+  END IF .
+
+fehlerzahl ausgeben :
+  IF mit test CAND lines (test file) > 0 THEN
+    dialog; put (lines (test file));
+    put (prueffehler festgestellt)
+  END IF .
+
+END PROC trage saetze;
+
+PROC verarbeite mit edit (TEXT CONST dateiname) :
+
+  IF NOT exists (dateiname) THEN
+    edit unten (dateiname, "EDIT/Verarbeite")
+  END IF;
+  bild frei fuer uebersetzung;
+  FILE VAR f := sequential file (input, dateiname);
+  disable stop;
+  verarbeite (f);
+  uebersetzungsfehler behandeln .
+
+END PROC verarbeite mit edit;
+
+PROC feldauswahl fuer uebersicht (TEXT VAR uebersichtsauswahl) :
+
+  uebersichtsauswahl := niltext;
+  IF ja (felder auswaehlen, "JA/Ub.Felder") THEN
+    felder waehlen lassen (uebersichtsauswahl)
+  END IF
+
+END PROC feldauswahl fuer uebersicht;
+
+PROC uebersicht hilfe :
+
+  hilfe anbieten ("UEBERSICHT", ganz)
+
+END PROC uebersicht hilfe;
+
+PROC kopiere saetze (TEXT CONST dateiname) :
+
+  disable stop;
+  kopier ds := nilspace;
+  kopiere saetze intern (dateiname);
+  forget (kopier ds)
+
+END PROC kopiere saetze;
+
+PROC kopiere saetze intern (TEXT CONST dateiname) :
+
+  TEXT VAR mustername := "";
+  FILE VAR f;
+  EUDAT VAR eudat;
+  BOOL VAR mit sortieren := FALSE;
+
+  enable stop;
+  IF exists (dateiname) THEN
+    teste auf offen und sortieren
+  ELSE
+    frage ob einrichten (dateiname)
+  END IF;
+  editget (name kopiermuster, mustername, "", "GET/kopiermuster");
+  IF exists (mustername) THEN
+    f := sequential file (input, mustername)
+  ELSE
+    ggf kopiermuster einrichten;
+    std kopiermuster (dateiname, f)
+  END IF;
+  modify (f);
+  wirklich kopieren;
+  ggf sortieren .
+
+teste auf offen und sortieren :
+  IF index der arbeitskopie (dateiname) <> 0 THEN
+    errorstop (nicht in offene datei)
+  END IF;
+  oeffne (eudat, dateiname);
+  IF sortierreihenfolge (eudat) <> niltext THEN
+    mit sortieren := ja (sortierfrage, "JA/sortieren")
+  END IF .
+
+ggf kopiermuster einrichten :
+  IF mustername = niltext THEN
+    f := sequential file (output, kopier ds)
+  ELSE
+    frage ob einrichten (mustername);
+    f := sequential file (output, mustername)
+  END IF .
+
+wirklich kopieren :
+  edit (f, ganz, "EDIT/Kopiermuster", TRUE);
+  bild frei fuer uebersetzung;
+  kopiere (dateiname, f) .
+
+ggf sortieren :
+  IF mit sortieren THEN
+    oeffne (eudat, dateiname);
+    sortiere (eudat)
+  END IF .
+
+END PROC kopiere saetze intern;
+
+INT PROC index der arbeitskopie (TEXT CONST dateiname) :
+
+  INT VAR dateinr;
+  FOR dateinr FROM 1 UPTO anzahl dateien REP
+    IF eudas dateiname (dateinr) = dateiname THEN
+      LEAVE index der arbeitskopie WITH dateinr
+    END IF
+  END REP;
+  0
+
+END PROC index der arbeitskopie;
+
+PROC edit unten (TEXT CONST dateiname, hilfe) :
+
+  IF NOT exists (dateiname) THEN
+    frage ob einrichten (dateiname)
+  END IF;
+  FILE VAR f := sequential file (modify, dateiname);
+  edit (f, ganz, hilfe, TRUE)
+
+END PROC edit unten;
+
+PROC bild frei fuer uebersetzung :
+
+  bitte warten;
+  cursor (1, 2);
+  out (cl eop);
+  bildschirm neu
+
+END PROC bild frei fuer uebersetzung;
+
+PROC einzelsortiere (EUDAT VAR eudat) :
+
+  TEXT VAR reihenfolge := sortierreihenfolge (eudat);
+  IF reihenfolge = niltext COR alte reihenfolge aendern THEN
+    sortierreihenfolge aendern;
+    bitte warten;
+    sortiere (eudat, reihenfolge)
+  ELSE
+    bitte warten;
+    sortiere (eudat)
+  END IF .
+
+alte reihenfolge aendern :
+  ja (alte feldreihenfolge aendern, "JA/Sortierfelder") .
+
+sortierreihenfolge aendern :
+  feldnamen lesen (eudat, sammel);
+  auswahl anbieten ("EUDAS-Sortierfelder", rechts, "AUSWAHL/Sortierfelder",
+                    PROC (TEXT VAR, INT CONST) aus sammel);
+  INT VAR feldnr := 1;
+  reihenfolge := niltext;
+  WHILE wahl (feldnr) <> 0 REP
+    reihenfolge CAT code (wahl (feldnr));
+    nach richtung fragen;
+    feldnr INCR 1
+  END REP .
+
+nach richtung fragen :
+  feld lesen (sammel, wahl (feldnr), feldpuffer);
+  IF ja (textdarstellung (feldpuffer) + aufsteigend sortieren,
+         "JA/Sortierrichtung") THEN
+    reihenfolge CAT "+"
+  ELSE
+    reihenfolge CAT "-"
+  END IF .
+
+END PROC einzelsortiere;
+
+PROC gib namen (TEXT VAR name, INT CONST nr) :
+
+  IF nr <= anzahl felder THEN
+    feldnamen lesen (nr, name)
+  ELSE
+    name := niltext
+  END IF
+
+END PROC gib namen;
+
+
+(************************* Menue 'Drucken' ********************************)
+
+LET
+  direkt ausgabe =  #1056#
+    "Ausgabe automatisch zum Drucker",
+  in bestimmte datei =  #1057#
+    "Ausgabe in bestimmte Datei",
+  name druckzieldatei =  #1058#
+    "Name Ausgabedatei:",
+  sortierfrage =  #1059#
+    "Zieldatei anschliessend sortieren",
+  pruefbedingungen testen =  #1060#
+    "Pruefbedingungen testen",
+  prueffehler festgestellt =  #1061#
+    "Prueffehler festgestellt",
+  nicht in offene datei =  #1062#
+    "Zieldatei darf nicht geoeffnet sein",
+  name kopiermuster =  #1063#
+    "Name Kopiermuster (RET=Std):";
+
+LET
+  z form =  #1093#
+    " zeilenweise formatieren",
+  s form =  #1094#
+    " seitenweise formatieren";
+
+BOOL VAR
+  zeilen automatisch := FALSE,
+  seiten automatisch := FALSE;
+
+
+PROC drucken interpreter (INT CONST wahl nr) :
+
+  SELECT wahl nr OF
+  CASE 1 : nach muster drucken
+  CASE 2 : ausgaberichtung umschalten
+  CASE 3 : musterdatei aendern
+  CASE 4 : textdatei drucken
+  CASE 5 : nachbearbeiten
+  OTHERWISE ggf dialogfenster loeschen
+  END SELECT;
+  storage kontrollieren .
+
+nach muster drucken :
+  dateinamen anfordern (name des druckmusters);
+  ausfuehrung (PROC (TEXT CONST) drucke mit edit, file typ);
+  dialogfenster loeschen;
+  fusszeile ausgeben ("", "") .
+
+ausgaberichtung umschalten :
+  direkt drucken (ja (direktausgabe, "JA/direkt drucken"));
+  IF NOT direkt drucken CAND ja (in bestimmte datei, "JA/Druckdatei") THEN
+    TEXT VAR dateiname := niltext;
+    editget (name druckzieldatei, dateiname, "", "GET/Druckdatei");
+    IF dateiname <> niltext THEN
+      druckdatei (dateiname)
+    END IF
+  END IF .
+
+musterdatei aendern :
+  ausfuehrung (PROC (TEXT CONST) muster edit, file typ);
+  dialogfenster loeschen;
+  fusszeile ausgeben ("", "") .
+
+textdatei drucken :
+  ausfuehrung (PROC (TEXT CONST) print, file typ) .
+
+nachbearbeiten :
+  ausfuehrung (PROC (TEXT CONST) nachbearbeitung, file typ);
+  dialogfenster loeschen;
+  fusszeile ausgeben ("", "") .
+
+ggf dialogfenster loeschen :
+  IF wahl nr = -1 THEN
+    dialogfenster loeschen;
+    fenster veraendert (fuss)
+  ELIF wahl nr = -2 THEN
+    fusszeile ausgeben ("", "")
+  END IF .
+
+END PROC drucken interpreter;
+
+PROC uebersetzungsfehler behandeln :
+
+  IF uebersetzungsfehler THEN
+    clear error
+  END IF .
+
+uebersetzungsfehler :
+  is error CAND errormessage = niltext .
+
+END PROC uebersetzungsfehler behandeln;
+
+PROC drucke mit edit (TEXT CONST dateiname) :
+
+  IF NOT exists (dateiname) THEN
+    muster edit (dateiname)
+  END IF;
+  bild frei fuer uebersetzung;
+  disable stop;
+  drucke (dateiname);
+  uebersetzungsfehler behandeln
+
+END PROC drucke mit edit;
+
+PROC muster edit (TEXT CONST dateiname) :
+
+  edit unten (dateiname, "EDIT/Druckmuster")
+ 
+END PROC muster edit;
+
+PROC print (TEXT CONST dateiname) :
+
+  do ("print (" + textdarstellung (dateiname) + ")")
+
+END PROC print;
+
+PROC nachbearbeitung (TEXT CONST dateiname) :
+
+  IF ja (textdarstellung (dateiname) + z form, "JA/zeilenform") THEN
+    zeilen formatieren
+  END IF;
+  IF ja (textdarstellung (dateiname) + s form, "JA/seitenform") THEN
+    seiten formatieren
+  END IF .
+
+zeilen formatieren :
+  IF zeilen automatisch THEN
+    autoform (dateiname)
+  ELSE
+    lineform (dateiname)
+  END IF;
+  page;
+  bildschirm neu .
+
+seiten formatieren :
+  IF seiten automatisch THEN
+    autopageform (dateiname)
+  ELSE
+    pageform (dateiname)
+  END IF;
+  bildschirm neu .
+
+END PROC nachbearbeitung;
+
+PROC formatieren automatisch (BOOL CONST za, sa) :
+
+  zeilen automatisch := za;
+  seiten automatisch := sa
+
+END PROC formatieren automatisch;
+
+
+(********************** Menue 'Dateien' ***********************************)
+
+TEXT VAR arbeitsbereich;
+
+LET
+  p task =  #1064#
+    " Task: ",
+  t neuer name =  #1065#
+    "Neuer Name:",
+  t zieldatei =  #1066#
+    "Zieldatei:",
+  t belegt =  #1067#
+    " belegt ",
+  t kb =  #1068#
+    "KB.",
+  t existiert nicht =  #1069#
+    " existiert nicht.",
+  t loeschen =  #1070#
+    " im dieser Task loeschen",
+  t neu einrichten =  #1071#
+    " neu einrichten";
+
+
+PROC dateiverwaltung (INT CONST wahl nr) :
+
+  enable stop;
+  SELECT wahl nr OF
+  CASE 0 : arbeitsbereich bestimmen
+  CASE 1 : dateiuebersicht
+  CASE 2 : datei loeschen
+  CASE 3 : datei umbenennen
+  CASE 4 : datei kopieren
+  CASE 5 : speicherbelegung datei
+  CASE 6 : datei reorganisieren
+  OTHERWISE ggf dialogfenster loeschen
+  END SELECT;
+  storage kontrollieren .
+
+arbeitsbereich bestimmen :
+  arbeitsbereich := name (myself) .
+
+datei reorganisieren :
+  ausfuehrung (PROC (TEXT CONST) aufraeumen, 0) .
+
+datei umbenennen :
+  ausfuehrung (PROC (TEXT CONST) umbenennen, 0) .
+
+datei loeschen :
+  ausfuehrung (PROC (TEXT CONST) loeschen, 0) .
+
+dateiuebersicht :
+  disable stop;
+  DATASPACE VAR list ds := nilspace;
+  FILE VAR f := sequential file (output, list ds);
+  list (f);
+  IF NOT is error THEN
+    edit (f, rechts, "SHOW/Uebersicht", FALSE)
+  END IF;
+  forget (list ds);
+  enable stop;
+  tastenpuffer loeschen .
+
+datei kopieren :
+  ausfuehrung (PROC (TEXT CONST) ds kopieren, 0) .
+
+speicherbelegung datei :
+  ausfuehrung (PROC (TEXT CONST) speicherbelegung, 0) .
+
+ggf dialogfenster loeschen :
+  IF wahl nr = -1 THEN
+    dialogfenster loeschen;
+    fenster veraendert (fuss)
+  ELIF wahl nr = -2 THEN
+    fusszeile ausgeben (p task, arbeitsbereich)
+  END IF .
+
+END PROC dateiverwaltung;
+
+PROC tastenpuffer loeschen :
+
+  WHILE getcharety <> niltext REP END REP
+
+END PROC tastenpuffer loeschen;
+
+PROC aufraeumen (TEXT CONST dateiname) :
+
+  IF type (old (dateiname)) = eudas typ THEN
+    reorganisiere (dateiname)
+  ELSE
+    reorganize (dateiname)
+  END IF
+
+END PROC aufraeumen;
+
+PROC umbenennen (TEXT CONST dateiname) :
+
+  TEXT VAR neuer name := dateiname;
+  IF exists (dateiname) THEN
+    editget (t neuer name, neuer name, "", "GET/rename")
+  END IF;
+  rename (dateiname, neuer name)
+
+END PROC umbenennen;
+
+PROC loeschen (TEXT CONST dateiname) :
+
+  IF offene datei THEN
+    errorstop (nicht in offene datei)
+  ELIF exists (dateiname) CAND frage bejaht THEN
+    forget (dateiname, quiet)
+  END IF .
+
+offene datei :
+  index der arbeitskopie (dateiname) <> 0 .
+
+frage bejaht :
+  ja (textdarstellung (dateiname) + t loeschen, "JA/forget") .
+
+END PROC loeschen;
+
+PROC ds kopieren (TEXT CONST dateiname) :
+
+  TEXT VAR zieldatei := niltext;
+  editget (t zieldatei, zieldatei, "", "GET/copy");
+  copy (dateiname, zieldatei)
+
+END PROC ds kopieren;
+
+PROC speicherbelegung (TEXT CONST dateiname) :
+
+  dialog; 
+  out (textdarstellung (dateiname));
+  IF exists (dateiname) THEN
+    out (t belegt);
+    put (ds pages (old (dateiname)) DIV 2);
+    out (t kb)
+  ELSE
+    out (t existiert nicht)
+  END IF
+
+END PROC speicherbelegung;
+
+
+(*********************** Menue 'Archiv' ***********************************)
+
+TEXT VAR
+  letzter archivname := niltext,
+  zielarchiv := "ARCHIVE";
+
+INT VAR zielstation := 0;
+
+THESAURUS VAR archivinhalt;
+
+BOOL VAR
+  archivzugriff,
+  ziel ist manager := TRUE,
+  dialogue state;
+
+LET
+  p zielarchiv =  #1072#
+    " Ziel: ",
+  archiv heisst =  #1073#
+    "Archiv heisst ",
+  name des archivs =  #1074#
+    "Name des Archivs:",
+  name zielarchiv =  #1075#
+    "Name Zielarchiv:",
+  nr zielstation =  #1076#
+    "Nr. der Zielstation (od. RETURN):",
+  ist ziel archivmanager =  #1077#
+    "Ist das Zielarchiv ein Archivmanager",
+  diskette formatieren =  #1078#
+    "Archivdiskette vorher formatieren",
+  neuer archivname =  #1079#
+    "Neuer Archivname:",
+  t im system ueberschreiben =  #1080#
+    " im System ueberschreiben",
+  t auf archiv loeschen =  #1081#
+    " auf Archiv loeschen",
+  t archiv =  #1082#
+    "Archiv ",
+  t ueberschreiben =  #1083#
+    " ueberschreiben",
+  frage archiv initialisieren =  #1084#
+    "Archiv initialisieren",
+  t auf archiv ueberschreiben =  #1085#
+    " auf Archiv ueberschreiben";
+
+LET
+  t passwort =  #1095#
+    "Passwort: ",
+  passwortwiederholung falsch =  #1096#
+    "Passwort stimmt nicht mit der ersten Eingabe überein",
+  bitte passwort wiederholen =  #1097#
+    "Passwort zur Kontrolle bitte nochmal eingeben.",
+  passwort loeschen =  #1098#
+    "Passwort loeschen",
+  falsche stationsnr =  #1099#
+    "Unzlaessige Stationsnummer",
+  task ist kein manager =  #1100#
+    "Angegebene Task ist kein Manager";
+
+
+PROC archivverwaltung (INT CONST wahl nr) :
+
+  enable stop;
+  SELECT wahl nr OF
+  CASE 0 : eintritt
+  CASE 1 : archivuebersicht
+  CASE 2 : uebersicht drucken
+  CASE 3 : datei vom archiv holen
+  CASE 4 : datei auf archiv sichern
+  CASE 5 : auf archiv loeschen
+  CASE 6 : archiv initialisieren
+  CASE 7 : zielarchiv einstellen
+  CASE 8 : passwort einstellen
+  CASE 9 : reservieren
+  OTHERWISE verlassen
+  END SELECT;
+  storage kontrollieren .
+
+eintritt :
+  archivzugriff := FALSE .
+
+datei auf archiv sichern :
+  IF ziel ist manager THEN
+    archivnamen holen
+  END IF;
+  bitte warten;
+  archivinhalt := ALL eudas archiv;
+  ausfuehrung (PROC (TEXT CONST) archivieren, 0) .
+
+datei vom archiv holen :
+  disable stop;
+  archiv anmelden;
+  bitte warten;
+  archivinhalt := ALL eudas archiv;
+  IF falscher name THEN archivinhalt := ALL eudas archiv END IF;
+  enable stop;
+  auf archiv (PROC (TEXT CONST) holen) .
+
+auf archiv loeschen :
+  IF ziel ist manager THEN
+    archivnamen holen
+  END IF;
+  bitte warten;
+  archivinhalt := ALL eudas archiv;
+  auf archiv (PROC (TEXT CONST) auf archiv loeschen) .
+
+archivuebersicht :
+  archiv anmelden;
+  disable stop;
+  bitte warten;
+  DATASPACE VAR list ds := nilspace;
+  f :=sequential file (output, list ds);
+  list (f, eudas archiv);
+  IF falscher name THEN list (f, eudas archiv) END IF;
+  IF NOT is error THEN
+    modify (f); to line (f, 1);
+    write record (f, headline (f));
+    headline (f, niltext);
+    edit (f, rechts, "SHOW/Uebersicht", FALSE)
+  END IF;
+  forget (list ds);
+  tastenpuffer loeschen;
+  enable stop .
+
+uebersicht drucken :
+  archiv anmelden;
+  namen generieren;
+  FILE VAR f := sequential file (output, list name);
+  disable stop;
+  bitte warten;
+  list (f, eudas archiv);
+  IF falscher name THEN list (f, eudas archiv) END IF;
+  enable stop;
+  modify (f);
+  insert record (f);
+  write record (f, headline (f));
+  print (list name);
+  forget (list name, quiet) .
+
+namen generieren :
+  INT VAR i := 0;
+  TEXT VAR list name;
+  REP
+    i INCR 1;
+    list name := "Archivliste " + text (i)
+  UNTIL NOT exists (list name) END REP .
+
+archiv initialisieren :
+  archiv anmelden;
+  IF ja (diskette formatieren, "JA/format") THEN
+    archiv formatieren
+  ELIF benanntes archiv THEN
+    IF loeschen verneint THEN LEAVE archiv initialisieren END IF
+  ELSE
+    IF initialisieren verneint THEN LEAVE archiv initialisieren END IF
+  END IF;
+  neuen namen erfragen;
+  tatsaechlich initialisieren .
+
+archiv formatieren :
+  bitte warten;
+  disable stop;
+  set command dialogue false;
+  format (eudas archiv);
+  reset command dialogue;
+  enable stop .
+
+benanntes archiv :
+  reserve ("", eudas archiv);
+  bitte warten;
+  disable stop;
+  archivinhalt := ALL eudas archiv;
+  BOOL CONST ergebnis := falscher name;
+  clear error;
+  enable stop;
+  ergebnis .
+
+loeschen verneint :
+  NOT ja (t archiv + textdarstellung (letzter archivname) + t ueberschreiben,
+          "JA/archiv loeschen") .
+
+initialisieren verneint :
+  NOT ja (frage archiv initialisieren, "JA/archiv init") .
+
+neuen namen erfragen :
+  editget (neuer archivname, letzter archivname, "", "GET/Archivname");
+  reserve (letzter archivname, eudas archiv) .
+
+tatsaechlich initialisieren :
+  bitte warten;
+  disable stop;
+  set command dialogue false;
+  clear (eudas archiv);
+  reset command dialogue .
+
+zielarchiv einstellen :
+  TEXT VAR zieltaskname := zielarchiv;
+  IF archivzugriff THEN
+    release (eudas archiv); archivzugriff := FALSE
+  END IF;
+  editget (name zielarchiv, zieltaskname, "", "GET/Zielarchiv");
+  IF zieltaskname = niltext THEN
+    LEAVE zielarchiv einstellen
+  END IF;
+  zielstation einlesen;
+  ziel ist manager := ja (ist ziel archivmanager, "JA/Zielmanager");
+  werte uebertragen;
+  waehlbar (6, 6, ziel ist manager);
+  waehlbar (6, 9, NOT ziel ist manager);
+  bildschirm neu;
+  fusszeile ausgeben (p zielarchiv, stationsnr + zielarchiv) .
+
+zielstation einlesen :
+  TEXT VAR rechner := text (station (myself));
+  IF station (myself) <> 0 THEN
+    editget (nr zielstation, rechner, "", "GET/Zielstation")
+  END IF .
+
+werte uebertragen :
+  zielstation := int (rechner);
+  IF NOT last conversion ok THEN
+    errorstop (falsche stationsnr)
+  END IF;
+  zielarchiv := zieltaskname;
+  teste auf manager (eudas archiv) .
+
+stationsnr :
+  IF zielstation = 0 THEN
+    niltext
+  ELSE
+    text (zielstation) + "/"
+  END IF .
+
+reservieren :
+  TEXT VAR parameter := niltext;
+  editget (name des archivs, parameter, "", "GET/Archivname");
+  reserve (parameter, eudas archiv);
+  archivzugriff := TRUE .
+
+verlassen :
+  IF wahl nr = -1 THEN
+    IF archivzugriff THEN
+      release (eudas archiv)
+    END IF;
+    dialogfenster loeschen;
+    fenster veraendert (fuss)
+  ELIF wahl nr = -2 THEN
+    fusszeile ausgeben (p zielarchiv, stationsnr + zielarchiv)
+  END IF .
+
+END PROC archivverwaltung;
+
+TASK PROC eudas archiv :
+
+  IF zielstation = 0 THEN
+    task (zielarchiv)
+  ELSE
+    zielstation / zielarchiv
+  END IF
+
+END PROC eudas archiv;
+
+PROC teste auf manager (TASK CONST t) :
+
+  INT VAR i;
+  IF station (t) = station (myself) THEN
+    FOR i FROM 1 UPTO 5 REP
+      IF status (t) = 2 OR status (t) = 6 THEN
+        LEAVE teste auf manager
+      END IF;
+      pause (10)
+    END REP;
+    errorstop (task ist kein manager)
+  END IF
+
+END PROC teste auf manager;
+
+PROC archivnamen holen :
+
+  TEXT VAR neuer archivname := letzter archivname;
+  editget (name des archivs, neuer archivname, "", "GET/Archivname");
+  IF NOT archivzugriff OR neuer archivname <> letzter archivname THEN
+    reserve (neuer archivname, eudas archiv);
+    archivzugriff := TRUE
+  END IF;
+  letzter archivname := neuer archivname
+ 
+END PROC archivnamen holen;
+
+PROC archiv anmelden :
+
+  IF NOT archivzugriff AND ziel ist manager THEN
+    reserve (letzter archivname, eudas archiv);
+    archivzugriff := TRUE
+  END IF
+
+END PROC archiv anmelden;
+
+BOOL PROC falscher name :
+
+  IF ziel ist manager AND is error THEN
+    TEXT CONST meldung := errormessage;
+    IF subtext (meldung, 1, 14) = archiv heisst CAND
+       subtext (meldung, 16, 20) <> "?????" THEN
+      clear error;
+      nochmal anmelden;
+      LEAVE falscher name WITH TRUE
+    END IF
+  END IF;
+  FALSE .
+
+nochmal anmelden :
+  letzter archivname := subtext (meldung, 16, length (meldung) - 1);
+  reserve (letzter archivname, eudas archiv) .
+
+END PROC falscher name;
+
+PROC archivieren (TEXT CONST dateiname) :
+
+  disable stop;
+  IF NOT (archivinhalt CONTAINS dateiname) COR auf archiv ueberschreiben THEN
+    vorher eventuell sichern;
+    bitte warten;
+    set command dialogue false;
+    save (dateiname, eudas archiv);
+    reset command dialogue
+  END IF .
+
+auf archiv ueberschreiben :
+  ja (textdarstellung (dateiname) + t auf archiv ueberschreiben, "JA/save") .
+
+vorher eventuell sichern :
+  INT CONST nr := index der arbeitskopie (dateiname);
+  IF nr > 0 CAND aendern erlaubt CAND inhalt veraendert (nr) THEN
+    einzelsicherung (nr)
+  END IF .
+
+END PROC archivieren;
+
+PROC holen (TEXT CONST dateiname) :
+
+  disable stop;
+  IF NOT exists (dateiname) COR eigene datei ueberschreiben THEN
+    bitte warten;
+    set command dialogue false;
+    fetch (dateiname, eudas archiv);
+    reset command dialogue
+  END IF .
+
+eigene datei ueberschreiben :
+  ja (textdarstellung (dateiname) + t im system ueberschreiben, "JA/fetch") .
+
+END PROC holen;
+
+PROC auf archiv loeschen (TEXT CONST dateiname) :
+
+  disable stop;
+  IF NOT (archivinhalt CONTAINS dateiname) COR auf archiv loeschen THEN
+    bitte warten;
+    set command dialogue false;
+    erase (dateiname, eudas archiv);
+    reset command dialogue
+  END IF .
+
+auf archiv loeschen :
+  ja (textdarstellung (dateiname) + t auf archiv loeschen, "JA/erase") .
+
+END PROC auf archiv loeschen;
+
+PROC set command dialogue false :
+
+  dialogue state := command dialogue;
+  command dialogue (FALSE)
+
+END PROC set command dialogue false;
+
+PROC reset command dialogue :
+
+  command dialogue (dialogue state)
+
+END PROC reset command dialogue;
+
+PROC auf archiv (PROC (TEXT CONST) operation) :
+
+  TEXT VAR dateiname := niltext;
+  editget (name der datei, dateiname, "z", "GET/Dateiname");
+  IF dateiname = esc z THEN
+    uebersicht zeigen
+  ELSE
+    last param (dateiname);
+    operation (dateiname)
+  END IF .
+
+uebersicht zeigen :
+  dateinamen sammeln (archivinhalt, 0);
+  auswahl anbieten ("EUDAS-Archivauswahl", rechts, "AUSWAHL/Archiv",
+                    PROC (TEXT VAR, INT CONST) als text);
+  operation ausfuehren (PROC (TEXT CONST) operation) .
+
+END PROC auf archiv;
+
+PROC passwort einstellen :
+
+  BOUND ROW 2 TEXT VAR pw;
+  DATASPACE VAR ds := nilspace;
+  pw := ds;
+  disable stop;
+  passwort holen (pw (1));
+  IF pw (1) = niltext THEN
+    fragen ob loeschen
+  ELSE
+    doppelt eingeben
+  END IF;
+  forget (ds) .
+
+fragen ob loeschen :
+  IF ja (passwort loeschen, "JA/pw loeschen") THEN
+    dialog; dialog;
+    enter password (niltext)
+  END IF .
+
+doppelt eingeben :
+  dialog; out (bitte passwort wiederholen);
+  passwort holen (pw (2));
+  IF pw (1) <> pw (2) THEN
+    errorstop (passwortwiederholung falsch)
+  ELSE
+    dialog; dialog;
+    enter password (pw (1))
+  END IF .
+
+END PROC passwort einstellen;
+
+PROC passwort holen (TEXT VAR wort) :
+
+  enable stop;
+  dialog; out (t passwort);
+  get secret line (wort)
+
+END PROC passwort holen;
+
+
+(******************** Parameter-Auswahl ***********************************)
+
+SATZ VAR sammel;
+
+LET
+  name der datei =  #1086#
+    "Name der Datei:",
+  name der zieldatei =  #1087#
+    "Name der Zieldatei:",
+  name der verarbeitungsvorschrift =  #1088#
+    "Name der Verarbeitungsvorschrift:",
+  name des druckmusters =  #1089#
+    "Name des Druckmusters:",
+  name der quelldatei =  #1090#
+    "Name der Quelldatei:";
+
+LET
+  keine datei zur auswahl =  #1101#
+    "Keine Datei zur Auswahl vorhanden.";
+
+TEXT VAR
+  aktueller prompt := name der datei,
+  offene;
+
+
+PROC dateinamen sammeln (THESAURUS CONST t, INT CONST typ) :
+
+  uebergebene namen sammeln;
+  offene dateien merken;
+  zusaetzliche namen dazu;
+  meldung falls keine datei .
+
+offene dateien merken :
+  offene := niltext;
+  INT VAR i;
+  FOR i FROM 1 UPTO anzahl dateien REP
+    INT CONST t link := feldindex (sammel, eudas dateiname (i));
+    IF t link > 0 THEN
+      offene CAT code (t link)
+    END IF
+  END REP .
+
+uebergebene namen sammeln :
+  INT VAR
+    stelle := 1,
+    von := 0;
+  satz initialisieren (sammel);
+  REP
+    get (t, feldpuffer, von);
+    IF feldpuffer = niltext THEN
+      LEAVE uebergebene namen sammeln
+    ELIF typ = 0 COR type (old (feldpuffer)) = typ THEN
+      feld aendern (sammel, stelle, feldpuffer);
+      stelle INCR 1
+    END IF
+  END REP .
+
+zusaetzliche namen dazu :
+  von := 0;
+  REP
+    get (zusaetzliche namen, feldpuffer, von);
+    IF feldpuffer = niltext THEN
+      LEAVE zusaetzliche namen dazu
+    ELIF NOT (t CONTAINS feldpuffer) THEN
+      feld aendern (sammel, stelle, feldpuffer);
+      stelle INCR 1
+    END IF
+  END REP .
+
+meldung falls keine datei :
+  IF stelle = 1 THEN
+    dialog; out (keine datei zur auswahl);
+    errorstop (niltext)
+  END IF .
+
+END PROC dateinamen sammeln;
+
+PROC als text (TEXT VAR inhalt, INT CONST stelle) :
+
+  IF stelle < 256 THEN
+    feld lesen (sammel, stelle, inhalt);
+    IF pos (offene, code (stelle)) > 0 THEN
+      inhalt := "<!> " + textdarstellung (inhalt)
+    ELIF inhalt <> niltext THEN
+      inhalt := textdarstellung (inhalt)
+    END IF
+  ELSE
+    inhalt := niltext
+  END IF
+
+END PROC als text;
+
+PROC operation ausfuehren (PROC (TEXT CONST) operation) :
+
+  INT VAR
+    stelle := 1;
+  REP
+    IF wahl (stelle) = 0 THEN
+      LEAVE operation ausfuehren
+    ELSE
+      feld lesen (sammel, wahl (stelle), feldpuffer);
+      dialog; out (text (stelle, 3)); out (". ");
+      out (textdarstellung (feldpuffer));
+      last param (feldpuffer);
+      operation (feldpuffer)
+    END IF;
+    stelle INCR 1
+  END REP
+
+END PROC operation ausfuehren;
+
+PROC ausfuehrung (PROC (TEXT CONST) operation, INT CONST typ) :
+
+  enable stop;
+  TEXT VAR dateiname;
+  dateinamen anfordern (dateiname, typ);
+  IF dateiname = esc z THEN
+    operation ausfuehren (PROC (TEXT CONST) operation)
+  ELSE
+    last param (dateiname);
+    operation (dateiname)
+  END IF
+
+END PROC ausfuehrung;
+
+PROC einzelausfuehrung (PROC (TEXT CONST) operation, INT CONST typ) :
+
+  enable stop;
+  TEXT VAR dateiname;
+  dateinamen anfordern (dateiname, typ);
+  IF dateiname = esc z THEN
+    IF wahl (1) = 0 THEN
+      errorstop (niltext)
+    ELSE
+      feld lesen (sammel, wahl (1), dateiname)
+    END IF
+  END IF;
+  last param (dateiname);
+  operation (dateiname)
+
+END PROC einzelausfuehrung;
+
+PROC dateinamen anfordern (TEXT CONST prompt) :
+
+  aktueller prompt := prompt
+
+END PROC dateinamen anfordern;
+
+PROC dateinamen anfordern (TEXT VAR dateiname, INT CONST typ) :
+
+  IF exists (std) AND (typ = 0 COR type (old (std)) = typ) THEN
+    dateiname := std
+  ELSE
+    dateiname := niltext
+  END IF;
+  disable stop;
+  editget (aktueller prompt, dateiname, "z", "GET/Dateiname");
+  aktueller prompt := name der datei;
+  enable stop;
+  IF dateiname = niltext THEN
+    errorstop (niltext)
+  ELIF dateiname = esc z THEN
+    dateinamen sammeln (all, typ);
+    auswahl anbieten ("EUDAS-Dateiauswahl", rechts, "AUSWAHL/Datei",
+                      PROC (TEXT VAR, INT CONST) als text);
+    bitte warten
+  END IF
+
+END PROC dateinamen anfordern;
+
+PROC aus sammel (TEXT VAR inhalt, INT CONST stelle) :
+
+  IF stelle <= 256 THEN
+    feld lesen (sammel, stelle, inhalt)
+  ELSE
+    inhalt := niltext
+  END IF
+
+END PROC aus sammel;
+
+PROC frage ob einrichten (TEXT CONST dateiname) :
+
+  IF NOT ja (textdarstellung (dateiname) + t neu einrichten, 
+             "JA/einrichten") THEN
+    errorstop (niltext)
+  END IF
+
+END PROC frage ob einrichten;
+
+
+(************************** Editor ****************************************)
+
+LET
+  edit status =  #1091#
+"EDITIEREN:   Abbruch: ESC h   Verlassen: ESC q   Hilfe: ESC ?",
+  show status =  #1092#
+"ZEIGEN:   Blättern: HOP OBEN, HOP UNTEN   Ende: ESC q   Hilfe: ESC ?";
+
+INT VAR return code;
+
+BOOL VAR
+  zeige edit status,
+  feldanzeige erlaubt;
+
+
+PROC edit (FILE VAR f, FENSTER CONST fenster, TEXT CONST hilfe,
+           BOOL CONST aendern) :
+
+  INT VAR x, y, x l, y l;
+  fenstergroesse (fenster, x, y, x l, y l);
+  fenster veraendert (fenster);
+  enable stop;
+  feldanzeige erlauben;
+  zeige edit status := aendern;
+  REP
+    edit status anzeigen;
+    open editor (groesster editor + 1, f, aendern, x, y, x l, y l);
+    edit (groesster editor, "eqvw19dpgn"9"?hF", PROC (TEXT CONST) kdo);
+    return code behandeln
+  END REP .
+
+feldanzeige erlauben :
+  IF aendern AND y < 3 AND y l > 22 AND x < 14 AND x l > 75 THEN
+    feldanzeige erlaubt := TRUE
+  ELSE
+    feldanzeige erlaubt := FALSE
+  END IF .
+
+return code behandeln :
+  SELECT return code OF
+  CASE 0 : LEAVE edit
+  CASE 1 : hilfe anbieten (hilfe, fenster)
+  CASE 2 : errorstop (niltext)
+  END SELECT .
+
+END PROC edit;
+
+PROC edit status anzeigen :
+
+  IF zeige edit status THEN
+    status anzeigen (edit status)
+  ELSE
+    status anzeigen (show status)
+  END IF
+
+END PROC edit status anzeigen;
+
+PROC kdo (TEXT CONST zeichen) :
+
+  return code := pos ("q?h", zeichen);
+  IF return code > 0 THEN
+    return code DECR 1;
+    quit
+  ELIF feldanzeige erlaubt CAND zeichen = "F" THEN
+    feldnamen anzeigen;
+    edit status anzeigen
+  ELSE
+    std kommando interpreter (zeichen);
+    edit status anzeigen;
+    bildschirm neu
+  END IF
+
+END PROC kdo;
+
+PROC feldnamen anzeigen :
+
+  IF anzahl felder > 0 THEN
+    feldnamen sammeln;
+    sammlung zur auswahl anbieten;
+    ergebnis in editor uebernehmen
+  END IF .
+
+feldnamen sammeln :
+  INT VAR feldnr;
+  satz initialisieren (sammel, anzahl felder);
+  FOR feldnr FROM 1 UPTO anzahl felder REP
+    feldnamen lesen (feldnr, feldpuffer);
+    feld aendern (sammel, feldnr, feldpuffer)
+  END REP .
+
+sammlung zur auswahl anbieten :
+  auswahl anbieten ("EUDAS-Editfelder", rechts, "AUSWAHL/Feldnamen",
+                    PROC (TEXT VAR, INT CONST) aus sammel) .
+
+ergebnis in editor uebernehmen :
+  INT VAR stelle := 1;
+  WHILE wahl (stelle) > 0 REP
+    IF stelle > 1 THEN push (blank) END IF;
+    feldnamen lesen (wahl (stelle), feldpuffer);
+    push (""""); push (feldpuffer); push ("""");
+    stelle INCR 1
+  END REP .
+
+END PROC feldnamen anzeigen;
+
+END PACKET eudas steuerung;
+

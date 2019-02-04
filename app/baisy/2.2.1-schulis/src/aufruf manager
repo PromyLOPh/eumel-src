@@ -1,0 +1,39 @@
+PACKET aufrufmanagerDEFINES starteaufrufmanager:LET ack=0,nak=1,naksingletask
+=2;LET modussingleuser=1;PROC starteaufrufmanager:starteaufrufmanager(0)END 
+PROC starteaufrufmanager;PROC starteaufrufmanager(INT CONST modus):TASK VAR 
+sohn;initialisiere;REP warteaufdatenbankkennungundkanal;IF korrektTHEN 
+gruendesohntaskmitkanalnrunddatenbankkennungFI PER .initialisiere:break;
+disablestop;setautonom;initsybifunktionen;.warteaufdatenbankkennungundkanal:
+TASK VAR sender;INT VAR kanalnr;DATASPACE VAR datenbankkennung;clearerror;
+wait(datenbankkennung,kanalnr,sender).korrekt:NOT iserror.
+gruendesohntaskmitkanalnrunddatenbankkennung:IF modus=modussingleuserCAND 
+sohntaskschoneingerichtetTHEN quittung:=naksingletask;send(sender,quittung,
+niltask)ELSE gruendesohntask;meldesohnnameansenderFI .gruendesohntask:
+gruenden;IF korrektTHEN mitkanalnrunddatenbankkennungversorgenFI .gruenden:
+begin(PROC stellvertreter,sohn).mitkanalnrunddatenbankkennungversorgen:BOOL 
+VAR erfolg;call(sohn,kanalnr,datenbankkennung,erfolg).meldesohnnameansender:
+INT VAR quittung;IF erfolgTHEN quittung:=ackELSE quittung:=nakFI ;send(sender
+,quittung,sohn).END PROC starteaufrufmanager;BOOL PROC 
+sohntaskschoneingerichtet:accesscatalogue;exists(son(myself))END PROC 
+sohntaskschoneingerichtet;PROC stellvertreter:
+warteaufkanalnrunddatenbankkennung;geheaufkanalundsetzewerte;IF erfolgTHEN 
+warteaufauftrag;fuehreauftragausFI ;selbstmord.erfolg:NOT iserror.selbstmord:
+end(myself).warteaufkanalnrunddatenbankkennung:disablestop;DATASPACE VAR ds;
+TASK VAR vater;INT VAR kanalnr;wait(ds,kanalnr,vater).
+geheaufkanalundsetzewerte:INT VAR quittung;IF erfolgTHEN #quittung:=ack;
+oeffnedatenbank(ds)#datenbankeneroeffnenELSE quittung:=nakFI ;continue(
+kanalnr);send(vater,quittung,ds);forget(ds);initmeldungsfunktionen.
+datenbankeneroeffnen:oeffnedatenbank;fetchdd(schulisdbname);IF dbopen(
+schulisdbname)THEN systemdboff;quittung:=ackELSE quittung:=nakFI .
+warteaufauftrag:INT VAR knotenname;TASK VAR auftraggeber;REP wait(ds,
+knotenname,auftraggeber)UNTIL korrekterauftragPER .korrekterauftrag:
+knotenname>0.fuehreauftragaus:setzesystembaumundaktuellenknoten(ds,knotenname
+);starteanwendung;IF erfolgTHEN quittung:=ackELSE quittung:=nakFI ;break(
+quiet);send(auftraggeber,quittung,ds);forget(ds).END PROC stellvertreter;
+PROC call(TASK CONST zielmanager,INT CONST kanal,DATASPACE VAR ds,BOOL VAR 
+erfolg):INT VAR replycode;call(zielmanager,kanal,ds,replycode);erfolg:=
+replycode=ack;forget(ds)END PROC call;PROC send(TASK CONST sender,INT CONST 
+quittung,TASK CONST sohn):DATASPACE VAR ds:=nilspace;IF quittung=ackTHEN 
+BOUND TASK VAR t:=ds;t:=sohnFI ;send(sender,quittung,ds);forget(ds)END PROC 
+send;END PACKET aufrufmanager;
+

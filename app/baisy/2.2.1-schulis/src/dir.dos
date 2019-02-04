@@ -1,0 +1,187 @@
+PACKET dirDEFINES opendir,insertdirentry,deletedirentry,initdirds,fileinfo,
+formatdir,dirlist,fileexists,subdirexists,allfiles,allsubdirs:LET 
+maxdirentrys=1000;INITFLAG VAR dirblockdsused:=FALSE ;DATASPACE VAR 
+dirblockds;BOUND STRUCT (ALIGN dummy,ROW 64REAL daten)VAR dirblock;REAL VAR 
+lastreaddirblockno;PROC initdirblockio:lastreaddirblockno:=-1.0;IF NOT 
+initialized(dirblockdsused)THEN dirblockds:=nilspace;dirblock:=dirblockdsFI .
+END PROC initdirblockio;PROC readdirblock(REAL CONST blocknr):IF 
+lastreaddirblockno<>blocknrTHEN lastreaddirblockno:=-1.0;
+readdiskblockandcloseworkiferror(dirblockds,2,blocknr);lastreaddirblockno:=
+blocknrFI .END PROC readdirblock;PROC writedirblock(REAL CONST blocknr):
+writediskblockandcloseworkiferror(dirblockds,2,blocknr);lastreaddirblockno:=
+blocknr.END PROC writedirblock;PROC writedirblock:IF lastreaddirblockno<0.0
+THEN errorstop("Lesefehler")FI ;writedirblock(lastreaddirblockno)END PROC 
+writedirblock;PROC getdirentry(TEXT VAR entrybuffer,INT CONST blockentryno):
+entrybuffer:=32*".";INT CONST replaceoffset:=4*blockentryno;replace(
+entrybuffer,1,dirblock.daten[replaceoffset+1]);replace(entrybuffer,2,dirblock
+.daten[replaceoffset+2]);replace(entrybuffer,3,dirblock.daten[replaceoffset+3
+]);replace(entrybuffer,4,dirblock.daten[replaceoffset+4]).END PROC 
+getdirentry;PROC putdirentry(TEXT CONST entrybuffer,INT CONST blockentryno):
+INT CONST offset:=4*blockentryno;dirblock.daten[offset+1]:=entrybufferRSUB 1;
+dirblock.daten[offset+2]:=entrybufferRSUB 2;dirblock.daten[offset+3]:=
+entrybufferRSUB 3;dirblock.daten[offset+4]:=entrybufferRSUB 4.END PROC 
+putdirentry;LET DIRPOS =REAL ;DIRPOS PROC dirpos(REAL CONST blocknr,INT 
+CONST entrynr):blocknr*16.0+real(entrynr).END PROC dirpos;REAL PROC blockno(
+DIRPOS CONST p):floor(p/16.0)END PROC blockno;INT PROC entryno(DIRPOS CONST p
+):int(pMOD 16.0)END PROC entryno;PROC incr(DIRPOS VAR p):pINCR 1.0.END PROC 
+incr;LET FREELIST =STRUCT (ROW maxdirentrysDIRPOS stack,INT stacktop,DIRPOS 
+beginoffreearea,endofdir,REAL dirroot);PROC initfreelist(FREELIST VAR flist,
+REAL CONST root):flist.stacktop:=0;flist.beginoffreearea:=dirpos(9.0e99,0);
+flist.endofdir:=dirpos(-1.0,0);flist.dirroot:=root.END PROC initfreelist;
+PROC store(FREELIST VAR flist,DIRPOS CONST freepos):flist.stacktopINCR 1;
+flist.stack[flist.stacktop]:=freepos.END PROC store;PROC storebeginoffreearea
+(FREELIST VAR flist,DIRPOS CONST begin):flist.beginoffreearea:=beginEND PROC 
+storebeginoffreearea;PROC storeendofdir(FREELIST VAR flist,DIRPOS CONST end):
+flist.endofdir:=endEND PROC storeendofdir;DIRPOS PROC freedirpos(FREELIST 
+VAR flist):enablestop;DIRPOS VAR result;IF flist.stacktop>0THEN popELIF NOT 
+freeareaemptyTHEN firstoffreeareaELIF expansionallowededTHEN 
+allocatenewdircluster;result:=freedirpos(flist)ELSE errorstop(
+"Directory voll")FI ;result.pop:result:=flist.stack[flist.stacktop];flist.
+stacktopDECR 1.freeareaempty:flist.beginoffreearea>flist.endofdir.
+firstoffreearea:result:=flist.beginoffreearea;incr(flist.beginoffreearea).
+expansionalloweded:flist.dirroot>=2.0.allocatenewdircluster:REAL CONST 
+newdircluster:=availablefatentry;REAL VAR lastentryno;
+searchlastentrynooffatchain;fatentry(newdircluster,lastfatchainentry);
+fatentry(lastentryno,newdircluster);writefat;storebeginoffreearea(flist,
+dirpos(firstnewblock,0));storeendofdir(flist,dirpos(lastnewblock,15));
+initnewdircluster.searchlastentrynooffatchain:lastentryno:=flist.dirroot;
+WHILE NOT islastfatchainentry(fatentry(lastentryno))REP lastentryno:=fatentry
+(lastentryno)PER .firstnewblock:beginofcluster(newdircluster).lastnewblock:
+beginofcluster(newdircluster)+real(sectorspercluster-1).initnewdircluster:
+TEXT CONST emptydirentry:=32*"�";INT VAR i;FOR iFROM 0UPTO 15REP putdirentry(
+emptydirentry,i)PER ;disablestop;REAL VAR blockno:=firstnewblock;WHILE 
+blockno<=lastnewblockREP writedirblock(blockno)PER .END PROC freedirpos;LET 
+FILEENTRY =STRUCT (TEXT dateandtime,REAL size,firstcluster,DIRPOS dirpos),
+FILELIST =STRUCT (THESAURUS thes,ROW maxdirentrysFILEENTRY entry);PROC 
+initfilelist(FILELIST VAR flist):flist.thes:=emptythesaurus.END PROC 
+initfilelist;PROC storefileentry(FILELIST VAR flist,TEXT CONST entrytext,
+DIRPOS CONST position):INT VAR entryindex;insert(flist.thes,filename,
+entryindex);storefileentry(flist.entry[entryindex],entrytext,position).
+filename:TEXT CONST namepre:=compress(subtext(entrytext,1,8)),namepost:=
+compress(subtext(entrytext,9,11));IF namepost<>""THEN namepre+"."+namepost
+ELSE namepreFI .END PROC storefileentry;PROC storefileentry(FILEENTRY VAR 
+fentry,TEXT CONST entrytext,DIRPOS CONST position):fentry.firstcluster:=real(
+entrytextISUB 14);fentry.dateandtime:=dosdate+"  "+dostime;fentry.size:=dint(
+entrytextISUB 15,entrytextISUB 16);fentry.dirpos:=position.dosdate:day+"."+
+month+"."+year.day:text2(code(entrytextSUB 25)MOD 32).month:text2(code(
+entrytextSUB 25)DIV 32+8*(code(entrytextSUB 26)MOD 2)).year:text(80+code(
+entrytextSUB 26)DIV 2,2).dostime:hour+":"+minute.hour:text2(code(entrytext
+SUB 24)DIV 8).minute:text2(code(entrytextSUB 23)DIV 32+8*(code(entrytextSUB 
+24)MOD 8)).END PROC storefileentry;TEXT PROC text2(INT CONST intvalue):IF 
+intvalue<10THEN "0"+text(intvalue)ELSE text(intvalue)FI .END PROC text2;
+DIRPOS PROC fileentrypos(FILELIST CONST flist,TEXT CONST filename):INT CONST 
+linkindex:=link(flist.thes,filename);IF linkindex=0THEN errorstop(
+"Die Datei """+filename+""" gibt es nicht")FI ;flist.entry[linkindex].dirpos.
+END PROC fileentrypos;PROC delete(FILELIST VAR flist,TEXT CONST filename):
+INT VAR dummy;delete(flist.thes,filename,dummy).END PROC delete;PROC fileinfo
+(FILELIST CONST flist,TEXT CONST filename,REAL VAR firstclusterno,storage):
+INT CONST linkindex:=link(flist.thes,filename);IF linkindex=0THEN errorstop(
+"Die Datei """+filename+""" gibt es nicht")FI ;firstclusterno:=flist.entry[
+linkindex].firstcluster;storage:=flist.entry[linkindex].sizeEND PROC fileinfo
+;BOOL PROC contains(FILELIST VAR flist,TEXT CONST filename):flist.thes
+CONTAINS filenameEND PROC contains;PROC list(FILE VAR f,FILELIST CONST flist)
+:INT VAR index:=0;TEXT VAR name;get(flist.thes,name,index);WHILE index>0REP 
+listfile;get(flist.thes,name,index)PER .listfile:write(f,centeredname);write(
+f,"  ");write(f,text(flist.entry[index].size,11,0));write(f,
+" Bytes belegt      ");write(f,flist.entry[index].dateandtime);write(f,
+"  +++  ");write(f,text(flist.entry[index].firstcluster));line(f).
+centeredname:INT VAR pointpos:=pos(name,".");IF pointpos>0THEN namepre+"."+
+namepostELSE text(name,12)FI .namepre:text(subtext(name,1,pointpos-1),8).
+namepost:text(subtext(name,pointpos+1,pointpos+4),3).END PROC list;LET 
+DIRENTRY =REAL ,DIRLIST =STRUCT (THESAURUS thes,ROW maxdirentrysDIRENTRY 
+entry);PROC initdirlist(DIRLIST VAR dlist):dlist.thes:=emptythesaurus.END 
+PROC initdirlist;PROC storesubdirentry(DIRLIST VAR dlist,TEXT CONST entrytext
+):INT VAR entryindex;insert(dlist.thes,subdirname,entryindex);dlist.entry[
+entryindex]:=real(entrytextISUB 14).subdirname:TEXT CONST namepre:=compress(
+subtext(entrytext,1,8)),namepost:=compress(subtext(entrytext,9,11));IF 
+namepost<>""THEN namepre+"."+namepostELSE namepreFI .END PROC 
+storesubdirentry;REAL PROC firstclusterofsubdir(DIRLIST CONST dlist,TEXT 
+CONST name):INT CONST linkindex:=link(dlist.thes,name);IF linkindex=0THEN 
+errorstop("Das Unterverzeichnis """+name+""" gibt es nicht")FI ;dlist.entry[
+linkindex].END PROC firstclusterofsubdir;BOOL PROC contains(DIRLIST CONST 
+dlist,TEXT CONST subdirname):dlist.thesCONTAINS subdirnameEND PROC contains;
+PROC list(FILE VAR f,DIRLIST CONST dlist):INT VAR index:=0;TEXT VAR name;get(
+dlist.thes,name,index);WHILE index>0REP listdir;get(dlist.thes,name,index)
+PER .listdir:write(f,centeredname);write(f,"   <DIR>");write(f,"  +++  ");
+write(f,text(dlist.entry[index]));line(f).centeredname:INT VAR pointpos:=pos(
+name,".");IF pointpos>0THEN namepre+"."+namepostELSE text(name,12)FI .namepre
+:text(subtext(name,1,pointpos-1),8).namepost:text(subtext(name,pointpos+1,
+pointpos+4),3).END PROC list;LET DIR =BOUND STRUCT (FILELIST filelist,
+DIRLIST dirlist,FREELIST freelist,TEXT path);DIR VAR dir;DATASPACE VAR dirds;
+INITFLAG VAR dirdsused:=FALSE ;PROC opendir(TEXT CONST pathstring):
+initdirblockio;initdirds;dir.path:=pathstring;loadmaindir;TEXT VAR restpath:=
+pathstring;WHILE restpath<>""REP TEXT CONST subdirname:=nextsubdirname(
+restpath);loadsubdirPER .loadmaindir:initfilelist(dir.filelist);initdirlist(
+dir.dirlist);initfreelist(dir.freelist,0.0);storeendofdir(dir.freelist,dirpos
+(lastmaindirsector,15));BOOL VAR waslastdirsector:=FALSE ;REAL VAR blockno:=
+firstmaindirsector;INT VAR i;FOR iFROM 1UPTO dirsectorsREP loaddirblock(
+blockno,waslastdirsector);blocknoINCR 1.0UNTIL waslastdirsectorPER .
+firstmaindirsector:real(beginofdir).lastmaindirsector:real(beginofdir+
+dirsectors-1).loadsubdir:REAL VAR clusterno:=firstclusterofsubdir(dir.dirlist
+,subdirname);waslastdirsector:=FALSE ;initfilelist(dir.filelist);initdirlist(
+dir.dirlist);initfreelist(dir.freelist,clusterno);WHILE NOT 
+islastfatchainentry(clusterno)REP loadsubdirentrysofcluster;clusterno:=
+fatentry(clusterno)UNTIL waslastdirsectorPER .loadsubdirentrysofcluster:
+storeendofdir(dir.freelist,dirpos(lastblocknoofcluster,15));blockno:=
+beginofcluster(clusterno);FOR iFROM 1UPTO sectorsperclusterREP loaddirblock(
+blockno,waslastdirsector);blocknoINCR 1.0UNTIL waslastdirsectorPER .
+lastblocknoofcluster:beginofcluster(clusterno)+real(sectorspercluster-1).END 
+PROC opendir;PROC loaddirblock(REAL CONST blockno,BOOL VAR waslastblock):
+waslastblock:=FALSE ;readdirblock(blockno);INT VAR entryno;TEXT VAR entry;
+FOR entrynoFROM 0UPTO 15REP getdirentry(entry,entryno);processentryUNTIL 
+waslastblockPER .processentry:SELECT pos("�.�",entrySUB 1)OF CASE 1:
+endofdirsearchCASE 2:CASE 3:freeentryOTHERWISE 
+volumelabelorfileentryorsubdirentryEND SELECT .endofdirsearch:waslastblock:=
+TRUE ;storebeginoffreearea(dir.freelist,dirpos(blockno,entryno)).freeentry:
+store(dir.freelist,dirpos(blockno,entryno)).
+volumelabelorfileentryorsubdirentry:INT CONST byte11:=code(entrySUB 12);IF (
+byte11AND 8)>0THEN ELIF (byte11AND 16)>0THEN subdirentryELSE fileentryFI .
+subdirentry:storesubdirentry(dir.dirlist,entry).fileentry:storefileentry(dir.
+filelist,entry,dirpos(blockno,entryno)).END PROC loaddirblock;TEXT PROC 
+nextsubdirname(TEXT VAR pathstring):TEXT VAR subdirname;IF (pathstringSUB 1)
+<>"\"THEN errorstop("ungültige Pfadbezeichnung")FI ;INT CONST backslashpos:=
+pos(pathstring,"\",2);IF backslashpos=0THEN subdirname:=subtext(pathstring,2)
+;pathstring:=""ELSE subdirname:=subtext(pathstring,2,backslashpos-1);
+pathstring:=subtext(pathstring,backslashpos)FI ;dosname(subdirname,readmodus)
+.END PROC nextsubdirname;PROC initdirds:IF initialized(dirdsused)THEN forget(
+dirds)FI ;dirds:=nilspace;dir:=dirds.END PROC initdirds;PROC insertdirentry(
+TEXT CONST name,REAL CONST startcluster,storage):DIRPOS CONST inspos:=
+freedirpos(dir.freelist);TEXT CONST entrystring:=entryname+" "+(10*"�")+
+dostime+dosdate+entrystartcluster+entrystorage;writeentryondisk;
+writeentryindirds.entryname:INT CONST pointpos:=pos(name,".");IF pointpos>0
+THEN subtext(name,1,pointpos-1)+(9-pointpos)*" "+subtext(name,pointpos+1)+(3-
+LENGTH name+pointpos)*" "ELSE name+(11-LENGTH name)*" "FI .dostime:TEXT 
+CONST akttime:=timeofday(clock(1));code((minuteMOD 8)*32)+code(8*hour+minute
+DIV 8).hour:int(subtext(akttime,1,2)).minute:int(subtext(akttime,4,5)).
+dosdate:TEXT CONST aktdate:=date(clock(1));code(32*(monthMOD 8)+day)+code((
+year-80)*2+monthDIV 8).day:int(subtext(aktdate,1,2)).month:int(subtext(
+aktdate,4,5)).year:int(subtext(aktdate,7,8)).entrystartcluster:TEXT VAR 
+buffer2:="12";replace(buffer2,1,lowword(startcluster));buffer2.entrystorage:
+TEXT VAR buffer4:="1234";replace(buffer4,1,lowword(storage));replace(buffer4,
+2,highword(storage));buffer4.writeentryondisk:readdirblock(blockno(inspos));
+putdirentry(entrystring,entryno(inspos));writedirblock.writeentryindirds:
+storefileentry(dir.filelist,entrystring,inspos).END PROC insertdirentry;PROC 
+deletedirentry(TEXT CONST name):TEXT VAR entry;DIRPOS CONST delpos:=
+fileentrypos(dir.filelist,name);readdirblock(blockno(delpos));getdirentry(
+entry,entryno(delpos));putdirentry("�"+subtext(entry,2,32),entryno(delpos));
+writedirblock;delete(dir.filelist,name);store(dir.freelist,delpos).END PROC 
+deletedirentry;PROC formatdir:initdirblockio;initdirds;buildemptydirblock;
+REAL VAR blockno:=real(beginofdir);disablestop;FOR iFROM 1UPTO dirsectorsREP 
+writedirblock(blockno);blocknoINCR 1.0PER ;enablestop;dir.path:="";
+initfilelist(dir.filelist);initdirlist(dir.dirlist);initfreelist(dir.freelist
+,0.0);storebeginoffreearea(dir.freelist,dirpos(real(beginofdir),0));
+storeendofdir(dir.freelist,dirpos(lastmaindirsector,15)).buildemptydirblock:
+INT VAR i;FOR iFROM 0UPTO 15REP putdirentry(32*"�",i)PER .lastmaindirsector:
+real(beginofdir+dirsectors-1).END PROC formatdir;PROC fileinfo(TEXT CONST 
+filename,REAL VAR startcluster,size):fileinfo(dir.filelist,filename,
+startcluster,size)END PROC fileinfo;THESAURUS PROC allfiles:THESAURUS VAR t:=
+dir.filelist.thes;tEND PROC allfiles;THESAURUS PROC allsubdirs:dir.dirlist.
+thesEND PROC allsubdirs;BOOL PROC fileexists(TEXT CONST filename):contains(
+dir.filelist,filename)END PROC fileexists;BOOL PROC subdirexists(TEXT CONST 
+subdirname):contains(dir.dirlist,subdirname)END PROC subdirexists;PROC 
+dirlist(DATASPACE VAR ds):openlistfile;headline(listfile,listfilehead);list(
+listfile,dir.filelist);list(listfile,dir.dirlist).openlistfile:forget(ds);ds
+:=nilspace;FILE VAR listfile:=sequentialfile(output,ds);putline(listfile,"").
+listfilehead:"DOS"+pathstring.pathstring:IF dir.path<>""THEN "     PATH: "+
+dir.pathELSE ""FI .END PROC dirlist;END PACKET dir;
+

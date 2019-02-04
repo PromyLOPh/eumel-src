@@ -1,0 +1,495 @@
+PACKET textalsrowDEFINES ins,del,CAT ,ipos,dump,replaceiac,VSUB ,VISUB :LET 
+nil13byte="�������������",nil4byte="����",nilbyte="�";TEXT VAR g1,code2:="��"
+;PROC ins(TEXT VAR row,INT CONST wo,was):replace(code2,1,was);g1:=subtext(row
+,2*wo-1);row:=subtext(row,1,2*wo-2);rowCAT code2;rowCAT g1END PROC ins;PROC 
+del(TEXT VAR row,INT CONST wo):g1:=subtext(row,2*wo+1);row:=subtext(row,1,2*
+wo-2);rowCAT g1END PROC del;OP CAT (TEXT VAR row,INT CONST was):replace(code2
+,1,was);rowCAT code2END OP CAT ;INT PROC ipos(TEXT CONST row,INT CONST was):
+INT VAR start:=0;replace(code2,1,was);REP start:=pos(row,code2,start+1)UNTIL 
+startMOD 2=1OR start=0PER ;(start+1)DIV 2END PROC ipos;PROC dump(TEXT VAR row
+):INT VAR i;FOR iFROM 1UPTO length(row)DIV 2REP put(rowISUB i)PER END PROC 
+dump;PROC replaceiac(TEXT VAR string,INT CONST wo,TEXT CONST was):IF LENGTH 
+string<=LENGTH was+wo-1THEN stretch(string,LENGTH was+wo-1)FI ;replace(string
+,wo,was)END PROC replaceiac;PROC stretch(TEXT VAR t,INT CONST wo):WHILE 
+LENGTH t<=wo-13REP tCAT nil13bytePER ;WHILE LENGTH t<=wo-4REP tCAT nil4byte
+PER ;WHILE LENGTH t<woREP tCAT nilbytePER END PROC stretch;PROC replaceiac(
+TEXT VAR string,INT CONST wo,INT CONST was):IF LENGTH string<=2*(wo+1)THEN 
+stretch(string,2*(wo+1))FI ;replace(string,wo,was)END PROC replaceiac;INT OP 
+VSUB (TEXT CONST string,INT CONST pos):code(stringSUB pos)END OP VSUB ;INT 
+OP VISUB (TEXT CONST string,INT CONST pos):IF pos*2<=LENGTH stringTHEN string
+ISUB posELSE 0FI END OP VISUB ;END PACKET textalsrow;#-S tand: 09.10.8617:45'
+10398-7873997831794-186313620-87233256154684296-17369#PACKET screenservice
+DEFINES screencursor,screenput,screenpage,screenline,screenout,screenbs,
+screencopy,checkscreen,screenreorganized,screendirty,screenok,
+reorganizescreen:#L screenlets#LET zeilen=24,spalten=80,ganzrichtig=0,
+ganzfalsch=1,teilweisefalsch=3;LET emptyline="�
+";TEXT CONST blankline:=
+spalten*" ";ROW zeilenTEXT VAR screen;TEXT VAR buffer;INT VAR screenstatus:=
+ganzfalsch;ROW zeilenBOOL VAR lineok;INT VAR zeile;INT VAR curx,cury,pbegin,
+pend;.allesrichtig:ROW zeilenBOOL :(TRUE ,TRUE ,TRUE ,TRUE ,TRUE ,TRUE ,TRUE 
+,TRUE ,TRUE ,TRUE ,TRUE ,TRUE ,TRUE ,TRUE ,TRUE ,TRUE ,TRUE ,TRUE ,TRUE ,
+TRUE ,TRUE ,TRUE ,TRUE ,TRUE ).allesfalsch:ROW zeilenBOOL :(FALSE ,FALSE ,
+FALSE ,FALSE ,FALSE ,FALSE ,FALSE ,FALSE ,FALSE ,FALSE ,FALSE ,FALSE ,FALSE ,
+FALSE ,FALSE ,FALSE ,FALSE ,FALSE ,FALSE ,FALSE ,FALSE ,FALSE ,FALSE ,FALSE )
+.;BOOL PROC screenreorganized:screenstatus=ganzrichtigEND PROC 
+screenreorganized;PROC screendirty:screenstatus:=ganzfalsch;END PROC 
+screendirty;PROC screenok:screenstatus:=ganzrichtig;END PROC screenok;PROC 
+screenok(BOOL CONST wie,INT CONST von,bis):IF screenstatus=ganzfalschCAND wie
+THEN lineok:=allesfalsch;screenstatus:=teilweisefalschELIF screenstatus=
+ganzrichtigCAND NOT wieTHEN lineok:=allesrichtig;screenstatus:=
+teilweisefalschFI ;IF screenstatus=teilweisefalschTHEN FOR zeileFROM vonUPTO 
+bisREPEAT lineok(zeile):=wiePER FI END PROC screenok;PROC checkscreen:IF 
+screenstatus<>ganzrichtigTHEN reorganizescreenFI END PROC checkscreen;
+screenpage;PROC screencursor(INT CONST x,y):curx:=x;cury:=yEND PROC 
+screencursor;PROC screenpage:FOR curyFROM 1UPTO zeilen-1REPEAT screen(cury):=
+emptylinePER ;screen(zeilen):=blankline;cury:=1;curx:=1END PROC screenpage;
+PROC screenbs:curxDECR 1END PROC screenbs;PROC screenline:curyINCR 1;curx:=1;
+END PROC screenline;PROC screenput(TEXT CONST was):IF was>""THEN 
+checkworkline;getfirstparttoput;WHILE theremaybearestREP replacepart;
+getnextparttoputPER ;replacerestFI .getfirstparttoput:pbegin:=pos(was," ","�"
+,1);pend:=pos(was,"�","�",pbegin)-1.theremaybearest:pend>0.replacepart:buffer
+:=subtext(was,pbegin,pend);replace(workline,pbegin+curx-1,buffer).
+getnextparttoput:pbegin:=pos(was," ","�",pend+2);IF pbegin>0THEN pend:=pos(
+was,"�","�",pbegin)-1;ELSE pend:=0FI .replacerest:IF pbegin>0THEN IF pbegin=1
+THEN replace(workline,curx,was)ELSE buffer:=subtext(was,pbegin,LENGTH was);
+replace(workline,pbegin+curx-1,buffer)FI ;curxINCR LENGTH was;IF curx>spalten
+THEN curyINCR 1;curxDECR spaltenFI ;FI .END PROC screenput;PROC screenout(
+TEXT CONST was,INT CONST von,bis):buffer:=subtext(was,von,bis);checkscreen;
+IF buffer>""THEN checkworkline;replace(workline,curx,buffer);curxINCR ((bis-
+von)+1);IF curx>spaltenTHEN curyINCR 1;curxDECR spaltenFI FI .workline:screen
+(cury).END PROC screenout;PROC screenout(TEXT CONST was):checkscreen;IF was>
+""THEN checkworkline;replace(workline,curx,was);curxINCR LENGTH was;IF curx>
+spaltenTHEN curyINCR 1;curxDECR spaltenFI FI .END PROC screenout;PROC 
+reorganizescreen:out("�");IF screenstatus=teilweisefalschTHEN FOR zeileFROM 1
+UPTO zeilen-1REPEAT IF lineok(zeile)THEN out("
+")ELSE out(screen(zeile))FI 
+PER ;IF NOT lineok(zeilen)THEN outsubtext(screen(zeilen),1,spalten-1);FI 
+ELSE FOR zeileFROM 1UPTO zeilen-1REPEAT out(screen(zeile))PER ;outsubtext(
+screen(zeilen),1,spalten-1);FI ;cursor(curx,cury);screenok;END PROC 
+reorganizescreen;PROC screencopy(FILE VAR f):putline(f,"#page#");INT VAR 
+zeile;FOR zeileFROM 1UPTO zeilenREPEAT TEXT VAR t:=screen(zeile);changeall(t,
+"�"," ");changeall(t,"�"," ");putline(f,t)PER ;END PROC screencopy;PROC 
+reorganizescreen(INT CONST zeile,von,bis):cursor(von,zeile);IF LENGTH screen(
+zeile)<vonTHEN outsubtext(blankline,von,bis)ELSE outsubtext(screen(zeile),von
+,bis)FI END PROC reorganizescreen;.checkworkline:IF LENGTH (workline)<3THEN 
+workline:=blankline;FI .workline:screen(cury).END PACKET screenservice;
+PACKET maskDEFINES TAG ,:=,nil,show,put,get,putget,leavingcode,xsize,ysize,
+fields,fieldexists,formline,setautoesc,executecommandcode,length,cursor,
+clearfield,definefield,setlasteditvalues,setneweditvalues,searchfield,
+firstfield,nextfield,priorfield,fieldinfos,setfieldinfos,symbolicname,
+auskunftsnr,fieldwithname,store,storefalse,page,SCROLL ,design,designfields,
+designfield,designform,trans,TO ,transform,#V alt#fill,CLEARBY :#V std##L 
+eumelcodes##L codeintlets#LET invers="",endinvers="",left="�",right="�",
+home="�";LET chop=1,chome=1,cvor=2,cfeldende=18,crueck=8,cfeldanf=20,choch=3,
+cfeldrueck=19,crunter=10,causkunft=0,ctab=9,csettab=21,ceinf=11,caufbrech=22,
+causf=12,clearn=26,cfeldvor=13,cloeschende=24,cmark=16,cneu=17,cesc=27,
+cseiterueck=15,centry=6,cseitevor=14;LET hoptasten="?aouAOUBb§</>(!)-k'= #",
+hopcodes="�äöüÄÖÜßßß[\]{|}­k^~ \#";LET niltext="";#L maskenlets#LET tagtypenr=
+999,filetypenr=1003,taglines=24,maxfields=100;#boardlines=2000,##boardtype=
+777;#TEXT VAR cat;BOOL VAR beimletztenrausfallen:=FALSE ,prot:=FALSE ,
+outputallowed:=TRUE ;BOOL VAR closedbit,protectbit,darstbit,tabbit,leftbit,
+exitbit,rollbit,normal:=TRUE ;INT VAR workint,ausnr;PROC store(BOOL CONST ein
+):prot:=ein;IF NOT einTHEN screendirty;outputallowed:=TRUE FI END PROC store;
+PROC storefalse(INT CONST von,bis):prot:=FALSE ;screenok(FALSE ,von,bis);
+outputallowed:=TRUE END PROC storefalse;BOOL PROC store:protEND PROC store;
+PROC page:IF protTHEN screenpage;screenokFI ;IF outputallowedTHEN out("��")
+FI END PROC page;PROC xoutsubtext(TEXT CONST was,INT CONST von,bis):IF prot
+THEN screenout(was,von,bis)FI ;IF outputallowedTHEN outsubtext(was,von,bis)
+FI END PROC xoutsubtext;TYPE TAG =STRUCT (TEXT erstel,darst,diainfo,dbnam,
+ausknam,feld,x,y,len,tab,ROW taglinesTEXT formblatt,INT xmax,ymax,xs,ys,dbp,
+ver,durchs,art);OP :=(TAG VAR a,TAG CONST b):CONCR (a):=CONCR (b)END OP :=;
+PROC nil(TAG VAR t):t.formblatt:=ROW taglinesTEXT :("","","","","","","","",
+"","","","","","","","","","","","","","","","");t.xmax:=0;t.ymax:=0;t.xs:=1;
+t.ys:=1;t.dbp:=0;t.ver:=1;t.durchs:=0;t.art:=0;t.darst:="";t.erstel:="";t.
+diainfo:="";t.dbnam:="";t.ausknam:="";t.feld:="";t.x:="";t.y:="";t.tab:="";t.
+len:="";END PROC nil;INT PROC fields(TAG CONST a):LENGTH a.erstelEND PROC 
+fields;BOOL PROC fieldexists(TAG CONST a,INT CONST feldnr):(a.erstelVSUB 
+feldnr)>0END PROC fieldexists;INT PROC xsize(TAG CONST a):a.xmaxEND PROC 
+xsize;INT PROC ysize(TAG CONST a):a.ymaxEND PROC ysize;TEXT PROC formline(
+TAG CONST a,INT CONST l):a.formblatt(l)END PROC formline;PROC setinfo(TEXT 
+CONST string,INT CONST pos):workint:=stringVSUB pos;IF workint>0THEN 
+setallvaluesELSE normal:=TRUE FI .setallvalues:closedbit:=hbit;protectbit:=
+hbit;darstbit:=hbit;tabbit:=hbit;leftbit:=hbit;exitbit:=hbit;rollbit:=hbit;
+normal:=FALSE .hbit:workint:=workint*2;IF workint>255THEN workintDECR 256;
+TRUE ELSE FALSE FI .END PROC setinfo;PROC clearfield(TAG VAR a,INT CONST feld
+):sucheanfangdesfeldelementstring;sucheendedesfeldelementstring;
+loeschefeldelementeintraege;korrigiereerstelverweise;loeschefeldeintraege.
+sucheanfangdesfeldelementstring:INT VAR anf:=pos(a.feld,code(feld)).
+sucheendedesfeldelementstring:INT VAR ende:=anf;WHILE (a.feldVSUB ende)=feld
+REP endeINCR 1PER ;endeDECR 1.loeschefeldelementeintraege:change(a.feld,anf,
+ende,"");change(a.x,anf,ende,"");change(a.y,anf,ende,"");change(a.len,anf,
+ende,"");change(a.tab,anf,ende,"").korrigiereerstelverweise:INT VAR feldnr;
+FOR feldnrFROM 1UPTO LENGTH a.erstelREP IF code(a.erstelSUB feldnr)>endeTHEN 
+replace(a.erstel,feldnr,code(decrementierterwert))FI ;PER .
+decrementierterwert:code(a.erstelSUB feldnr)-(ende-anf+1).
+loeschefeldeintraege:replace(a.erstel,feld,"�");replace(a.darst,feld,"�");
+replace(a.diainfo,feld,"�");IF LENGTH a.dbnam>=2*feldTHEN replace(a.dbnam,
+feld,0)FI ;IF LENGTH a.ausknam>=2*feldTHEN replace(a.ausknam,feld,0)FI .END 
+PROC clearfield;PROC definefield(TAG VAR t,TEXT CONST xb,yb,lenb,tabb,INT 
+CONST dbnam,auskinfo,feldnr,TEXT CONST darst,diainfo):IF fieldexists(t,feldnr
+)THEN clearfield(t,feldnr)FI ;elementarfeldpossuchen;elementarfeldereinfuegen
+;erstelverweisekorrigieren;feldeintragen.elementarfeldpossuchen:
+zumerstenelfeld;WHILE elfelddaCAND (liegtvorneuemCOR NOT isterstel)REP 
+oldnumber:=feld;elementarfeldposINCR 1PER .elementarfeldereinfuegen:
+insertchar(t.y,yb,elementarfeldpos);insertchar(t.x,xb,elementarfeldpos);
+insertchar(t.tab,tabb,elementarfeldpos);insertchar(t.len,lenb,
+elementarfeldpos);insertchar(t.feld,LENGTH xb*code(feldnr),elementarfeldpos).
+erstelverweisekorrigieren:INT VAR fnr;FOR fnrFROM 1UPTO LENGTH t.erstelREP 
+IF code(t.erstelSUB fnr)>=elementarfeldposTHEN replace(t.erstel,fnr,code(
+incrementierterwert))FI ;PER .incrementierterwert:code(t.erstelSUB fnr)+
+LENGTH xb.feldeintragen:replaceiac(t.erstel,feldnr,code(elementarfeldpos));
+replaceiac(t.diainfo,feldnr,diainfo);replaceiac(t.darst,feldnr,darst);IF 
+dbnam<>0THEN replaceiac(t.dbnam,feldnr,dbnam)FI ;IF auskinfo<>0THEN 
+replaceiac(t.ausknam,feldnr,auskinfo)FI .zumerstenelfeld:INT VAR oldnumber:=0
+;INT VAR elementarfeldpos:=1.liegtvorneuem:y<(ybSUB 1)OR (y=(ybSUB 1)AND x<(
+xbSUB 1)).isterstel:oldnumber<>feld.elfeldda:elementarfeldpos<=LENGTH t.x.y:t
+.ySUB elementarfeldpos.x:t.xSUB elementarfeldpos.feld:code(t.feldSUB 
+elementarfeldpos).END PROC definefield;OP SCROLL (TAG VAR t,INT CONST lines):
+cat:="";INT VAR i;FOR iFROM 1UPTO LENGTH (t.y)REP INT VAR v:=code(t.ySUB i)+
+lines;IF v<1OR v>taglinesTHEN errorstop(
+"Feld ausserhalb Bildschirm durch SCROLL")FI ;catCAT code(v)PER ;t.y:=cat;IF 
+lines>0THEN FOR iFROM min(taglines-lines,t.ymax)DOWNTO 1REP t.formblatt(i+
+lines):=t.formblatt(i)PER ;FOR iFROM linesDOWNTO 1REP t.formblatt(i):=""PER ;
+t.ymaxINCR lines;t.ymax:=min(taglines,t.ymax)ELSE FOR iFROM 1-linesUPTO min(t
+.ymax-lines,taglines)REP t.formblatt(i+lines):=t.formblatt(i)PER ;FOR iFROM t
+.ymax+lines+1UPTO t.ymaxREP t.formblatt(i):=""PER ;t.ymaxINCR lines;t.ymax:=
+max(t.ymax,1);FI .END OP SCROLL ;INT PROC fieldwithname(TAG CONST t,INT 
+CONST name):ipos(t.dbnam,name)END PROC fieldwithname;INT PROC symbolicname(
+TAG CONST t,INT CONST feld):t.dbnamVISUB feldEND PROC symbolicname;PROC 
+symbolicname(TAG VAR t,INT CONST feld,symbol):replaceiac(t.dbnam,feld,symbol)
+END PROC symbolicname;INT PROC auskunftsnr(TAG CONST t,INT CONST feld):t.
+ausknamVISUB feldEND PROC auskunftsnr;INT PROC auskunftsnr:ausnrEND PROC 
+auskunftsnr;PROC auskunftsnr(TAG VAR t,INT CONST feld,ausknr):replaceiac(t.
+ausknam,feld,ausknr)END PROC auskunftsnr;PROC fieldinfos(TAG CONST t,INT 
+CONST feld,INT VAR geheimcode,BOOL VAR closed,protected,secret,special,left):
+geheimcode:=code(t.darstSUB feld);setinfo(t.diainfo,feld);IF normalTHEN 
+closed:=FALSE ;protected:=FALSE ;secret:=FALSE ;special:=FALSE ;left:=FALSE ;
+ELSE closed:=closedbit;protected:=protectbit;secret:=darstbit;special:=tabbit
+;left:=leftbit;FI END PROC fieldinfos;PROC setfieldinfos(TAG VAR t,INT CONST 
+feld,BOOL CONST closed,protected,secret):INT VAR cd:=(t.diainfoVSUB feld)MOD 
+32;IF secretTHEN cdINCR 32FI ;IF protectedTHEN cdINCR 64FI ;IF closedTHEN cd
+INCR 128FI ;replaceiac(t.diainfo,feld,code(cd))END PROC setfieldinfos;PROC 
+transform(TAG CONST t,FILE VAR o):enablestop;buffer:="";bufferCAT t.xmax;
+bufferCAT t.ymax;bufferCAT t.xs;bufferCAT t.ys;bufferCAT t.dbp;bufferCAT t.
+ver;bufferCAT t.durchs;bufferCAT t.art;putline(o,buffer);putline(o,t.darst);
+putline(o,t.erstel);putline(o,t.diainfo);putline(o,t.dbnam);putline(o,t.
+ausknam);putline(o,t.feld);putline(o,t.x);putline(o,t.y);putline(o,t.tab);
+putline(o,t.len);putline(o,trtab);tTO o.END PROC transform;PROC transform(
+FILE VAR i,TAG VAR t):enablestop;TEXT VAR oldtrtab:=trtab;getline(i,buffer);t
+.xmax:=bufferISUB 1;IF t.xmax<>12336THEN t.ymax:=bufferISUB 2;t.xs:=buffer
+ISUB 3;t.ys:=bufferISUB 4;t.dbp:=bufferISUB 5;t.ver:=bufferISUB 6;t.durchs:=
+bufferISUB 7;t.art:=bufferISUB 8;getline(i,t.darst);getline(i,t.erstel);
+getline(i,t.diainfo);getline(i,t.dbnam);getline(i,t.ausknam);getline(i,t.feld
+);getline(i,t.x);getline(i,t.y);getline(i,t.tab);getline(i,t.len);getline(i,
+trtab);ELSE nil(t);FI ;iTO t;trtab:=oldtrtab;IF t.ver<>1THEN errorstop(
+"Datei enth�lt kein TAG")FI .END PROC transform;PROC filetotag(DATASPACE 
+CONST ei):type(ei,tagtypenr)END PROC filetotag;PROC tagtofile(DATASPACE 
+CONST ei):IF type(ei)=tagtypenrTHEN type(ei,filetypenr)ELSE errorstop(
+"TYPE nicht TAG")FI END PROC tagtofile;PROC efill(TAG VAR ff,TEXT CONST t,
+INT CONST elfeld):INT CONST abwo:=1;zumerstenelementarfeld;WHILE 
+nochgenugtextdaREP fuelleelementarfeld;elementarfeldweiterzaehlen;IF 
+gehoertzumnaechstenfeldTHEN markiereueberlauf;LEAVE efillFI ;zumelementarfeld
+;PER ;gibrestaus.zumerstenelementarfeld:tlen:=LENGTH t;tout:=abwo-1;afeld:=ff
+.feldVSUB elfeld;ael:=elfeld;zumelementarfeld.fuelleelementarfeld:cat:=
+subtext(t,tout+1,tout+al);replace(ff.formblatt(ay),ax,cat);toutINCR al.
+nochgenugtextda:tout+al<tlen.elementarfeldweiterzaehlen:aelINCR 1.
+zumelementarfeld:al:=ff.lenVSUB ael;ax:=ff.xVSUB ael;ay:=ff.yVSUB ael.
+gehoertzumnaechstenfeld:(ff.feldVSUB ael)<>afeld.gibrestaus:cat:=subtext(t,
+tout+1,tlen);replace(ff.formblatt(ay),ax,cat).markiereueberlauf:replace(ff.
+formblatt(ay),ax+al-1,"<").END PROC efill;PROC fill(TAG VAR t,TEXT CONST 
+inhalt,INT CONST feld):setinfo(t.diainfo,feld);INT VAR erstelem:=t.erstel
+VSUB feld;IF erstelem>0THEN IF normalCOR NOT closedbitTHEN efill(t,inhalt,
+erstelem)FI FI END PROC fill;OP CLEARBY (TAG VAR u,TAG CONST u1):INT VAR i;
+FOR iFROM 1UPTO u.ymaxREP u.formblatt(i):=u1.formblatt(i)PER ;END OP CLEARBY 
+;INT VAR afeld,ax,ay,al,ael,tlen,tout;PROC eput(TAG CONST ff,TEXT CONST t,
+INT CONST elfeld):eput(ff,t,elfeld,1)END PROC eput;PROC eput(TAG CONST ff,
+TEXT CONST t,INT CONST elfeld,INT CONST abwo):zumerstenelementarfeld;WHILE 
+nochgenugtextdaREP fuelleelementarfeld;elementarfeldweiterzaehlen;IF 
+gehoertzumnaechstenfeldTHEN markiereueberlauf;LEAVE eputFI ;zumelementarfeld;
+PER ;gibrestaus;REP elementarfeldweiterzaehlen;IF gehoertzumnaechstenfeld
+THEN LEAVE eputFI ;zumelementarfeld;gibhintergrundausPER .
+zumerstenelementarfeld:tlen:=LENGTH t;tout:=abwo-1;afeld:=ff.feldVSUB elfeld;
+ael:=elfeld;positionieren(ff).fuelleelementarfeld:xoutsubtext(t,tout+1,tout+
+al);toutINCR al.nochgenugtextda:tout+al<tlen.elementarfeldweiterzaehlen:ael
+INCR 1.zumelementarfeld:positionieren(ff).gehoertzumnaechstenfeld:(ff.feld
+VSUB ael)<>afeld.gibrestaus:xoutsubtext(t,tout+1,tlen);IF tout+al>tlenTHEN 
+xoutsubtext(grund,ax+tlen-tout,ax+al-1)FI .gibhintergrundaus:xoutsubtext(
+grund,ax,ax+al-1).grund:ff.formblatt(ay).markiereueberlauf:IF outputallowed
+THEN out("�<")FI ;IF protTHEN screenbs;screenout("<")FI .END PROC eput;PROC 
+positionieren(TAG CONST ff):al:=ff.lenVSUB ael;ax:=ff.xVSUB ael;ay:=ff.yVSUB 
+ael;IF protTHEN screencursor(ax,ay)FI ;IF outputallowedTHEN cursor(ax,ay)FI .
+END PROC positionieren;PROC cursor(TAG CONST ff,INT CONST feld):ael:=ff.
+erstelVSUB feld;positionieren(ff)END PROC cursor;INT PROC length(TAG CONST ff
+,INT CONST feld):zumerstenelementarfeld;IF ael<1THEN LEAVE lengthWITH 0FI ;
+INT VAR len:=0;REP lenINCR feldlaenge;zumnaechstenelementarfeld;UNTIL 
+gehoertzumnaechstenfeldPER ;len.zumerstenelementarfeld:ael:=ff.erstelVSUB 
+feld.zumnaechstenelementarfeld:aelINCR 1.gehoertzumnaechstenfeld:(ff.feld
+VSUB ael)<>feld.feldlaenge:ff.lenVSUB ael.END PROC length;PROC show(TAG 
+CONST ff):INT VAR i;IF protTHEN IF screenreorganizedTHEN FOR iFROM 1UPTO ff.
+ymaxREP screencursor(1,i);screenput(ff.formblatt(i))PER ;ELSE FOR iFROM 1
+UPTO ff.ymaxREP IF ff.formblatt(i)>""THEN screencursor(1,i);screenok(FALSE ,i
+,i);screenput(ff.formblatt(i))FI PER ;IF outputallowedTHEN reorganizescreen
+FI ;LEAVE showFI FI ;IF outputallowedTHEN out(home);out(ff.formblatt(1));FOR 
+iFROM 2UPTO ff.ymaxREP line;out(ff.formblatt(i))PER FI .END PROC show;INT 
+VAR charcode:=0,lastx,lasty;PROC translatecode:charcode:=code(char);SELECT 
+charcodeOF CASE chop:charcode:=chomeCASE cvor:charcode:=cfeldendeCASE crueck:
+charcode:=cfeldanfCASE choch:charcode:=cseiterueckCASE crunter:charcode:=
+cseitevorCASE ctab:charcode:=csettabCASE ceinf:charcode:=caufbrechCASE causf:
+charcode:=cloeschendeCASE cfeldvor:charcode:=cfeldrueckCASE cmark:charcode:=
+cneuCASE cesc:charcode:=clearnOTHERWISE charcode:=pos(hoptasten,char);IF 
+charcode=0THEN IF ischarTHEN FI ELSE char:=hopcodesSUB charcode;charcode:=
+code(char)FI END SELECT END PROC translatecode;TEXT VAR char,pseudochar;BOOL 
+PROC ischar:inchar(char);charcode:=code(char);IF charcode>31THEN TRUE ELIF 
+charcode=chopTHEN inchar(char);translatecode;charcode>31ELSE FALSE FI END 
+PROC ischar;INT VAR aktlimit,aktbegin,aktfeld,aktline,aktlen,aktanf,aktel,wo;
+PROC setfieldvalues(TAG CONST ta):aktlen:=ta.lenVSUB aktel;aktanf:=ta.xVSUB 
+aktel;aktline:=ta.yVSUB aktelEND PROC setfieldvalues;INT VAR nextfeld,nextel,
+nextwo,nextbegin;PROC setlasteditvalues:preset:=TRUE END PROC 
+setlasteditvalues;PROC setneweditvalues:aktfeld:=nextfeld;aktbegin:=nextbegin
+;aktel:=nextel;wo:=nextwo;preset:=TRUE END PROC setneweditvalues;BOOL VAR 
+preset:=FALSE ,feldda;PROC searchfield(TAG CONST t,INT CONST x,y,BOOL VAR 
+erfolg):erfolg:=FALSE ;nextel:=0;REP sucheelementinrichtigerzeileUNTIL 
+keinsmehrdaCOR xposstimmtPER ;IF erfolgTHEN nextfeld:=t.feldVSUB nextel;
+nextbegin:=1;INT VAR i:=t.erstelVSUB nextfeld;WHILE i<nextelREP nextbegin
+INCR (t.lenVSUB i);iINCR 1PER ;nextwo:=nextbegin+x-anfangFI .
+sucheelementinrichtigerzeile:nextel:=pos(t.y,code(y),nextel+1).keinsmehrda:
+nextel=0.xposstimmt:erfolg:=anfang<=xAND ende>x;erfolg.anfang:t.xVSUB nextel.
+ende:(t.xVSUB nextel)+(t.lenVSUB nextel).END PROC searchfield;PROC editieren(
+TAG CONST ff,TEXT VAR eing,INT CONST feld):IF fieldexists(ff,feld)THEN 
+bestimmeeinstieg;REPEAT REPEAT wertesteuerzeichenausUNTIL ischarPER ;REPEAT 
+schreibezeichen;UNTIL wo>aktlimitCOR NOT ischarPER PER FI .bestimmeeinstieg:
+IF presetAND (feld=0COR feld=aktfeld)THEN ELSE aktfeld:=feld;aktel:=ff.erstel
+VSUB aktfeld;aktbegin:=1;wo:=1FI ;charcode:=centry;preset:=FALSE ;IF NOT 
+normalTHEN preparespecialeditingFI .preparespecialediting:IF darstbitTHEN 
+pseudochar:=ff.darstSUB feldFI .schreibezeichen:IF wo<=LENGTH eingTHEN 
+replace(eing,wo,char)ELSE eingCAT char;IF wo>LENGTH eing+1THEN 
+normalizepositionFI FI ;IF normalCOR NOT darstbitTHEN out(char)ELSE out(
+pseudochar)FI ;woINCR 1.wertesteuerzeichenaus:SELECT charcodeOF CASE cneu:
+neuschreibenCASE centry:setfieldvalues(ff);positionieren;aktlimit:=aktbegin+
+aktlen-1CASE cvor:IF wo<=LENGTH eingTHEN woINCR 1;out(right);forwardFI CASE 
+cfeldende:zumfeldendeCASE crueck:woDECR 1;out(left);backwardCASE cfeldanf:wo
+:=1;backwardtoendCASE ceinf:insertchar(eing," ",wo);restneuschreibenCASE 
+causf:IF LENGTH eing>0THEN IF wo>LENGTH eingTHEN woDECR 1;out(left);backward
+FI ;deletechar(eing,wo);restneuschreibenFI ;CASE cloeschende:eing:=subtext(
+eing,1,wo-1);restneuschreibenCASE choch:gouporleaveCASE crunter:godownorleave
+OTHERWISE :IF charcode>31THEN forwardELSE leaveFI END SELECT .zumfeldende:wo
+:=LENGTH eing+1;forward;positionieren.positionieren:cursor(aktanf+(wo-
+aktbegin),aktline).forward:WHILE wo>aktlimitREPEAT aktelINCR 1;IF 
+gehoertzumfeldTHEN aktbegin:=aktlimit+1;decodefieldlen;aktlimitINCR aktlen
+ELSE aktelDECR 1;wo:=aktlimitFI ;positionierenPER .leave:getcursor(lastx,
+lasty);LEAVE editieren.godownorleave:getcursor(lastx,lasty);searchfield(ff,
+lastx,lasty+1,feldda);IF felddaCAND nextfeld=aktfeldTHEN wo:=nextwo;aktel:=
+nextel;setfieldvalues(ff);aktbegin:=nextbegin;aktlimit:=aktbegin-1+aktlen;
+positionierenELSE LEAVE editierenFI .gouporleave:getcursor(lastx,lasty);
+searchfield(ff,lastx,lasty-1,feldda);IF felddaCAND nextfeld=aktfeldTHEN wo:=
+nextwo;aktel:=nextel;setfieldvalues(ff);aktbegin:=nextbegin;aktlimit:=
+aktbegin-1+aktlen;positionierenELSE LEAVE editierenFI .backward:IF wo<
+aktbeginTHEN IF wo<1THEN wo:=1ELSE aktelDECR 1;decodefieldlen;aktlimit:=
+aktbegin-1;aktbeginDECR aktlen;FI ;positionierenFI .backwardtoend:aktel:=ff.
+erstelVSUB aktfeld;decodefieldlen;aktbegin:=1;aktlimit:=aktlen;positionieren.
+normalizeposition:wo:=LENGTH eing;WHILE wo<aktbeginREP aktelDECR 1;
+decodefieldlen;aktlimit:=aktbegin-1;aktbeginDECR aktlenPER ;positionieren.
+decodefieldlen:setfieldvalues(ff).restneuschreiben:neuschreiben.neuschreiben:
+eput(ff,darstellstring,ff.erstelVSUB aktfeld);positionieren.darstellstring:
+IF normalCOR NOT darstbitTHEN eingELSE LENGTH (eing)*pseudocharFI .
+gehoertzumfeld:(ff.feldVSUB aktel)=aktfeld.END PROC editieren;TEXT PROC get(
+TAG CONST ff,INT CONST feld):TEXT VAR a:=niltext;get(ff,a,feld);aEND PROC get
+;PROC get(TAG CONST ff,TEXT VAR eingabe,INT CONST feld):IF protTHEN 
+checkscreenFI ;BOOL VAR p:=prot;prot:=FALSE ;setinfo(ff.diainfo,feld);
+editieren(ff,eingabe,feld);IF pTHEN prot:=TRUE ;outputallowed:=FALSE ;put(ff,
+eingabe,feld);outputallowed:=TRUE FI END PROC get;PROC putget(TAG CONST ff,
+TEXT VAR value,INT CONST feld):BOOL VAR p:=prot;prot:=FALSE ;outputallowed:=
+TRUE ;put(ff,value,feld);editieren(ff,value,feld);IF pTHEN prot:=TRUE ;
+outputallowed:=FALSE ;put(ff,value,feld);outputallowed:=TRUE FI END PROC 
+putget;PROC put(TAG CONST ff,TEXT CONST v,INT CONST feld):setinfo(ff.diainfo,
+feld);INT VAR erstelem:=ff.erstelVSUB feld;IF erstelem>0THEN IF normalCOR 
+NOT darstbitTHEN eput(ff,v,erstelem)ELSE eput(ff,LENGTH v*(ff.darstSUB feld),
+erstelem)FI FI END PROC put;INT PROC leavingcode:charcodeEND PROC leavingcode
+;PROC putget(TAG CONST ff,ROW maxfieldsTEXT VAR v,INT VAR einstieg):put(ff,v)
+;get(ff,v,einstieg)END PROC putget;PROC put(TAG CONST ff,ROW maxfieldsTEXT 
+VAR fieldvalues):INT VAR iFOR iFROM 1UPTO LENGTH ff.erstelREP IF fieldexists(
+ff,i)THEN put(ff,fieldvalues(i),i)FI PER END PROC put;PROC get(TAG CONST ff,
+ROW maxfieldsTEXT VAR fieldvalues,INT VAR feld):INT VAR felder:=LENGTH ff.
+erstel;IF NOT fieldexists(ff,feld)THEN errorstop("startfeld nicht im tag")
+ELSE WHILE feld<=felderREPEAT get(ff,fieldvalues(feld),feld);
+executecommandcode(ff,feld)UNTIL charcode=cescPER FI END PROC get;PROC 
+executecommandcode(TAG CONST ff,INT VAR feld):SELECT charcodeOF CASE 
+cfeldrueck:topriorfieldCASE cfeldvor:tonextfieldCASE choch:goupifpossible
+CASE crunter:godownifpossibleCASE chome:tohomefieldCASE ctab:IF protTHEN 
+reorganizescreenFI ;setlasteditvaluesCASE cesc:ausnr:=auskunftsnr(ff,feld)
+END SELECT .topriorfield:REPEAT feld:=priorfield(ff,feld)UNTIL warerstesCOR 
+nichtgesperrtPER ;IF warerstesTHEN tohomefieldFI .tonextfield:INT VAR oldfeld
+:=feld;REP feld:=nextfield(ff,feld)UNTIL warletztesCOR nichtgesperrtPER ;IF 
+warletztesTHEN feld:=oldfeld;IF beimletztenrausfallenTHEN charcode:=cesc;
+beimletztenrausfallen:=FALSE FI FI .tohomefield:feld:=firstfield(ff);WHILE 
+gesperrtREP feld:=nextfield(ff,feld)PER .goupifpossible:BOOL VAR erfolg;
+searchfield(ff,lastx,lasty-1,erfolg);IF erfolgAND nextnichtgesperrtTHEN 
+setneweditvalues;feld:=nextfeldELSE setlasteditvaluesFI .godownifpossible:
+searchfield(ff,lastx,lasty+1,erfolg);IF erfolgAND nextnichtgesperrtTHEN 
+setneweditvalues;feld:=nextfeldELSE setlasteditvaluesFI .nichtgesperrt:(ff.
+diainfoVSUB feld)<64.nextnichtgesperrt:(ff.diainfoVSUB nextfeld)<64.gesperrt:
+NOT nichtgesperrt.warletztes:feld<1.warerstes:feld<1.END PROC 
+executecommandcode;PROC setautoesc:beimletztenrausfallen:=TRUE END PROC 
+setautoesc;INT PROC firstfield(TAG CONST t):t.feldVSUB 1END PROC firstfield;
+INT PROC nextfield(TAG CONST t,INT CONST feld):INT VAR el:=(t.erstelVSUB feld
+)+1;WHILE (t.feldVSUB el)=feldREP elINCR 1PER ;t.feldVSUB elEND PROC 
+nextfield;INT PROC priorfield(TAG CONST t,INT CONST feld):t.feldVSUB ((t.
+erstelVSUB feld)-1)END PROC priorfield;TEXT VAR buffer,blinkan,blinkaus;TEXT 
+VAR trtab:="!<> ",tr;TAG VAR hilfstag;nil(hilfstag);hilfstag.formblatt(
+taglines):="                                      Feldnummer : __ ";
+definefield(hilfstag,code(pos(hilfstag.formblatt(taglines),"_")),code(
+taglines),"�",".",0,0,1,"�","�");OP TO (FILE VAR a,TAG VAR t):INT VAR i,j;
+TEXT VAR char;t.xmax:=0;FOR jFROM 1UPTO taglinesREP IF NOT eof(a)THEN getline
+(a,buffer);transform;IF length(buffer)>t.xmaxTHEN t.xmax:=length(buffer)FI ;t
+.ymax:=jELSE tr:=niltext;FI ;t.formblatt(j):=tr;PER .transform:tr:=niltext;
+FOR iFROM 1UPTO LENGTH bufferREP char:=bufferSUB i;SELECT pos(trtab,char)OF 
+CASE 2:trCAT inversCASE 3:trCAT endinversCASE 1:trCAT " "CASE 4:trCAT right
+OTHERWISE :trCAT charEND SELECT PER .END OP TO ;OP TO (TAG CONST t,FILE VAR f
+):INT VAR i,j;TEXT VAR pseudoblank:=trtabSUB 1,char;FOR jFROM 1UPTO t.ymax
+REP buffer:=t.formblatt(j);retransform;putline(f,tr)PER .retransform:tr:=
+niltext;FOR iFROM 1UPTO LENGTH bufferREP char:=bufferSUB i;SELECT code(char)
+OF CASE 32:trCAT pseudoblankCASE 15:trCAT (trtabSUB 2)CASE 14:trCAT (trtab
+SUB 3)CASE cvor:trCAT " "OTHERWISE :trCAT charEND SELECT PER ;buffer:=tr.END 
+OP TO ;PROC trans(TEXT CONST x):IF LENGTH x=3THEN trtab:=x;trtabCAT " "ELSE 
+errorstop("falsche Umsetztabelle")FI END PROC trans;TEXT PROC blink(TAG 
+CONST t,INT VAR feld):blinkan:=length(t,feld)*"#";blinkaus:=LENGTH blinkan*
+"!";INT VAR i;FOR iFROM 1UPTO 20REP IF (iMOD 2)=0THEN put(t,blinkan,feld);
+ELSE put(t,blinkaus,feld);FI ;buffer:=incharety(3)UNTIL buffer<>""PER ;buffer
+END PROC blink;PROC findchar(TAG CONST f,TEXT CONST eingabe,INT VAR posx,posy
+):INT VAR posxn:=posx,posyn:=posy;WHILE (f.formblatt(posy)SUB posxn)=eingabe
+REP posxnINCR 1PER ;posxn:=pos(f.formblatt(posy),eingabe,posxn+1);WHILE posxn
+=0REP posynINCR 1;IF posyn>f.ymaxTHEN LEAVE findcharFI ;posxn:=pos(f.
+formblatt(posyn),eingabe)PER ;posx:=posxn;posy:=posyn.END PROC findchar;PROC 
+designelfield(TAG CONST t,INT CONST xm,ym,INT VAR x,y,l):cursortostartpos;
+cursortoendpos.cursortostartpos:TEXT VAR storage:="_";REP cursor(x,y);IF 
+ischarTHEN findchar(t,char,x,y);storage:=charELSE SELECT charcodeOF CASE 
+chome:x:=1;y:=1CASE cvor:x:=xMOD xm;xINCR 1CASE crueck:IF x=1THEN x:=xmELSE x
+DECR 1FI CASE cfeldanf:x:=1CASE cfeldende:x:=xmCASE choch:IF y=1THEN y:=ym
+ELSE yDECR 1FI CASE crunter:y:=yMOD ym;yINCR 1CASE causkunft:cursor(1,24);out
+("X=");put(text(x,2));out(" Y=");put(text(y,2))CASE cesc:LEAVE designelfield
+CASE ctab:findchar(t,storage,x,y)CASE cfeldvor:LEAVE cursortostartpos
+OTHERWISE :out("�")END SELECT FI PER .cursortoendpos:TEXT VAR aktchar:=t.
+formblatt(y)SUB x;IF aktchar>" "AND (t.formblatt(y)SUB x-1)<>aktcharTHEN l:=1
+;WHILE (t.formblatt(y)SUB (x+l))=aktcharREP lINCR 1PER ;FI ;markiere;REP 
+WHILE ischarREP out("�")PER ;IF charcode=cvorAND x+l<xm+1THEN lINCR 1;out(
+right);out(">");out(left);ELIF charcode=crueckAND l>1THEN 
+originalzeichenausgeben;lDECR 1ELIF charcode=cescTHEN LEAVE designelfield
+ELIF charcode=cfeldvorTHEN LEAVE cursortoendposFI PER .
+originalzeichenausgeben:out(" �");out(t.formblatt(y)SUB (x+l-1));out("��").
+markiere:cursor(x,y);lTIMESOUT ">";out(left).END PROC designelfield;INT VAR 
+el;PROC designfield(TAG CONST t,INT CONST feld,TEXT VAR x,y,l,ta):IF NOT 
+varsinitializedTHEN initializeFI ;REP designelement;elINCR 1PER .
+varsinitialized:LENGTH x=LENGTH yAND LENGTH y=LENGTH lAND LENGTH l=LENGTH ta
+AND LENGTH x>0.initialize:IF NOT fieldexists(t,feld)THEN x:="";y:="";l:="";ta
+:=""ELSE INT VAR begin:=t.erstelVSUB feld,end:=begin;WHILE (t.feldVSUB end)=
+feldREP endINCR 1PER ;endDECR 1;x:=subtext(t.x,begin,end);y:=subtext(t.y,
+begin,end);l:=subtext(t.len,begin,end);ta:=subtext(t.tab,begin,end);FI ;el:=1
+.designelement:INT VAR xb,yb,lb;cursor(1,24);out(text(el));out(
+". Teilfeld                 ");IF LENGTH x<elTHEN xb:=1;yb:=1;lb:=1ELSE xb:=x
+VSUB el;yb:=yVSUB el;lb:=lVSUB elFI ;designelfield(t,t.xmax,t.ymax,xb,yb,lb);
+IF charcode=cescTHEN LEAVE designfieldFI ;IF LENGTH x<elTHEN xCAT code(xb);y
+CAT code(yb);lCAT code(lb);taCAT "�"ELSE replace(x,el,code(xb));replace(y,el,
+code(yb));replace(l,el,code(lb));FI .END PROC designfield;PROC design(TAG 
+VAR todesign):REP designform(todesign);designfields(todesign);UNTIL 
+leavingcode<>cescCOR no("�Formulardarstellung veraendern")PER END PROC 
+design;PROC designform(TAG VAR f):taginitialisieren;formulareditieren.
+formulareditieren:DATASPACE VAR wds:=nilspace;FILE VAR in:=sequentialfile(
+output,wds);fTO in;modify(in);headline(in,"Formular eingeben !");edit(in);
+page;input(in);reset(in);inTO f;forget(wds).taginitialisieren:IF f.ver<>1
+THEN nil(f)FI .END PROC designform;PROC dummie(INT VAR a,b,TEXT VAR c,BOOL 
+VAR d,e):LEAVE dummie;a:=b;d:=e;c:="";END PROC dummie;PROC designfields(TAG 
+VAR f):designfields(f,PROC dummie)END PROC designfields;PROC designfields(
+TAG VAR f,PROC (INT VAR ,INT VAR ,TEXT VAR ,BOOL VAR ,BOOL VAR )setparam):
+show(f);INT VAR feld:=2;TEXT VAR xrow,yrow,lrow,trow;REPEAT 
+feldnummereinlesen;benutzerwunscherfragen;benutzerwunschauswertenEND REP .
+benutzerwunscherfragen:IF fieldexists(f,feld)THEN REP cursor(1,24);out(
+"a(endern) ,l(oeschen), i(rrtum) ?");TEXT VAR ein:=blink(f,feld);IF ein="�"
+THEN charcode:=cesc;LEAVE designfieldsFI UNTIL pos("aAäÄlLiI",ein)>0PER ;
+ELSE REP cursor(1,24);out("     n(eu einrichten), (i)rrtum ?");inchar(ein);
+IF ein="�"THEN charcode:=cesc;LEAVE designfieldsFI UNTIL pos("nNiI",ein)>0
+PER ;FI ;cursor(1,24);out("                                 ").
+benutzerwunschauswerten:IF pos("lL",ein)>0THEN put(f,"",feld);clearfield(f,
+feld)ELSE IF fieldexists(f,feld)THEN put(f,"",feld);FI ;IF pos("iI",ein)=0
+THEN xrow:="";yrow:=" ";lrow:="";trow:="";designfield(f,feld,xrow,yrow,lrow,
+trow);parametersetzen;definefield(f,xrow,yrow,lrow,trow,sym,aus,feld,dar,dia)
+;feldINCR 1;FI FI .feldnummereinlesen:TEXT VAR itext:=text(feld);REPEAT 
+cursor(1,24);out("�");out(hilfstag.formblatt(taglines));putget(hilfstag,itext
+,1);IF leavingcode=cescTHEN LEAVE designfieldsFI ;feld:=int(itext);IF feld<1
+OR leavingcode=causkunftOR NOT lastconversionokTHEN dialogueELSE LEAVE 
+feldnummereinlesen;FI ;PER .dialogue:REP cursor(1,24);out(
+"q(uit), i(rrtum), m(aske neu zeigen), f(eldnummern)  �");inchar(ein);IF ein=
+"�"THEN charcode:=cesc;LEAVE designfieldsFI UNTIL pos("qQiImMfF",ein)>0PER ;
+SELECT (pos("qQiImMfF",ein)-1)DIV 2OF CASE 0:LEAVE designfieldsCASE 1:LEAVE 
+dialogueCASE 2:show(f)CASE 3:INT VAR i;FOR iFROM 1UPTO fields(f)REP TEXT VAR 
+buf:=text(i);bufCAT "*";put(f,((length(f,i)-1)DIV LENGTH (buf)+1)*buf,i)PER 
+END SELECT .parametersetzen:INT VAR aus:=auskunftsnr(f,feld),sym:=
+symbolicname(f,feld);TEXT VAR dar:=f.darstSUB feld,dia;setinfo(f.diainfo,feld
+);BOOL VAR a:=closedbit,b:=protectbit,c:=darstbit;setparam(sym,aus,dar,b,c);
+setfieldinfos(f,feld,a,b,c);dia:=f.diainfoSUB feld;dar:=text(dar,1).END PROC 
+designfields;END PACKET mask;PACKET dateDEFINES monat,jahr,tag,datum,tmj,
+datumjh,nildatum,jahrestag,wochentag:LET seperatorzeichen=":./ ",
+seperatorzeichen1=".";INT CONST beforefirstday:=-(22*vierjahre)-1;TEXT VAR b;
+BOOL VAR conversionerror:=FALSE ;INT PROC nildatum:beforefirstdayEND PROC 
+nildatum;#L datumslets#LET letzterjanuar=31,letzterfebruar=59,letztermaerz=90
+,letzterapril=120,letztermai=151,letzterjuni=181,letzterjuli=212,
+letzteraugust=243,letzterseptember=273,letzteroktober=304,letzternovember=334
+,#letzterdezember=365,#vierjahre=1461;PROC tmj(INT CONST d,INT VAR t,m,j):
+INT VAR a;IF d<=beforefirstdayTHEN t:=-1;m:=-1;j:=-1;LEAVE tmjFI ;a:=d;IF a>0
+THEN j:=88ELSE j:=0;aINCR (-(beforefirstday+1))FI ;jINCR 4*(aDIV vierjahre);a
+:=aMOD vierjahre;IF a=letzterfebruarTHEN t:=29;m:=2;LEAVE tmjELIF a>
+letzterfebruarTHEN aDECR 1FI ;jINCR aDIV 365;a:=(aMOD 365)+1;IF a<=
+letzterjuniTHEN januarbisjuniELSE julibisdezemberFI .januarbisjuni:IF a<=
+letztermaerzTHEN januarbismaerzELSE aprilbisjuniFI .julibisdezember:IF a<=
+letzterseptemberTHEN julibisseptemberELSE oktoberbisdezemberFI .
+januarbismaerz:IF a<=letzterjanuarTHEN m:=1;t:=aELIF a<=letzterfebruarTHEN m
+:=2;t:=a-letzterjanuarELSE m:=3;t:=a-letzterfebruarFI .aprilbisjuni:IF a<=
+letzteraprilTHEN m:=4;t:=a-letztermaerzELIF a<=letztermaiTHEN m:=5;t:=a-
+letzteraprilELSE m:=6;t:=a-letztermaiFI .julibisseptember:IF a<=letzterjuli
+THEN m:=7;t:=a-letzterjuniELIF a<=letzteraugustTHEN m:=8;t:=a-letzterjuli
+ELSE m:=9;t:=a-letzteraugustFI .oktoberbisdezember:IF a<=letzteroktoberTHEN m
+:=10;t:=a-letzterseptemberELIF a<=letzternovemberTHEN m:=11;t:=a-
+letzteroktoberELSE m:=12;t:=a-letzternovemberFI .END PROC tmj;INT PROC datum(
+TEXT CONST a):b:=a;conversionerror:=FALSE ;INT VAR seperator:=seppos,t,m,j;
+IF seperator=0THEN IF length(b)=6THEN t:=z(1)*10+z(2);m:=z(3)*10+z(4);j:=z(5)
+*10+z(6);INT VAR dummy:=datum(t,m,j);IF conversionerrorTHEN dummy:=nildatum
+FI ;LEAVE datumWITH dummyELSE leaveFI ELIF seperator=2THEN t:=z(1);ELIF 
+seperator=3THEN t:=10*z(1)+z(2);ELSE leaveFI ;b:=subtext(b,seperator+1);
+seperator:=seppos;IF seperator=3THEN m:=z(1)*10+z(2);ELIF seperator=2THEN m:=
+z(1)ELSE leaveFI ;b:=subtext(b,seperator+1);IF length(b)=2THEN j:=z(1)*10+z(2
+)ELIF length(b)=4THEN j:=z(1)*1000+z(2)*100+z(3)*10+z(4)-1900;ELSE leaveFI ;
+IF conversionerrorTHEN nildatumELSE datum(t,m,j)FI .leave:LEAVE datumWITH 
+nildatum.seppos:INT VAR q;FOR qFROM 2UPTO 3REP IF pos(seperatorzeichen,bSUB q
+)>0THEN LEAVE sepposWITH q;FI PER ;0.END PROC datum;INT PROC z(INT CONST wo):
+INT VAR e:=code(bSUB wo)-48;IF e<0OR e>9THEN conversionerror:=TRUE ;0ELSE e
+FI END PROC z;INT PROC datum(INT CONST t,m,jc):INT VAR j:=jc-1900IF j<0THEN j
+INCR 1900FI ;IF (j+160)DIV 160<>1THEN nildatumELIF t<0THEN nildatumELSE 
+SELECT mOF CASE 1,3,5,7,8,10,12:IF t>31THEN nildatumELSE erg(t,m,j)FI CASE 4,
+6,9,11:IF t>30THEN nildatumELSE erg(t,m,j)FI CASE 2:IF t<29THEN erg(t,m,j)
+ELIF t=29AND jMOD 4=0THEN erg(t,m,j)ELSE nildatumFI OTHERWISE nildatumEND 
+SELECT FI END PROC datum;INT PROC wochentag(INT CONST d):INT CONST x:=d-1;IF 
+x<0THEN 6-(-xMOD 7)ELSE xMOD 7FI END PROC wochentag;INT PROC jahrestag(INT 
+CONST d):INT VAR a;IF d<=beforefirstdayTHEN LEAVE jahrestagWITH -1FI ;a:=d;
+IF a<=0THEN aINCR (-(beforefirstday+1))FI ;a:=aMOD vierjahre;IF a>365THEN a
+DECR 366;a:=aMOD 365FI ;a+1END PROC jahrestag;INT PROC erg(INT CONST t,m,jc):
+INT VAR j:=jc;INT VAR result:=beforefirstday,tagimzyklus;IF j>=88THEN jDECR 
+88;result:=-1FI ;resultINCR ((jDIV 4)*vierjahre);j:=jMOD 4;tagimzyklus:=
+tagundmonat+365*j;IF tagimzyklus>erstermaerzimschaltjahrTHEN tagimzyklusINCR 
+1ELIF tagimzyklus=erstermaerzimschaltjahrAND m=3THEN tagimzyklusINCR 1FI ;
+result+tagimzyklus.erstermaerzimschaltjahr:60.tagundmonat:SELECT mOF CASE 1:t
+CASE 2:t+letzterjanuarCASE 3:t+letzterfebruarCASE 4:t+letztermaerzCASE 5:t+
+letzteraprilCASE 6:t+letztermaiCASE 7:t+letzterjuniCASE 8:t+letzterjuliCASE 9
+:t+letzteraugustCASE 10:t+letzterseptemberCASE 11:t+letzteroktoberCASE 12:t+
+letzternovemberOTHERWISE errorstop("monat > 12 oder < 0");0END SELECT .END 
+PROC erg;INT PROC tag(INT CONST d):INT VAR t,m,j;tmj(d,t,m,j);tEND PROC tag;
+INT PROC jahr(INT CONST d):INT VAR t,m,j;tmj(d,t,m,j);j+1900END PROC jahr;
+INT PROC monat(INT CONST d):INT VAR t,m,j;tmj(d,t,m,j);mEND PROC monat;TEXT 
+PROC datumjh(INT CONST d):INT VAR t,m,j;TEXT VAR e;tmj(d,t,m,j);IF t<0THEN 
+LEAVE datumjhWITH ""FI ;e:=code(tDIV 10+48);eCAT code(tMOD 10+48);eCAT 
+seperatorzeichen1;eCAT code(mDIV 10+48);eCAT code(mMOD 10+48);eCAT 
+seperatorzeichen1;IF j<100THEN eCAT "19"ELSE eCAT "20";jDECR 100FI ;eCAT code
+(jDIV 10+48);eCAT code(jMOD 10+48);eEND PROC datumjh;TEXT PROC datum(INT 
+CONST d):INT VAR t,m,j;TEXT VAR e;tmj(d,t,m,j);IF t<0THEN LEAVE datumWITH ""
+FI ;e:=code(tDIV 10+48);eCAT code(tMOD 10+48);eCAT seperatorzeichen1;eCAT 
+code(mDIV 10+48);eCAT code(mMOD 10+48);eCAT seperatorzeichen1;eCAT code((j
+MOD 100)DIV 10+48);eCAT code(jMOD 10+48);eEND PROC datum;END PACKET date;
+

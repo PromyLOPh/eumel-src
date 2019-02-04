@@ -1,0 +1,85 @@
+PACKET purge DEFINES purge :
+
+ 
+TEXT VAR task name, record, file name, dummy ;
+
+FILE VAR permit ;
+
+
+PROC purge :
+
+  IF exists ("permitted tasks")
+    THEN access catalogue ;
+         permit := sequential file (input, "permitted tasks") ;
+         say (""10""13"TASKS :"10""10""13"") ;
+         IF myself < supervisor
+           THEN purge son tasks (brother (supervisor))
+           ELSE purge son tasks (myself)
+         FI
+  FI ;
+  IF exists ("permitted files")
+    THEN permit := sequential file (input, "permitted files") ;
+         say (""10""13"DATEIEN :"10""10""13"") ;
+         purge files
+  FI
+
+ENDPROC purge ;
+
+PROC purge son tasks (TASK CONST father task) :
+
+  TASK VAR actual task := son (father task) ;
+  WHILE NOT is niltask (actual task) REP
+    purge son tasks (actual task) ;
+    IF NOT actual task permitted
+      THEN erase actual task
+    FI ;
+    actual task := brother (actual task)
+  END REP .
+
+erase actual task :
+  say ("""") ; say (task name) ; say ("""") ;
+  IF yes (" loeschen")
+    THEN end (actual task)
+  FI .
+
+actual task permitted :
+  task name := name (actual task) ;
+  reset (permit) ;
+  WHILE NOT eof (permit) REP
+    getline (permit, record) ;
+    IF task name = record
+      THEN LEAVE actual task permitted WITH TRUE
+    FI
+  END REP ;
+  FALSE .
+
+ENDPROC purge son tasks ;
+
+PROC purge files :
+
+  begin list ;
+  get list entry (file name, dummy) ;
+  WHILE file name <> "" REP
+    IF NOT file permitted
+      THEN forget (file name)
+    FI ;
+    get list entry (file name, dummy)
+  END REP .
+
+file permitted :
+  IF file name = "permitted tasks" OR file name = "permitted files"
+    THEN LEAVE file permitted WITH TRUE
+  FI ;
+  reset (permit) ;
+  WHILE NOT eof (permit) REP
+    getline (permit, record) ;
+    IF file name = record
+      THEN LEAVE file permitted WITH TRUE
+    FI
+  END REP ;
+  FALSE .
+
+ENDPROC purge files ;
+
+ENDPACKET purge ;
+

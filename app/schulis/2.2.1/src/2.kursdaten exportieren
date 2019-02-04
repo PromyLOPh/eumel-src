@@ -1,0 +1,226 @@
+PACKET kursdatenueberschnittstelleexportierenDEFINES 
+kursdatenschnittstelleexportanfang,
+kursdatenschnittstelleexportaufbereitenoderabfrage,
+kursdatenschnittstelleexportaufbereiten,kursdatenschnittstelleexportzeigen,
+kursdatenschnittstelleexportzeigenverlassen,
+kursdatenschnittstelleexportloeschenabfrage,
+kursdatenschnittstelleexportloeschen,kursdatenschnittstelleexportarchiv,
+kursdatenschnittstelleexportabfrage,
+kursdatenschnittstelleexportloescheundreturn,
+kursdatenschnittstelleexportdrucken,kursdatenschnittstelleexportabbruch:LET 
+eingangsmaske="ms kurswahldaten exportieren",schuljahr="Schuljahr",halbjahr=
+"Schulhalbjahr",filemodus="file ibm",listenname=
+"Liste der Dateien auf der Diskette:",trenner="�",dos="DOS",einganggewjgst=2,
+einganggewhj=3,eingangaktjgst=4,eingangaktneue=5,eingangmitkursen=6,
+eingangdateiname=7,anzeingangsfelder=7,kurslaenge=15,kznurneue="N",kzohneneue
+="O",kzalle="A",kzname="N",kzkurse="K",suffixfa=".FA",suffixwk=".WK",suffixbr
+=".BR",suffixzi=".ZI",suffixzieintrag="                   ",leerekennung="  "
+,meldungkeineschueler=423,meldungbearbwird=352,meldungwarten=69,
+meldungdrucken=58,meldungpraezisieren=129,meldungfeldfuellen=52,
+meldungfalschejgst=404,meldungfalscheshj=405,meldungserverfehler=416,
+meldungandereauswahl=318,meldungdatengeloescht=431,meldungnamefalsch=323,
+meldungrausreichen=343,meldungdisksichern=347,meldungdiskinit=348,
+meldungnameloeschen=349,meldungaufdiskschr=350,meldungnameunbek=351;ROW 
+anzeingangsfelderTEXT VAR eingangrow:=ROW anzeingangsfelderTEXT :("","","",""
+,"","","schulis");INT VAR i,j;TEXT VAR t,t1,t2;INT VAR pos1,pos2,letztepos,
+fstat,ruecksprung,aktfeld;TEXT VAR aktdateiname:="schulis",gewjgst,gewhj,
+aktjgst,aktneue,gewsj,aktsj:="0000",akthj,schuelergruppe,aktsuffix:=suffixfa,
+fahj,fasj,kweintrag,kurseintrag,dateieintrag;THESAURUS VAR thes;BOOL VAR 
+archivfehler;FILE VAR dsfa,dswk,dsbr,dszi,g;PROC 
+kursdatenschnittstelleexportanfang:standardstartproc(eingangsmaske);
+gibeingangaus;standardfelderausgeben;infeld(letztepos);standardnproc.
+gibeingangaus:infeld(1);FOR iFROM 1UPTO anzeingangsfelderREP 
+standardmaskenfeld(eingangrow(i),i);IF eingangrow(i)<>""THEN letztepos:=iFI 
+PER .END PROC kursdatenschnittstelleexportanfang;PROC 
+kursdatenschnittstelleexportaufbereitenoderabfrage:
+pruefeingabeundbelegvariablen;IF fstat=0THEN abfrageloeschenFI .
+abfrageloeschen:beginlist;REP getlistentry(t1,t2);IF pos(t1,suffixfa)>0THEN 
+infeld(eingangdateiname);ruecksprung:=2;standardmeldung(meldungnameloeschen,
+t1+" (-WK,-BR,-ZI)#"+text(t2,8)+"#");standardnproc;LEAVE 
+kursdatenschnittstelleexportaufbereitenoderabfrageFI UNTIL t1=""PER ;
+ruecksprung:=1;kursdatenschnittstelleexportaufbereiten.END PROC 
+kursdatenschnittstelleexportaufbereitenoderabfrage;PROC 
+kursdatenschnittstelleexportaufbereiten:kurswahlinitialisieren(aktjgst,
+gewjgst,gewhj,schuelergruppe,gewsj);kurswahlbasisholen(fstat);IF fstat<>0
+THEN meldungausgeben(meldungserverfehler,einganggewjgst,1);ELIF 
+letzterschueler<ersterschuelerTHEN meldungausgeben(meldungkeineschueler,
+einganggewjgst,1);ELSE bereitefadateiauf;bereitewkdateiauf;bereitebrdateiauf;
+bereitezidateiauf;loeschemeldung;return(ruecksprung)FI .bereitefadateiauf:IF 
+gewjgst=aktjgstCAND gewhj=akthjTHEN fahj:=akthj;fasj:=aktsjELSE 
+geplanteshjundsjberechnen(fahj,fasj)FI ;standardmeldung(meldungbearbwird,
+aktdateiname+suffixfa+"#");forget(aktdateiname+suffixfa,quiet);dsfa:=
+sequentialfile(output,aktdateiname+suffixfa);inittupel(dnrfaecherangebot);
+putwert(fnrfangjgst,gewjgst);statleseschleife(dnrfaecherangebot,fasj,fahj,
+fnrfangsj,fnrfanghj,PROC faecherangebotindateischreiben).bereitewkdateiauf:
+forget(aktdateiname+suffixwk,quiet);dswk:=sequentialfile(output,aktdateiname+
+suffixwk);standardmeldung(meldungbearbwird,aktdateiname+suffixwk+"#");IF 
+eingangrow(eingangmitkursen)<>""THEN erstelledateimitkennungELSE 
+erstelledateiohnekennungFI .erstelledateimitkennung:FOR iFROM ersterschueler
+UPTO letzterschuelerREP kweintrag:=wahldatenzumindex(i,kzname);pos1:=pos(
+kweintrag,trenner)-1;pos2:=pos(kweintrag,trenner,pos1+2)-1;dateieintrag:=text
+(kweintrag,pos1);dateieintrag:=text(dateieintrag,30);dateieintragCAT text(
+subtext(kweintrag,pos1+2,pos2),15);dateieintragCAT subtext(kweintrag,pos2+2);
+kweintrag:=wahldatenzumindex(i,kzkurse);pos1:=1;FOR jFROM 1UPTO length(
+kweintrag)DIV kurslaengeREP kurseintrag:=subtext(kweintrag,pos1,pos1+
+kurslaenge-1);dateieintragCAT subtext(kurseintrag,4,5);dateieintragCAT 
+subtext(kurseintrag,2,3);dateieintragCAT (kurseintragSUB 1);dateieintragCAT 
+subtext(kurseintrag,6,7);pos1INCR kurslaenge;PER ;put(dswk,dateieintrag);line
+(dswk);PER .erstelledateiohnekennung:FOR iFROM ersterschuelerUPTO 
+letzterschuelerREP kweintrag:=wahldatenzumindex(i,kzname);pos1:=pos(kweintrag
+,trenner)-1;pos2:=pos(kweintrag,trenner,pos1+2)-1;dateieintrag:=text(
+kweintrag,pos1);dateieintrag:=text(dateieintrag,30);dateieintragCAT text(
+subtext(kweintrag,pos1+2,pos2),15);dateieintragCAT subtext(kweintrag,pos2+2);
+kweintrag:=wahldatenzumindex(i,kzkurse);pos1:=1;FOR jFROM 1UPTO length(
+kweintrag)DIV kurslaengeREP kurseintrag:=subtext(kweintrag,pos1,pos1+
+kurslaenge-1);dateieintragCAT subtext(kurseintrag,4,5);dateieintragCAT 
+subtext(kurseintrag,2,3);dateieintragCAT (kurseintragSUB 1);dateieintragCAT 
+leerekennung;pos1INCR kurslaenge;PER ;put(dswk,dateieintrag);line(dswk);PER .
+bereitebrdateiauf:forget(aktdateiname+suffixbr,quiet);dsbr:=sequentialfile(
+output,aktdateiname+suffixbr).bereitezidateiauf:forget(aktdateiname+suffixzi,
+quiet);standardmeldung(meldungbearbwird,aktdateiname+suffixzi+"#");dszi:=
+sequentialfile(output,aktdateiname+suffixzi);dateieintrag:=gewsj;dateieintrag
+CAT gewjgst;dateieintragCAT gewhj;dateieintragCAT date;dateieintragCAT 
+"schulis   ";dateieintragCAT suffixzieintrag;put(dszi,dateieintrag).END PROC 
+kursdatenschnittstelleexportaufbereiten;PROC faecherangebotindateischreiben(
+BOOL VAR b):INT VAR wstd;IF wert(fnrfangsj)=fasjCAND wert(fnrfanghj)=fahj
+CAND wert(fnrfangjgst)=gewjgstCAND dbstatus=okTHEN wstd:=intwert(
+fnrfangwochenstd);IF wstd>9THEN wstd:=9FI ;put(dsfa,text(wert(fnrfangfach),2)
++text(wert(fnrfangart),2)+text(wert(fnrfanganzlv),2)+text(wstd));line(dsfa)
+ELSE dbstatus(1);b:=FALSE FI .END PROC faecherangebotindateischreiben;PROC 
+kursdatenschnittstelleexportzeigen:aktdateiname:=standardmaskenfeld(
+eingangdateiname);IF aktdateiname=""THEN fehlermeldungfeldfuellenELIF exists(
+aktdateiname+suffixfa)THEN zeigdateiELSE fehlermeldungdateifehltFI .END PROC 
+kursdatenschnittstelleexportzeigen;PROC zeigdatei:zeigedatei(aktdateiname+
+aktsuffix,"vr").END PROC zeigdatei;PROC 
+kursdatenschnittstelleexportzeigenverlassen:IF aktsuffix=suffixziTHEN 
+aktsuffix:=suffixfa;enter(2)ELSE IF aktsuffix=suffixfaTHEN aktsuffix:=
+suffixwkELIF aktsuffix=suffixwkTHEN aktsuffix:=suffixziFI ;enter(1)FI .END 
+PROC kursdatenschnittstelleexportzeigenverlassen;PROC 
+kursdatenschnittstelleexportloeschenabfrage:aktdateiname:=standardmaskenfeld(
+eingangdateiname);IF aktdateiname=""THEN fehlermeldungfeldfuellenELIF exists(
+aktdateiname+suffixfa)THEN beginlist;t1:=" ";REP getlistentry(t1,t2);IF t1=
+aktdateiname+suffixfaTHEN standardmeldung(meldungnameloeschen,t1+
+" (-WK,-BR,-ZI)#"+text(t2,8)+"#");standardnproc;LEAVE 
+kursdatenschnittstelleexportloeschenabfrageFI ;UNTIL t1=""PER ELSE 
+fehlermeldungdateifehltFI .END PROC 
+kursdatenschnittstelleexportloeschenabfrage;PROC 
+kursdatenschnittstelleexportloeschen:forget(aktdateiname+suffixfa,quiet);
+forget(aktdateiname+suffixwk,quiet);forget(aktdateiname+suffixbr,quiet);
+forget(aktdateiname+suffixzi,quiet);standardmeldung(meldungdatengeloescht,"")
+;return(2).END PROC kursdatenschnittstelleexportloeschen;PROC 
+kursdatenschnittstelleexportdrucken:aktdateiname:=standardmaskenfeld(
+eingangdateiname);IF aktdateiname=""THEN fehlermeldungfeldfuellenELIF exists(
+aktdateiname+suffixfa)THEN druckalledateienELSE fehlermeldungdateifehltFI .
+druckalledateien:standardmeldung(meldungdrucken,"");print(aktdateiname+
+suffixfa);print(aktdateiname+suffixwk);print(aktdateiname+suffixzi);return(1)
+.END PROC kursdatenschnittstelleexportdrucken;PROC 
+pruefeingabeundbelegvariablen:fstat:=0;eingangrow(einganggewjgst):=
+standardmaskenfeld(einganggewjgst);eingangrow(einganggewhj):=
+standardmaskenfeld(einganggewhj);eingangrow(eingangaktjgst):=
+standardmaskenfeld(eingangaktjgst);eingangrow(eingangaktneue):=
+standardmaskenfeld(eingangaktneue);eingangrow(eingangmitkursen):=
+standardmaskenfeld(eingangmitkursen);IF aktsj="0000"THEN aktsj:=
+schulkenndatum(schuljahr);akthj:=schulkenndatum(halbjahr)FI ;gewjgst:=
+eingangrow(einganggewjgst);gewhj:=eingangrow(einganggewhj);aktjgst:=
+eingangrow(eingangaktjgst);aktneue:=eingangrow(eingangaktneue);prueffeld2;
+prueffeld3;prueffeld4und5;prueffeld4;prueffeld5;IF fstat=0THEN pruefdateiname
+FI .prueffeld2:i:=int(gewjgst);IF gewjgst=""THEN meldungausgeben(
+meldungfeldfuellen,einganggewjgst,1);LEAVE pruefeingabeundbelegvariablenELIF 
+i<11COR i>14THEN meldungausgeben(meldungfalschejgst,einganggewjgst,1);LEAVE 
+pruefeingabeundbelegvariablenFI .prueffeld3:i:=int(gewhj);IF gewhj=""THEN 
+meldungausgeben(meldungfeldfuellen,einganggewhj,1);LEAVE 
+pruefeingabeundbelegvariablenELIF i<1COR i>2THEN meldungausgeben(
+meldungfalscheshj,einganggewhj,1);LEAVE pruefeingabeundbelegvariablenFI .
+prueffeld4und5:IF aktjgst=""CAND aktneue=""THEN meldungausgeben(
+meldungpraezisieren,eingangaktjgst,1);LEAVE pruefeingabeundbelegvariablen
+ELIF aktjgst=""CAND aktneue<>""THEN schuelergruppe:=kznurneueELIF aktjgst<>""
+CAND aktneue=""THEN schuelergruppe:=kzohneneueELSE schuelergruppe:=kzalleFI .
+prueffeld4:i:=int(aktjgst);IF i<10COR i>14THEN meldungausgeben(
+meldungfalschejgst,einganggewjgst,1);LEAVE pruefeingabeundbelegvariablenELIF 
+i>int(gewjgst)THEN meldungausgeben(meldungandereauswahl,einganggewjgst,1);
+LEAVE pruefeingabeundbelegvariablenELIF i=int(gewjgst)THEN IF gewhj="1"CAND 
+akthj="2"THEN meldungausgeben(meldungandereauswahl,einganggewhj,1);LEAVE 
+pruefeingabeundbelegvariablenFI FI .prueffeld5:i:=int(aktneue);IF aktneue<>""
+CAND aktjgst<>""THEN IF i-1<>int(aktjgst)THEN meldungausgeben(
+meldungandereauswahl,eingangaktneue,1)FI ELIF aktneue<>""CAND aktjgst=""THEN 
+IF i<11COR i>14THEN meldungausgeben(meldungfalschejgst,eingangaktneue,1)ELIF 
+i+1>int(gewjgst)THEN meldungausgeben(meldungandereauswahl,eingangaktneue,1)
+ELIF i-1=int(gewjgst)THEN IF gewhj="1"CAND akthj="2"THEN meldungausgeben(
+meldungandereauswahl,einganggewhj,1)FI FI FI .pruefdateiname:aktdateiname:=
+standardmaskenfeld(eingangdateiname);IF aktdateiname=""THEN 
+fehlermeldungfeldfuellenELIF falschercode(aktdateiname)THEN 
+fehlermeldungnamefalsch(TRUE )FI .END PROC pruefeingabeundbelegvariablen;
+BOOL PROC falschercode(TEXT CONST t):INT VAR zeichencode;FOR iFROM 1UPTO 
+LENGTH t-3REP zeichencode:=code(tSUB i);IF NOT ((zeichencode>=48AND 
+zeichencode<=57)OR (zeichencode>=65AND zeichencode<=90)OR (zeichencode>=97
+AND zeichencode<=122))THEN LEAVE falschercodeWITH TRUE FI PER ;FALSE END 
+PROC falschercode;PROC meldungausgeben(INT CONST meldung,gewfeld,
+gewruecksprung):fstat:=1;standardmeldung(meldung,"");infeld(gewfeld);return(
+gewruecksprung)END PROC meldungausgeben;PROC archivanmelden:aktfeld:=infeld;
+archivfehler:=FALSE ;commanddialogue(FALSE );aktdateiname:=standardmaskenfeld
+(eingangdateiname);IF aktdateiname=""THEN fehlermeldungfeldfuellenELIF exists
+(aktdateiname+suffixfa)THEN meldearchivanELSE fehlermeldungdateifehltFI .
+meldearchivan:disablestop;reserve(filemodus,/dos);IF iserrorTHEN archivfehler
+:=TRUE ;abbruchnachfehler(1);ELSE enablestopFI .END PROC archivanmelden;PROC 
+kursdatenschnittstelleexportarchiv(INT CONST wahl):aktfeld:=infeld;SELECT 
+wahlOF CASE 1:archivinitialisierenCASE 2:archivanmelden;IF archivfehlerTHEN 
+LEAVE kursdatenschnittstelleexportarchivFI ;archivlistenCASE 3:
+archivbeschreibenCASE 4:archivueberschreibenEND SELECT ;infeld(aktfeld).
+archivinitialisieren:standardmeldung(meldungwarten,"");disablestop;clear(/dos
+);IF iserrorTHEN abbruchnachfehler(2);ELSE enablestop;loeschemeldung;release(
+/dos);return(2)FI .archivlisten:standardmeldung(meldungwarten,"");disablestop
+;g:=sequentialfile(output,listenname);thes:=ALL /dos;IF iserrorTHEN 
+abbruchnachfehler(1);ELSE thesaurusaufbereiten;enablestop;zeigedatei(
+listenname,"vr");release(/dos)FI .thesaurusaufbereiten:t:=" ";i:=0;REP get(
+thes,t,i);putline(g,t)UNTIL t=""PER .archivbeschreiben:standardmeldung(
+meldungwarten,"");disablestop;IF exists(aktdateiname+suffixfa,/dos)THEN IF 
+iserrorTHEN abbruchnachfehler(2);LEAVE kursdatenschnittstelleexportarchiv
+ELSE abfragedateiueberschreibenFI ELSE save(aktdateiname+suffixfa,/dos);IF 
+iserrorTHEN abbruchnachfehler(2);LEAVE kursdatenschnittstelleexportarchiv
+ELSE save(aktdateiname+suffixwk,/dos);save(aktdateiname+suffixbr,/dos);save(
+aktdateiname+suffixzi,/dos)FI ;enablestop;commanddialogue(TRUE );
+loeschemeldung;release(/dos);return(2)FI .abfragedateiueberschreiben:
+standardmeldung(meldungaufdiskschr,aktdateiname+".FA (-WK,-BR,-ZI)#");
+standardnproc.archivueberschreiben:standardmeldung(meldungwarten,"");
+disablestop;commanddialogue(FALSE );erase(aktdateiname+suffixfa,/dos);erase(
+aktdateiname+suffixwk,/dos);erase(aktdateiname+suffixbr,/dos);erase(
+aktdateiname+suffixzi,/dos);IF iserrorTHEN abbruchnachfehler(3);LEAVE 
+kursdatenschnittstelleexportarchivFI ;save(aktdateiname+suffixfa,/dos);IF 
+iserrorTHEN abbruchnachfehler(3);LEAVE kursdatenschnittstelleexportarchiv
+ELSE save(aktdateiname+suffixwk,/dos);save(aktdateiname+suffixbr,/dos);save(
+aktdateiname+suffixzi,/dos)FI ;enablestop;commanddialogue(TRUE );
+loeschemeldung;release(/dos);return(3).END PROC 
+kursdatenschnittstelleexportarchiv;PROC abbruchnachfehler(INT CONST schritte)
+:standardmeldung(meldungrausreichen,"Fehler: "+errormessage+" !#");clearerror
+;return(schritte);infeld(aktfeld);release(/dos);commanddialogue(TRUE );
+enablestopEND PROC abbruchnachfehler;PROC kursdatenschnittstelleexportabbruch
+(INT CONST schritte):return(schritte);infeld(aktfeld);release(/dos);
+commanddialogue(TRUE );enablestopEND PROC kursdatenschnittstelleexportabbruch
+;PROC kursdatenschnittstelleexportabfrage(INT CONST wahl):SELECT wahlOF CASE 
+1:archivanmelden;IF archivfehlerTHEN LEAVE 
+kursdatenschnittstelleexportabfrageFI ;standardmeldung(meldungdisksichern,
+aktdateiname+".FA (-WK,-BR,-ZI)#")CASE 2:archivanmelden;IF archivfehlerTHEN 
+LEAVE kursdatenschnittstelleexportabfrageFI ;standardmeldung(meldungdiskinit,
+"")CASE 3:fragevorbereiten;standardmeldung(meldungnameloeschen,aktdateiname+
+".FA (-WK,-BR,-ZI)#"+text(t2,8)+"#")END SELECT ;standardnproc.
+fragevorbereiten:aktdateiname:=standardmaskenfeld(eingangdateiname);IF 
+aktdateiname=""THEN fehlermeldungnamefalsch(FALSE )ELIF falschercode(
+aktdateiname)THEN fehlermeldungnamefalsch(TRUE )FI ;IF exists(aktdateiname+
+suffixfa)THEN beginlist;REP getlistentry(t1,t2);UNTIL t1=aktdateiname+
+suffixfaCOR t1=""PER ;ELSE fehlermeldungdateifehlt;LEAVE 
+kursdatenschnittstelleexportabfrageFI .END PROC 
+kursdatenschnittstelleexportabfrage;PROC fehlermeldungdateifehlt:fstat:=1;
+standardmeldung(meldungnameunbek,aktdateiname+".FA (-WK,-BR,-ZI)#");infeld(
+eingangdateiname);return(1).END PROC fehlermeldungdateifehlt;PROC 
+fehlermeldungfeldfuellen:meldungausgeben(meldungpraezisieren,eingangdateiname
+,1).END PROC fehlermeldungfeldfuellen;PROC fehlermeldungnamefalsch(BOOL 
+CONST mitfalschemzeichen):IF mitfalschemzeichenTHEN fstat:=1;standardmeldung(
+meldungnamefalsch,subtext(aktdateiname,i,i)+"#"+aktdateiname+"#");infeld(
+eingangdateiname);return(1)ELSE meldungausgeben(meldungnamefalsch,
+eingangdateiname,1)FI END PROC fehlermeldungnamefalsch;PROC 
+kursdatenschnittstelleexportloescheundreturn(BOOL CONST b):IF bTHEN forget(
+listenname,quiet);FI ;loeschemeldung;return(2)END PROC 
+kursdatenschnittstelleexportloescheundreturn;PROC loeschemeldung:aktfeld:=
+infeld;infeld(1);standardfelderausgeben;infeld(aktfeld)END PROC 
+loeschemeldung;END PACKET kursdatenueberschnittstelleexportieren
+

@@ -1,0 +1,435 @@
+PACKET setup eumel partitionierung         (* Copyright (C) 1985       *)
+                                           (* Martin Schönbeck, Spenge *)
+DEFINES             tracks,                (* Lutz Prechelt, Karlsruhe *)
+                    sectors,               (* Änderungen: Ley    ms    *)
+                    heads,                 (* Stand: 07.04.89          *)
+                    first track,
+                    last track,
+                    partition start,
+                    partition type,
+                    partition active,
+                    partition size,
+                    partition word 0,
+
+                    get boot block,
+                    put boot block,
+                    clear partition,
+
+                  (*get bad track table,*)
+                    get bad sector table,
+                    clear partition table,
+                    setup channel,
+                    start of partition:
+
+    LET bst size             = 1024;  (* nr of bad sector table entrys *)
+
+ROW 256 INT VAR boot block;
+INT VAR boot block session := session - 1;
+INT VAR fd channel         := 28;    (* Festplatten-Setupkanal *)
+
+INT PROC setup channel:
+   fd channel
+END PROC setup channel;
+
+PROC setup channel (INT CONST new channel):
+    enable stop;
+    teste kanal typ;
+    boot block session DECR 1;
+    wirf altes pac raus;
+    fd channel := new channel;
+    sorge dafuer dass kanal uptodate ist.
+
+teste kanal typ:
+    IF (get value (1, new channel) AND 12) <> 12
+       THEN errorstop ("Hier gibt es leider keine Platte")
+    FI.
+
+wirf altes pac raus:
+    IF new channel <> fd channel
+        THEN INT VAR raus := get value (-13, fd channel);
+    FI.
+
+sorge dafuer dass kanal uptodate ist:
+   INT VAR old channel := channel; 
+   ROW 256 INT VAR dummy; INT VAR i;
+   continue (new channel);
+   disable stop;
+   blockin (dummy, -1, -1, i);
+   break (quiet);
+   continue (old channel).
+
+END PROC setup channel;
+
+PROC get bad sector table (ROW bst size REAL VAR bb tab,
+                           INT VAR bad sect, INT CONST eumel type):
+    initialisiere tabelle;
+    suche schlechte sectoren.
+
+initialisiere tabelle:
+    INT VAR i;
+    FOR i FROM 1 UPTO bst size REP
+      bb tab [i] := -1.0;
+    PER.
+
+suche schlechte sectoren:
+    INT VAR  my channel := channel;
+    REAL VAR sector := start of partition (eumel type),
+             end := sector + partition size (partition number (eumel type)),
+             track mode restart :: 0.0;
+    INT VAR  akt track := 0,
+             fehler code;
+    bad sect := 1;  (* Eintragsnr. des NÄCHSTEN schlechten Sektors *)
+    continue (fd channel);
+    disable stop;
+    DATASPACE VAR ds := nilspace;
+    REAL CONST cylinder size :: real (sectors * heads),
+               track size    :: real (sectors);
+    track mode restart := sector + track size -
+                              (sector MOD track size);
+     (* wenn sector nicht erster der spur, dann die erste einzeln *)
+    WHILE sector < end REP
+         IF sector MOD cylinder size = 0.0
+         THEN melde naechste spur  FI;
+         IF sector >= track mode restart
+         THEN check track
+         ELSE check sector  FI
+    UNTIL bad sect > bst size OR is error PER;
+    continue (my channel);
+    forget (ds);
+    enable stop;
+    IF bad sect > bst size 
+        THEN errorstop ("Zu viele schlechte Sektoren"); 
+    FI;
+    lass nicht zu dass ein ersatzsektor ein schlechter ist;
+    bad sect DECR 1.  (* ANZAHL schlechter Sektoren *)
+
+melde naechste spur:
+   break (quiet);
+   continue (my channel);
+   akt track INCR 1;
+   cout (akt track);
+   continue (fd channel).
+
+check track :
+  verify track (ds, 2, sector, fehler code);
+  IF schlechten sektor gefunden
+  THEN track mode restart := sector + tracksize
+  ELSE sector INCR track size  FI.
+
+check sector :
+  read block (ds, 2, sector, fehler code);
+  IF schlechten sektor gefunden 
+  THEN eintragen  FI;
+  sector INCR 1.0.
+
+schlechten sektor gefunden:
+    SELECT fehler code OF
+       CASE 0: FALSE
+       CASE 1: error stop ("Platte kann nicht gelesen werden"); FALSE
+       CASE 2: TRUE
+       CASE 3: error stop ("Versorgungsfehler beim Plattentest"); FALSE
+       OTHERWISE error stop ("unbekannter Fehler auf Platte"); FALSE
+    END SELECT.
+
+eintragen:
+    bb tab [bad sect] := sector;
+    bad sect INCR 1.
+
+lass nicht zu dass ein ersatzsektor ein schlechter ist:
+    REAL VAR aktueller ersatz := end - real (bad sect - 1);
+    INT VAR akt b sect;
+    FOR akt b sect FROM 1 UPTO bad sect - 1 REP
+        IF aktueller ersatz ist in tabelle
+            THEN vertausche aktuell zu ersetzenden mit ihm
+        FI;
+    PER.
+
+aktueller ersatz ist in tabelle:
+    INT VAR such index;
+    FOR such index FROM 1 UPTO bad sect REP
+       IF aktueller ersatz = bb tab (such index)
+           THEN LEAVE aktueller ersatz ist in tabelle WITH TRUE
+       FI;
+    PER;
+    FALSE.
+
+vertausche aktuell zu ersetzenden mit ihm:
+    bb tab ( such index ) := bb tab ( akt b sect );
+    bb tab (akt b sect)   := aktueller ersatz.
+END PROC get bad sector table;
+
+INT PROC cyl and head (REAL CONST sector):
+     cylinder code (int (sector / real (sectors)) DIV heads) OR head.
+
+head :
+  (int (sector / real (sectors)) MOD heads).
+END PROC cyl and head;
+
+PROC get boot block:
+    IF boot block session <> session
+       THEN hole aktuellen boot block
+    FI.
+
+hole aktuellen bootblock :
+    disable stop;
+    DATASPACE VAR dummy ds := nilspace;
+    BOUND STRUCT (ALIGN dummy, 
+                  ROW 256 INT block) VAR partition table := dummy ds; 
+    get external block (dummy ds, 2, 0, fd channel); 
+    IF NOT is error
+        THEN transfer data to boot block
+    FI; 
+    forget (dummy ds). 
+ 
+transfer data to boot block:
+    IF not valid boot block
+        THEN try to get valid boot block from file
+    FI;
+    boot block := partition table. block;
+    boot block session := session.
+
+not valid boot block:
+    partition table. block [256] <> boot indicator OR
+    it is an old boot block of eumel.
+
+boot indicator: -21931.
+
+it is an old boot block of eumel:
+    partition table. block [1] = 1514.
+
+try to get valid boot block from file:
+    forget (dummy ds);
+    partition table := old ("bootblock");
+    IF is error THEN LEAVE transfer data to boot block FI.
+END PROC get boot block;
+
+PROC clear partition table (INT CONST sicherung):
+    IF sicherung = -3475 
+       THEN neuen boot block;
+            put boot block
+    FI.
+
+neuen boot block:
+    enable stop;
+    BOUND STRUCT (ALIGN dummy, 
+                  ROW 256 INT block) VAR partition table;
+    partition table := old ("bootblock");
+    boot block := partition table. block;
+    boot block session := session.
+END PROC clear partition table;
+
+PROC put boot block:
+    IF boot block ist uptodate
+        THEN schreibe block auf platte
+        ELSE errorstop ("boot block nicht uptodate")
+    FI.
+
+boot block ist uptodate:
+    boot block session = session.
+
+schreibe block auf platte:
+    disable stop;
+    DATASPACE VAR dummy ds := nilspace;
+    BOUND STRUCT (ALIGN dummy, 
+                  ROW 256 INT block) VAR partition table := dummy ds; 
+    transfer data to dataspace;
+    put external block (dummy ds, 2, 0, fd channel); 
+    forget (dummy ds). 
+ 
+transfer data to dataspace:
+    partition table. block := boot block.
+END PROC put boot block;
+
+INT PROC partition number (INT CONST part type):
+    INT VAR partition;
+    FOR partition FROM 1 UPTO 4 REP
+         IF partition type (partition) = part type
+              THEN LEAVE partition number WITH partition
+         FI
+    PER;
+    errorstop ("Partitiontyp gibt es nicht");
+    7.
+END PROC partition number;
+
+INT PROC partition word 0 (INT CONST partition):
+   boot block (entry (partition))
+END PROC partition word 0;
+
+PROC partition word 0 (INT CONST partition, word):
+   boot block (entry (partition)) := word
+END PROC partition word 0;
+
+REAL PROC start of partition (INT CONST partition type):
+    partition start (partition number (partition type))
+END PROC start of partition;
+ 
+
+INT PROC first track (INT CONST partition):
+    high byte (boot block [entry (partition) + 1]) 
+       + 4 * (low byte (boot block [entry (partition) + 1]) AND (128 + 64)) 
+END PROC first track;
+
+INT PROC last track (INT CONST partition):
+    high byte (boot block [entry (partition) + 3]) 
+       + 4 * (low byte (boot block [entry (partition) + 3]) AND (128 + 64)) 
+END PROC last track;
+
+INT PROC partition type (INT CONST partition):
+    low byte (boot block [entry (partition) + 2])
+END PROC partition type;
+
+BOOL PROC partition active (INT CONST partition):
+    low byte (boot block [entry (partition)]) = 128
+END PROC partition active;
+
+(****************** neu eingefügt ******************************)
+PROC partition active (INT CONST partition, BOOL CONST active):
+   IF active THEN activate this partition
+             ELSE deactivate this partition
+   FI.
+
+deactivate this partition:
+    set bit (boot block [entry (partition)], 7);
+    (* first setting needed, because reset bit does xor *)
+    reset bit (boot block [entry (partition)], 7).
+
+activate this partition:
+    set bit (boot block [entry (partition)], 7).
+END PROC partition active;
+
+(****************** neu eingefügt ******************************)
+ 
+PROC first track (INT CONST partition, cylinder):
+    boot block [entry (partition) + 1]
+            := cylinder code (cylinder) OR start sector.
+
+start sector:
+    IF cylinder = 0
+        THEN 2
+        ELSE 1
+    FI.
+END PROC first track;
+
+PROC last track (INT CONST partition, cylinder):
+    boot block [entry (partition) + 3] := cylinder code (cylinder).
+END PROC last track;
+
+PROC partition type (INT CONST partition, type):
+    boot block [entry (partition) + 2] := type.
+END PROC partition type;
+
+REAL PROC partition start (INT CONST partition):
+    unsigned low word + high word.
+
+unsigned low word:
+    real (low byte (boot block [entry (partition) + 4])) +
+    real (high byte (boot block [entry (partition) + 4])) * 256.0.
+
+high word:
+    real (boot block [entry (partition) + 5]) * 65536.0.
+END PROC partition start;
+
+PROC partition start (INT CONST partition, REAL CONST sector offset):
+    boot block [entry (partition) + 4] := low word (sector offset);
+    boot block [entry (partition) + 5] := high word (sector offset)
+END PROC partition start;
+
+REAL PROC partition size (INT CONST partition):
+    unsigned low word + high word.
+
+unsigned low word:
+    real (low byte (boot block [entry (partition) + 6])) +
+    real (high byte (boot block [entry (partition) + 6])) * 256.0.
+
+high word:
+    real (boot block [entry (partition) + 7]) * 65536.0.
+END PROC partition size;
+
+PROC partition size (INT CONST partition, REAL CONST number of blocks):
+    boot block [entry (partition) + 6] := low word (number of blocks);
+    boot block [entry (partition) + 7] := high word (number of blocks)
+END PROC partition size;
+ 
+PROC clear partition (INT CONST partition):
+    INT VAR i;
+    FOR i FROM 0 UPTO 7 REP
+        boot block [entry (partition) + i] := 0
+    PER
+END PROC clear partition;
+
+INT PROC entry (INT CONST partition):
+    get boot block;
+    256 - 5 * 8 + (partition * 8)
+END PROC entry;
+
+INT PROC cylinder code (INT CONST cylinder):
+    cylinder text ISUB 1.
+
+cylinder text:
+    high cylinder bits + low cylinder bits.
+
+high cylinder bits:
+    code ((cylinder AND (256 + 512)) DIV 4).
+
+low cylinder bits:
+    code (cylinder AND (128 + 64 + 32 + 16 + 8 + 4 + 2 + 1)).
+END PROC cylinder code;
+
+INT PROC tracks: 
+   get value (-10, fd channel) 
+END PROC tracks; 
+ 
+INT PROC sectors: 
+   get value (-11, fd channel) 
+END PROC sectors; 
+ 
+INT PROC heads: 
+   get value (-12, fd channel) 
+END PROC heads;
+ 
+INT PROC get value (INT CONST control code, channel for value): 
+    enable stop; 
+    INT VAR old channel := channel;
+    IF channel for value <> old channel THEN continue (channel for value)  FI;
+    INT VAR value; 
+    control (control code, 0, 0, value); 
+    IF channel for value <> old channel THEN continue (old channel)  FI;
+    value 
+END PROC get value; 
+ 
+PROC get external block (DATASPACE VAR ds, INT CONST ds page,
+                                             archive block, get channel):
+   INT VAR old channel := channel; 
+   continue (get channel);
+   disable stop;
+   read block (ds, ds page, archive block, error);
+   INT VAR error;
+   SELECT error OF
+      CASE 0:
+      CASE 1: error stop ("Platte kann nicht gelesen werden");
+      CASE 2: error stop ("Lesefehler bei Block "+ text (archive block));
+      CASE 3: error stop ("Versorgungsfehler Archiv");
+      OTHERWISE error stop ("unbekannter Fehler auf Platte");
+   END SELECT;
+   continue (old channel).
+END PROC get external block;
+
+PROC put external block (DATASPACE CONST ds, INT CONST ds page,
+                                             archive block, get channel):
+   INT VAR old channel := channel; 
+   continue (get channel);
+   disable stop;
+   write block (ds, ds page, archive block, error);
+   INT VAR error;
+   SELECT error OF
+      CASE 0:
+      CASE 1: error stop ("Platte kann nicht geschrieben werden");
+      CASE 2: error stop ("Schreibfehler bei Block "+ text (archive block));
+      CASE 3: error stop ("Versorgungsfehler Archiv");
+      OTHERWISE error stop ("unbekannter Fehler auf Platte");
+   END SELECT;
+   continue (old channel).
+END PROC put external block;
+
+END PACKET setup eumel partitionierung;
+

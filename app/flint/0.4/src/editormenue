@@ -1,0 +1,1008 @@
+PACKET edit menue                                 (* Autor: Thomas Berlage *)
+                                                  (* Stand: 16.10.88       *)
+  DEFINES
+
+  edit,
+  edit status anzeigen,
+  zeilenmenue anbieten,
+  editfile setzen,
+  edit menue,
+  element markieren,
+  text menue,
+  ausschnitt drucken,
+  gewaehlte schriftarten einstellen :
+
+
+(************************* Zeilenmenue *************************************)
+
+LET
+  menue status =
+"MENUE:   Wählen: <-,->   Ausführen: LEER,RET   Abbruch: ESC h   Hilfe: ESC ?";
+
+
+PROC zeilenmenue anbieten (TEXT CONST menuename,
+                           PROC (INT CONST) kommandos) :
+
+  bild vorbereiten;
+  zeilenmenue anbieten (menuename, TRUE, PROC (INT CONST) kommandos);
+  bild nachbereiten .
+
+bild vorbereiten :
+  INT VAR x, y;
+  get cursor (x, y);
+  cursor (1, y size); out (""5"");
+  status anzeigen (menue status);
+  cursor (x, y);
+  IF aktueller editor > 0 THEN
+    get editcursor (x, y);
+    y := line no (editfile) + y size - y;
+    abschnitt neu (y - 1, y)
+  END IF .
+
+bild nachbereiten :
+  IF aktueller editor > 0 THEN
+    IF mark (editfile) THEN
+      bild neu
+    ELSE
+      abschnitt neu (y - 1, y)
+    END IF
+  END IF;
+  cursor (1, y size - 1); out (""4"") .
+
+END PROC zeilenmenue anbieten;
+
+PROC eget (TEXT CONST prompt, TEXT VAR inhalt) :
+
+  editget (prompt, inhalt, "", "GET/Allgemein")
+
+END PROC eget;
+
+BOOL PROC eja (TEXT CONST frage) :
+
+  ja (frage, "JA/Allgemein", TRUE)
+
+END PROC eja;
+
+
+(*   EDIT MENUE          *)
+
+TEXT VAR
+  param,
+  fensterdatei := "";
+
+FENSTER VAR zweitfenster;
+fenster initialisieren (zweitfenster);
+
+PROC edit menue :
+
+  zeilenmenue anbieten ("EDIT MENUE:",
+                        PROC (INT CONST) edit menue kommandos)
+
+END PROC edit menue;
+
+PROC edit menue kommandos (INT CONST wahl) :
+
+  SELECT wahl OF
+  CASE 1 : springen auf zeile
+  CASE 2 : suchen nach text
+  CASE 3 : suchen und ersetzen
+  CASE 4, 5 : markieren
+  CASE 6 : kopieren oder lesen
+  CASE 7 : fenster editieren
+  CASE 8 : limit einstellen
+  CASE 9 : tastenbelegung
+  END SELECT .
+
+springen auf zeile :
+  TEXT VAR z := "";
+  eget ("Zeilennummer:", z);
+  IF z <> "" THEN
+    INT CONST auf zeile := int (z);
+    IF last conversion ok THEN
+      edit file setzen; T auf zeile
+    ELSE
+      errorstop ("Zeilennummer ist keine Zahl")
+    END IF
+  END IF .
+
+suchen nach text :
+  param := "";
+  eget ("Text:", param);
+  IF param = "" THEN
+  ELIF eja ("Vorwärts") THEN
+    ek ("D" + textdarstellung (param))
+  ELSE
+    ek ("U" + textdarstellung (param))
+  END IF .
+
+suchen und ersetzen :
+  param := "";
+  eget ("Suchtext:", param);
+  IF param <> "" THEN
+    z := ""; eget ("Ersetzen durch:", z);
+    IF z <> "" THEN
+      IF eja ("Nur einmal") THEN
+        ek (textdarstellung (param) + "C" + textdarstellung (z))
+      ELSE
+        editfile setzen;
+        param CA z
+      END IF
+    END IF
+  END IF .
+
+markieren :
+  element markieren (wahl = 5) .
+
+kopieren oder lesen :
+  param := "";
+  editfile setzen;
+  IF mark THEN
+    eget ("Zieldatei (RET = Speicher):", param);
+    PUT param
+  ELSE
+    eget ("Quelldatei (RET = Speicher):", param);
+    GET param
+  END IF .
+
+fenster editieren :
+  INT VAR xa, ya, xl, yl;
+  get window (xa, ya, xl, yl);
+  IF groesster editor >= 2 THEN
+    errorstop ("Nur zwei Fenster")
+  ELSE
+    fenstergroesse setzen (zweitfenster,
+                           xa, ya + yl DIV 2, xl, yl - yl DIV 2);
+    eget ("Name der Datei:", fensterdatei);
+    IF NOT exists (fensterdatei) CAND
+       NOT eja ("""" + fensterdatei + """ neu einrichten") THEN
+      errorstop ("")
+    END IF;
+    FILE VAR eff := sequential file (modify, fensterdatei);
+    edit (eff, zweitfenster, "EDIT/Allgemein")
+  END IF .
+
+limit einstellen :
+  z := text (limit);
+  REP
+    eget ("Zeilenbreite bis Umbruch (limit) in Zeichen:", z);
+    INT CONST l := int (z);
+  UNTIL last conversion ok OR z = "" PER;
+  IF z <> "" THEN limit (l) END IF .
+
+tastenbelegung :
+  TEXT VAR taste;
+  status anzeigen ("");
+  cursor (1, 24);
+  put ("Gewünschte Taste drücken (ESC = Abbruch):"5"");
+  getchar (taste);
+  IF taste <> ""27"" THEN
+    put (""13"Sequenz ggf editieren, dann ESC q"5"");
+    lernsequenz editieren (taste)
+  END IF .
+
+END PROC edit menue kommandos;
+
+PROC ek (TEXT CONST kom) :
+
+  kommando auf taste legen ("f", kom);
+  std kommando interpreter ("f")
+
+END PROC ek;
+
+PROC editfile setzen :
+
+  kommando auf taste legen (""27"", "");
+  std kommando interpreter (""27"")
+
+END PROC editfile setzen;
+
+DATASPACE VAR ds;
+
+PROC lernsequenz editieren (TEXT CONST taste) :
+
+  disable stop;
+  ds := nilspace;
+  editieren (taste);
+  forget (ds)
+
+END PROC lernsequenz editieren;
+
+PROC element markieren (BOOL CONST bis satzende) :
+
+  FILE VAR edfile := editfile;
+  INT VAR spalte := col (edfile);
+  IF NOT mark (edfile) THEN
+    zeile lesen;
+    cursor zuruecksetzen;
+    mark (edfile, line no (edfile), spalte)
+  ELSE
+    zeile lesen
+  END IF;
+  IF bis satzende THEN
+    position auf satzende
+  ELSE
+    position auf wortende
+  END IF .
+
+zeile lesen :
+  read record (edfile, param) .
+
+cursor zuruecksetzen :
+  WHILE spalte > 1 CAND (param SUB spalte - 1) <> " " REP
+    spalte DECR 1
+  END REP .
+
+position auf satzende :
+  WHILE pos (param, ".", spalte) = 0 CAND kein absatz REP
+    down (edfile);
+    zeile lesen;
+    spalte := 1
+  END REP;
+  spalte := pos (param, ".", spalte);
+  IF spalte = 0 THEN spalte := length (param) ELSE spalte INCR 1 END IF;
+  col (edfile, spalte) .
+
+kein absatz :
+  (spalte = LENGTH param OR (param SUB LENGTH param) <> " ")
+    AND NOT eof (edfile) .
+
+position auf wortende :
+  spalte DECR 1;
+  REP
+    spalte INCR 1;
+    spalte := pos (param, ""33"", ""255"", spalte);
+    IF spalte = 0 THEN
+      IF eof (edfile) THEN
+        spalte := length (param)
+      ELSE
+        down (edfile);
+        zeile lesen
+      END IF
+    END IF
+  UNTIL spalte > 0 END REP;
+  spalte := pos (param, " ", spalte);
+  IF spalte = 0 THEN spalte := length (param) END IF;
+  col (edfile, spalte) .
+
+END PROC element markieren;
+
+TEXT VAR sequenz, aenderung;
+
+PROC editieren (TEXT CONST taste) :
+
+  enable stop;
+  FILE VAR f := sequential file (output, ds);
+  maxlinelength (f, 37);
+  sequenz := lernsequenz auf taste (taste);
+  klartext in file (f, sequenz);
+  alles neu;
+  abgrenzung zeichnen;
+  editstatus anzeigen;
+  edit (f, 42, 2, x size - 42, y size - 3);
+  klartext aus file (f, aenderung);
+  IF aenderung <> sequenz CAND wirklich aendern THEN
+    lernsequenz auf taste legen (taste, aenderung)
+  END IF .
+
+abgrenzung zeichnen :
+  cursor (40, 1);
+  y size - 3 TIMESOUT ""10""15""14""8""8"" .
+
+wirklich aendern :
+  eja ("Lernsequenz aendern") .
+
+END PROC editieren;
+
+
+(*   TEXT MENUE         *)
+
+PROC text menue :
+
+  zeilenmenue anbieten ("TEXT MENUE:",
+                        PROC (INT CONST) text menue kommandos)
+
+END PROC text menue;
+
+FENSTER VAR fontfenster, modfenster;
+fenster initialisieren (fontfenster);
+fenster initialisieren (modfenster);
+fenstergroesse setzen (fontfenster, 40, 2, 40, 21);
+fenstergroesse setzen (modfenster, 55, 13, 25, 10);
+
+TEXT VAR
+  ezeile,
+  format macro := "";
+
+
+PROC text menue kommandos (INT CONST mwahl) :
+
+  SELECT mwahl OF
+  CASE 1 : schrifttyp einstellen
+  CASE 2 : schriftart einstellen
+  CASE 3 : neue seite beginnen
+  CASE 4 : zwischenraum freilassen
+  CASE 5 : globaleinstellung
+  CASE 6 : zeilenweise formatieren
+  CASE 7 : ausschnitt drucken
+  END SELECT .
+
+schrifttyp einstellen :
+  TEXT VAR typname;
+  schrifttyp auswaehlen (typname);
+  IF typname <> "" THEN
+    textanweisung einfuegen ("type", schriftname, FALSE)
+  END IF .
+
+schriftname :
+  textdarstellung (typname) .
+
+schriftart einstellen :
+  schriftart auswaehlen;
+  gewaehlte schriftarten einstellen (gewaehlte modifikationen) .
+
+schriftart auswaehlen :
+  alles neu;
+  auswahl anbieten ("TEXT.Modwahl", modfenster, -10, "AUSWAHL/Allgemein",
+                    PROC (TEXT VAR, INT CONST) modname) .
+
+neue seite beginnen :
+  param := "";
+  eget ("Nummer der nächsten Seite (RET = +1):", param);
+  IF param = "" THEN
+    textanweisung einfuegen ("page", "", TRUE)
+  ELSE
+    INT CONST seitennr := int (param);
+    IF last conversion ok THEN
+      textanweisung einfuegen ("page", text (seitennr), TRUE)
+    ELSE
+      errorstop ("Seitennummer keine Zahl")
+    END IF
+  END IF .
+
+zwischenraum freilassen :
+  param := "";
+  eget ("Zwischenraum in cm:", param);
+  IF param <> "" THEN
+    change all (param, ",", ".");
+    REAL CONST wert := real (param);
+    IF last conversion ok THEN
+      textanweisung einfuegen ("free", text (wert), TRUE)
+    ELSE
+      errorstop ("kein Zahlenwert")
+    END IF
+  END IF .
+
+zeilenweise formatieren :
+  editfile setzen;
+  lineform; ueberschrift neu .
+
+globaleinstellung :
+  einstellung erfragen;
+  einstellung eintragen .
+
+END PROC text menue kommandos;
+
+LET zwischendatei = "&&Druckabschnitt";
+
+PROC ausschnitt drucken :
+
+  LET ende der seite = "Ende der Seite ";
+  FILE VAR ef := editfile;
+  INT VAR pageform anfang;
+  auf pageform datei testen;
+  IF pageform anfang > 0 THEN
+    editfile setzen;
+    IF mark (ef) THEN
+      markierten pageform abschnitt drucken
+    ELSE
+      nach seiten fragen und drucken
+    END IF;
+    print (zwischendatei);
+    forget (zwischendatei, quiet)
+  ELIF mark (ef) THEN
+    abschnitt formatieren und drucken
+  ELSE
+    errorstop ("kein Abschnitt markiert")
+  END IF;
+  alte position einnehmen .
+
+auf pageform datei testen :
+  INT VAR
+    zeile := line no (ef),
+    spalte := col (ef);
+  to line (ef, 1); col (ef, 1);
+  pageform anfang := 0;
+  WHILE NOT eof (ef) CAND kommando in zeile REP
+    IF pos (ef, ende der seite, 8) > 0 THEN
+      pageform anfang := line no (ef);
+    END IF;
+    down (ef)
+  UNTIL pageform anfang > 0 END REP;
+  to line (ef, zeile); col (ef, spalte) .
+
+kommando in zeile :
+  pos (ef, "#", 1) = 1 .
+
+markierten pageform abschnitt drucken :
+  markierten abschnitt kopieren;
+  pageform anfang kopieren (ef, pageform anfang) .
+
+nach seiten fragen und drucken :
+  anfang erfragen;
+  ende erfragen;
+  markierten abschnitt kopieren;
+  pageform anfang kopieren (ef, pageform anfang);
+  mark (ef, 0, 0) .
+
+anfang erfragen :
+  TEXT VAR seitennr := "";
+  eget ("Erste Seite:", seitennr);
+  IF seitennr = "" THEN
+    mark (ef, pageform anfang + 1, 1)
+  ELSE
+    to line (ef, 1);
+    down (ef, ende der seite + text (int (seitennr) - 1));
+    IF eof (ef) THEN
+      mark (ef, pageform anfang + 1, 1)
+    ELSE
+      down (ef);
+      mark (ef, line no (ef), 1)
+    END IF
+  END IF .
+
+ende erfragen :
+  eget ("Letzte Seite:", seitennr);
+  IF seitennr <> "" THEN
+    to line (ef, mark line no (ef));
+    down (ef, ende der seite + seitennr);
+    IF NOT eof (ef) THEN down (ef) END IF
+  ELSE
+    to eof (ef)
+  END IF;
+  col (ef, 1) .
+
+abschnitt formatieren und drucken :
+  macro einfuegen;
+  editfile setzen;
+  ueberschrift neu;
+  IF eja ("Zeilenweise formatieren") THEN
+    lineform; page; ueberschrift zeigen; bild zeigen;
+    markierte schlusszeile
+  END IF;
+  markierten abschnitt kopieren;
+  IF eja ("Seitenweise formatieren") THEN
+    pageform (zwischendatei);
+    alles neu;
+    print (zwischendatei + ".p");
+    forget (zwischendatei + ".p", quiet)
+  ELSE
+    print (zwischendatei)
+  END IF;
+  forget (zwischendatei, quiet);
+  macro entfernen .
+
+markierte schlusszeile :
+  cursor (1, y size - 1);
+  out (""15""); x size - 5 TIMESOUT " "; out (""14""4"") .
+
+macro einfuegen :
+  eget ("Format-Makro:", format macro);
+  IF format macro <> "" THEN
+    to line (ef, mark line no (ef));
+    read record (ef, ezeile);
+    change (ezeile, mark col (ef), mark col (ef) - 1,
+            "#" + format macro + "#");
+    write record (ef, ezeile);
+    to line (ef, zeile); col (ef, spalte)
+  END IF .
+
+macro entfernen :
+  IF format macro <> "" THEN
+    zeile := line no (ef); spalte := col (ef);
+    to line (ef, mark line no (ef));
+    read record (ef, ezeile);
+    change (ezeile, mark col (ef), mark col (ef) + length (format macro) + 1,
+            "");
+    write record (ef, ezeile)
+  END IF;
+  alte position einnehmen .
+
+alte position einnehmen :
+  to line (ef, zeile); col (ef, spalte) .
+
+END PROC ausschnitt drucken;
+
+PROC markierten abschnitt kopieren :
+
+  IF exists (zwischendatei) THEN
+    IF eja ("""" + zwischendatei + """ löschen") THEN
+      forget (zwischendatei, quiet)
+    ELSE
+      errorstop ("")
+    END IF
+  END IF;
+  bitte warten;
+  PUT zwischendatei
+
+END PROC markierten abschnitt kopieren;
+
+PROC pageform anfang kopieren (FILE VAR ef, INT CONST zeilen) :
+
+  FILE VAR zwischen := sequential file (modify, zwischendatei);
+  INT VAR i;
+  to line (zwischen, 1);
+  to line (ef, 1);
+  FOR i FROM 1 UPTO zeilen REP
+    read record (ef, ezeile);
+    insert record (zwischen);
+    write record (zwischen, ezeile);
+    down (ef); down (zwischen)
+  END REP
+
+END PROC pageform anfang kopieren;
+
+PROC schrifttyp auswaehlen (TEXT VAR typname) :
+
+  alles neu;
+  auswahl anbieten ("TEXT.Fontwahl", fontfenster, 1, "AUSWAHL/Allgemein",
+                    PROC (TEXT VAR, INT CONST) aus fonttab);
+  IF wahl (1) <> 0 THEN
+    typname := font (wahl (1))
+  ELSE
+    typname := ""
+  END IF
+
+END PROC schrifttyp auswaehlen;
+
+PROC aus fonttab (TEXT VAR name, INT CONST stelle) :
+
+  IF stelle > 49 THEN
+    name := ""
+  ELSE
+    name := font (stelle)
+  END IF
+
+END PROC aus fonttab;
+
+PROC gewaehlte schriftarten einstellen (TEXT CONST mod) :
+
+  INT VAR
+    zeile := line no (editfile),
+    spalte := col (editfile);
+  FILE VAR edfile := editfile;
+  read record (edfile, ezeile);
+  IF mark (edfile) THEN
+    modifikationen nachher behandeln;
+    modifikationen vorher behandeln
+  ELSE
+    gewaehlte modifikationen einstellen
+  END IF .
+
+modifikationen nachher behandeln :
+  BOOL VAR geloescht;
+  ueber blanks zuruecksetzen;
+  ueber zeilenanfang zuruecksetzen;
+  modifikationen am ende beseitigen;
+  modifikationen am ende einfuegen .
+
+ueber blanks zuruecksetzen :
+  WHILE spalte > 1 CAND (ezeile SUB (spalte - 1)) = " " REP
+    spalte DECR 1
+  END REP .
+
+ueber zeilenanfang zuruecksetzen :
+  INT VAR stelle;
+  IF spalte = 1 CAND zeile > 1 THEN
+    up (edfile);
+    read record (edfile, ezeile);
+    stelle := length (ezeile);
+    IF (ezeile SUB stelle) = " " THEN stelle DECR 1 END IF
+  ELSE
+    stelle := max (spalte - 1, 1)
+  END IF .
+
+modifikationen am ende beseitigen :
+  WHILE (ezeile SUB stelle) = "#" REP
+    ggf anweisung entfernen
+  END REP .
+
+ggf anweisung entfernen :
+  INT VAR anw anf := stelle - 1;
+  WHILE anw anf > 1 CAND (ezeile SUB anw anf) <> "#" REP
+    anw anf DECR 1
+  END REP;
+  anweisung entfernen ("off", anw anf, stelle, geloescht);
+  IF geloescht THEN
+    spalte DECR (stelle - anw anf + 1)
+  END IF;
+  stelle := anw anf - 1 .
+
+modifikationen am ende einfuegen :
+  IF pos (mod, "a") = 0 THEN
+    neue modifikationen nachher
+  END IF;
+  write record (edfile, ezeile) .
+
+neue modifikationen nachher :
+  FOR i FROM length (mod) DOWNTO 1 REP
+    change (ezeile, spalte, spalte - 1, mod param off);
+    spalte INCR mod param laenge
+  END REP .
+
+modifikationen vorher behandeln :
+  to line (edfile, mark line no (edfile));
+  col (edfile, mark col (edfile));
+  read record (edfile, ezeile);
+  stelle := col (edfile);
+  WHILE (ezeile SUB stelle) = "#" REP
+    ggf anfangsanweisung entfernen
+  END REP;
+  neue modifikationen am anfang einfuegen;
+  write record (edfile, ezeile);
+  to line (edfile, zeile);
+  col (edfile, spalte);
+  abschnitt neu (mark line no (edfile), zeile);
+  mark (edfile, 0, 0) .
+
+ggf anfangsanweisung entfernen :
+  INT VAR anw ende := pos (ezeile, "#", stelle + 1);
+  anweisung entfernen ("on", stelle, anw ende, geloescht);
+  IF geloescht THEN
+    IF line no (edfile) = zeile THEN
+      spalte DECR (anw ende - stelle + 1)
+    END IF
+  ELSE
+    stelle := anw ende + 1
+  END IF .
+
+neue modifikationen am anfang einfuegen :
+  IF pos (mod, "a") = 0 THEN
+    neue modifikationen vorher
+  END IF .
+
+neue modifikationen vorher :
+  FOR i FROM length (mod) DOWNTO 1 REP
+    change (ezeile, stelle, stelle - 1, mod param on);
+    IF line no (edfile) = zeile THEN
+      spalte INCR mod param laenge
+    END IF
+  END REP .
+
+gewaehlte modifikationen einstellen :
+  INT VAR i;
+  BOOL VAR mod aus;
+  mod aus := pos (mod, "a") > 0;
+  FOR i FROM length (mod) DOWNTO 1 REP
+    IF (mod SUB i) = "a" THEN
+    ELIF mod aus THEN
+      change (ezeile, spalte, spalte - 1, mod param off)
+    ELSE
+      change (ezeile, spalte, spalte - 1, mod param on)
+    END IF
+  END REP;
+  write record (edfile, ezeile);
+  abschnitt neu (zeile, zeile) .
+
+mod param on :
+  TEXT VAR
+    mod zeichen := mod SUB i,
+    mod text;
+  IF mod zeichen = "h" THEN
+    mod text := "#u#"
+  ELIF mod zeichen = "t" THEN
+    mod text := "#d#"
+  ELSE
+    mod text := "#on(""" + mod zeichen + """)#"
+  END IF;
+  mod text .
+
+mod param off :
+  mod zeichen := mod SUB i;
+  IF mod zeichen = "h" OR mod zeichen = "t" THEN
+    mod text := "#e#"
+  ELSE
+    mod text := "#off(""" + mod zeichen + """)#"
+  END IF;
+  mod text .
+
+mod param laenge :
+  length (mod text) .
+
+END PROC gewaehlte schriftarten einstellen;
+
+PROC modname (TEXT VAR name, INT CONST stelle) :
+
+  SELECT stelle OF
+  CASE 1 : name := "Fett"
+  CASE 2 : name := "Kursiv"
+  CASE 3 : name := "Unterstrichen"
+  CASE 4 : name := "Hoch"
+  CASE 5 : name := "Tief"
+  CASE 6 : name := "Aus"
+  OTHERWISE name := ""
+  END SELECT
+
+END PROC modname;
+
+TEXT PROC gewaehlte modifikationen :
+
+  TEXT VAR ergebnis := "";
+  INT VAR stelle := 1;
+  WHILE wahl (stelle) > 0 REP
+    wahl merken;
+    stelle INCR 1
+  END REP;
+  ergebnis .
+
+wahl merken :
+  SELECT wahl (stelle) OF
+  CASE 1 : ergebnis CAT "b"
+  CASE 2 : ergebnis CAT "i"
+  CASE 3 : ergebnis CAT "u"
+  CASE 4 : ergebnis CAT "h"
+  CASE 5 : ergebnis CAT "t"
+  CASE 6 : ergebnis CAT "a"
+  END SELECT .
+
+END PROC gewaehlte modifikationen;
+
+PROC anweisung entfernen (TEXT CONST anw name, INT CONST beginn, ende,
+                          BOOL VAR geloescht) :
+
+  geloescht := FALSE;
+  IF beginn > 0 AND ende > 0
+     CAND (ezeile SUB beginn) = "#" CAND (ezeile SUB ende) = "#" THEN
+    INT CONST vorkommen := pos (ezeile, anw name, beginn, ende);
+    IF vorkommen > 0 AND vorkommen < beginn + 4
+      OR up down anweisung THEN
+      change (ezeile, beginn, ende, "");
+      geloescht := TRUE
+    END IF
+  END IF .
+
+up down anweisung :
+  IF ende = beginn + 2 THEN
+    TEXT CONST alte anweisung := ezeile SUB beginn + 1;
+    IF anw name = "on" THEN
+      alte anweisung = "u" OR alte anweisung = "d"
+    ELSE
+      alte anweisung = "e"
+    END IF
+  ELSE
+    FALSE
+  END IF .
+
+END PROC anweisung entfernen;
+
+PROC textanweisung einfuegen (TEXT CONST anweisung, param,
+                              BOOL CONST ab anfang) :
+
+  FILE VAR edfile := editfile;
+  IF ab anfang THEN col (edfile, 1) END IF;
+  INT CONST ce := col (edfile);
+  read record (edfile, ezeile);
+  IF (ezeile SUB ce) = "#" CAND gleiche anweisung THEN
+    anweisung ersetzen
+  ELIF ce = 1 THEN
+    neue zeile einfuegen
+  ELSE
+    an stelle einfuegen
+  END IF .
+
+gleiche anweisung :
+  INT CONST apos := pos (ezeile, anweisung, ce);
+  apos > 0 AND pos (ezeile, "#", ce + 1) > a pos AND
+    (param = "" OR pos (ezeile, "(", ce) > a pos) .
+
+anweisung ersetzen :
+  IF param <> "" THEN
+    INT CONST anf := pos (ezeile, "(", ce),
+              end := pos (ezeile, ")", anf);
+    IF anf > 0 AND end > 0 AND anf < end THEN
+      change (ezeile, anf + 1, end - 1, param);
+      write record (edfile, ezeile);
+      abschnitt neu (line no (edfile), line no(edfile))
+    END IF
+  END IF .
+
+neue zeile einfuegen :
+  insert record (edfile);
+  IF param <> "" THEN
+    write record (edfile, "#" + anweisung + "(" + param + ")# ")
+  ELSE
+    write record (edfile, "#" + anweisung + "# ")
+  END IF;
+  abschnitt neu (line no (edfile), 9999) .
+
+an stelle einfuegen :
+  IF param <> "" THEN
+    change (ezeile, ce, ce - 1, "#" + anweisung + "(" + param + ")#")
+  ELSE
+    change (ezeile, ce, ce - 1, "#" + anweisung + "#")
+  END IF;
+  write record (edfile, ezeile);
+  abschnitt neu (line no (edfile), line no (edfile)) .
+
+END PROC textanweisung einfuegen;
+
+LET
+  global anfang =
+    "#- Globale Einstellungen, nicht verschieben -# ",
+  global ende =
+    "#- Ende der globalen Einstellungen ----------# ";
+
+TEXT VAR
+  e type := "",
+  e limit := "16.0",
+  e x start := "2.5",
+  e y start := "2.25",
+  e pagelength := "25.0",
+  e linefeed := "1.0";
+
+PROC einstellung erfragen :
+
+  REP
+    schrifttyp auswaehlen (e type);
+    IF e type = "" CAND
+      eja ("Typ muß gewaehlt werden, Funktion abbrechen") THEN
+      errorstop ("")
+    END IF
+  UNTIL e type <> "" END REP;
+  eget ("Breite des Schreibfelds in cm:", e limit);
+  eget ("Länge des Schreibfelds in cm:", e pagelength);
+  eget ("Oberer Rand in cm:", e y start);
+  eget ("Linker Rand in cm:", e x start);
+  eget ("Zeilenabstand als relativer Faktor:", e linefeed)
+
+END PROC einstellung erfragen;
+
+PROC einstellung eintragen :
+
+  FILE VAR edfile := editfile;
+  INT VAR
+    zeile := line no (edfile),
+    spalte := col (edfile);
+  col (edfile, 1);
+  to line (edfile, 1);
+  read record (edfile, ezeile);
+  IF pos (ezeile, "type") > 0 THEN
+    down (edfile);
+    read record (edfile, ezeile);
+    alte einstellung suchen
+  END IF;
+  ab hier einfuegen;
+  an alte stelle .
+
+alte einstellung suchen :
+  IF ezeile = global anfang THEN
+    down (edfile, global ende);
+    IF eof (edfile) THEN
+      to line (edfile, 2)
+    ELSE
+      down (edfile)
+    END IF
+  END IF .
+
+ab hier einfuegen :
+  IF line no (edfile) > 1 CAND eja ("Alte Einstellung loeschen") THEN
+    INT CONST zu loeschen := line no (edfile) - 1;
+    to line (edfile, 1);
+    INT VAR i;
+    FOR i FROM 1 UPTO zu loeschen REP
+      delete record (edfile)
+    END REP;
+    zeile DECR zu loeschen
+  END IF;
+  typ und limit einfuegen;
+  global anfang einfuegen;
+  seitenlaenge einfuegen;
+  start einfuegen;
+  linefeed einfuegen;
+  global ende einfuegen .
+
+typ und limit einfuegen :
+  insert record (edfile);
+  write record (edfile,
+    "#type (""" + etype + """)##limit (" + e limit + ")# ");
+  down (edfile) .
+
+global anfang einfuegen :
+  insert record (edfile);
+  write record (edfile, global anfang);
+  down (edfile) .
+
+seitenlaenge einfuegen :
+  insert record (edfile);
+  write record (edfile, "#pagelength (" + e pagelength + ")# ");
+  down (edfile) .
+
+start einfuegen :
+  insert record (edfile);
+  write record (edfile,
+    "#start (" + e x start + ", " + e y start + ")# ");
+  down (edfile) .
+
+linefeed einfuegen :
+  insert record (edfile);
+  write record (edfile, "#linefeed (" + e linefeed + ")# ");
+  down (edfile) .
+
+global ende einfuegen :
+  insert record (edfile);
+  write record (edfile, global ende);
+  zeile INCR 6 .
+
+an alte stelle :
+  to line (edfile, zeile);
+  col (edfile, spalte) .
+
+END PROC einstellung eintragen;
+
+
+(* Editor im EUDAS-Fenster     *)
+
+INT VAR return code;
+
+LET
+  edit status =  #1003#
+"EDIT:  Menü: ESC m, ESC t   Abbruch: ESC h   Verlassen: ESC q   Hilfe: ESC ?";
+ 
+BOOL VAR status frei;
+
+
+PROC edit status anzeigen :
+  status anzeigen (edit status)
+END PROC edit status anzeigen;
+
+PROC edit (FILE VAR f, FENSTER CONST fenster, TEXT CONST hilfe) : 
+
+  INT VAR x, y, x l, y l;
+  fenstergroesse (fenster, x, y, x l, y l);
+  fenster veraendert (fenster);
+  enable stop;
+  fenster datei := "";
+  IF groesster editor = 0 THEN status frei := y > 1 END IF;
+  REP
+    IF status frei THEN status anzeigen (edit status) END IF; 
+    open editor (groesster editor + 1, f, TRUE, x, y, x l, y l);
+    edit (groesster editor, "eqvw19dpgn"9"?hFmt", PROC (TEXT CONST) kdo);
+    return code behandeln
+  END REP .
+
+return code behandeln :
+  SELECT return code OF
+  CASE 0 : LEAVE edit
+  CASE 1 : hilfe anbieten (hilfe, fenster) 
+  CASE 2 : errorstop ("")
+  END SELECT .
+ 
+END PROC edit;
+ 
+PROC kdo (TEXT CONST zeichen) :
+
+  return code := pos ("q?h", zeichen);
+  IF return code > 0 THEN
+    return code DECR 1;
+    quit
+  ELIF zeichen = "m" THEN
+    edit menue;
+    IF status frei THEN status anzeigen (edit status) END IF; 
+  ELIF zeichen = "t" THEN
+    text menue;
+    IF status frei THEN status anzeigen (edit status) END IF; 
+  ELSE
+    std kommando interpreter (zeichen);
+    IF status frei THEN status anzeigen (edit status) END IF; 
+  END IF
+
+END PROC kdo;
+
+
+END PACKET edit menue;
+(*
+FENSTER VAR fe; fenster initialisieren (fe);
+fenstergroesse setzen (fe, 1, 2, 79, 23);
+FILE VAR f := sequential file (modify, "testdatei");
+edit (f, fe, "EDIT/Allgemein")
+*)
+

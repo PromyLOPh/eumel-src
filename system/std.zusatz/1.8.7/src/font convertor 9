@@ -1,0 +1,1095 @@
+PACKET font convertor                             (* Autor : Rudolf Ruland *) 
+                                                  (* Stand : 29.03.88      *)
+        DEFINES create font table ,
+                add fonts,
+                create font file :
+ 
+(* >>> ***************************************************************** <<< *)
+ 
+INT CONST int length  := length of one int,
+          highest bit := int length * 8 - 1;
+
+. length of one int :
+    INT VAR int counter := 0, int value := max int;
+    REP int counter INCR 1;
+        int value   := int value DIV 256;
+    UNTIL int value = 0 PER;
+    int counter
+.;
+
+(* >>> ***************************************************************** <<< *)
+ 
+LET t tag                         =  1,
+    t bold                        =  2,
+    t number                      =  3,
+    t text                        =  4,
+    t operator                    =  5,
+    t delimiter                   =  6,
+    t end of file                 =  7,
+ 
+    nil modus                     =  0,
+    font table modus              =  1,
+    font modus                    =  2,
+    extension modus               =  3,
+ 
+    x unit                        =  1,
+    y unit                        =  2,
+    on string                     =  3,
+    off string                    =  4,
+    indentation pitch             =  5,
+    font lead                     =  6,
+    font height                   =  7,
+    font depth                    =  8,
+    larger font                   =  9,
+    smaller font                  = 10,
+    font string                   = 11,
+    y off sets                    = 12,
+    bold off set                  = 13;
+ 
+THESAURUS VAR names, english identification := empty thesaurus,
+                     german  identification := empty thesaurus;
+ 
+insert (english identification, "xunit");
+insert (english identification, "yunit");
+insert (english identification, "onstring");
+insert (english identification, "offstring");
+insert (english identification, "indentationpitch");
+insert (english identification, "fontlead");
+insert (english identification, "fontheight");
+insert (english identification, "fontdepth");
+insert (english identification, "nextlargerfont");
+insert (english identification, "nextsmallerfont");
+insert (english identification, "fontstring");
+insert (english identification, "yoffsets");
+insert (english identification, "boldoffset");
+ 
+insert (german identification, "xeinheit");
+insert (german identification, "yeinheit");
+insert (german identification, "onsequenz");
+insert (german identification, "offsequenz");
+insert (german identification, "einrueckbreite");
+insert (german identification, "durchschuss");
+insert (german identification, "fonthoehe");
+insert (german identification, "fonttiefe");
+insert (german identification, "groessererfont");
+insert (german identification, "kleinererfont");
+insert (german identification, "fontsequenz");
+insert (german identification, "yverschiebungen");
+insert (german identification, "boldverschiebung");
+ 
+INT VAR modus, last modus, symbol type, int symbol, pitch,
+        identification nr, link nr, extension code 1,
+        char code 1, char code, char pos, vorzeichen,
+        replacements length, index;
+TEXT VAR symbol, font table name, replacement, char, buffer, z;
+BOOL VAR english;
+FILE VAR file, font file;
+ 
+(*****************************************************************) 
+ 
+LET max fonts       = 50,
+    max extensions  = 120, 
+    font table type = 3009,
+ 
+    FONTTABLE = STRUCT (
+ 
+        THESAURUS font names, 
+ 
+        TEXT replacements, font name links,
+             extension chars, extension indexes, 
+ 
+        ROW 4 TEXT on strings, off strings,
+ 
+        REAL x unit, y unit,
+ 
+        ROW 256 INT replacements table,
+ 
+        INT last font, last extension,
+ 
+        ROW max fonts STRUCT (
+            TEXT font string, font name indexes, replacements,
+                 extension chars, extension indexes, y offsets,
+            ROW 256 INT pitch table, replacements table,
+            INT  indentation pitch, font lead, font height, font depth,
+                 next larger font, next smaller font, bold offset ) fonts ,
+ 
+        ROW max extensions STRUCT (
+            TEXT replacements,
+            ROW 256 INT pitch table, replacements table,
+            INT std pitch                                        ) extensions ,
+ 
+                        );
+ 
+BOUND FONTTABLE VAR font table;
+ 
+DATASPACE VAR ds;
+ 
+INT VAR font nr, extension nr;
+ 
+. font      : font table. fonts (font nr)
+. extension : font table. extensions (extension nr)
+. line nr   : line no (file) - 1
+.;
+ 
+(*****************************************************************) 
+ 
+ 
+PROC create font table :
+ 
+     create font table  (last param)
+ 
+END PROC create font table;
+ 
+ 
+PROC create font table (TEXT CONST font file name) :
+ 
+file := sequential file (input, font file name);
+disable stop;
+ds    := nilspace;
+modus := nil modus;
+load;
+IF is error THEN error (errormessage) FI;
+forget (ds);
+ 
+END PROC create font table;
+ 
+ 
+PROC add fonts (TEXT CONST font tab name, font file name) :
+ 
+file := sequential file (input, font file name);
+font table name := font tab name;
+change all (font table name, " ", "");
+IF NOT exists (font table name) COR type (old (font table name)) <> font table type
+   THEN errorstop ("Fonttabelle """ + font table name + """ gibt es nicht")
+FI;
+disable stop;
+ds           := old (font table name);
+fonttable    := ds;
+modus        := font modus;
+font nr      := fonttable. last font;
+extension nr := fonttable. last extension;
+load;
+IF is error THEN error (errormessage) FI;
+forget (ds);
+ 
+END PROC add fonts;
+ 
+ 
+PROC load :
+ 
+enable stop;
+initialize loading;
+REP get kennung; 
+    get identification;
+    get char specifications;
+UNTIL symbol type >= t end of file PER;
+font table found;
+ 
+. initialize loading :
+    scan (file);
+    get next symbol;
+ 
+. font table found :
+    IF font nr = 0
+       THEN errorstop ("Fonts zur Fonttabelle """
+                        + font table name + """ fehlen"); 
+       ELSE font table. last font      := font nr; 
+            font table. last extension := extension nr; 
+            forget (font table name, quiet);
+            copy (ds, font table name);
+            type (old (font table name), font table type);
+            forget (ds); ds := nilspace;
+    FI; 
+ 
+. get next symbol :
+    next symbol (file, symbol, symbol type);
+ 
+. get semicolon :
+    get next symbol;
+    IF symbol <> ";" OR symbol type <> t delimiter 
+       THEN errorstop ("';' erwartet") FI;
+ 
+.
+  get kennung :
+    cout (line nr);
+    IF symbol type <> t bold 
+       THEN errorstop ("Kennung erwartet") FI;
+    IF   symbol = "FONTTABLE" OR symbol = "FONTTABELLE" 
+      THEN initialize font table;
+           get font table name;
+    ELIF symbol = "FONT"
+      THEN initialize font;
+           get font names;
+    ELIF symbol = "EXTENSION" OR symbol = "ERWEITERUNG" 
+      THEN get extension char;
+           initialize extension;
+    ELIF modus = nil modus
+      THEN errorstop ("Kennung 'FONTTABLE' oder 'FONTTABELLE' zu Beginn der Datei erwartet") 
+      ELSE errorstop ("unzulaessige Kennung")
+    FI;
+ 
+    . initialize font table :
+        IF modus <> nil modus THEN font table found FI;
+        modus                          := font table modus;
+        font nr                        := 0;
+        extension nr                   := 0;
+        font table                     := ds;
+        font table. font names         := empty thesaurus; 
+        font table. replacements       := "";
+        font table. font name links    := "";
+        font table. extension chars    := "";
+        font table. extension indexes  := ""; 
+        font table. x unit             := 10.0/2.54;
+        font table. y unit             :=  6.0/2.54;
+        font table. replacements table := 0;
+        FOR index FROM 1 UPTO 4
+        REP font table. on  strings (index) := "";
+            font table. off strings (index) := "";
+        PER;
+ 
+    . get font table name :
+        get name list;
+        symbol type := t text;
+        symbol      := name (names, 1);
+        IF exists (symbol)
+           THEN  forget (symbol);
+                 IF exists (symbol)
+                    THEN errorstop ("Fonttabelle existiert schon") FI;
+        FI;
+        font table name := symbol;
+ 
+    . initialize font :
+        IF font nr = max fonts
+           THEN errorstop ("zu viele Fonts") FI;
+        font nr INCR 1;
+        modus                    := font modus;
+        replacements length      := LENGTH font table. replacements; 
+        font. font string        := "";
+        font. font name indexes  := "";
+        font. replacements       := "";
+        font. extension chars    := "";
+        font. extension indexes  := "";
+        font. y offsets          := int length * ""0"";
+        font. indentation pitch  := int (font table. x unit * 2.54 / 10.0);
+        font. font lead          := 0;
+        font. font height        := int (font table. y unit * 2.54 / 6.0); 
+        font. font depth         := 0;
+        font. next larger  font  := 0;
+        font. next smaller font  := 0;
+        font. bold offset        := 0;
+        font. pitch table        := font. indentation pitch;
+        font. replacements table := font table. replacements table;
+        FOR index FROM 1 UPTO LENGTH font table. extension chars
+        REP font. replacements table 
+              ( code (font table. extension chars SUB index) + 1 ) := maxint;
+        PER;
+ 
+    . get font names :
+        get name list;
+        index := 0;
+        symbol type := t text;
+        WHILE next font name
+        REP link nr := link (font table. font names, symbol);
+            IF link nr = 0
+               THEN insert (font table. font names, symbol, link nr); 
+                    font table. font name links CAT font nr;
+            ELIF (font table. font name links ISUB link nr) = 0
+               THEN replace (font table. font name links, link nr, font nr);
+               ELSE errorstop ("Font existiert in Fonttabelle """
+                                + font table name + """ schon")
+            FI;
+            font. font name indexes CAT link nr;
+        PER;
+ 
+        . next font name :
+            get (names, symbol, index);
+            symbol <> ""
+ 
+    . get extension char :
+        IF NOT two bytes
+           THEN errorstop ("Erweiterungen nur im zwei-Byte-Modus erlaubt") FI;
+        get name list;
+        symbol type := t text;
+        symbol      := name (names, 1);
+        IF LENGTH symbol <> 1 
+           THEN errorstop ("nur ein Zeichen bei Erweiterung erlaubt") FI;
+        extension code 1 := code (symbol) + 1;
+        IF NOT is kanji esc (symbol) 
+           THEN errorstop ("Kanji-ESC-Zeichen erwartet") FI;
+ 
+    . initialize extension :
+        IF extension nr = max extensions
+           THEN errorstop ("zu viele Erweiterungen") FI;
+        extension nr INCR 1;
+        IF modus <> extension modus THEN last modus := modus FI;
+        modus      := extension modus;
+        IF last modus = font table modus
+           THEN initalize font table extension
+           ELSE initalize font extension
+        FI;
+ 
+        . initalize font table extension :
+            IF pos (font table. extension chars, symbol) <> 0
+               THEN errorstop ("Erweiterung wurde schon definiert") FI;
+            extension. replacements        := "";
+            extension. std pitch           := 0;
+            extension. pitch table         := 0;
+            extension. replacements table  := 0;
+            font table. extension chars   CAT symbol;
+            font table. extension indexes CAT extension nr;
+            font table. replacements table (extension code 1) := max int;
+            replacements length            := 0;
+ 
+        . initalize font extension :
+            IF pos (font. extension chars, symbol) <> 0
+               THEN errorstop ("Erweiterung wurde schon definiert") FI;
+            extension. replacements   := "";
+            extension. std pitch      := font. pitch table (extension code 1) XOR (-maxint-1);
+            extension. pitch table    := extension. std pitch;
+            font. extension chars    CAT symbol;
+            font. extension indexes  CAT extension nr;
+            char pos := pos (font table. extension chars, symbol);
+            IF char pos <> 0
+               THEN index := font table. extension indexes ISUB char pos;
+                    extension. replacements table := 
+                          font table. extensions (index). replacements table;
+                    replacements length           :=
+                   LENGTH font table. extensions (index). replacements; 
+                    font. replacements table (extension code 1) := max int;
+               ELSE extension. replacements table := 0;
+                    replacements length           := 0;
+            FI;
+ 
+.
+  get identification :
+    WHILE identification found
+    REP cout (line nr);
+        determine identification link nr;
+        select identification;
+    PER;
+ 
+    . identification found :
+        get next symbol; 
+        symbol type = t tag
+ 
+    . determine identification link nr :
+        identification nr := link (english identification, symbol); 
+        english := TRUE;
+        IF identification nr = 0
+           THEN identification nr := link (german identification, symbol); 
+                english := FALSE;
+                IF identification nr = 0
+                   THEN errorstop ("unzulaesige Identifikation") FI;
+        FI;
+ 
+    . select identification :
+        get next symbol;
+        IF symbol <> "=" OR symbol type <> t operator
+           THEN errorstop ("'=' nach Identifikation fehlt") FI;
+        get next symbol; 
+        SELECT identification nr OF
+          CASE x unit            : x unit found
+          CASE y unit            : y unit found
+          CASE on string         : on string found
+          CASE off string        : off string found
+          CASE indentation pitch : indentation pitch found
+          CASE font lead         : font lead found
+          CASE font height       : font height found
+          CASE font depth        : font depth found
+          CASE larger font       : larger font found
+          CASE smaller font      : smaller font found
+          CASE font string       : font string found
+          CASE y offsets         : y offsets found
+          CASE bold offset       : bold offset found
+        END SELECT;
+ 
+    . x unit found :
+        check modus (font table modus);
+        font table. x unit := real (symbol);
+        IF NOT last conversion ok
+           THEN IF english
+                   THEN errorstop ("REAL-Denoter nach 'x unit' erwartet") 
+                   ELSE errorstop ("REAL-Denoter nach 'x einheit' erwartet")
+                FI;
+        FI;
+        get semicolon;
+ 
+    . y unit found :
+        check modus (font table modus);
+        font table. y unit := real (symbol); 
+        IF NOT last conversion ok
+           THEN IF english
+                   THEN errorstop ("REAL-Denoter nach 'y unit' erwartet")
+                   ELSE errorstop ("REAL-Denoter nach 'y einheit' erwartet")
+                FI;
+        FI;
+        get semicolon;
+ 
+    . on string found :
+        check modus (font table modus);
+        FOR index FROM 1 UPTO 4
+        REP IF symbol type <> t text
+               THEN IF english
+                       THEN errorstop ("TEXT-Denoter nach 'on string' erwartet") 
+                       ELSE errorstop ("TEXT-Denoter nach 'on sequenz' erwartet") 
+                    FI;
+            FI;
+            font table. on strings (index) := symbol;
+            get next symbol;
+            IF (symbol <> "," AND symbol <> ";") OR symbol type <> t delimiter 
+               THEN errorstop ("',' oder ';' in Liste erwartet") FI;
+            IF symbol = ";" THEN LEAVE on string found FI;
+            IF index = 4 THEN errorstop ("';' erwartet") FI;
+            get next symbol;
+        PER;
+ 
+    . off string found :
+        check modus (font table modus);
+        FOR index FROM 1 UPTO 4
+        REP IF symbol type <> t text
+               THEN IF english
+                       THEN errorstop ("TEXT-Denoter nach 'off string' erwartet") 
+                       ELSE errorstop ("TEXT-Denoter nach 'off sequenz' erwartet") 
+                    FI;
+            FI;
+            font table. off strings (index) := symbol;
+            get next symbol;
+            IF (symbol <> "," AND symbol <> ";") OR symbol type <> t delimiter 
+               THEN errorstop ("',' oder ';' in Liste erwartet") FI;
+            IF symbol = ";" THEN LEAVE off string found FI;
+            IF index = 4 THEN errorstop ("';' erwartet") FI;
+            get next symbol;
+        PER;
+ 
+    . indentation pitch found :
+        check modus (font modus);
+        font. indentation pitch := int (symbol);
+        IF NOT last conversion ok
+           THEN IF english
+                   THEN errorstop ("INT-Denoter nach 'indentation pitch' erwartet")
+                   ELSE errorstop ("INT-Denoter nach 'einrueckbreite' erwartet")
+                FI;
+        FI;
+        font. pitch table       := font. indentation pitch;
+        get semicolon;
+ 
+    . font lead found :
+        check modus (font modus);
+        font. font lead := int (symbol);
+        IF NOT last conversion ok
+           THEN IF english
+                   THEN errorstop ("INT-Denoter nach 'font lead' erwartet")
+                   ELSE errorstop ("INT-Denoter nach 'durchschuss' erwartet")
+                FI;
+        FI;
+        get semicolon;
+ 
+    . font height found :
+        check modus (font modus);
+        font. font height := int (symbol);
+        IF NOT last conversion ok
+           THEN IF english
+                   THEN errorstop ("INT-Denoter nach 'font height' erwartet")
+                   ELSE errorstop ("INT-Denoter nach 'fonthoehe' erwartet")
+                FI;
+        FI;
+        get semicolon;
+ 
+    . font depth found :
+        check modus (font modus);
+        font. font depth := int (symbol);
+        IF NOT last conversion ok
+           THEN IF english
+                   THEN errorstop ("INT-Denoter nach 'font depth' erwartet")
+                   ELSE errorstop ("INT-Denoter nach 'fonttiefe' erwartet")
+                FI;
+        FI;
+        get semicolon;
+ 
+    . larger font found :
+        check modus (font modus);
+        IF symbol type <> t text
+           THEN IF english
+                   THEN errorstop ("TEXT-Denoter nach 'next larger font' erwartet")
+                   ELSE errorstop ("TEXT-Denoter nach 'groesserer font' erwartet")
+                FI;
+        FI;
+        determine link nr;
+        font. next larger font := link nr;
+        get semicolon;
+ 
+    . smaller font found :
+        check modus (font modus);
+        IF symbol type <> t text
+           THEN IF english
+                   THEN errorstop ("TEXT-Denoter nach 'next smaller font' erwartet")
+                   ELSE errorstop ("TEXT-Denoter nach 'kleinerer font' erwartet")
+                FI;
+        FI;
+        determine link nr;
+        font. next smaller font := link nr;
+        get semicolon;
+ 
+        . determine link nr :
+            change all (symbol, " ", "");
+            IF   symbol = ""
+              THEN link nr := 0
+              ELSE link nr := link (font table. font names, symbol);
+                   IF link nr = 0
+                      THEN insert (font table. font names, symbol, link nr);
+                           font table. font name links CAT 0;
+                   FI;
+            FI;
+ 
+    . font string found :
+        check modus (font modus);
+        IF symbol type <> t text
+           THEN IF english
+                   THEN errorstop ("TEXT-Denoter nach 'font string' erwartet")
+                   ELSE errorstop ("TEXT-Denoter nach 'fontsequenz' erwartet")
+                FI;
+        FI;
+        font. font string := symbol;
+        get semicolon;
+ 
+    . y offsets found :
+        check modus (font modus);
+        font. y offsets := "";
+        REP IF symbol = "-" AND symbol type = t operator
+               THEN vorzeichen := -1;
+                    get next symbol;
+               ELSE vorzeichen :=  1;
+            FI;
+            int symbol := vorzeichen * int (symbol);
+            IF NOT last conversion ok
+               THEN IF english
+                       THEN errorstop ("INT-Denoter nach 'y offsets' erwartet")
+                       ELSE errorstop ("INT-Denoter nach 'y verschiebungen' erwartet")
+                    FI;
+            FI;
+            font. y offsets CAT int symbol;
+            get next symbol;
+            IF (symbol <> "," AND symbol <> ";") OR symbol type <> t delimiter 
+               THEN errorstop ("',' oder ';' in Liste erwartet") FI;
+            IF symbol = ";" THEN LEAVE y offsets found FI;
+            get next symbol;
+        PER;
+ 
+    . bold offset found :
+        check modus (font modus);
+        IF symbol = "-" AND symbol type = t operator
+           THEN vorzeichen := -1;
+                get next symbol;
+           ELSE vorzeichen :=  1;
+        FI;
+        font. bold offset := vorzeichen * int (symbol);
+        IF NOT last conversion ok
+           THEN IF english
+                   THEN errorstop ("INT-Denoter nach 'bold offset' erwartet")
+                   ELSE errorstop ("INT-Denoter nach 'bold verschiebungen' erwartet")
+                FI;
+        FI;
+        get semicolon;
+ 
+.
+  get char specifications :
+    WHILE char found
+    REP cout (line nr); 
+        char specification;
+        get next symbol; 
+    PER;
+ 
+    . char found :
+        symbol type = t text
+ 
+    . char specification :
+        IF LENGTH symbol <> 1 
+           THEN errorstop ("nur ein Zeichen bei Zeichenangabe erlaubt") FI;
+        char := symbol; 
+        char code 1 := code (char) + 1;
+        look for specification;
+        look for specification;
+        get semicolon;
+ 
+    . look for specification :
+        get next symbol; 
+        IF   symbol = ";" AND symbol type = t delimiter 
+          THEN LEAVE char specification
+        ELIF symbol = "," AND symbol type = t delimiter 
+          THEN get specification
+          ELSE errorstop ("',' oder ';' bei Zeichenspezifikation erwartet")
+        FI;
+ 
+    . get specification :
+        get next symbol;
+        IF   symbol type = t number
+          THEN pitch specification;
+        ELIF symbol type = t text 
+          THEN replacement specification
+          ELSE errorstop ("unzulaessiger Wert bei Zeichenspezifikation")
+        FI;
+ 
+        . pitch specification :
+            int symbol := int (symbol);
+            IF NOT last conversion ok
+               THEN errorstop ("INT-Denoter bei Breitenangabe erwartet") FI;
+            IF   modus = font modus
+               THEN font. pitch table (char code 1) := int symbol;
+                    IF is kanji esc (char)
+                       THEN set bit (font. pitch table (char code 1), highest bit) FI; 
+            ELIF modus = extension modus
+               THEN IF last modus = font modus AND
+                         font. pitch table (extension code 1) <> max int
+                       THEN font. pitch table (extension code 1) := max int FI;
+                    extension. pitch table (char code 1) := int symbol;
+            FI;
+ 
+        . replacement specification : 
+            IF LENGTH symbol > 255
+               THEN errorstop ("Ersatzdarstellungen duerfen nur 255 Zeichen haben") FI;
+            IF   modus = font table modus
+               THEN font table. replacements table (char code 1) := 
+                                       (LENGTH font table. replacements + 1); 
+                    font table. replacements CAT code (LENGTH symbol);
+                    font table. replacements CAT symbol;
+                    IF is kanji esc (char)
+                       THEN set bit (font table. replacements table (char code 1), highest bit) FI; 
+            ELIF modus = font modus
+               THEN font. replacements table (char code 1) :=
+                       (replacements length + LENGTH font. replacements + 1); 
+                    font. replacements CAT code (LENGTH symbol);
+                    font. replacements CAT symbol;
+                    IF is kanji esc (char)
+                       THEN set bit (font. replacements table (char code 1), highest bit) FI; 
+            ELIF modus = extension modus
+               THEN IF last modus = font modus AND
+                         font. replacements table (extension code 1) <> max int
+                       THEN font. replacements table (extension code 1) := max int FI;
+                    extension. replacements table (char code 1) :=
+                      (replacements length + LENGTH extension. replacements + 1); 
+                    extension. replacements CAT code (LENGTH symbol);
+                    extension. replacements CAT symbol;
+            FI;
+ 
+END PROC load;
+ 
+ 
+PROC get name list :
+ 
+   names := empty thesaurus;
+   get next symbol;
+   IF symbol <> ":" OR symbol type <> t delimiter 
+      THEN errorstop ("':' nach Kennung erwartet") FI;
+   REP get next symbol;
+       change all (symbol, " ", "");
+       IF symbol type <> t text
+          THEN errorstop ("TEXT-Denoter in Namesliste erwartet") FI;
+       IF symbol = ""
+          THEN errorstop ("'niltext' als Name nicht erlaubt") FI;
+       insert (names, symbol);
+       get next symbol;
+       IF (symbol <> "," AND symbol <> ";") OR symbol type <> t delimiter 
+          THEN errorstop ("',' oder ';' in Liste erwartet") FI;
+   UNTIL symbol = ";" PER;
+ 
+   . get next symbol :
+       next symbol (file, symbol, symbol type);
+ 
+END PROC get name list;
+ 
+ 
+OP := (ROW 256 INT VAR l, INT CONST r) :
+ 
+INT VAR i;
+IF modus = extension modus OR NOT two bytes
+   THEN FOR i FROM   1 UPTO 256 REP l (i) := r PER; 
+   ELSE FOR i FROM   1 UPTO 129 REP l (i) := r PER;
+        FOR i FROM 130 UPTO 160 REP l (i) := r - maxint - 1 PER;
+        FOR i FROM 161 UPTO 224 REP l (i) := r PER;
+        FOR i FROM 225 UPTO 240 REP l (i) := r - maxint - 1 PER;
+        FOR i FROM 241 UPTO 256 REP l (i) := r PER;
+FI;
+ 
+END OP :=;
+ 
+ 
+PROC check modus (INT CONST mod) :
+ 
+  IF mod <> modus THEN errorstop ("unzulaessige Identifikation") FI;
+ 
+END PROC check modus;
+ 
+ 
+PROC error (TEXT CONST message) :
+ 
+(*INT CONST l := error line;*)
+  clear error;
+  errorstop ("Zeile " + text (line nr) + " bei " + letztes symbol +
+             " : " + message (* + errorline if neccessary *) ); 
+ 
+  . letztes symbol :
+      IF   symbol type  = t text
+           THEN decode (symbol);
+                """" + symbol + """"
+      ELIF symbol type >= t end of file
+           THEN "EOF"
+           ELSE symbol
+      FI
+(*
+  . errorline if neccessary :
+      IF l = 0 
+         THEN ""
+         ELSE " -> " + text (l) 
+      FI
+*)
+END PROC error;
+ 
+ 
+(*******************************************************************)
+ 
+ 
+PROC create font file (TEXT CONST font tab name, font file name) :
+ 
+enable stop;
+connect font table;
+put font table in font file;
+ 
+.
+  connect font table :
+    buffer := font tab name;
+    change all (buffer, " ", "");
+    IF NOT exists (buffer) COR type (old (buffer)) <> font table type
+       THEN errorstop ("Fonttabelle """ + buffer + """ gibt es nicht")
+    FI;
+   font table := old (buffer);
+ 
+.
+  put font table in font file :
+    INT VAR font file nr := 0;
+    enable stop;
+    font file := sequential file (output, font file name);
+    max line length (font file, 16000);
+    check file overflow;
+    z := " ";
+    put font table;
+    FOR font nr FROM 1 UPTO font table. last font REP put font PER;
+ 
+    . check file overflow :
+        WHILE lines (font file) > 3600
+        REP font file nr INCR 1;
+            font file := sequential file (output, font file name + "." + text (font file nr));
+            max line length (font file, 16000);
+        PER;
+
+. put font table :
+    put z;
+    z CAT "FONTTABLE  :  """; z CAT buffer;                  z CAT """;"; put z; 
+    z CAT "  x unit      =  ";   z CAT text (font table. x unit); z CAT ";"; put z; 
+    z CAT "  y unit      =  ";   z CAT text (font table. y unit); z CAT ";"; put z; 
+    z CAT "  on string   =  """; z cat on strings;              z CAT """;"; put z; 
+    z CAT "  off string  =  """; z cat off strings;             z CAT """;"; put z; 
+    put font table replacements;
+    put font table extensions;
+    put z;
+ 
+    . z cat on strings :
+        FOR index FROM 1 UPTO 4
+        REP buffer := font table. on strings (index);
+            decode (buffer); 
+            z CAT buffer;
+            IF index <> 4 THEN z CAT """,  """ FI;
+        PER;
+ 
+    . z cat off strings :
+        FOR index FROM 1 UPTO 4
+        REP buffer := font table. off strings (index);
+            decode (buffer); 
+            z CAT buffer;
+            IF index <> 4 THEN z CAT """,  """ FI;
+        PER;
+ 
+    . put font table replacements : 
+        put z;
+        FOR char code FROM 0 UPTO 255
+        REP char code 1 := char code + 1;
+            link nr     := font table. replacements table (char code 1);
+            reset bit (link nr, highest bit);
+            IF link nr > 0 AND link nr <> maxint
+               THEN z CAT "  ";
+                    put char code;
+                    put font table replacement;
+                    put z;
+            FI;
+        PER;
+ 
+        . put font table replacement :
+            replacement := subtext (font table.  replacements, link nr + 1,
+                     link nr + code (font table. replacements SUB link nr) );
+            put replacement;
+ 
+    . put font table extensions :
+        IF font table. extension chars <> ""
+           THEN FOR index FROM 1 UPTO LENGTH font table. extension chars 
+                REP put font table extension PER;
+        FI;
+ 
+    . put font table extension :
+        check file overflow;
+        put z;
+        z CAT "  EXTENSION  :  """"";
+        z CAT text 3 (code (font table. extension chars SUB index));
+        z CAT """"";";
+        put z; put z; 
+        replacements length := 0;
+        extension nr        := font table. extension indexes ISUB index;
+        FOR char code FROM 0 UPTO 255
+        REP char code 1 := char code + 1;
+            link nr     := extension. replacements table (char code 1);
+            IF link nr > 0
+               THEN z CAT "  ";
+                    put char code;
+                    put extension replacement;
+                    put z;
+            FI;
+        PER;
+ 
+. put font :
+    check file overflow;
+    put z;
+            z CAT "  FONT  :  "; z cat font names; z CAT ";"; put z; 
+            z CAT "    indentation pitch  =  ";
+            z CAT text(font. indentation pitch);
+            z CAT ";"; put z; 
+    IF font. font lead <> 0 
+       THEN z CAT "    font lead          =  ";
+            z CAT text(font. font lead);
+            z CAT ";"; put z;
+    FI;
+            z CAT "    font height        =  ";
+            z CAT text(font. font height);
+            z CAT ";"; put z; 
+    IF font. font depth <> 0
+       THEN z CAT "    font depth         =  ";
+            z CAT text(font. font depth);
+            z CAT ";"; put z;
+    FI;
+    IF next larger <> ""
+       THEN z CAT "    next larger font   =  """;
+            z CAT next larger;
+            z CAT """;"; put z;
+    FI;
+    IF next smaller <> ""
+       THEN z CAT "    next smaller font  =  """;
+            z CAT next smaller;
+            z CAT """;"; put z;
+    FI;
+    IF font. font string <> ""
+       THEN z CAT "    font string        =  """;
+            z CAT font string;
+            z CAT """;"; put z;
+    FI;
+    IF (font. y offsets ISUB 1) <> 0 OR LENGTH font. y offsets > int length
+       THEN z CAT "    y offsets          =  ";
+            z cat y offsets;
+            z CAT ";"; put z; 
+    FI;
+    IF font. bold offset <> 0
+       THEN z CAT "    bold offset        =  ";
+            z CAT text(font. bold offset);
+            z CAT ";"; put z;
+    FI;
+    put font pitches and replacements;
+    put font extensions;
+ 
+    . next larger  : name (font table. font names, font. next larger font)
+    . next smaller : name (font table. font names, font. next smaller font)
+    . font string  : buffer := font. font string; decode (buffer); buffer
+ 
+    . z cat font names :
+        z CAT """";
+        z CAT name (font table. font names, font. font name indexes ISUB 1);
+        z CAT """";
+        FOR index FROM 2 UPTO LENGTH font. font name indexes DIV int length
+        REP z CAT ",  """;
+            z CAT name (font table. font names, font. font name indexes ISUB index);
+            z CAT """";
+        PER;
+ 
+    . z cat y offsets :
+        z CAT text (font. y offsets ISUB 1);
+        FOR index FROM 2 UPTO LENGTH font. y offsets DIV int length
+        REP z CAT ",  ";
+            z CAT text (font. y offsets ISUB index);
+        PER;
+ 
+    . put font pitches and replacements :
+        BOOL VAR ausgabe := FALSE; 
+        replacements length := LENGTH font table. replacements;
+        put z;
+        z CAT "  "; 
+        FOR char code FROM 0 UPTO 255
+        REP char code 1 := char code + 1;
+            pitch       := font. pitch table (char code 1); 
+            reset bit (pitch, highest bit); 
+            link nr     := font. replacements table (char code 1);
+            reset bit (link nr, highest bit);
+            IF (pitch <> font. indentation pitch) OR
+               (link nr > replacements length AND link nr <> maxint)
+               THEN put font char pitch and replacement;
+                    IF ausgabe 
+                       THEN put z;
+                            ausgabe := FALSE;
+                       ELSE ausgabe := TRUE;
+                    FI;
+                    z CAT "  "; 
+            FI;
+        PER;
+        IF ausgabe THEN put z ELSE z := " " FI;
+ 
+        . put font char pitch and replacement :
+            put char code;
+            put font char pitch; 
+            IF   link nr > replacements length AND link nr <> maxint
+                 THEN put font replacement;
+                      IF NOT ausgabe THEN z CAT (6 - LENGTH replacement) * " " FI;
+            ELIF ausgabe
+                 THEN z CAT ";"
+                 ELSE z CAT ";            ";
+            FI;
+ 
+        . put font char pitch :
+            IF pitch = max int 
+               THEN char pos := pos (font. extension chars, code (char code));
+                    IF char pos <> 0
+                       THEN pitch := font table. extensions
+                              (font. extension indexes ISUB char pos). std pitch 
+                    FI;
+            FI;
+            put char pitch; 
+ 
+        . put font replacement :
+            link nr DECR replacements length;
+            replacement := subtext (font.  replacements, link nr + 1,
+                           link nr + code (font. replacements SUB link nr) );
+            put replacement;
+ 
+    . put font extensions :
+        IF font. extension chars <> ""
+           THEN FOR index FROM 1 UPTO LENGTH font. extension chars 
+                REP put font extension PER;
+        FI;
+ 
+    . put font extension :
+        check file overflow;
+        put z;
+        z CAT "  EXTENSION  :  """"";
+        z CAT text 3 (code (font. extension chars SUB index));
+        z CAT """"";";
+        put z; put z; z CAT "  "; 
+        detemine replacements length;
+        extension nr := font. extension indexes ISUB index;
+        ausgabe      := FALSE;
+        FOR char code FROM 0 UPTO 255
+        REP char code 1 := char code + 1;
+            pitch       := extension. pitch table (char code 1);
+            link nr     := extension. replacements table (char code 1);
+            IF pitch <> extension. std pitch OR link nr > replacements length
+               THEN put extension char pitch and replacement; 
+                    IF ausgabe 
+                       THEN put z;
+                            ausgabe := FALSE;
+                       ELSE ausgabe := TRUE;
+                    FI;
+                    z CAT "  "; 
+            FI;
+        PER;
+        IF ausgabe THEN put z ELSE z := " " FI;
+ 
+        . detemine replacements length :
+            char pos := pos (font table. extension chars,
+                                         font. extension chars SUB index); 
+            IF char pos <> 0
+               THEN replacements length := LENGTH font table. extensions
+                  (font table. extension indexes ISUB char pos). replacements; 
+               ELSE replacements length := 0;
+            FI;
+ 
+        . put extension char pitch and replacement :
+            put char code;
+            put char pitch;
+            IF   link nr > replacements length
+                 THEN put extension replacement;
+                      IF NOT ausgabe THEN z CAT (6 - LENGTH replacement) * " " FI;
+            ELIF ausgabe
+                 THEN z CAT ";"
+                 ELSE z CAT ";            ";
+            FI;
+ 
+. put extension replacement :
+    link nr DECR replacements length;
+    replacement := subtext (extension. replacements, link nr + 1,
+                     link nr + code (extension. replacements SUB link nr) );
+    put replacement;
+ 
+. put char code :
+    IF (char code >= 32  AND char code <= 122) OR
+       (char code >= 214 AND char code <= 223) OR
+        char code  = 124  OR char code  = 126  OR char code  = 251
+       THEN z CAT "(* ";
+            z CAT code (char code);
+            z CAT " *) """"";
+       ELSE z CAT "        """"";
+    FI;
+    z CAT text 3 (char code);
+    z CAT """""";
+ 
+. put char pitch : 
+    z CAT ",";
+    z CAT text (pitch, 5);
+ 
+. put replacement :
+    decode (replacement);
+    z CAT ",   """;
+    z CAT replacement;
+    z CAT """;"
+ 
+END PROC create font file;
+ 
+ 
+PROC put z :
+ 
+  putline (font file, z);
+  cout (lines (font file));
+  z := " ";
+ 
+END PROC put z;
+ 
+ 
+PROC decode (TEXT VAR string) :
+ 
+  INT VAR p;
+  change all (string, """", """""");
+  p := pos (string, ""0"", ""31"", 1);
+  WHILE p <> 0
+  REP change (string, p, p, """" + text (code(string SUB p)) + """");
+      p := pos (string, ""0"", ""31"", p);
+  PER;
+  p := pos (string, ""127"", ""255"", 1);
+  WHILE p <> 0
+  REP change (string, p, p, """" + text (code(string SUB p)) + """");
+      p := pos (string, ""127"", ""255"", p);
+  PER;
+ 
+END PROC decode;
+ 
+ 
+TEXT PROC text 3 (INT CONST value) :
+ 
+  buffer := text (value, 3);
+  change all (buffer, " ", "0");
+  buffer
+ 
+END PROC text 3;
+ 
+END PACKET font convertor;
+

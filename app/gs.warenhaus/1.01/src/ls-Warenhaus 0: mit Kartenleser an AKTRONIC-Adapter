@@ -1,0 +1,36 @@
+(* 
+        
+         ********************************************************** 
+         ********************************************************** 
+         **                                                      ** 
+         **                    ls-Warenhaus 0                    ** 
+         **                                                      ** 
+         **    Anpassung für Kartenleser an  AKTRONIC-Adapter    ** 
+         **                                                      ** 
+         **                     Version 1.01                     ** 
+         **                                                      ** 
+         **                  (Stand:  30.08.89)                  ** 
+         **                                                      ** 
+         **                                                      ** 
+         **           Autor: Bruno Pollok, Bielefeld             ** 
+         **                                                      ** 
+         **    Copyright (C) 1988  Eva Latta-Weber, Bielefeld    ** 
+         **    Copyright (C) 1990  ERGOS GmbH, Siegburg          ** 
+         **                                                      ** 
+         ********************************************************** 
+         ********************************************************** 
+ 
+                                                                           *) 
+PACKET ls warenhaus 0  DEFINES                       
+       interface anpassung,{}       oeffne interface,{}       schliesse interface,{}       wert von interface,{}       pressed key,{}(* --------------------------- *){}       kanalkoppler,{}       interfacechannel,{}       init interfacechannel:{}TEXT CONST interface anpassung :: "mit Kartenleser an AKTRONIC-Adapter";{}LET  max channel = 24,{}     initcode    = 26,{}     endcode     = 27,{}     read code   = 28;{}INT CONST  nicht initialisiert code :: -3,{}           interface error code     :: -4,{}
+           kanal besetzt code       :: -5;{}INT  VAR  interfacekanal  :: 0;{}TEXT VAR  puffer          :: "";{}TASK VAR  hardwaremanager :: niltask,{}          interface task  :: niltask,{}          absender;{}DATASPACE VAR  ds :: nilspace;{}INT PROC interfacechannel:{}  interfacekanal{}END PROC interfacechannel;{}PROC oeffne interface (INT VAR status):{}  puffer := "";{}  forget (ds); ds := nilspace;{}  pingpong (interfacetask, init code, ds, status);{}  IF status > 0 THEN status DECR maxint FI;{}
+  forget (ds); ds := nilspace{}END PROC oeffne interface;{}INT PROC wert von interface:{}  INT VAR wert;{}  puffer CAT incharety (1);{}  call (interface task, read code, ds, wert);{}  wert.{}END PROC wert von interface;{}PROC schliesse interface:{}  forget (ds); ds := nilspace;{}  send (interface task, end code, ds);{}  forget (ds); ds := nilspace{}END PROC schliesse interface;{}TEXT PROC pressed key:{}  IF puffer = ""{}     THEN incharety{}     ELSE erstes pufferzeichen{}  FI.{}  erstes pufferzeichen:{}
+    TEXT VAR zeichen :: puffer SUB 1;{}    puffer := subtext (puffer, 2);{}    zeichen.{}END PROC pressed key;{}TEXT PROC pressed key (INT CONST warten):{}  IF puffer = ""{}     THEN incharety (warten){}     ELSE erstes pufferzeichen{}  FI.{}  erstes pufferzeichen:{}    TEXT VAR zeichen :: puffer SUB 1;{}    puffer := subtext (puffer, 2);{}    zeichen.{}END PROC pressed key;{}(*************************************************************************){}PROC kanalkoppler:{}  enable stop;{}  IF name (myself) <> "-"{}
+     THEN errorstop ("Unzulässiges Kommando!"){}     ELSE warte auf anrufe{}  FI.{}  warte auf anrufe:{}    INT VAR codenummer, antwort;{}    disable stop;{}    REP wait (ds, codenummer, absender);{}        reagiere auf anruf;{}        loesche ggf fehlerzustand{}    PER.{}  reagiere auf anruf:{}    IF codenummer = initcode{}       THEN kopple an interface;{}            IF interface ist betriebsbereit{}               THEN bearbeite weitere auftraege{}               ELSE gib negative rueckmeldung{}
+            FI;{}            gib kanal frei{}       ELSE send (absender, nicht initialisiert code, ds){}    FI.{}  loesche ggf fehlerzustand:{}    IF is error{}       THEN clear error{}    FI.{} kopple an interface:{}  IF task (interfacekanal) <> niltask AND task (interfacekanal) <> myself{}     THEN antwort := kanal besetzt code;{}     ELSE continue (interfacekanal);{}          teste interface{}  FI.{} teste interface:{}  leere puffer;{}  out (""240"");{}  IF incharety (1) <> ""{}     THEN antwort := 0;{}
+          out (""176""){}     ELSE antwort := interface error code{}  FI.{}  leere puffer:{}    REP  UNTIL incharety = "" PER.{} interface ist betriebsbereit:  antwort = 0.{} gib negative rueckmeldung:     send (absender, antwort, ds).{} gib kanal frei:                break (quiet).{} ende:                          out (""176"").{} bearbeite weitere auftraege:{}   REP   pingpong (absender, antwort, ds, codenummer);{}         IF   codenummer = read code{}              THEN hole wert von interface{}
+         ELIF codenummer < 0{}              THEN send (absender, codenummer, ds);{}                   codenummer := endcode{}              ELSE antwort := 0{}         FI{}   UNTIL codenummer = endcode PER;{}   ende.{} hole wert von interface:{}    out (""211"");{}    antwort := code (incharety (1)).{}END PROC kanalkoppler;{}PROC init interfacechannel:{}  teste auf zulaessigkeit;{}  loesche interfacetask;{}  erfrage interface kanal;{}  generiere ggf neue interfacetask.{} teste auf zulaessigkeit:{}
+  enable stop;{}  IF hardwaremanager <> niltask AND hardwaremanager <> myself{}     THEN errorstop ("Dieses Kommando kann nur von der Task '" +{}                      name (hardwaremanager) + "' aus gegeben werden!"){}     ELSE hardwaremanager := myself{}  FI.{} loesche interfacetask:{}  disable stop;{}  end (interfacetask);{}  IF is error THEN clear error FI;{}  enable stop.{} generiere ggf neue interfacetask:{}  IF interface kanal = 0{}     THEN interface task  := niltask;{}          hardwaremanager := niltask{}
+     ELSE begin (PROC kanalkoppler, interface task);{}          hardwaremanager := myself{}  FI.{} erfrage interfacekanal:{}   INT VAR kanalnummer;{}   put ("Gib Interface - Kanal:");{}   get (kanalnummer);{}   set interfacechannel (kanalnummer).{}END PROC init interfacechannel;{}PROC set interface channel (INT CONST channel number):{}  IF channel number < 0 OR channel number > max channel{}     THEN errorstop ("Unzulässige Kanalnummer"){}     ELSE interfacekanal := channel number{}  FI{}END PROC set interface channel;{}
+BOOL OP <> (TASK CONST t1, t2):{}  NOT (t1 = t2){}END OP <>;{}init interfacechannel{}END PACKET ls warenhaus 0{}
+

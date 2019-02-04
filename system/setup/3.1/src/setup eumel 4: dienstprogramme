@@ -1,0 +1,218 @@
+ 
+(**************************************************************************)
+(***** Dienstprogramme für Modulprogrammierer             *****************)
+(***** Copyright (c) 1987, 1988                           *****************)
+(***** Lutz Prechelt, Karlsruhe                           *****************)
+(**************************************************************************)
+
+PACKET setup eumel dienstprogramme            (* Copyright (c) 1987 by    *)
+DEFINES                                       (* Lutz Prechelt, Karlsruhe *)
+   file as one text,                          (* Stand : 07.05.88   1.4   *)
+   ich schreibe jetzt ein neues shard modul,  (* Eumel 1.8.1              *)
+   link shard module,
+   all modules:
+
+(* Dies sind Dienstprogramme, die der Modul-Programmierer braucht *) 
+
+(* Das Format der Refinementdateien für den dtcb- und ccb-Setupdialog ist wie
+   folgt:
+   1. Zeile: INT-Denoter für die Anzahl von Abfragerefinements, die drin sind
+             Rest der Zeile muß leer sein.
+   Danach  : lauter ELAN-Refinements mit den Namen r1, r2 usw.
+             evtl. weitere Refinements zur Hilfe mit beliebigen Namen (es
+             gibt ein paar Ausnahmen, über die man beim ersten Test dann aber
+             stolpert.)
+   In den Refinements dürfen Variablen vereinbart werden. Vor dem ersten
+   refinement der Datei darf KEIN Punkt sein (es ist sowieso schlechter
+   Stil, die Punkte nicht hinter die vorherige Zeile zu setzen, sondern
+   vor den refinementnamen.), hingegen MUSS nach dem letzten Refinement der
+   Datei ein Punkt stehen.
+   Wer das für nötig hält, kann auch Prozeduren definieren und verwenden,
+   was allerdings nicht geht, sind Pakete.
+   Wenn man mit Kommentaren und sonstigen Bytefressern sparsam
+   umgeht, läuft der Dialog beim Setup später etwas schneller an.
+*)
+
+LET modul namentyp         = "SHardmodul *";
+
+DATASPACE VAR ds;
+
+(***************************************************************************)
+
+THESAURUS PROC all modules (THESAURUS CONST th):
+  (* Hier wird schlabberig nach Namen ausgewählt, während der Setup Eumel
+     im Betrieb die Datenraumtypen als Auswahlkriterium verwendet.
+     Die Schwierigkeiten, die bei Nichteinhalten der Namenskonventionen
+     entstehen, veranlassen hoffentlich jeden zur nötigen Disziplin...
+  *)
+  (th LIKE "SHardmodul *") - (th LIKE "SHardmodul *.ccb")
+  - (th LIKE "SHardmodul *.dtcb") - (th LIKE "SHardmodul *.info")
+END PROC all modules;
+
+(*****THESAURUS PROC all modules:        wird sauber in Teil 2 realisiert
+  all modules (all)
+END PROC all modules;
+*****)
+
+(********************* link shard module *********************************) 
+
+PROC link shard module:
+  TEXT VAR module :: std;
+  REPEAT 
+    page; 
+    putline ("          L I N K   S H A R D - M O D U L E"); line (2);
+    put ("Modulname:"); editget (module); line (2); 
+    link shard module (module); line;
+  UNTIL NOT yes ("noch ein Modul linken", FALSE)  PER 
+END PROC link shard module;
+
+PROC link shard module (THESAURUS CONST th):
+   do (PROC (TEXT CONST) link shard module, th);
+END PROC link shard module;
+
+PROC link shard module (TEXT CONST module): 
+  (* Ruft link shard module (modul, dtcb, ccb, info) unter Anwendung von
+     Namenskonventionen (nämlich entsprechende Suffixe ".dtcb" etc.) auf.
+  *)
+  TEXT VAR dtcb, ccb, info;
+  BOOL VAR elan neu;
+  dtcb := module + ".dtcb"; 
+  ccb  := module + ".ccb"; 
+  info := module + ".info"; 
+  perhaps change filenames;
+  elan neu := yes (module + ": neue Elan Teile machen", FALSE);
+  IF elan neu THEN neue elan teile machen  FI;
+  link shard module (module, dtcb, ccb, info);
+  IF elan neu THEN check syntax FI.
+
+neue elan teile machen:
+  edit (dtcb); line (2);
+  edit (ccb);  line (2);
+  edit (info); page.
+
+perhaps change filenames:
+(*put ("Datei mit dtcb-refinements :"); editget (dtcb); line;
+  put ("Datei mit  ccb-refinements :"); editget (ccb);  line;
+  put ("Datei mit Infotext         :"); editget (info); line (2)*) .
+
+check syntax :
+  line (2); put (module); putline (": Syntax-Check");
+  forget (ds);
+  ds := nilspace;
+  BOUND MODUL VAR m :: old (module), old shard :: ds, new shard :: ds;
+  INT VAR  offset dtcb table  :: int (m, 0),
+           dtcb table entries :: int (m, offset dtcb table),
+           offset ccb table   :: int (m, 2),
+           ccb  table entries :: int (m, offset ccb table);
+  (* Jetzt einen total verkrüppelten automatischen "perform dialogue" für
+     die Probeübersetzung der .dtcb und .ccb refinements aufrufen.
+  *)
+  perform dtcb dialogue (m, real (offset dtcb table+2), dtcb table entries,
+                         new shard, 0.0,
+                         old shard, 0.0,
+                         FALSE, FALSE,
+                         dtcb refinements (m), dtcb abfragen (m),
+                         TRUE, FALSE);
+  putline ("dtcb refinements O.K.");
+  ROW 40 REAL VAR x :: ROW 40 REAL : (0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+   0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+   0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+   0.0, 0.0);
+  perform ccb dialogue (m, real (offset ccb table+2), ccb table entries,
+                        new shard, x,
+                        old shard, x,
+                        1,
+                        FALSE, FALSE,
+                        ccb refinements (m), ccb abfragen (m),
+                        TRUE, FALSE);
+  putline ("ccb refinements O.K.");
+  forget (ds).
+END PROC link shard module;
+
+PROC link shard module (TEXT CONST module, dtcb, ccb, infofile) : 
+  IF type (old (module)) <> datenraumtyp modul CAND NOT typ aendern 
+  THEN LEAVE link shard module
+  ELSE type (old (module), datenraumtyp modul)  FI;
+  IF NOT (module LIKE modul namentyp)
+  THEN errorstop ("Module MÜSSEN Namen der Art """ + modul namentyp +
+                   """ haben")
+  FI;
+  line;
+  BOUND MODUL VAR m :: old (module); 
+  TEXT VAR dtcb ref :: file as one text (dtcb, FALSE), 
+           ccb  ref :: file as one text (ccb,  FALSE),
+           info text:: file as one text (infofile, TRUE); 
+  INT CONST pos dtcb :: pos (dtcb ref, " "), (* Ende der ersten Zeile, die *)
+            pos ccb  :: pos (ccb ref,  " "); (* die Abfragezahl enthält *)
+  INT VAR   dtcb count, ccb count;
+  dtcb count := int (subtext (dtcb ref, 1, pos dtcb)); 
+  IF NOT last conversion ok OR dtcb count < 0 OR dtcb count > 1000 
+  THEN errorstop ("keine vernünftige Zahl von dtcb Abfragen gefunden")  FI;
+  ccb count := int (subtext (ccb ref, 1, pos ccb)); 
+  IF NOT last conversion ok OR ccb count < 0 OR ccb count > 1000 
+  THEN errorstop ("keine vernünftige Zahl von ccb Abfragen gefunden")  FI;
+  (* JETZT PASSIERTS : *) 
+  dtcb abfragen (m, dtcb count); 
+  dtcb refinements (m, subtext (dtcb ref, pos dtcb + 1)); 
+  ccb abfragen (m, ccb count); 
+  ccb refinements (m, subtext (ccb ref, pos ccb + 1)); 
+  info (m, infotext);
+  line;
+  putline (""""+module+""" gelinkt. " + text (storage (old (module))) +
+           " K Datenraumgröße.").
+
+typ aendern :
+  IF type (old (module)) = 1003 (* file type *)
+  THEN putline ("(""" + module + """ hat den Typ FILE)")  FI;
+  putline ("Achtung: """ + module + """ ist nicht vom Typ eines SHard-Moduls");
+  yes ("Soll es dazu gemacht werden (Typ aufprägen)", FALSE).
+END PROC link shard module;
+
+(******************** file as one text ************************************) 
+ 
+TEXT PROC file as one text (TEXT CONST filename, BOOL CONST verbatim) : 
+  FILE VAR f :: sequential file (input, filename); 
+  TEXT VAR result :: "", t; 
+  put ("Lese """ + filename + """ :");
+  WHILE NOT eof (f) REP 
+    cout (line no (f));
+    getline (f, t);
+    work on t;
+    result CAT t
+  PER;
+  line;
+  result.
+
+work on t :
+  IF verbatim
+  THEN t CAT ""13""10""
+  ELSE t := compress (t); t CAT " "  FI.
+END PROC file as one text;
+
+(****** ich schreibe jetzt ein neues shard modul ***************************)
+
+PROC ich schreibe jetzt ein neues shard modul :
+  line (2);
+  putline ("So so, Sie wollen also ein neues SHard-Modul schreiben."); line;
+  pause (20);
+  putline ("Mir kommt es so vor, als sei heute der " + date +
+           " und im Moment gerade " + time of day + " Uhr"); line;
+  IF NOT yes ("Stimmt das ungefähr (auf 5 Minuten kommt's nicht an)", TRUE)
+  THEN do ("set date"); line (2) FI;
+  putline ("Also gut. Schreiben Sie Ihr verdammtes Modul.");
+  putline ("Aber merken Sie sich die folgenden 4 Bytes als ihren Modultyp");
+  put (""15"   ");
+  REAL VAR x :: floor (clock (1) - date ("05.05.79") - time ("10:00:00"));
+  INT VAR i;
+  FOR i FROM 1 UPTO 4 REP
+    put (int (x MOD 256.0));
+    x := floor (x / 256.0)
+  PER;
+  put ("  "14""); line (2);
+  putline ("Also : die Dinger merken (schreiben Sie sie auf, sonst vergessen Sie");
+  putline ("       sie ja doch) und NICHT MEHR ÄNDERN !");
+  line (3)
+END PROC ich schreibe jetzt ein neues shard modul;
+
+END PACKET setup eumel dienstprogramme;
+

@@ -1,0 +1,98 @@
+PACKET standderstundenplanunganalysierenDEFINES 
+stundenplanstandanalyseausfuehren:LET feldakthj=2,dateiname="Fehlerprotokoll"
+,schulname="Schulname",schulort="Schulort",schuljahr="Schuljahr",halbjahr=
+"Schulhalbjahr",kennunglv="L",kennungkopplg="K",ausgpar="#",anzkopfzeilen=10,
+laengelv=8,laengekopplg=8,laengefachkenn=6,leererraum="    ",leerzeile=" ",
+ueberschrift1="Fehlerprotokoll zum Stand der Stundenplanung",unterstrich1=
+"-----------------------------------------------------",ausgkopp="          "
+,ausgkopplv="                                   ",ueberschrift2=
+"Kopplung  Lehrveranst.  Wstd.      Anmerkung",ueberschrift3=
+"                        soll/ist",unterstrich2=
+"---------+------------+-----------+--------------------------------------",
+keinefehler="Keine Fehler aufgetreten (alle Kopplungen korrekt verplant)!",
+zuvielverpl=" Std. zuviel verplant",raumfehlt="Raum fehlt für ",zuverplanen=
+" Std. noch zu verplanen",keinekopplg="Kopplung nicht erhalten (",
+meldungserverfehler=376,meldungkeinstdplan=366,meldungkeinesugruppen=334,
+meldungzuvielesugruppen=356,meldungkeinelv=326,meldungzuvielelv=358,
+meldungbasisinkon=378,meldungwarten=69,meldungstdplauswvorber=384,
+meldungkeinehjdaten=382,meldungbearbeitetwird=352;FILE VAR datei;TEXT VAR 
+aktkopplg:="",aktlv:="",sj,hj,ausgzeile,ausgpostfix;BOOL VAR 
+kopplungausgegeben:=FALSE ,lvausgegeben:=FALSE ;INT VAR maxwstd:=0,verplstden
+:=0,aktwstd:=0,anzverplstden:=0,fstat:=0,anzleereraumzuw:=0,jgstderlv;PROC 
+meldungausgeben(INT VAR fstat):IF fstat=2THEN standardmeldung(
+meldungserverfehler,"");ELIF fstat=3THEN standardmeldung(meldungkeinstdplan,
+"");ELIF fstat=4THEN standardmeldung(meldungkeinesugruppen,"");ELIF fstat=5
+THEN standardmeldung(meldungzuvielesugruppen,"")ELIF fstat=6THEN 
+standardmeldung(meldungkeinelv,"")ELIF fstat=7THEN standardmeldung(
+meldungzuvielelv,"")ELIF fstat=9THEN standardmeldung(meldungbasisinkon,"");
+FI ;return(1)END PROC meldungausgeben;PROC stundenplanstandanalyseausfuehren:
+standardmeldung(meldungwarten,"");bestimmehalbjahr;bereiteprotokollvor;
+setzepufferwerte;holeunduntersuchekopplungen;IF lines(datei)=anzkopfzeilen
+THEN putline(datei,keinefehler)FI ;zeigedatei(dateiname,"vr").
+bereiteprotokollvor:forget(dateiname,quiet);datei:=sequentialfile(output,
+dateiname);putline(datei,schulkenndatum(schulname));putline(datei,text(
+schulkenndatum(schulort),65)+date);putline(datei,leerzeile);putline(datei,
+ueberschrift1+" "+hj+". "+text(sj,2)+"/"+subtext(sj,3));putline(datei,
+unterstrich1);putline(datei,leerzeile);putline(datei,ueberschrift2);putline(
+datei,ueberschrift3);putline(datei,unterstrich2);putline(datei,leerzeile).
+bestimmehalbjahr:sj:=schulkenndatum(schuljahr);hj:=schulkenndatum(halbjahr);
+IF standardmaskenfeld(feldakthj)=""THEN geplanteshjundsjberechnen(hj,sj);FI .
+setzepufferwerte:inittupel(dnrlehrveranstaltungen).
+holeunduntersuchekopplungen:IF keinehjdatenTHEN fehlermeldungkeinelvFI ;
+standardmeldung(meldungstdplauswvorber,"");stundenplanhalbjahrsetzen(hj,sj);
+stundenplanbasisundstundenplanholen(fstat);IF fstat=0COR fstat=8THEN 
+statleseschleife(ixlvsjhjkopp,sj,hj,fnrlvsj,fnrlvhj,PROC 
+kopplungenuntersuchen)ELSE meldungausgeben(fstat);LEAVE 
+stundenplanstandanalyseausfuehren;FI .keinehjdaten:records(
+dnrlehrveranstaltungen)=0.0.fehlermeldungkeinelv:standardmeldung(
+meldungkeinehjdaten,"");return(1).END PROC stundenplanstandanalyseausfuehren;
+PROC kopplungenuntersuchen(BOOL VAR b):IF wert(fnrlvsj)<>sjCOR wert(fnrlvhj)
+<>hjCOR dbstatus<>0THEN b:=TRUE ELSE IF aktkopplg<>wert(fnrlvkopplung)THEN 
+IF nichterstersatzCAND mehrerelvTHEN ueberpruefeinhaltungderkopplungFI ;
+aktkopplg:=wert(fnrlvkopplung);standardmeldung(meldungbearbeitetwird,
+aktkopplg+ausgpar);maxwstd:=0;IF kopplungausgegebenTHEN putline(datei,
+leerzeile)FI ;kopplungausgegeben:=FALSE ;FI ;lvausgegeben:=FALSE ;jgstderlv:=
+intwert(fnrlvjgst);IF jgstderlv=0THEN aktlv:="00"+text(wert(fnrlvfachkennung)
+,laengefachkenn)ELSE aktlv:=jgstaufber(wert(fnrlvjgst))+text(wert(
+fnrlvfachkennung),laengefachkenn)FI ;aktwstd:=intwert(fnrlvwochenstd);IF 
+maxwstd<aktwstdTHEN maxwstd:=aktwstdFI ;ueberpruefanzstdenundleereraumangabe;
+FI .nichterstersatz:aktkopplg<>"".mehrerelv:length(allelvmit(kennungkopplg,
+aktkopplg))>laengelv.ueberpruefanzstdenundleereraumangabe:anzleereraumzuw:=0;
+verplstden:=anzahlverplstden(kennunglv,aktlv);IF verplstden<aktwstdTHEN 
+fehlerzuwenigstdenELIF verplstden>aktwstdTHEN fehlerzuvielstdenFI ;IF 
+anzleereraumzuw>0THEN ausgzeile:="";ausgpostfix:=raumfehlt+text(
+anzleereraumzuw)+" Std.";IF kopplungausgegebenTHEN IF lvausgegebenTHEN 
+ausgzeileCAT ausgkopplv;lvausgegeben:=TRUE ELSE ausgzeileCAT ausgkopp;
+ausgzeileCAT aktlv;ausgzeileCAT text(aktwstd,8);ausgzeileCAT text(verplstden,
+5);ausgzeileCAT "    ";FI ;ELSE ausgzeileCAT text(aktkopplg,laengekopplg+2);
+ausgzeileCAT aktlv;ausgzeileCAT text(aktwstd,8);ausgzeileCAT text(verplstden,
+5);ausgzeileCAT "    ";kopplungausgegeben:=TRUE ;lvausgegeben:=TRUE FI ;
+ausgzeileCAT ausgpostfix;putline(datei,ausgzeile)FI .fehlerzuwenigstden:
+ausgzeile:="";ausgpostfix:=aktlv;ausgpostfixCAT text(aktwstd,8);ausgpostfix
+CAT text(verplstden,5);ausgpostfixCAT "    ";ausgpostfixCAT text(aktwstd-
+verplstden);ausgpostfixCAT zuverplanen;IF kopplungausgegebenTHEN ausgzeile:=
+ausgkopp;ELSE ausgzeile:=text(aktkopplg,laengekopplg+2);kopplungausgegeben:=
+TRUE FI ;ausgzeileCAT ausgpostfix;putline(datei,ausgzeile);lvausgegeben:=
+TRUE .fehlerzuvielstden:ausgzeile:="";ausgpostfix:=aktlv;ausgpostfixCAT text(
+aktwstd,8);ausgpostfixCAT text(verplstden,5);ausgpostfixCAT "    ";
+ausgpostfixCAT text(verplstden-aktwstd);ausgpostfixCAT zuvielverpl;IF 
+kopplungausgegebenTHEN ausgzeile:=ausgkopp;ELSE ausgzeile:=text(aktkopplg,
+laengekopplg+2);kopplungausgegeben:=TRUE FI ;ausgzeileCAT ausgpostfix;putline
+(datei,ausgzeile);lvausgegeben:=TRUE .ueberpruefeinhaltungderkopplung:
+anzverplstden:=anzahlverplstden(kennungkopplg,aktkopplg);IF anzverplstden>
+maxwstdTHEN ausgpostfix:=keinekopplg;ausgpostfixCAT text(anzverplstden);
+ausgpostfixCAT " Wstd.)";IF kopplungausgegebenTHEN IF lvausgegebenTHEN 
+ausgzeile:=ausgkopplv;ELSE ausgzeile:=ausgkopp;ausgzeileCAT aktlv;ausgzeile
+CAT text(aktwstd,8);ausgzeileCAT text(verplstden,5);ausgzeileCAT "    ";
+lvausgegeben:=TRUE FI ;ELSE ausgzeile:=text(aktkopplg,laengekopplg+2);
+ausgzeileCAT aktlv;ausgzeileCAT text(aktwstd,8);ausgzeileCAT text(verplstden,
+5);kopplungausgegeben:=TRUE FI ;ausgzeileCAT ausgpostfix;putline(datei,
+ausgzeile)FI .END PROC kopplungenuntersuchen;INT PROC anzahlverplstden(TEXT 
+CONST kennung,kennungstext):TEXT VAR stundenplan:=allezeitenvon(kennung,
+kennungstext),plv,praum,ppar;INT VAR einspos:=1,anzeinsen:=0;WHILE einspos<>0
+REP einspos:=pos(stundenplan,"1",einspos);IF einspos<>0THEN anzeinsenINCR 1;
+IF kennung=kennunglvTHEN ueberpruefleererraumFI ;einsposINCR 1FI PER ;
+anzeinsen.ueberpruefleererraum:planeintraglesen(einspos,kennunglv,
+kennungstext,plv,praum,ppar);IF praum=leererraumTHEN anzleereraumzuwINCR 1FI 
+.END PROC anzahlverplstden;END PACKET standderstundenplanunganalysieren;
+

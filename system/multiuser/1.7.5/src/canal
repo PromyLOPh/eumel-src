@@ -1,0 +1,227 @@
+(* ------------------- VERSION 6     20.05.86 ------------------- *)
+PACKET canal DEFINES                           (* Autor: J.Liedtke *)
+ 
+    analyze supervisor command :
+ 
+ 
+
+LET command list =
+ 
+"begin:1.12end:3.0break:4.0continue:5.01halt:7.0
+taskinfo:8.0storageinfo:9.0help:10.0 ",
+
+    supervisor command text =
+
+""6""20""1"ESC ?  -->     help
+"6""21""1"ESC b  -->     begin ("""")
+"6""22""1"ESC c  -->     continue ("""")
+"6""23""1"ESC q  -->     break
+"6""21""50"ESC h  -->     halt
+"6""22""50"ESC s  -->     storage info
+"6""23""50"ESC t  -->     task info
+"6""8""6"gib supervisor kommando :" ,
+
+     text type = 4 ,
+     ack                 = 0 ,
+     error nak           = 2 ,
+     begin code          = 4 ,
+     end code            = 5 ,
+     break code          = 6 ,
+     halt code           = 8 ,
+     password code       = 9 ,
+     continue code       = 100 ,
+
+     home      = ""1"" ;
+
+ 
+TASK VAR sv ;
+
+DATASPACE VAR ds ;
+
+BOUND STRUCT (TEXT tname, tpass, TASK task, PROCA start proc) VAR sv msg ;
+BOUND TEXT VAR error msg ;
+
+INT VAR command index , number of params , reply ;
+TEXT VAR param 1, param 2 , task password ;
+ 
+
+  lernsequenz auf taste legen ("b", ""1""8""1""12"begin ("""")"8""8""11"") ;
+  lernsequenz auf taste legen ("c", ""1""8""1""12"continue ("""")"8""8""11"") ;
+  lernsequenz auf taste legen ("q", ""1""8""1""12"break"13"") ;
+  lernsequenz auf taste legen ("h", ""1""8""1""12"halt"13"") ;
+  lernsequenz auf taste legen ("s", ""1""8""1""12"storage info"13"") ;
+  lernsequenz auf taste legen ("t", ""1""8""1""12"task info"13"") ;
+  lernsequenz auf taste legen ("?", ""1""8""1""12"help"13"") ;
+
+PROC analyze supervisor command :
+ 
+  disable stop ;
+  sv := supervisor ;
+  ds := nilspace ;
+  REP
+    command dialogue (TRUE) ;
+    command pre ;
+    cry if not enough storage ;
+    get command (supervisor command text) ;
+    analyze command (command list, text type,
+                     command index, number of params,
+                     param1, param2) ;
+    execute command ;
+  PER .
+
+command pre :
+  IF NOT is error
+    THEN wait for terminal; eumel must advertise
+    ELSE forget (ds) ; ds := nilspace
+  FI .
+
+wait for terminal :
+  out (home) .
+
+cry if not enough storage :
+  INT VAR size, used ;
+  storage (size, used) ;
+  IF used > size
+    THEN out (""7"Speicher Engpass!"13""10"") ;
+  FI .
+
+ENDPROC analyze supervisor command ;
+
+PROC execute command :
+
+  enable stop ;
+  SELECT command index OF
+    CASE  1 : begin ("PUBLIC")
+    CASE  2 : begin (param2)
+    CASE  3 : end via canal
+    CASE  4 : break
+    CASE  5 : quiet
+    CASE  6 : continue (param1)
+    CASE  7 : halt
+    CASE  8 : task info (0); eumel must advertise; quiet
+    CASE  9 : storage info; quiet
+    CASE 10 : help; eumel must advertise; quiet
+    OTHERWISE analyze command error
+  ENDSELECT ;
+  IF reply = error nak
+    THEN error msg := ds ;
+         errorstop (CONCR (error msg))
+  FI .
+ 
+end via canal :
+  IF yes ("Task """ + name (task (channel (myself))) + """ loeschen")
+    THEN eumel must advertise ;
+         call (sv, end code, ds, reply)
+  FI .
+
+break :
+  eumel must advertise ;
+  call (sv, break code, ds, reply) .
+
+halt :
+  call (sv, halt code, ds, reply) .
+
+quiet :
+  call (sv, ack, ds, reply) .
+
+analyze command error :
+  command error ;
+  IF command index = 0
+    THEN errorstop ("kein supervisor kommando")
+  ELIF number of params = 0
+    THEN errorstop ("Taskname fehlt")
+    ELSE errorstop ("Parameter ueberfluessig")
+  FI .
+
+ENDPROC  execute command ;
+ 
+PROC begin (TEXT CONST father name) :
+
+  IF param1 = "-"
+    THEN errorstop ("Name ungueltig")
+  FI ;
+  sv msg := ds ;
+  CONCR (sv msg).tname := param1 ;
+  CONCR (sv msg).tpass := "" ;
+  call (task (father name), begin code, ds, reply) ;
+  IF reply = password code
+    THEN get password ;
+         sv msg := ds ;
+         CONCR (sv msg).tpass := task password ;
+         call (task (father name), begin code, ds, reply) 
+  FI ;
+  IF reply = ack
+    THEN continue (param1)
+  FI .
+
+get password :
+  put ("      Passwort:") ;
+  get secret line (task password) .
+ 
+ENDPROC begin ;
+
+PROC continue (TEXT CONST task name) :
+
+  sv msg := ds ;
+  CONCR (sv msg).tname := task name ;
+  CONCR (sv msg).tpass := "" ;
+  call (sv, continue code + channel, ds, reply) ;
+  IF reply = password code
+    THEN get password ;
+         sv msg := ds ;
+         CONCR (sv msg).tpass := task password ;
+         call (sv, continue code + channel, ds, reply)
+  FI .
+
+get password :
+  put ("      Passwort:") ;
+  get secret line (task password) .
+
+ENDPROC continue ;
+
+PROC help: 
+
+  LET page       = ""1""4"" 
+     ,bell       = ""7"" 
+     ,cr         = ""13""
+     ,end mark   = ""14""
+     ,begin mark = ""15""
+     ,esc        = ""27"" 
+     ;
+
+  REP
+    out (page) ;
+    show page ;
+  UNTIL is quit command PER .
+
+  show page : 
+    putline(begin mark + (31 * ".") + " supervisor help " + (31 * ".") + end mark) ;
+    putline("Hier finden Sie einige Kommandos, die Ihnen den Einstieg ins System er -") ;
+    putline("leichtern sollen:") ;
+    out(""6""05""07"1. Informations-Kommandos") ;
+    out(""6""07""11"storage info        physisch belegten Hintergrundplatz melden") ;
+    out(""6""08""11"task info           Taskbaum zeigen") ;
+    out(""6""14""07"2. Verbindung zum Supervisor") ;
+    out(""6""16""11"break               Task vom Terminal abkoppeln") ;
+    out(""6""17""11"begin(""task"")       neue Task `task` einrichten") ;
+    out(""6""18""11"continue(""task"")    Task `task` an ein Terminal ankoppeln") ;
+    out(""6""21""01"Näheres:     Benutzerhandbuch, Teil 2, Kap. 2") ;
+    out(""6""23""05"Wenn Sie den Hilfe-Modus beenden wollen, tippen Sie die Taste `q`.   ") ;
+    out(cr) .
+
+  is quit command :
+    TEXT VAR char ;
+    get char (char) ;
+    IF char = esc 
+      THEN get char (char)
+    FI;
+    IF char = "q" COR char = "Q"
+      THEN true 
+      ELSE out (bell); 
+           FALSE
+    FI.
+
+END PROC help ;
+
+ENDPACKET canal ;
+

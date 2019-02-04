@@ -1,0 +1,236 @@
+PACKET systembaumbearbeitungneuDEFINES loescheteilbaeume,
+teilbaeumeaussystembaum,uebersetze:LET dp=":",refinementende=".";LET grenze=6
+;LET fehldat="Übersetzungsfehler:";FILE VAR quelle;KNOTENMENGE VAR ang,nach;
+TEXT VAR newsymbol:="";INT VAR newkind;TEXT VAR aktzeile:="";INT VAR 
+zeilenindex;ROW grenzeTEXT VAR at;FILE VAR f;INT CONST maxat:=6,tepos:=1,mpos
+:=2,vpos:=3,npos:=4,tpos:=5,ppos:=6;LET normkz="0",refkz="1";LET scanende=7,
+scanbold=2,scantext=4,scandel=6,scannumber=3,scanid=1;TEXT PROC attribute(
+KNOTEN CONST k):TEXT VAR attr;read(k,attr);attrEND PROC attribute;BOOL PROC 
+isrefinement(KNOTEN CONST k):(subtext(attribute(k),1,1)=refkz)END PROC 
+isrefinement;BOOL PROC isnormal(KNOTEN CONST k):(subtext(attribute(k),1,1)=
+normkz)END PROC isnormal;BOOL PROC isopen(KNOTEN CONST k):NOT (isrefinement(k
+)COR isnormal(k))END PROC isopen;PROC mengedernachfolger(KNOTEN CONST k,
+KNOTENMENGE VAR m):read(k,m)END PROC mengedernachfolger;PROC 
+neuenachfolgermenge(KNOTEN CONST k,KNOTENMENGE CONST m):write(k,m)END PROC 
+neuenachfolgermenge;PROC loescheteilbaeume(TEXT CONST datnam,BOOL VAR 
+gefunden):bearbeiteteilbaeume(datnam,PROC (TEXT CONST ,BOOL VAR )loesche,
+gefunden)END PROC loescheteilbaeume;PROC teilbaeumeaussystembaum(TEXT CONST 
+datnam,BOOL VAR gefunden):bearbeiteteilbaeume(datnam,PROC (TEXT CONST ,BOOL 
+VAR )retranslate,gefunden)END PROC teilbaeumeaussystembaum;PROC 
+bearbeiteteilbaeume(TEXT CONST datnam,PROC (TEXT CONST ,BOOL VAR )behandle,
+BOOL VAR gefunden):ersterteilbaum;WHILE weitereteilbaeumeREP behandleteilbaum
+;naechsterteilbaumPER .behandleteilbaum:behandle(teilbaumname,gefunden);IF 
+NOT gefundenTHEN line(f,2);putline(f,"(* Teilbaum "+teilbaumname+
+" existiert nicht *)");FI ;nextsymbol(newsymbol,typ).ersterteilbaum:f:=
+sequentialfile(input,datnam);TEXT VAR liste;getline(f,liste);forget(datnam,
+quiet);f:=sequentialfile(output,datnam);scan(liste);naechsterteilbaum.
+naechsterteilbaum:TEXT VAR teilbaumname;INT VAR typ;nextsymbol(teilbaumname,
+typ).weitereteilbaeume:typ<>scanende.END PROC bearbeiteteilbaeume;PROC 
+loesche(TEXT CONST teilbaumname,BOOL VAR gefunden):sucheteilbaum;IF gefunden
+THEN loeschediesenFI .sucheteilbaum:KNOTEN VAR teilbaumref;gefunden:=
+existiert(exporte,teilbaumref,teilbaumname).loeschediesen:#loescheunterbaum(
+teilbaumref);KNOTENMENGE VAR g;mengedernachfolger(teilbaumref,g);KNOTEN VAR r
+:=erster(g);IF gueltig(r)THEN knotenloeschen(g,r)FI ;knotenloeschen(exporte,
+teilbaumref)#KNOTENMENGE VAR g;mengedernachfolger(teilbaumref,g);KNOTEN VAR r
+:=erster(g);loescheunterbaum(teilbaumref);IF gueltig(r)THEN knotenloeschen(g,
+r)FI ;knotenloeschen(exporte,teilbaumref).END PROC loesche;PROC retranslate(
+TEXT CONST teilbaumname,BOOL VAR gefunden):sucheteilbaum;IF gefundenTHEN 
+schreibeteilbaumname;durchlaufeteilbaum;schreibeteilbaumendeFI .sucheteilbaum
+:KNOTEN VAR teilbaumref;gefunden:=existiert(exporte,teilbaumref,teilbaumname)
+.schreibeteilbaumname:putline(f,attribute(teilbaumref)+dp).
+schreibeteilbaumende:putline(f,refinementende).durchlaufeteilbaum:
+KNOTENMENGE VAR g;mengedernachfolger(teilbaumref,g);ausbaum(erster(g),1).END 
+PROC retranslate;PROC ausbaum(KNOTEN CONST k,INT CONST stufe):stufennummer;
+IF istnochnichtdefiniertTHEN refinementnameschreiben;
+nochnichtdefiniertschreibenELIF istrefinementTHEN 
+refinementsuchenundschreibenELSE notierediesen;durchlaufeallesoehneFI .
+istrefinement:(isrefinement(k))CAND (stufe>1).istnochnichtdefiniert:isopen(k)
+.notierediesen:elemente(k,vorschub,zeile).stufennummer:TEXT VAR vorschub:=
+stufe*" ";TEXT VAR zeile:=vorschub+text(stufe);vorschub:=vorschub+"  ".
+refinementnameschreiben:KNOTEN VAR knoten:=k;refinementname.refinementname:
+put(f,zeile+" "+attribute(knoten));line(f).nochnichtdefiniertschreiben:put(f,
+vorschub+"  (* ist noch nicht definiert *)");line(f).
+refinementsuchenundschreiben:read(k,knoten);refinementname.
+durchlaufeallesoehne:KNOTENMENGE VAR soehne;mengedernachfolger(k,soehne);
+KNOTEN VAR sohn:=erster(soehne);WHILE gueltig(sohn)REP ausbaum(sohn,stufe+1);
+naechster(sohn,soehne)PER .END PROC ausbaum;PROC elemente(KNOTEN CONST k,
+TEXT CONST vorschub,TEXT CONST zeil):TEXT VAR at,zeile:=zeil;tex;mask;vorproz
+;nachproz;tast;prozess;absatz.tex:zeile:=zeile+" TEXT """+text(k)+"""";put(f,
+zeile).mask:at:=maske(k);IF at<>""THEN put(f,";");line(f);zeile:=vorschub+
+"MASKE """+at+"""";put(f,zeile)FI .prozess:at:=task(k);IF at<>""THEN put(f,
+";");line(f);zeile:=vorschub+"TASK """+at+"""";put(f,zeile)FI .vorproz:at:=
+vorprozedur(k);IF at<>""THEN put(f,";");line(f);zeile:=vorschub+"> "+at;put(f
+,zeile)FI .nachproz:at:=nachprozedur(k);IF at<>""THEN put(f,";");line(f);
+zeile:=vorschub+"< "+at;put(f,zeile)FI .tast:at:=taste(k);IF at<>""THEN put(f
+,";");line(f);zeile:=vorschub+"TASTE """+at+"""";put(f,zeile)FI .absatz:line(
+f).END PROC elemente;TEXT PROC maske(KNOTEN CONST k):attribut(k,mpos)END 
+PROC maske;TEXT PROC task(KNOTEN CONST k):attribut(k,ppos)END PROC task;TEXT 
+PROC vorprozedur(KNOTEN CONST k):attribut(k,vpos)END PROC vorprozedur;TEXT 
+PROC nachprozedur(KNOTEN CONST k):attribut(k,npos)END PROC nachprozedur;TEXT 
+PROC taste(KNOTEN CONST k):attribut(k,tpos)END PROC taste;TEXT PROC attribut(
+KNOTEN CONST k,INT CONST i):TEXT VAR attext;attext:=attribute(k);TEXT VAR 
+amuster:="��",emuster:="��";replace(amuster,1,i);replace(emuster,1,i+1);INT 
+VAR ende,anfang;anfang:=pos(attext,amuster)+2;IF i<maxatTHEN ende:=pos(attext
+,emuster,anfang)-1;subtext(attext,anfang,ende)ELSE subtext(attext,anfang)FI 
+END PROC attribut;TEXT PROC text(KNOTEN CONST k):attribut(k,tepos)END PROC 
+text;OP HAT (KNOTEN CONST k,TEXT CONST t):write(k,t)END OP HAT ;OP NACH (
+KNOTEN CONST sohn,vater):KNOTENMENGE VAR m;mengedernachfolger(vater,m);
+inknotenmenge(m,sohn);write(vater,m);END OP NACH ;OP BEZUG (KNOTEN CONST sohn
+,KNOTEN CONST vater):write(sohn,vater);END OP BEZUG ;BOOL PROC schluss:
+dateiendeCOR is(refinementende)END PROC schluss;BOOL PROC dateiende:(newkind=
+scanende)CAND eof(quelle)END PROC dateiende;BOOL PROC isrand:(schlussCOR 
+isnumber)END PROC isrand;BOOL PROC is(TEXT CONST t):(t=newsymbol)END PROC is;
+BOOL PROC isbold:(newkind=scanbold)END PROC isbold;BOOL PROC iskeybold:(is(
+"TEXT")OR is(">")OR is("<")OR is("MASKE")OR is("TASTE")OR is("TASK"))END 
+PROC iskeybold;BOOL PROC istext:(newkind=scantext)END PROC istext;BOOL PROC 
+isdelimiter:(newkind=scandel)END PROC isdelimiter;BOOL PROC isprocedure(TEXT 
+VAR t):IF NOT isidTHEN FALSE ELSE t:=newsymbol;next;IF is("(")THEN INT VAR 
+klammernzaehler:=0;REP IF is("(")THEN klammernzaehlerINCR 1ELIF is(")")THEN 
+klammernzaehlerDECR 1FI ;IF istextTHEN t:=t+""""+newsymbol+""""ELSE t:=t+
+newsymbolFI ;nextUNTIL (klammernzaehler=0)PER FI ;is(";")COR israndFI END 
+PROC isprocedure;BOOL PROC isnumber:(newkind=scannumber)END PROC isnumber;
+BOOL PROC isid:(newkind=scanid)END PROC isid;PROC next:nextsymbol(newsymbol,
+newkind);WHILE (newkind=scanende)CAND (NOT eof(quelle))REP getline(quelle,
+aktzeile);continuescan(aktzeile);aktuellezeile;nextsymbol(newsymbol,newkind);
+PER ;END PROC next;PROC lies(TEXT CONST t):IF NOT (t=newsymbol)THEN fehler(t)
+ELSE nextFI END PROC lies;PROC fehler(TEXT CONST f):FILE VAR fd:=
+sequentialfile(output,fehldat);TEXT VAR t:="Fehler bei : """;t:=t+newsymbol+
+""" in Zeile "+text(zeilenindex)+" , ";line(fd,5);putline(fd,t);t:=
+"denn erwartet wurde: """;t:=t+f;t:=t+"""   ";putline(fd,t);close(fd);stop
+END PROC fehler;PROC initparser:initscanner;END PROC initparser;PROC 
+initscanner:getline(quelle,aktzeile);scan(aktzeile);page;cursor(1,3);put(
+"Bearbeitet wird zur Zeit Zeile: ");zeilenindex:=1;aktuellezeile;END PROC 
+initscanner;PROC aktuellezeile:cursor(33,3);put(zeilenindex);zeilenindexINCR 
+1;END PROC aktuellezeile;PROC systembaum:enablestop;initparser;
+initialisieretemporaeregruppen;next;REP benannterteilbaum;nextUNTIL dateiende
+PER ;meldesyntaxkorrekt;uebernehmeindenbestand.initialisieretemporaeregruppen
+:ang:=leereknotenmenge;nach:=leereknotenmenge.meldesyntaxkorrekt:line(5);put(
+"   *  *  *   E i n g a b e   i s t   k o r r e k t   *  *  * ");line(5);put(
+" *  *  *   Ü b e r n a h m e   i n   M e n ü b a u m  *  *  * ").END PROC 
+systembaum;PROC benannterteilbaum:IF NOT isidTHEN fehler("Teilbaumname")FI ;
+erzeugeangebotsundsystemknotenaunds;next;baum(s);sistnachfolgervona;
+aistbezugsknotenvons.erzeugeangebotsundsystemknotenaunds:KNOTEN VAR a:=
+neuerknoten(ang);aHAT newsymbol;KNOTEN VAR s:=neuerknoten(system).
+sistnachfolgervona:sNACH a.aistbezugsknotenvons:sBEZUG a.END PROC 
+benannterteilbaum;PROC baum(KNOTEN VAR node):INT VAR i0;lies(":");IF NOT 
+isnumberTHEN fehler("Stufennummer")FI ;i0:=int(newsymbol);next;
+knotenattribute(node);zeigerefinementan;unterbaum(i0,node).zeigerefinementan:
+TEXT VAR t:=attribute(node);replace(t,1,"1");nodeHAT t.END PROC baum;PROC 
+unterbaum(INT CONST j,KNOTEN VAR node):INT CONST k:=int(newsymbol);IF NOT 
+isnumberTHEN IF NOT schlussTHEN fehler("Stufennummer oder Ende")ELSE LEAVE 
+unterbaumFI FI ;IF j>=kTHEN LEAVE unterbaumFI ;next;erzeugeneuensohns;
+dieseristinsystemnachfolgervonnode;sohn(k,s,node);soehne(k,node).
+erzeugeneuensohns:KNOTEN VAR s:=neuerknoten(system).
+dieseristinsystemnachfolgervonnode:sNACH node.END PROC unterbaum;PROC soehne(
+INT CONST j,KNOTEN VAR node):INT CONST k:=int(newsymbol);IF NOT isnumberTHEN 
+IF NOT schlussTHEN fehler("Stufennummer oder Ende")ELSE LEAVE soehneFI FI ;
+IF j>kTHEN LEAVE soehneFI ;IF NOT (j=k)THEN fehler("gleiche Stufennummer")FI 
+;next;erzeugeneuensohns;dieseristinsystemnachfolgervonnode;sohn(j,s,node);
+soehne(j,node).erzeugeneuensohns:KNOTEN VAR s:=neuerknoten(system).
+dieseristinsystemnachfolgervonnode:sNACH node.END PROC soehne;PROC sohn(INT 
+CONST k,KNOTEN VAR node,vater):IF iskeyboldTHEN knotenattribute(node);
+unterbaum(k,node)ELSE IF NOT isidTHEN fehler(
+"ein Teilbaumname oder Schlüsselwort")ELSE erzeugeneuenachfrageninnach;
+setzevateralsnachfolgervonn;next;FI FI .erzeugeneuenachfrageninnach:KNOTEN 
+VAR n:=neuerknoten(nach,newsymbol).setzevateralsnachfolgervonn:IF sohnvon(n,
+vater)THEN fehler(newsymbol+" nur einmal als Sohn auf Level "+text(k))FI ;
+vaterNACH n;nodeHAT newsymbol.END PROC sohn;PROC knotenattribute(KNOTEN VAR 
+node):initialisierehilfsvariablen;TEXT VAR t;attribut;WHILE iskeyboldREP 
+attributPER ;IF ((NOT isnumber)CAND (NOT schluss))THEN fehler(
+"Attribut oder Stufennummer")ELSE abschliessendebehandlungFI .
+initialisierehilfsvariablen:INT VAR i:=0;t:="0";FOR iFROM 1UPTO maxatREP at(i
+):=""PER .abschliessendebehandlung:merke(t);nodeHAT t.END PROC 
+knotenattribute;PROC attribut:TEXT VAR procname;IF is("TEXT")THEN next;IF 
+NOT istextTHEN fehler("ein Menuetext")FI ;setze(newsymbol,tepos);next;IF NOT 
+israndTHEN lies(";")FI ELSE IF is(">")THEN next;IF NOT isprocedure(procname)
+THEN fehler("ein Vor-Prozedur-Aufruf")FI ;setze(procname,vpos);IF NOT isrand
+THEN nextFI ELSE IF is("<")THEN next;IF NOT isprocedure(procname)THEN fehler(
+"ein Nach-Prozedur-Aufruf")FI ;setze(procname,npos);IF NOT israndTHEN nextFI 
+ELSE IF is("MASKE")THEN next;IF NOT istextTHEN fehler("ein Maskenname")FI ;
+setze(newsymbol,mpos);next;IF NOT israndTHEN lies(";")FI ELSE IF is("TASTE")
+THEN next;IF NOT istextTHEN fehler("ein Funktionstastenname")FI ;setze(
+newsymbol,tpos);next;IF NOT israndTHEN lies(";")FI ELSE IF is("TASK")THEN 
+next;IF NOT istextTHEN fehler("ein Taskname")FI ;setze(newsymbol,ppos);next;
+IF NOT israndTHEN lies(";")FI ELSE fehler("ein Schlüsselwort")FI FI FI FI FI 
+FI END PROC attribut;PROC setze(TEXT CONST t,INT CONST i):at(i):=tEND PROC 
+setze;PROC merke(TEXT VAR t):INT VAR i;TEXT VAR muster:="��";FOR iFROM 1UPTO 
+maxatREP replace(muster,1,i);tCAT muster;tCAT at(i)PER END PROC merke;PROC 
+uebersetze(TEXT CONST t,BOOL VAR fehler):quelle:=sequentialfile(input,t);INT 
+CONST azahl:=zahlderelemente(exporte),szahl:=zahlderelemente(system),nzahl:=
+zahlderelemente(importe);clearerror;disablestop;kopieresystembaum;systembaum;
+IF iserrorTHEN fehler:=TRUE ;setzesystembaumzurueck;LEAVE uebersetzeFI ;
+fehler:=FALSE ;line(3);put(
+" *  *  *   Ü b e r n a h m e   i s t   b e e n d e t  *  *  * ");line(2);
+statistik(azahl,szahl,nzahl);line(2);put(
+" *  *  *   D a t e n b a n k b e r e i n i g u n g   *  *  *  ");loesche;
+ueberschreibesystembaumEND PROC uebersetze;PROC statistik(INT CONST az,sz,nz)
+:INT CONST agesz:=zahlderelemente(exporte),sgesz:=zahlderelemente(system),
+ngesz:=zahlderelemente(importe);put("Zahl der Systembaumknoten insgesamt: ");
+put(sgesz);INT CONST sdif:=sgesz-sz,ndif:=ngesz-nz;line;IF sdif<0THEN put(
+"Entfernte Systemknoten: "+text(-sdif));ELSE put(
+"Neu erzeugte Systemknoten: "+text(sdif));FI ;line;put(
+"Neu definierte Teilbäume: "+text(agesz-az));line;IF ndif<0THEN put(
+"Abgedeckte Teilbaumreferenzen: "+text(-ndif))ELSE put(
+"Zusätzliche offene Teilbaumreferenzen: "+text(ndif))FI END PROC statistik;
+PROC loesche:knotenmengeloeschen(ang);knotenmengeloeschen(nach)END PROC 
+loesche;OP VEREINIGT (KNOTENMENGE VAR a,KNOTENMENGE CONST b):KNOTEN VAR k:=
+erster(b);WHILE gueltig(k)REP a+k;naechster(k,b)PER ;END OP VEREINIGT ;OP +(
+KNOTENMENGE VAR a,KNOTEN CONST b):inknotenmenge(a,b);END OP +;PROC 
+uebernehmeindenbestand:startepruefungmitneu;WHILE gueltig(neu)REP 
+pruefenderexporte;IF schondaTHEN aenderungELSE neuanlegenFI PER ;
+abgleichenvonexportenundimporten.startepruefungmitneu:KNOTEN VAR neu:=erster(
+ang);KNOTEN VAR alt;BOOL VAR gleich.pruefenderexporte:gleich:=existiert(
+exporte,alt,attribute(neu)).schonda:gleich.aenderung:
+loeschealleknotendesaltenrefinements;neuanlegenbisaufdenursprung.
+loeschealleknotendesaltenrefinements:rettebisherigenursprung;
+gehevomursprungausundloescheallesausserrefinements.rettebisherigenursprung:
+KNOTENMENGE VAR u;mengedernachfolger(alt,u);KNOTEN VAR ursprung:=erster(u).
+gehevomursprungausundloescheallesausserrefinements:loescheunterbaum(ursprung)
+.neuanlegenbisaufdenursprung:raufnachfolgervonneusetzen;
+derursprungwirdueberschrieben.raufnachfolgervonneusetzen:KNOTENMENGE VAR root
+;KNOTEN VAR r;mengedernachfolger(neu,root);r:=erster(root).
+derursprungwirdueberschrieben:move(r,ursprung);knotenloeschen(root,r);
+knotenloeschen(ang,neu).neuanlegen:inknotenmenge(exporte,neu,alt);
+ausknotenmenge(ang,neu).abgleichenvonexportenundimporten:KNOTENMENGE VAR 
+abzudeckendenachfragen;KNOTENMENGE VAR nachfragesoehne;BOOL VAR gibtes;TEXT 
+VAR importname;KNOTEN VAR importeinordner,importbezug;festimport:=erster(
+importe);WHILE gueltig(festimport)REP importname:=attribute(festimport);
+abgleichmitimporten;abgleichabschlussPER ;KNOTEN VAR aktimport:=erster(nach);
+WHILE gueltig(aktimport)REP importname:=attribute(aktimport);
+versucheabgleichmitexporten;IF gelungenTHEN importbezug:=aktimport;
+fuehreabgleichmitexportendurch;knotenloeschen(nach,aktimport)ELSE gibtes:=
+existiert(importe,importeinordner,importname);inknotenmenge(importe,aktimport
+,importeinordner);ausknotenmenge(nach,aktimport)FI ;PER .abgleichabschluss:
+versucheabgleichmitexporten;IF gelungenTHEN importbezug:=festimport;
+fuehreabgleichmitexportendurch;knotenloeschen(importe,festimport)ELSE 
+naechster(festimport,importe)FI .versucheabgleichmitexporten:KNOTEN VAR 
+aktexport;BOOL VAR gelungen;gelungen:=existiert(exporte,aktexport,importname)
+.abgleichmitimporten:KNOTEN VAR festimport;gelungen:=existiert(nach,aktimport
+,importname);IF gelungenTHEN verschmelzung;knotenloeschen(nach,aktimport)FI .
+verschmelzung:KNOTENMENGE VAR nfa;mengedernachfolger(aktimport,nfa);
+KNOTENMENGE VAR nfn;mengedernachfolger(festimport,nfn);nfnVEREINIGT nfa.
+fuehreabgleichmitexportendurch:finderefinementwurzel;
+markiererefinementalsbenutzt;sammlenachfragen;WHILE nochimbereichREP 
+deckenachfrageabPER .finderefinementwurzel:KNOTEN VAR refinementwurzel;
+KNOTENMENGE VAR exportiertesrefinement;mengedernachfolger(aktexport,
+exportiertesrefinement);refinementwurzel:=erster(exportiertesrefinement).
+markiererefinementalsbenutzt:write(aktexport,markierungsknoten).
+sammlenachfragen:mengedernachfolger(importbezug,abzudeckendenachfragen);
+KNOTEN VAR behandelterimport:=erster(abzudeckendenachfragen).nochimbereich:
+gueltig(behandelterimport).naechsterimport:naechster(behandelterimport,
+abzudeckendenachfragen).deckenachfrageab:findeungesaettigtensohn;IF gueltig(
+zuersetzendersohn)THEN ersetzediesendurchrefinement;naechsterimportELSE 
+ausknotenmenge(abzudeckendenachfragen,behandelterimport)FI .
+findeungesaettigtensohn:KNOTEN VAR zuersetzendersohn;mengedernachfolger(
+behandelterimport,nachfragesoehne);zuersetzendersohn:=erster(nachfragesoehne)
+;WHILE gueltig(zuersetzendersohn)CAND nochnichtgefundenREP naechster(
+zuersetzendersohn,nachfragesoehne)PER .nochnichtgefunden:(NOT isopen(
+zuersetzendersohn))COR (NOT (attribute(zuersetzendersohn)=attribute(
+importbezug))).ersetzediesendurchrefinement:knotenloeschen(nachfragesoehne,
+zuersetzendersohn);inknotenmenge(nachfragesoehne,refinementwurzel,
+zuersetzendersohn).END PROC uebernehmeindenbestand;PROC loescheunterbaum(
+KNOTEN CONST node):KNOTENMENGE VAR m;mengedernachfolger(node,m);KNOTEN VAR k
+:=erster(m);WHILE gueltig(k)REP IF NOT isrefinement(k)THEN loescheunterbaum(k
+);knotenloeschen(m,k)ELSE ausknotenmenge(m,k);FI PER END PROC 
+loescheunterbaum;END PACKET systembaumbearbeitungneu;
+

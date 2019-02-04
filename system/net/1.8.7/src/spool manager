@@ -1,0 +1,915 @@
+PACKET spool manager DEFINES                        (* Autor: J. Liedtke *)
+                                                    (*        R. Nolting *) 
+                                                    (*        R. Ruland  *)
+                                                    (* Stand: 22.07.86   *)
+ 
+    spool manager ,
+ 
+    server channel ,
+    spool duty,
+    station only, 
+    spool control task :
+ 
+LET que size           = 101 ,
+
+    ack                = 0 ,
+    nak                = 1 ,
+    error nak          = 2 ,
+    message ack        = 3 , 
+    question ack       = 4 ,
+    second phase ack   = 5 ,
+    false code         = 6 ,
+
+    fetch code         = 11 ,
+    save code          = 12 ,
+    exists code        = 13 ,
+    erase code         = 14 ,
+    list code          = 15 ,
+    all code           = 17 ,
+    param fetch code   = 21 ,
+    file save code     = 22 ,
+    entry line code    = 23 ,
+    killer code        = 24 , 
+    first code         = 25 ,
+    start code         = 26 , 
+    stop code          = 27 ,
+    halt code          = 28 ,
+    wait for halt code = 29 ,
+ 
+    continue code      = 100 ,
+ 
+    file type          = 1003 ;
+
+LET begin char  =  ""0"",
+    end char    =  ""1"";
+
+LET PARAMS  =  STRUCT (TEXT name, userid, password, sendername, INT station),
+    ENTRY   =  STRUCT (PARAMS ds params, TEXT entry line, DATASPACE space);
+ 
+ROW que size ENTRY VAR que ;
+
+PARAMS CONST empty params := PARAMS : ("", "", "", "", -1);
+ 
+PARAMS VAR save params, file save params;
+ 
+ENTRY VAR fetch entry;
+ 
+FILE VAR file;
+ 
+INT VAR order, last order, phase, reply, old heap size, first, last, list index, 
+        begin pos, end pos, order task station, sp channel, counter;
+ 
+TEXT VAR order task name, buffer, sp duty, start time;
+ 
+BOOL VAR server is waiting, stop command pending, stat only, valid fetch entry;
+ 
+TASK VAR order task, last order task, server, calling parent, task in control; 
+ 
+INITFLAG VAR in this task := FALSE;
+ 
+DATASPACE VAR ds;
+
+BOUND STRUCT (TEXT name, userid, password) VAR msg;
+BOUND STRUCT (TEXT entry line, INT index) VAR control msg;
+BOUND PARAMS VAR fetch msg;
+BOUND THESAURUS VAR all msg;
+BOUND TEXT VAR error msg ;
+ 
+ 
+. first entry   :  que (first)
+. list  entry   :  que (list index)
+. last  entry   :  que (last)
+ 
+. que is empty  :  first = last 
+. que is full   :  first = next (last) 
+.; 
+ 
+sp channel      := 0;
+sp duty         := ""; 
+stat only       := FALSE;
+task in control := myself;
+ 
+PROC server channel (INT CONST channel nr) :
+     IF channel nr <= 0 OR channel nr >= 33
+        THEN errorstop ("falsche Kanalangabe") FI;
+     sp channel := channel nr;
+END PROC server channel;
+ 
+INT PROC server channel :
+     sp channel 
+END PROC server channel;
+ 
+ 
+PROC station only (BOOL CONST flag) :
+     stat only := flag
+END PROC station only;
+ 
+BOOL PROC station only : 
+     stat only 
+END PROC station only;
+ 
+ 
+PROC spool duty (TEXT CONST duty) :
+     sp duty := duty;
+END PROC spool duty;
+ 
+TEXT PROC spool duty :
+     sp duty
+END PROC spool duty;
+ 
+ 
+PROC spool control task (TASK CONST task id):
+     task in control := task id;
+END PROC spool control task;
+ 
+TASK PROC spool control task :
+     task in control
+END PROC spool control task;
+ 
+ 
+PROC spool manager (PROC server start) :
+ 
+  spool manager (PROC server start, TRUE) 
+ 
+END PROC spool manager;
+ 
+ 
+PROC spool manager (PROC server start, BOOL CONST with start) :
+
+  set autonom ;
+  break ;
+  disable stop ;
+  initialize spool manager ;
+  REP forget (ds) ;
+      wait (ds, order, order task) ;
+      IF   order <> second phase ack
+         THEN prepare first phase ;
+              spool (PROC server start); 
+      ELIF order task = last order task
+         THEN prepare second phase ;
+              spool (PROC server start); 
+         ELSE send nak
+      FI ;
+      send error if necessary ;
+      collect heap garbage if necessary
+  PER 
+ 
+  . initialize spool manager :
+      initialize if necessary;
+      stop;
+      erase fetch entry;
+      IF with start THEN start (PROC server start) FI;
+ 
+  . initialize if necessary :
+      IF NOT initialized (in this task)
+         THEN FOR list index FROM 1 UPTO que size 
+              REP list entry. space := nilspace PER;
+              fetch entry. space    := nilspace;
+              ds                    := nilspace;
+              last order task       := niltask;
+              server                := niltask; 
+              calling parent        := niltask;
+              server is waiting     := FALSE;
+              stop command pending  := FALSE;
+              old heap size         := 0;
+              clear spool;
+      FI;
+
+  . prepare first phase :
+      IF order = save code OR order = erase code OR order = stop code
+         THEN phase := 1 ;
+              last order := order ;
+              last order task := order task ;
+      FI;
+ 
+  . prepare second phase :
+      phase INCR 1 ;
+      order := last order 
+
+  . send nak :
+      forget (ds) ;
+      ds := nilspace ;
+      send (order task, nak, ds);
+ 
+  . send error if necessary :
+      IF is error
+         THEN forget (ds) ;
+              ds := nilspace ;
+              error msg := ds ;
+              CONCR (error msg) := error message;
+              clear error;
+              send (order task, error nak, ds) 
+     FI;
+ 
+  . collect heap garbage if necessary :
+      IF heap size > old heap size + 2
+         THEN collect heap garbage;
+              old heap size := heap size;
+      FI; 
+ 
+END PROC spool manager;
+ 
+ 
+PROC spool (PROC server start):
+ 
+  command dialogue (FALSE);
+  enable stop;
+  IF station only CAND station (ordertask) <> station (myself)
+     THEN errorstop ("kein Zugriffsrecht auf Task " + text (station(myself))
+                      + "/""" + name(myself) + """") 
+  FI;
+ 
+  SELECT order OF
+ 
+    CASE fetch code        :  out of que
+    CASE param fetch code  :  send fetch params
+    CASE save code         :  new que entry
+    CASE file save code    :  new file que entry 
+    CASE exists code       :  exists que entry
+    CASE erase code        :  erase que entry
+    CASE list code         :  send spool list
+    CASE all code          :  send owners ds names
+ 
+    OTHERWISE :
+ 
+       IF   order >= continue code AND order task = supervisor
+            THEN forget (ds);
+                 spool command (PROC server start)
+ 
+       ELIF spool control allowed by order task 
+            THEN SELECT order OF
+                   CASE entry line code    :  send next entry line 
+                   CASE killer code        :  kill entry 
+                   CASE first code         :  make to first
+                   CASE start code         :  start server 
+                   CASE stop code          :  stop server
+                   CASE halt code          :  halt server
+                   CASE wait for halt code :  wait for halt
+                   OTHERWISE : errorstop ("falscher Auftrag fuer Task """
+                                                      + name(myself) + """") 
+                 END SELECT
+ 
+            ELSE errorstop ("falscher Auftrag fuer Task """
+                                                      + name(myself) + """") 
+       FI;
+  END SELECT;
+ 
+ 
+. spool control allowed by order task :
+    (order task = spool control task OR order task < spool control task
+       OR spool control task = supervisor)
+         AND station (order task) = station (myself)
+. 
+  out of que :
+    IF   NOT (order task = server)
+         THEN errorstop ("keine Servertask")
+    ELIF stop command pending 
+         THEN forget (ds);
+              stop;
+              erase fetch entry;
+    ELIF que is empty
+         THEN forget (ds) ;
+              erase fetch entry;
+              server is waiting := TRUE;
+         ELSE send first entry;
+    FI;
+ 
+. 
+  send fetch params :
+    IF order task = server
+       THEN send params
+       ELSE errorstop ("keine Servertask")
+    FI;
+ 
+    . send params :
+        forget(ds); ds := nilspace; fetch msg := ds;
+        fetch msg := fetch entry. ds params;
+        send (order task, ack, ds);
+ 
+. 
+  new que entry :
+    IF phase = 1
+       THEN prepare into que
+       ELSE into que
+    FI;
+ 
+.
+  prepare into que :
+    msg := ds ;
+    save params. name       := msg.name;
+    save params. userid     := msg.userid;
+    save params. password   := msg.password;
+    save params. sendername := name (order task);
+    save params. station    := station (order task);
+    forget (ds); ds := nilspace;
+    send (order task, second phase ack, ds);
+ 
+. 
+  new file que entry :
+    IF type (ds) <> file type
+       THEN errorstop ("Datenraum hat falschen Typ");
+       ELSE get file params;
+            into que;
+    FI;
+ 
+    . get file params :
+        file := sequential file (input, ds);
+        end pos := 0;
+        next headline information (file save params. name); 
+        next headline information (file save params. userid); 
+        next headline information (file save params. password); 
+        next headline information (file save params. sendername); 
+        next headline information (buffer);
+        file save params. station := int (buffer);
+        IF NOT last conversion ok
+           THEN file save params. station    := station (order task) FI;
+        IF file save params. sendername = ""
+           THEN file save params. sendername := name    (order task) FI;
+        IF file save params. name = ""
+           THEN IF headline (file) <> ""
+                   THEN file save params. name := headline (file);
+                   ELSE errorstop ("Name unzulaessig")
+                FI;
+           ELSE headline (file, file save params. name);
+        FI;
+ 
+. 
+  exists que entry :
+    msg                := ds ;
+    order task name    := name (order task);
+    order task station := station (order task);
+    to first que entry; 
+    WHILE next que entry found 
+    REP IF is entry from order task (msg. name) 
+           THEN send ack;
+                LEAVE exists que entry
+        FI;
+    PER ;
+    forget (ds); ds := nilspace;
+    send (order task, false code, ds)
+ 
+. 
+  erase que entry :
+    msg                := ds ;
+    order task name    := name (order task);
+    order task station := station (order task);
+    IF phase = 1
+       THEN ask for erase
+       ELSE erase entry from order task 
+    FI;
+ 
+    . ask for erase :
+        to first que entry; 
+        WHILE next que entry found 
+        REP IF is entry from order task (msg. name) 
+               THEN manager question ("""" + msg.name + """ loeschen"); 
+                    LEAVE erase que entry
+            FI;
+        PER ;
+        manager message ("""" + msg.name + """ existiert nicht");
+ 
+    . erase entry from order task :
+        IF is entry from order task (msg. name) 
+           THEN delete que entry; 
+                LEAVE erase que entry 
+           ELSE to first que entry; 
+                WHILE next que entry found 
+                REP IF is entry from order task (msg. name) 
+                       THEN delete que entry;
+                            LEAVE erase que entry 
+                    FI ;
+                PER ;
+                manager message ("""" + msg.name +  """ existiert nicht");
+        FI;
+ 
+        . delete que entry :
+            erase entry (list index) ;
+            send ack;
+ 
+.
+  send owners ds names:
+     order task name    := name (order task);
+     order task station := station (order task);
+     forget (ds); ds := nilspace; all msg := ds; 
+     all msg := empty thesaurus; 
+     to first que entry; 
+     WHILE next que entry found 
+     REP IF is entry from order task ("")
+            THEN insert (all msg, list entry. ds params. name) 
+         FI; 
+     PER;
+     send (order task, ack, ds) 
+ 
+. 
+  send spool list :
+     list spool;
+     send (order task, ack, ds);
+ 
+.
+  send next entry line :
+    control msg := ds;
+    get next entry line (control msg. entry line, control msg. index);
+    send (order task, ack, ds);
+ 
+. 
+  kill entry :
+    control msg := ds;
+    list index  := control msg. index;
+    IF is valid que entry (list index)
+       THEN erase entry (list index)
+    FI;
+    send (order task, ack, ds);
+ 
+.
+  make to first :
+    control msg := ds;
+    list index  := control msg. index;
+    IF is valid que entry (list index)
+       THEN new first (list entry);
+            erase entry (list index); 
+    FI;
+    send (order task, ack, ds);
+ 
+.
+  start server :
+    IF exists (server) THEN errorstop ("Spool muß zuerst gestoppt werden") FI;
+    start (PROC server start);
+    IF server channel <= 0 OR server channel >= 33
+       THEN manager message ("WARNUNG : Serverkanal nicht eingestellt");
+       ELSE send ack
+    FI;
+ 
+. 
+  stop server:
+    IF phase = 1
+       THEN stop;
+            IF valid fetch entry
+               THEN valid fetch entry := FALSE;
+                    manager question (""13""10"" +
+                          fetch entry. entry line + "   neu eintragen");
+               ELSE erase fetch entry;
+                    send ack;
+            FI;
+       ELSE IF fetch entry. entry line <> "" THEN new first (fetch entry) FI;
+            erase fetch entry; 
+            send ack;
+    FI;
+ 
+. 
+  halt server :
+    stop command pending := TRUE; 
+    IF NOT exists (server) OR server is waiting
+       THEN stop;
+            erase fetch entry;
+    FI;
+    send ack;
+
+.
+  wait for halt :
+    IF exists (calling parent)
+       THEN errorstop ("Task """ + name (calling parent) + """ wartet schon auf halt")
+       ELSE calling parent := order task;
+            stop command pending := TRUE;
+            forget (ds);
+            IF NOT exists (server) OR server is waiting
+            THEN stop;
+                 erase fetch entry;
+            FI;
+    FI;
+ 
+END PROC spool;
+ 
+
+PROC  send first entry :
+ 
+  forget (ds); ds := first entry. space;
+  send (server, ack, ds, reply) ;
+  IF reply = ack
+     THEN server is waiting := FALSE;
+          start time  := time of day;
+          start time CAT " am ";
+          start time CAT date;
+          erase fetch entry;
+          fetch entry := first entry;
+          erase entry (first);
+          valid fetch entry := TRUE;
+     ELSE forget (ds);
+  FI;
+ 
+END PROC  send first entry;
+
+ 
+PROC into que :
+ 
+  IF que is full
+     THEN errorstop ("Spool ist voll")
+     ELSE make new entry;
+          send ack;
+          awake server if necessary
+  FI;
+ 
+  . make new entry :
+      IF order = save code
+         THEN last entry. ds params  := save params;
+              save params := empty params;
+         ELSE last entry. ds params  := file save params;
+              file save params := empty params;
+      FI;
+      last entry. space :=  ds;
+      counter INCR 1;
+      build entry line;
+      last := next (last) ;
+ 
+      . build entry line :
+          IF LENGTH last entry. ds params. sender name > 16
+             THEN buffer := subtext (last entry. ds params. sender name, 1, 13);
+                  buffer CAT "...""";
+             ELSE buffer := last entry. ds params. sender name;
+                  buffer CAT """";
+                  buffer := text (buffer, 17);
+          FI;
+          last entry. entry line := entry station text;
+          last entry. entry line CAT "/""";
+          last entry. entry line CAT buffer;
+          last entry. entry line CAT " : """ ;
+          last entry. entry line CAT last entry. ds params. name;
+          last entry. entry line CAT """  (" ;
+          last entry. entry line CAT text (storage (last entry. space));
+          last entry. entry line CAT " K)";
+
+          . entry station text :
+              IF last entry. ds params. station = 0
+                 THEN "   "
+                 ELSE text (last entry. ds params. station, 3)
+              FI
+ 
+  . awake server if necessary :
+      IF server is waiting THEN send first entry FI;
+ 
+END PROC into que;
+
+ 
+PROC list spool :
+ 
+  forget (ds); ds := nilspace;
+  file := sequential file (output, ds) ;
+  max line length (file, 1000);
+  headline(file, station text + "/""" + name (myself) + """");
+  put spool duty;
+  put current job;
+  put spool que;
+ 
+  . station text :
+      IF station(myself) = 0
+         THEN ""
+         ELSE text (station(myself))
+      FI
+
+  . put spool duty :
+      IF spool duty <> ""
+         THEN write (file, "Aufgabe: ");
+              write (file, spool duty );
+              line (file, 2);
+      FI;
+ 
+  . put current job :
+      IF valid fetch entry AND exists (server)
+         THEN write (file, "In Bearbeitung seit ");
+              write (file, start time);
+              write (file, ":");
+              line (file, 2);
+              putline (file, fetch entry. entry line);
+              IF stop command pending
+                 THEN putline (file, "Spool wird nach diesem Auftrag deaktiviert");
+              FI;
+              line (file);
+         ELSE write (file, "kein Auftrag in Bearbeitung");
+              IF   NOT exists (server)
+                   THEN write (file, ", da Spool deaktiviert");
+              ELIF que is empty
+                   THEN write (file, ", da Warteschlange leer");
+                        LEAVE list spool;
+              FI;
+              line (file, 2);
+      FI;
+ 
+  . put spool que :
+      IF que is empty
+         THEN putline (file, "Warteschlange ist leer");
+         ELSE write (file, "Warteschlange (");
+              write (file, text (counter));
+              write (file, " Auftraege):");
+              line (file, 2);
+              to first que entry ;
+              WHILE next que entry found
+              REP putline (file, list entry. entry line) PER;
+      FI;
+ 
+END PROC list spool ;
+ 
+ 
+PROC clear spool :
+ 
+  first                := 1; 
+  last                 := 1;
+  counter              := 0;
+  FOR list index FROM 1 UPTO que size 
+  REP list entry. ds params  := empty params;
+      list entry. entry line := "";
+      forget (list entry. space)
+  PER;
+ 
+END PROC clear spool;
+ 
+(*********************************************************************) 
+(*  Hilfsprozeduren zum Spoolmanager                                 *)
+ 
+BOOL PROC is valid que entry (INT CONST index) :
+ 
+  que (index). entry line <> ""
+ 
+END PROC is valid que entry;
+ 
+ 
+INT PROC next (INT CONST index) :
+ 
+  IF index < que size
+     THEN index + 1
+     ELSE 1
+  FI
+ 
+END PROC next;
+ 
+ 
+PROC to first que entry :
+ 
+  list index := first - 1;
+ 
+ENDPROC to first que entry ;
+ 
+ 
+BOOL PROC next que entry found :
+ 
+  list index := next (list index);
+  WHILE is not last que entry
+  REP IF is valid que entry (list index) 
+         THEN LEAVE next que entry found WITH TRUE FI;
+      list index := next (list index);
+  PER;
+  FALSE
+ 
+  . is not last que entry :
+      list index <> last 
+ 
+ENDPROC next que entry found ;
+ 
+ 
+PROC get next entry line (TEXT VAR entry line, INT VAR index) :
+ 
+  IF index = 0
+     THEN list index := first - 1
+     ELSE list index := index
+  FI;
+  IF next que entry found
+     THEN entry line := list entry. entry line;
+          index      := list index;
+     ELSE entry line := "";
+          index      := 0;
+  FI;
+ 
+END PROC get next entry line;
+ 
+ 
+PROC new first (ENTRY VAR new first entry) :
+ 
+  IF que is full
+     THEN errorstop ("Spool ist voll")
+     ELSE first DECR 1 ;
+          IF first = 0 THEN first := que size FI;
+          first entry := new first entry;
+          counter INCR 1;
+  FI;
+ 
+END PROC new first;
+ 
+ 
+PROC erase entry (INT CONST index) :
+ 
+  entry. ds params  := empty params;
+  entry. entry line := "";
+  forget (entry.space) ;
+  counter DECR 1;
+  IF index = first
+     THEN inc first
+  FI ;
+
+  . entry : que (index) 
+ 
+  . inc first :
+      REP first := next (first)
+        UNTIL que is empty OR is valid que entry (first) PER
+ 
+END PROC erase entry;
+ 
+ 
+PROC erase fetch entry :
+ 
+  fetch entry. ds params  := empty params;
+  fetch entry. entry line := "";
+  forget (fetch entry. space);
+  valid fetch entry := FALSE;
+ 
+END PROC erase fetch entry;
+ 
+ 
+BOOL PROC is entry from order task (TEXT CONST file name) :
+ 
+  correct order task CAND correct filename
+ 
+  . correct order task :
+      order task name = list entry. ds params. sendername
+          AND order task station = list entry. ds params. station
+ 
+  . correct file name :
+      file name = "" OR file name = list entry. ds params. name
+ 
+END PROC is entry from order task; 
+ 
+ 
+PROC start (PROC server start):
+ 
+  begin (PROC server start, server);
+ 
+END PROC start;
+
+ 
+PROC stop :
+ 
+  stop server;
+  send calling parent reply if necessary;
+ 
+  . stop server:
+      IF exists (server) THEN end (server) FI;
+      server               := niltask;
+      server is waiting    := FALSE;
+      stop command pending := FALSE; 
+ 
+  . send calling parent reply if necessary :
+      IF exists (calling parent)
+         THEN forget (ds); ds := nilspace;
+              send (calling parent, ack, ds);
+              calling parent  := niltask;
+      FI;
+ 
+END PROC stop;
+ 
+ 
+PROC next headline information (TEXT VAR t):
+ 
+  begin pos := pos (headline (file), begin char, end pos + 1);
+  IF begin pos = 0
+     THEN begin pos := LENGTH headline (file) + 1;
+          t := "";
+     ELSE end pos := pos (headline (file), end char, begin pos + 1);
+          IF end pos = 0
+             THEN end pos := LENGTH headline (file) + 1; 
+                  t := "";
+             ELSE t := subtext (headline (file), begin pos+1, end pos-1)
+          FI
+  FI
+ 
+END PROC next headline information;
+ 
+ 
+PROC send ack :
+ 
+    forget (ds); ds := nilspace;
+    send (order task, ack, ds)
+ 
+END PROC send ack;
+ 
+ 
+PROC manager question (TEXT CONST question) :
+ 
+  forget (ds); ds := nilspace; error msg := ds ;
+  error msg := question ;
+  send (order task, question ack, ds)
+ 
+ENDPROC manager question ;
+ 
+
+PROC manager message (TEXT CONST message) :
+ 
+  forget (ds); ds := nilspace; error msg := ds ;
+  error msg := message ;
+  send (order task, message ack, ds)
+ 
+ENDPROC manager message ;
+ 
+(*********************************************************************) 
+(*  Spool - Kommandos                                                *)
+ 
+INT VAR command index , params ;
+TEXT VAR command line, param 1, param 2 ;
+ 
+LET spool command list =
+"break:1.0start:2.01stop:4.0halt:5.0first:6.0killer:7.0listspool:8.0
+clearspool:9.0spoolcontrolby:10.1";
+ 
+PROC spool command (PROC server start) :
+
+  enable stop ;
+  continue (order - continue code) ;
+  disable stop ;
+  REP command dialogue (TRUE) ;
+      get command ("gib Spool-Kommando:", command line);
+      analyze command (spool command list, command line, 3, command index,
+                       params, param1, param2);
+      execute command (PROC server start);
+  UNTIL NOT online PER;
+  command dialogue (FALSE);
+  break (quiet);
+  set autonom;
+ 
+END PROC spool command;
+ 
+ 
+PROC execute command (PROC server start) :
+ 
+ enable stop;
+ SELECT command index OF 
+   CASE 1  :  break
+   CASE 2  :  start server 
+   CASE 3  :  start server with new channel
+   CASE 4  :  stop server
+   CASE 5  :  halt server
+   CASE 6  :  first cmd
+   CASE 7  :  killer cmd
+   CASE 8  :  show spool list
+   CASE 9  :  clear spool
+   CASE 10 :  spool control task (task (param1))
+   OTHERWISE  do (command line)
+ END SELECT;
+ 
+  . start server :
+     IF server channel <= 0 OR server channel >= 33
+        THEN line;
+             putline ("WARNUNG : Serverkanal nicht eingestellt");
+     FI;
+     stop server;
+     start (PROC server start);
+ 
+  . start server with new channel:
+      INT VAR i := int (param1);
+      IF last conversion ok 
+         THEN server channel (i);
+              start server;
+         ELSE errorstop ("falsche Kanalangabe")
+      FI;
+ 
+  . stop server :
+      disable stop;
+      stop;
+      IF valid fetch entry CAND
+             yes (""13""10"" + fetch entry. entry line + "   neu eintragen")
+         THEN new first (fetch entry) FI;
+      erase fetch entry;
+      enable stop;
+ 
+  . halt server :
+      stop command pending := TRUE; 
+      IF NOT exists (server) OR server is waiting
+         THEN stop server;
+              erase fetch entry;
+      FI;
+ 
+  . first cmd :
+      line ;
+      to first que entry ;
+      WHILE next que entry found
+      REP say (list entry. entry line) ;
+          IF yes ("   als erstes")
+             THEN new first (list entry);
+                  erase entry (list index);
+                  LEAVE first cmd
+          FI ;
+      PER;
+ 
+  . killer cmd :
+      line ;
+      to first que entry ;
+      WHILE next que entry found
+      REP say (list entry. entry line) ;
+          IF yes ("   loeschen") THEN erase entry (list index) FI ;
+      PER;
+ 
+  . show spool list :
+      list spool;
+      disable stop;
+      show (file);
+      forget (ds);
+ 
+ENDPROC execute command ;
+ 
+ENDPACKET spool manager; 
+

@@ -1,0 +1,420 @@
+ 
+PACKET std schedule strategy DEFINES                (* Autor: J.Liedtke *)
+                                                    (* Stand: 15.10.82  *)
+    strategic decision :
+
+
+PROC strategic decision 
+              (INT CONST foreground workers, background workers,
+               REAL CONST fore cpu load, back cpu load, paging load,
+               INT VAR lowest activation prio, max background tasks) :
+ 
+  IF no background permitted
+    THEN lowest activation prio := 0 ;
+         max background tasks := 0
+    ELSE lowest activation prio := 10 ;
+         select max background tasks
+  FI .
+ 
+no background permitted :
+      foreground workers > 0 AND fore cpu load > 0.03 .
+
+select max background tasks :
+  IF fore cpu load > 0.01
+    THEN max background tasks := 1
+  ELIF paging load < 0.07
+    THEN max background tasks := 3
+  ELIF paging load < 0.15
+    THEN max background tasks := 2
+    ELSE max background tasks := 1
+  FI .
+
+ENDPROC strategic decision ;
+
+ENDPACKET std schedule strategy ;
+
+
+                                              (* Autor: J.Liedtke*)
+PACKET eumelmeter DEFINES                     (* Stand: 11.10.83 *)
+ 
+     init log ,
+     log :
+ 
+ 
+LET snapshot interval = 590.0 ;
+
+REAL VAR next snapshot time ,
+         time        , timex ,
+         paging wait , paging wait x ,
+         paging busy , paging busy x ,
+         fore cpu    , fore cpu x ,
+         back cpu    , back cpu x ,
+         system cpu  , system cpu x ,
+         delta t ;
+INT VAR storage max, used ;
+TEXT VAR record ;
+
+PROC init log :
+
+  time        := clock (1) ;
+  paging wait := clock (2) ;
+  paging busy := clock (3) ;
+  fore cpu    := clock (4) ;
+  back cpu    := clock (5) ;
+  system cpu  := clock (6) ;
+  next snapshot time := time + snapshot interval
+
+ENDPROC init log ;
+
+PROC log (INT CONST active terminals, active background) :
+
+  new snapshot time if was clock reset ;
+  IF clock (1) >= next snapshot time
+    THEN save values ;
+         get new values ;
+         create stat record ;
+         put log (record) ;
+         define next snapshot time
+  FI .
+
+new snapshot time if was clock reset :
+  IF clock (1) < next snapshot time - snapshot interval 
+    THEN next snapshot time := clock (1)
+  FI .
+
+save values :
+  time x := time ;
+  paging wait x := paging wait ;
+  paging busy x := paging busy ;
+  fore cpu x    := fore cpu ;
+  back cpu x    := back cpu ;
+  system cpu x  := system cpu .
+
+get new values :
+  time := clock (1) ;
+  paging wait := clock (2) ;
+  paging busy := clock (3) ;
+  fore cpu    := clock (4) ;
+  back cpu    := clock (5) ;
+  system cpu  := clock (6) ;
+  storage (storage max, used) .
+
+create stat record :
+  record :=  text (used, 5) ;
+  record CAT text (active terminals,3) ;
+  record CAT text (active background,3) ;
+  delta t := (time - time x) ;
+  percent (paging wait, paging wait x) ;
+  percent (paging busy, paging busy x) ;
+  percent (fore cpu, fore cpu x) ;
+  percent (back cpu, back cpu x) ;
+  percent (system cpu, system cpu x) ;
+  percent (last, 0.0) ;
+  percent (nutz, 0.0) .
+
+last :   paging wait  + paging busy  + fore cpu  + back cpu  + system cpu
+       - paging waitx - paging busyx - fore cpux - back cpux - system cpux .
+
+nutz :   time  - paging wait  - system cpu
+       - timex + paging waitx + system cpux .
+
+define next snapshot time :
+  next snapshot time := time + snapshot interval .
+ 
+ENDPROC log ;
+
+PROC percent (REAL CONST neu, alt ) :
+
+  record CAT text ( (neu-alt) / delta t * 100.0, 6,1) + "%"
+
+ENDPROC percent ;
+
+ENDPACKET eumelmeter ;
+
+
+
+PACKET background que manager DEFINES                (* Autor: J.Liedtke *)
+                                                     (* Stand: 15.10.82  *)
+    into background que ,
+    delete from background que ,
+    get first from background que ,
+    get next from background que :
+
+LET que size = 100 ,
+    ENTRY    = STRUCT (TASK task, INT class) ;
+
+INT VAR end of que := 0 ,
+        actual entry pos ;
+
+ROW que size ENTRY VAR que ;
+
+
+PROC into background que (TASK CONST task) :
+
+  INT VAR class := prio (task) ;
+  IF end of que = que size
+    THEN delete all not existing tasks
+  FI ;
+  check whether already in que ;
+  IF already in que
+    THEN IF in same class
+           THEN LEAVE into background que
+           ELSE delete from background que (task) ;
+                into background que (task)
+         FI
+    ELSE insert new entry
+  FI .
+
+check whether already in que :
+  INT VAR entry pos := 1 ;
+  WHILE entry pos <= end of que  REP
+    IF que (entry pos).task = task
+      THEN LEAVE check whether already in que
+    FI ;
+    entry pos INCR 1
+  PER .
+
+already in que :  entry pos <= end of que .
+
+in same class :   que (entry pos).class = class .
+
+insert new entry :
+  end of que INCR 1 ;
+  que (end of que) := ENTRY:( task, class ) .
+
+delete all not existing tasks :
+  INT VAR j ;
+  FOR j FROM 1 UPTO end of que REP
+    TASK VAR examined := que (j).task ;
+    IF NOT exists (examined)
+      THEN delete from background que (examined)
+    FI
+  PER .
+
+ENDPROC into background que ;
+
+PROC delete from background que (TASK CONST task) :
+
+  search for entry ;
+  IF entry found
+    THEN delete entry ;
+         update actual entry pos 
+  FI .
+
+search for entry :
+  INT VAR entry pos := 1 ;
+  WHILE entry pos <= end of que REP
+    IF que (entry pos).task = task
+      THEN LEAVE search for entry
+    FI ;
+    entry pos INCR 1
+  PER .
+
+entry found : entry pos <= end of que .
+
+delete entry :
+  INT VAR i ;
+  FOR i FROM entry pos UPTO end of que - 1 REP
+    que (i) := que (i+1)
+  PER ;
+  end of que DECR 1 .
+
+update actual entry pos :
+  IF actual entry or following one deleted
+    THEN actual entry pos DECR 1
+  FI .
+
+actual entry or following one deleted :
+  entry pos >= actual entry pos .
+
+ENDPROC delete from background que ;
+
+PROC get first from background que (TASK VAR task, INT CONST lowest class) :
+
+  actual entry pos := 0 ;
+  get next from background que (task, lowest class)
+
+ENDPROC get first from background que ;
+
+PROC get next from background que (TASK VAR task, INT CONST lowest class) :
+ 
+  search next entry of permitted class ;
+  IF actual entry pos <= end of que
+    THEN task := que (actual entry pos).task
+    ELSE task := niltask
+  FI .
+
+search next entry of permitted class :
+  REP
+    actual entry pos INCR 1
+  UNTIL actual entry pos > end of que 
+        COR que (actual entry pos).class <= lowest class PER.
+
+ENDPROC get next from background que ;
+
+ENDPACKET background que manager ;
+
+ 
+
+PACKET scheduler DEFINES                         (* Autor: J.Liedtke *)
+                                                 (* Stand: 09.12.82  *)
+    scheduler :
+ 
+
+LET std background prio     = 7 ,
+    highest background prio = 5 ,
+    long slice              = 6000 ,
+    short slice             = 600 ,
+    blocked busy            = 4 ;
+
+INT VAR slice ,
+        foreground workers ,
+        background workers ;
+
+BOOL VAR is logging ;
+
+REAL VAR fore cpu load , back cpu load , paging load ;
+
+
+access catalogue ;
+TASK CONST ur task := brother (supervisor) ;
+
+TASK VAR actual task ;
+
+
+PROC scheduler :
+  IF yes ("mit eumelmeter")
+    THEN is logging := TRUE
+    ELSE is logging := FALSE
+  FI ;
+  task password ("-") ;
+  break ;
+  set autonom ;
+  command dialogue (FALSE) ;
+  forget ("scheduler", quiet) ;
+  disable stop; 
+  REP scheduler operation; 
+      clear error 
+  PER; 
+ 
+END PROC scheduler; 
+ 
+PROC scheduler operation:
+  enable stop;
+  IF is logging 
+    THEN init log 
+  FI;
+  slice := short slice ;
+  init system load moniting ;
+  REP
+    pause (slice) ;
+    monit system load ;
+    look at all active user tasks and block background workers ;
+    activate next background workers if possible ;
+    IF is logging
+      THEN log (foreground workers, background workers)
+    FI
+  PER .
+
+init system load moniting :
+  REAL VAR 
+  time     x := clock (1) ,
+  fore cpu x := clock (4) ,
+  back cpu x := clock (5) ,
+  paging   x := clock (2) + clock (3) .
+
+monit system load :
+  REAL VAR interval := clock (1) - time x ;
+  fore cpu load := (clock (4) - fore cpu x) / interval ;
+  back cpu load := (clock (5) - back cpu x) / interval ;
+  paging load   := (clock (2) + clock (3) - paging x) / interval ;
+  time     x := clock (1) ;
+  fore cpu x := clock (4) ;
+  back cpu x := clock (5) ;
+  paging   x := clock (2) + clock (3) .
+
+ENDPROC scheduler operation;
+
+PROC look at all active user tasks and block background workers :
+
+  foreground workers := 0 ;
+  background workers := 0 ;
+  actual task := myself ;
+  next active (actual task) ;
+  WHILE NOT (actual task = myself) REP
+    IF actual task < ur task
+      THEN look at this task
+    FI ;
+    next active (actual task)
+  END REP .
+
+look at this task :
+  IF channel (actual task) >= 0
+    THEN foreground workers INCR 1
+    ELSE background workers INCR 1 ;
+         block actual task if simple worker
+  FI .
+
+block actual task if simple worker :
+  IF son (actual task) = niltask
+    THEN pause (5) ;
+         block (actual task) ;
+         IF status (actual task) = blocked busy
+           THEN set background prio ;
+                into background que (actual task)
+         ELIF prio (actual task) < highest background prio
+           THEN unblock (actual task)
+         FI
+  FI .
+
+set background prio :
+  IF prio (actual task) < highest background prio
+    THEN prio (actual task, std background prio)
+  FI .
+ 
+ENDPROC look at all active user tasks and block background workers ;
+
+PROC activate next background workers if possible :
+
+  INT VAR lowest activation prio ,
+          max background workers ,
+          active background workers := 0 ;
+
+  strategic decision (foreground workers, background workers,
+                      fore cpu load, back cpu load, paging load,
+                      lowest activation prio, max background workers) ;
+
+  IF background permitted
+    THEN try to activate background workers
+  FI ;
+  IF active background workers > 0
+    THEN slice := short slice
+    ELSE slice := long slice
+  FI .
+
+background permitted : max background workers > 0 .
+
+try to activate background workers :
+  get first from background que (actual task, lowest activation prio) ;
+  IF NOT is niltask (actual task)
+    THEN delete from background que (actual task)
+  FI ;
+
+  WHILE active background workers < max background workers REP
+    IF is niltask (actual task)
+      THEN LEAVE try to activate background workers
+    ELIF status (actual task) <> blocked busy
+      THEN delete from background que (actual task)
+    ELSE
+           unblock (actual task) ;
+           active background workers INCR 1
+    FI ;
+    get next from background que (actual task, lowest activation prio)
+  PER .
+
+ENDPROC activate next background workers if possible ;
+ 
+ENDPACKET scheduler ;
+ 
+scheduler;
+

@@ -1,0 +1,47 @@
+PACKET statistikmanagerDEFINES statistikmanager:LET statistikdatei=
+"STATISTIK.",statistikbasis="STATISTIK.basis",statistikverzeichnis=
+"statistik verzeichnis",maxstatistiken=200,maxtheslaenge=80,niltext="",
+trenner="  ",stichtag="Stichtag ",keinstichtag="                 ";LET ack=0,
+fetchcode=11,savecode=12,erasecode=14,continuecode=100;THESAURUS VAR 
+statliste,statbezeichnungen;TEXT VAR filename;BOUND STRUCT (TEXT name,
+writepass,readpass)VAR msg;PROC statmanager(DATASPACE VAR ds,INT CONST order,
+phase,TASK CONST ordertask):disablestop;IF order>continuecodeTHEN 
+yterminaldialogELIF order=fetchcodeTHEN ylisteschickenELIF order=savecode
+THEN yeintraghinzufuegenELIF order=erasecodeTHEN yeintragloeschenELSE 
+freemanager(ds,order,phase,ordertask)FI .yeintraghinzufuegen:IF phase=1THEN 
+getfilename;freemanager(ds,order,phase,ordertask);ELSE freemanager(ds,order,
+phase,ordertask);IF NOT iserrorAND exists(filename)THEN eintragloeschen(
+filename);eintraghinzufuegen(filename);FI FI .yeintragloeschen:getfilename;
+freemanager(ds,order,phase,ordertask);IF NOT iserrorAND phase<>1AND NOT 
+exists(filename)THEN eintragloeschen(filename);FI .ylisteschicken:getfilename
+;IF filename=statistikverzeichnisTHEN schickedenthesaurusELSE freemanager(ds,
+order,phase,ordertask)FI .schickedenthesaurus:forget(ds);ds:=nilspace;BOUND 
+THESAURUS VAR allestatistiken:=ds;allestatistiken:=statbezeichnungen;send(
+ordertask,ack,ds);forget(ds).yterminaldialog:freemanager(ds,order,phase,
+ordertask);clearerror;statlisteerstellen.getfilename:msg:=ds;filename:=msg.
+name.END PROC statmanager;PROC eintragloeschen(TEXT CONST filename):
+enablestop;INT VAR index:=link(statliste,filename);IF index>0AND iststatistik
+(filename)THEN delete(statliste,index);delete(statbezeichnungen,index);FI 
+END PROC eintragloeschen;PROC eintraghinzufuegen(TEXT CONST filename):
+disablestop;IF iststatistik(filename)THEN eintragbearbeiten(filename);IF 
+iserrorTHEN clearerror;forget(filename,quiet);FI ;ELIF NOT (filename=
+statistikbasis)THEN forget(filename,quiet);FI .END PROC eintraghinzufuegen;
+PROC eintragbearbeiten(TEXT CONST filename):enablestop;FILE VAR f:=
+sequentialfile(modify,filename);TEXT VAR eintrag,dateizeile;eintrag:=text(int
+(statistiknummer),3);eintragCAT trenner;eintragCAT stichtagtext;eintragCAT 
+trenner;eintragCAT bezeichnung;insert(statliste,filename);insert(
+statbezeichnungen,subtext(eintrag,1,maxtheslaenge)).statistiknummer:subtext(
+filename,length(statistikdatei)+1).stichtagtext:toline(f,3);readrecord(f,
+dateizeile);IF dateizeile>niltextTHEN stichtag+dateizeileELSE keinstichtagFI 
+.bezeichnung:toline(f,1);readrecord(f,dateizeile);dateizeile.END PROC 
+eintragbearbeiten;PROC statlisteerstellen:enablestop;INT VAR index:=0;TEXT 
+VAR eintrag;statliste:=emptythesaurus;statbezeichnungen:=emptythesaurus;get(
+all,eintrag,index);WHILE index>0REP eintraghinzufuegen(eintrag);get(all,
+eintrag,index);PER ;END PROC statlisteerstellen;BOOL PROC iststatistik(TEXT 
+CONST filename):enablestop;TEXT CONST zahltext:=subtext(filename,length(
+statistikdatei)+1);INT CONST zahl:=int(zahltext);subtext(filename,1,length(
+statistikdatei))=statistikdateiAND zahl>=1AND zahl<=maxstatistikenAND text(
+zahl)=zahltext.END PROC iststatistik;PROC statistikmanager:statlisteerstellen
+;globalmanager(PROC (DATASPACE VAR ,INT CONST ,INT CONST ,TASK CONST )
+statmanager)END PROC statistikmanager;END PACKET statistikmanager;
+

@@ -1,0 +1,117 @@
+PACKET raumwuenschepruefenDEFINES raumwuenschepruefenstarten,
+raumwuenschepruefenlistedrucken:INT VAR fnrakthj:=2,fnrausgabebildschirm:=3,
+fnrausgabedrucker:=4;LET meldnrlistewirdgedruckt=58,meldnrkeinelv=326,
+meldnrkeinesugruppen=334,meldnrinbearbeitung=352,meldnrzuvielesugruppen=356,
+meldnrstundenplanwirdaufbereitet=357,meldnrzuvielelv=358,
+meldnrstundenplanserverfehlt=376,meldnrbasisalt=377,meldnrbasisinkons=378;
+LET protname="Einhaltung der Raumwünsche";FILE VAR prot;LET raumgruppendatei=
+"Datei mit Raumgruppen";FILE VAR datraumgruppen;LET schuljahr="Schuljahr",
+schulhalbjahr="Schulhalbjahr",schulname="Schulname",schulort="Schulort";LET 
+ueberschrift="Einhaltung der Raumwünsche, Stundenplan ",texthalbjahr=
+". Halbjahr",kopfzeile1="Lehrver-   Zeit    belegter Anmerkungen",kopfzeile2=
+"anstaltung         Raum";LET meldkeinwunschraumfrei=
+"kein Wunsch- oder Ersatzraum frei",meldwunschraumfrei=" frei",
+meldkeinwunschangegeben="Raum fehlt, kein Raumwunsch angegeben";LET 
+fallkeinwunschraumfrei=1,fallwunschraumfrei=2,fallkeinwunschangegeben=3;LET 
+laengeschulname=61;LET strich="-",schraegstrich="/",blank=" ",vierblanks=
+"    ",leerraum="    ",kennzhell="#",editorzusatztasten="vr";LET laengeraum=4
+,laengelv=8;LET kennunglv="L",kennungraum="R",kennungwunschraum="RW",
+kennungersatzraum="RE";LET erstestunde=1,letztestunde=66,zeitbelegt="1";LET 
+posraeumeinrgzeile=5;TEXT VAR aktsj:="",akthj:="",gewsj,gewhj;TEXT VAR 
+auszeile;TEXT VAR jgst,lv,letztelv,raum,freierwunschraum,wunschraeumederlv,
+raeumederzeit,raumgruppenzeile,zeitenderlv;INT VAR izeit;INT VAR posraum;INT 
+VAR fstatusstuplan;PROC raumwuenschepruefenstarten:INT VAR fnrfehler:=0;
+standardpruefe(5,fnrausgabebildschirm,fnrausgabedrucker,0,"",fnrfehler);IF 
+fnrfehler<>0THEN infeld(fnrfehler);return(1)ELSE 
+schulhalbjahrbestimmenundstundenplanholen;IF fstatusstuplan<>0THEN 
+stundenplanfehlerbehandeln;return(1)ELSE pruefungraumwuenschedurchfuehren;IF 
+listedirektdruckenTHEN standardmeldung(meldnrlistewirdgedruckt,"");print(
+protname);forget(protname,quiet);return(1)ELSE zeigedatei(protname,
+editorzusatztasten)FI ;FI FI .listedirektdrucken:standardmaskenfeld(
+fnrausgabedrucker)<>"".schulhalbjahrbestimmenundstundenplanholen:IF aktsj=""
+THEN aktsj:=schulkenndatum(schuljahr);akthj:=schulkenndatum(schulhalbjahr)FI 
+;gewsj:=aktsj;gewhj:=akthj;IF standardmaskenfeld(fnrakthj)=""THEN 
+geplanteshjundsjberechnen(gewhj,gewsj);FI ;stundenplanhalbjahrsetzen(gewhj,
+gewsj);standardmeldung(meldnrstundenplanwirdaufbereitet,"");
+stundenplanbasisundstundenplanholen(fstatusstuplan);IF fstatusstuplan=0THEN 
+stundenplanreorganisierenundsichern(fstatusstuplan)ELIF fstatusstuplan=8THEN 
+standardmeldung(meldnrbasisalt,"");stundenplanreorganisierenundsichern(
+fstatusstuplan)FI .stundenplanfehlerbehandeln:IF fstatusstuplan=2THEN 
+standardmeldung(meldnrstundenplanserverfehlt,"")ELIF fstatusstuplan=4THEN 
+standardmeldung(meldnrkeinesugruppen,"")ELIF fstatusstuplan=5THEN 
+standardmeldung(meldnrzuvielesugruppen,"")ELIF fstatusstuplan=6THEN 
+standardmeldung(meldnrkeinelv,"")ELIF fstatusstuplan=7THEN standardmeldung(
+meldnrzuvielelv,"")ELIF fstatusstuplan=8THEN standardmeldung(meldnrbasisalt,
+"")ELIF fstatusstuplan=9THEN standardmeldung(meldnrbasisinkons,"")FI .
+pruefungraumwuenschedurchfuehren:protokollvorbereiten;ausgabekopfaufbereiten;
+raumgruppeninraumgruppendateiauslesen;letztelv:="";inittupel(
+dnrlehrveranstaltungen);putwert(fnrlvsj,gewsj);putwert(fnrlvhj,gewhj);
+statleseschleife(dnrlehrveranstaltungen,gewsj,gewhj,fnrlvsj,fnrlvhj,PROC 
+raeumeeinerlvpruefen);ausgabefussaufbereiten.protokollvorbereiten:forget(
+protname,quiet);prot:=sequentialfile(output,protname).ausgabekopfaufbereiten:
+auszeile:=text(schulkenndatum(schulname),laengeschulname);auszeileCAT date;
+putline(prot,auszeile);putline(prot,schulkenndatum(schulort));line(prot);
+auszeile:=ueberschrift;auszeileCAT subtext(gewsj,1,2);auszeileCAT 
+schraegstrich;auszeileCAT subtext(gewsj,3,4);auszeileCAT ", ";auszeileCAT 
+gewhj;auszeileCAT texthalbjahr;putline(prot,auszeile);putline(prot,length(
+auszeile)*strich);line(prot);putline(prot,kopfzeile1);putline(prot,kopfzeile2
+);putline(prot,65*strich).ausgabefussaufbereiten:line(prot);putline(prot,20*
+blank+20*strich).raumgruppeninraumgruppendateiauslesen:IF NOT exists(
+raumgruppendatei)THEN datraumgruppen:=sequentialfile(output,raumgruppendatei)
+;inittupel(dnrraumgruppen);statleseschleife(dnrraumgruppen,"","",fnrrgraumgrp
+,fnrrgraeume,PROC raumgruppeindateischreiben)FI .END PROC 
+raumwuenschepruefenstarten;PROC raumgruppeindateischreiben(BOOL VAR b):IF 
+dbstatus=0THEN putline(datraumgruppen,text(wert(fnrrgraumgrp),laengeraum)+
+wert(fnrrgraeume))ELSE b:=TRUE FI END PROC raumgruppeindateischreiben;PROC 
+raeumeeinerlvpruefen(BOOL VAR b):IF dbstatus<>0OR wert(fnrlvsj)<>gewsjOR wert
+(fnrlvhj)<>gewhjTHEN b:=TRUE ELSE pruefeallelveintraegeFI .
+pruefeallelveintraege:jgst:=jgstzweistellig(intwert(fnrlvjgst));lv:=text(jgst
++wert(fnrlvfachkennung),laengelv);standardmeldung(meldnrinbearbeitung,lv+
+kennzhell);wunschraeumezulvbestimmen;zeitenderlv:=allezeitenvon(kennunglv,lv)
+;FOR izeitFROM erstestundeUPTO letztestundeREP IF (zeitenderlvSUB izeit)=
+zeitbelegtTHEN prueferaumeintragFI PER .wunschraeumezulvbestimmen:
+wunschraeumederlv:="";raum:=datenzurlv(kennungwunschraum,lv);IF raum<>""THEN 
+IF bezeichnungzulaessig(kennungraum,raum)THEN wunschraeumederlvCAT raumELSE 
+wunschraeumederlvCAT raeumederraumgruppeFI ;FI ;raum:=datenzurlv(
+kennungersatzraum,lv);IF raum<>""THEN IF bezeichnungzulaessig(kennungraum,
+raum)THEN wunschraeumederlvCAT raumELSE wunschraeumederlvCAT 
+raeumederraumgruppeFI ;FI .prueferaumeintrag:TEXT VAR suchpara,suchlv;
+planeintraglesen(izeit,kennunglv,lv,suchlv,raum,suchpara);raeumederzeit:=
+datenderzeit(izeit,kennungraum);IF wunschraeumederlv<>""THEN 
+erstenfreienwunschraumbestimmen;IF freierwunschraum=""THEN IF 
+belegterraumistkeinwunschraumTHEN inlisteschreiben(fallkeinwunschraumfrei)FI 
+ELIF freierwunschraumistbesseralsbelegterTHEN inlisteschreiben(
+fallwunschraumfrei)FI ELIF raum=leerraumTHEN inlisteschreiben(
+fallkeinwunschangegeben)FI .erstenfreienwunschraumbestimmen:freierwunschraum
+:="";posraum:=1;WHILE posraum<length(wunschraeumederlv)REP freierwunschraum:=
+subtext(wunschraeumederlv,posraum,posraum+laengeraum-1);IF suchpos(
+raeumederzeit,freierwunschraum,laengeraum)=0THEN LEAVE 
+erstenfreienwunschraumbestimmenFI ;posraumINCR laengeraumPER ;
+freierwunschraum:="".belegterraumistkeinwunschraum:suchpos(wunschraeumederlv,
+raum,laengeraum)=0.freierwunschraumistbesseralsbelegter:raum=leerraumOR (
+suchpos(wunschraeumederlv,freierwunschraum,laengeraum)<suchpos(
+wunschraeumederlv,raum,laengeraum)).END PROC raeumeeinerlvpruefen;TEXT PROC 
+raeumederraumgruppe:datraumgruppen:=sequentialfile(modify,raumgruppendatei);
+toline(datraumgruppen,1);col(datraumgruppen,1);WHILE NOT eof(datraumgruppen)
+REP downety(datraumgruppen,raum);IF col(datraumgruppen)=1CAND NOT eof(
+datraumgruppen)THEN readrecord(datraumgruppen,raumgruppenzeile);LEAVE 
+raeumederraumgruppeWITH subtext(raumgruppenzeile,posraeumeinrgzeile)ELSE col(
+datraumgruppen,col(datraumgruppen)+1)FI ;PER ;"".END PROC raeumederraumgruppe
+;PROC inlisteschreiben(INT CONST fallnr):auszeile:=jgst;auszeileCAT blank;
+auszeileCAT subtext(lv,3,4);auszeileCAT blank;auszeileCAT subtext(lv,5);
+auszeileCAT blank;auszeileCAT text(tagstunde(izeit,TRUE ),8);auszeileCAT raum
+;auszeileCAT vierblanks;auszeileCAT blank;IF fallnr=fallkeinwunschraumfrei
+THEN auszeileCAT meldkeinwunschraumfreiELIF fallnr=fallwunschraumfreiTHEN 
+auszeileCAT freierwunschraum;auszeileCAT meldwunschraumfreiELIF fallnr=
+fallkeinwunschangegebenTHEN auszeileCAT meldkeinwunschangegebenFI ;IF 
+letztelv<>lvTHEN line(prot);letztelv:=lvFI ;putline(prot,auszeile)END PROC 
+inlisteschreiben;PROC raumwuenschepruefenlistedrucken(BOOL CONST drucken):IF 
+druckenTHEN print(protname)FI ;forget(protname,quiet);enter(2)END PROC 
+raumwuenschepruefenlistedrucken;INT PROC suchpos(TEXT CONST quelle,suchtext,
+INT CONST laenge):INT VAR findpos:=pos(quelle,suchtext);WHILE findpos>0REP 
+IF findposMOD laenge=1THEN LEAVE suchposWITH findposELSE findpos:=pos(quelle,
+suchtext,findpos+1);FI PER ;findposEND PROC suchpos;TEXT PROC jgstzweistellig
+(INT CONST intjgst):IF intjgst=0THEN "00"ELIF intjgst>4AND intjgst<10THEN "0"
++text(intjgst)ELSE text(intjgst)FI END PROC jgstzweistellig;END PACKET 
+raumwuenschepruefen;
+

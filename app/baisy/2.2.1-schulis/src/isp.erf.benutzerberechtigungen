@@ -1,0 +1,54 @@
+PACKET erfbenutzerberechtigungenDEFINES erfassungbenutzerberechtigungen:LET 
+maskenname="mu erf benutzerdaten",fnrschluessel=2,maxschluessellaenge=0,
+fnrgeheimwort=3,fnrberechtigunganfang=4,fnrberechtigungende=43,
+meldungkeineberechtigung=75,trenner=" = ";TEXT VAR felderinstring:="",bestand
+:="s";INT VAR dateinummer:=0;#25.03.87#PROC erfassungbenutzerberechtigungen(
+INT CONST proznr):systemdbon;SELECT proznrOF CASE 1:setzeerfassungsparameter
+CASE 2:zeigeschluesselfuerbearbeitungCASE 3:pruefeplausibilitaetCASE 4:
+setzewertefuerdbspeicherungCASE 5:setzeidentiobjektfuerobjektlisteCASE 6:
+benutzerlesenCASE 7:benutzeraendernCASE 8:benutzereinfuegenCASE 9:
+benutzerloeschenENDSELECT ;#systemdboff;##26.03.87#END PROC 
+erfassungbenutzerberechtigungen;PROC setzeerfassungsparameter:dateinummer:=
+dnrbenutz;bestand:=benutzerbestandSUB 1;setzeerfassungsparameter(dateinummer,
+maxschluessellaenge,maskenname,fnrberechtigungende)END PROC 
+setzeerfassungsparameter;PROC zeigeschluesselfuerbearbeitung:
+setzeerfassungsfeld(wert(fnrbenutzgeheimwort),fnrgeheimwort);
+berechtigungeninfeldersetzen(wert(fnrbenutzberecht),fnrberechtigunganfang)
+END PROC zeigeschluesselfuerbearbeitung;PROC berechtigungeninfeldersetzen(
+TEXT CONST berechtstring,INT CONST i):TEXT VAR t:=subtext(berechtstring,2);
+INT VAR p:=pos(t,"/");INT VAR l:=length(t);INT VAR j;IF p>0THEN 
+setzeerfassungsfeld(subtext(t,1,p-1),i);berechtigungeninfeldersetzen(subtext(
+t,p),i+1)ELSE setzeerfassungsfeld(subtext(t,1,l),i);FOR jFROM i+1UPTO 
+fnrberechtigungendeREP setzeerfassungsfeld("",j)PER FI END PROC 
+berechtigungeninfeldersetzen;PROC pruefeplausibilitaet:INT VAR fehlerstatus:=
+0;concatenation(felderinstring);erstellebenutzungsberechtigung(anzahl,
+fehlerstatus,felderinstring);IF fehlerstatus<>0THEN melde(erfassungsmaske,
+meldungkeineberechtigung);setzefehlerstatus(fnrberechtigunganfang+
+fehlerstatus-1);LEAVE pruefeplausibilitaetFI .anzahl:fnrberechtigungende-
+fnrberechtigunganfang+1.END PROC pruefeplausibilitaet;PROC concatenation(
+TEXT VAR t):INT VAR i;INT VAR l:=length(erfassungsmaske,fnrberechtigunganfang
+);t:="";FOR iFROM fnrberechtigunganfangUPTO fnrberechtigungendeREP IF 
+erfassungswert(i)<>""THEN tCAT text(erfassungswert(i),l)FI PER END PROC 
+concatenation;PROC setzewertefuerdbspeicherung:putwert(fnrbenutzbestand,
+bestand);putwert(fnrbenutzname,erfassungswert(fnrschluessel));putwert(
+fnrbenutzgeheimwort,erfassungswert(fnrgeheimwort));putwert(fnrbenutzberecht,
+felderinstring)END PROC setzewertefuerdbspeicherung;PROC 
+setzeidentiobjektfuerobjektliste:LET trennsymbolfuerobli="$";TEXT VAR 
+identizeile;identizeile:=wert(fnrbenutzname)+trenner+wert(fnrbenutzberecht);
+identizeile:=subtext(identizeile,1,maxidentizeilenlaenge);setzeidentiwert(
+identizeilemitschluesselanhang).identizeilemitschluesselanhang:identizeile+
+trennsymbolfuerobli+wert(fnrbenutzname).END PROC 
+setzeidentiobjektfuerobjektliste;PROC benutzerlesen:inittupel(dnrbenutz);
+putwert(fnrbenutzbestand,bestand);putwert(fnrbenutzname,erfassungswert(
+fnrschluessel));search(dnrbenutz,TRUE );IF dbstatus=okTHEN saveupdateposition
+(dnrbenutz)FI END PROC benutzerlesen;PROC benutzeraendern:
+restoreupdateposition(dnrbenutz);update(dnrbenutz);logbucheintrag("Änderung")
+END PROC benutzeraendern;PROC benutzereinfuegen:insert(dnrbenutz);
+logbucheintrag("Neueinfügen")END PROC benutzereinfuegen;PROC benutzerloeschen
+:delete(dnrbenutz);logbucheintrag("Entfernen")END PROC benutzerloeschen;PROC 
+logbucheintrag(TEXT CONST logergaenzung):TEXT VAR eintrag:="Anw. 10.5.1 ";
+eintragCAT logergaenzung;eintragCAT " """;eintragCAT schluessel;eintragCAT 
+"""";logeintrag(eintrag)END PROC logbucheintrag;TEXT PROC schluessel:
+erfassungswert(fnrschluessel)END PROC schluessel;END PACKET 
+erfbenutzerberechtigungen
+

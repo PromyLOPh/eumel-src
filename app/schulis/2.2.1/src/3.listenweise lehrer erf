@@ -1,0 +1,95 @@
+PACKET listenweiselehrererfDEFINES bearbeitunglehrer,lehrerspeichern:LET 
+tofather=1,tograndfather=2,niltext="",blank=" ",trennerfuerimbestand="�",
+dateinameschluessel="Schlüssel",null=0;LET maskeerm="ms lehrer erm bearb",
+maskespr="ms lehrer spr bearb",lehrerproseite=18,felderprozeileerm=11,
+felderprozeilespr=3,fnrparapheeingangsmaske=2,fnrersteparaphe=2,fnrersteerm=5
+,fnrersterermgrund=6,fnrerstespr=4,anzermprolehrer=4;LET untergrenze=0,
+obergrenze=99,bestandermgrund="c02 persoenl ermaess",meldungbestleer=59,
+meldungnichtspeichern=63,meldungplausi=57,meldungwarten=69,meldungspeicherung
+=132,meldungspeicherfehler=179,meldungzumbestand=55,meldungzusollstunden=175,
+hell="#";ROW lehrerproseiteSTRUCT (TEXT paraphe,sprechzeiten,pflichtstunden,
+sollstunden,ROW anzermprolehrerTEXT erm,grund)VAR altelehrer;BOOL VAR 
+bearbeitungdererm,nochwelcheda;INT VAR lehrerzahl,felderprozeile,
+fnrerstesbearbeitungsfeld;TEXT VAR paraphe,bearbeitungsmaske;LET 
+logbucheintragerm="Anw. 3.1.2 Änderungen der Stundenermäßigung",
+logbucheintragspr="Anw. 3.1.3 Änderungen der Sprechzeiten";PROC neuerblock:
+IF lehrerzahl=lehrerproseiteTHEN succ(dnrlehrer);nochwelcheda:=dbstatus=null;
+putwert(fnrlparaphe,paraphe);changeindex;FI ;blocklesenundausgeben;IF 
+nochwelchedaTHEN return(tofather)ELSE enter(tograndfather)FI END PROC 
+neuerblock;PROC blocklesenundausgeben:IF nochwelchedaTHEN standardmeldung(
+meldungwarten,niltext);lehrerzahl:=null;bildschirmblock(PROC zeilezeigen,
+BOOL PROC (INT CONST )leerepruefung,null);nochwelcheda:=(lehrerzahl>null);IF 
+nochwelchedaTHEN paraphe:=wert(fnrlparaphe);restlichefelderloeschen;infeld(1)
+;standardfelderausgeben;infeld(fnrerstesbearbeitungsfeld);FI FI .
+restlichefelderloeschen:INT VAR zeilenfeld;FOR zeilenfeldFROM fnrersteparaphe
++lehrerzahl*felderprozeileUPTO lehrerproseite*felderprozeile+1REP 
+standardmaskenfeld(standardfeldlaenge(zeilenfeld)*blank,zeilenfeld);
+feldschutz(zeilenfeld)PER .END PROC blocklesenundausgeben;PROC zeilezeigen:
+INT VAR i,aktuellesfeld;aktuellesfeld:=fnrersteparaphe+felderprozeile*
+lehrerzahl;lehrerzahlINCR 1;altelehrer(lehrerzahl).paraphe:=wert(fnrlparaphe)
+;standardmaskenfeld(wert(fnrlparaphe),aktuellesfeld);aktuellesfeldINCR 1;
+standardmaskenfeld(wert(fnrlfamname),aktuellesfeld);aktuellesfeldINCR 1;IF 
+bearbeitungderermTHEN altelehrer(lehrerzahl).pflichtstunden:=wert(
+fnrlpflichtstd);standardmaskenfeld(wert(fnrlpflichtstd),aktuellesfeld);
+aktuellesfeldINCR 1;FOR iFROM 1UPTO anzermprolehrerREP altelehrer(lehrerzahl)
+.erm(i):=wert(fnrlerm1+2*(i-1));standardmaskenfeld(wert(fnrlerm1+2*(i-1)),
+aktuellesfeld);aktuellesfeldINCR 1;altelehrer(lehrerzahl).grund(i):=wert(
+fnrlermgrund1+2*(i-1));standardmaskenfeld(wert(fnrlermgrund1+2*(i-1)),
+aktuellesfeld);aktuellesfeldINCR 1;PER ELSE altelehrer(lehrerzahl).
+sprechzeiten:=wert(fnrlsprechzeit);standardmaskenfeld(wert(fnrlsprechzeit),
+aktuellesfeld);aktuellesfeldINCR 1;FI END PROC zeilezeigen;BOOL PROC 
+leerepruefung(INT CONST dummy):TRUE END PROC leerepruefung;PROC 
+bearbeitunglehrer(INT CONST programm):reinitparsing;
+initialisierungenvornehmen;pruefeobimbestand;IF dbstatus<>nullTHEN 
+standardmeldung(meldungbestleer,niltext);return(tofather);LEAVE 
+bearbeitunglehrerFI ;nochwelcheda:=TRUE ;standardstartproc(bearbeitungsmaske)
+;startebildschirmblock(dnrlehrer,lehrerproseite-1);blocklesenundausgeben;
+standardnproc.initialisierungenvornehmen:bearbeitungdererm:=programm=1;IF 
+bearbeitungderermTHEN bearbeitungsmaske:=maskeerm;felderprozeile:=
+felderprozeileerm;fnrerstesbearbeitungsfeld:=fnrersteerm;ELSE 
+bearbeitungsmaske:=maskespr;felderprozeile:=felderprozeilespr;
+fnrerstesbearbeitungsfeld:=fnrerstespr;FI ;standardmeldung(meldungwarten,
+niltext).pruefeobimbestand:inittupel(dnrlehrer);putwert(fnrlparaphe,
+standardmaskenfeld(fnrparapheeingangsmaske));search(dnrlehrer,FALSE ).END 
+PROC bearbeitunglehrer;PROC lehrerspeichern(BOOL CONST speichern):INT VAR 
+fehlerstatus:=0,i,j,sollstunden;BOOL VAR lehrerdatengeaendert;INT VAR aktfnr;
+IF speichernTHEN pruefeplausibilitaet;IF fehlerstatus<>0THEN infeld(
+fehlerstatus);return(tofather);LEAVE lehrerspeichernELSE 
+speicherungdurchführenFI ELSE standardmeldung(meldungnichtspeichern,niltext)
+FI ;putwert(fnrlparaphe,paraphe);changeindex;neuerblock;.pruefeplausibilitaet
+:IF bearbeitungderermTHEN standardmeldung(meldungplausi,niltext);FOR jFROM 1
+UPTO lehrerzahlREP pruefeeinezeilePER FI .pruefeeinezeile:sollstunden:=int(
+altelehrer(j).pflichtstunden);FOR iFROM 0UPTO anzermprolehrer-1REP aktfnr:=
+fnrersteerm+(j-1)*felderprozeile+2*i;IF standardmaskenfeld(aktfnr)<>""THEN 
+standardpruefe(2,aktfnr,null,null,niltext,fehlerstatus);IF fehlerstatus<>0
+THEN LEAVE pruefeplausibilitaetFI ;standardpruefe(3,aktfnr,untergrenze,
+obergrenze,niltext,fehlerstatus);IF fehlerstatus<>0THEN LEAVE 
+pruefeplausibilitaetFI ;FI ;sollstunden:=sollstunden-int(standardmaskenfeld(
+aktfnr));IF sollstunden<0THEN standardmeldung(meldungzusollstunden,niltext);
+fehlerstatus:=aktfnr;LEAVE pruefeplausibilitaetELSE altelehrer(j).sollstunden
+:=text(sollstunden)FI ;aktfnr:=fnrersterermgrund+(j-1)*felderprozeile+2*i;IF 
+standardmaskenfeld(aktfnr)<>""THEN IF NOT imbestand(bestandermgrund+
+trennerfuerimbestand+standardmaskenfeld(aktfnr),dateinameschluessel)THEN 
+standardmeldung(meldungzumbestand,niltext);fehlerstatus:=aktfnr;LEAVE 
+pruefeplausibilitaetFI FI PER .speicherungdurchführen:IF bearbeitungdererm
+THEN logeintrag(logbucheintragerm)ELSE logeintrag(logbucheintragspr)FI ;FOR j
+FROM 0UPTO lehrerzahl-1REP IF lehrerdatenwurdengeaendertTHEN putwert(
+fnrlparaphe,altelehrer(j+1).paraphe);search(dnrlehrer,true);
+speicherfehlerabfangen;IF bearbeitungderermTHEN FOR iFROM 0UPTO 
+anzermprolehrer-1REP putwert(fnrlerm1+2*i,standardmaskenfeld(fnrersteerm+j*
+felderprozeile+2*i));putwert(fnrlermgrund1+2*i,standardmaskenfeld(
+fnrersterermgrund+j*felderprozeile+2*i));PER ;putwert(fnrlsollstd,altelehrer(
+j+1).sollstunden)ELSE putwert(fnrlsprechzeit,standardmaskenfeld(fnrerstespr+j
+*felderprozeile));FI ;update(dnrlehrer);speicherfehlerabfangen;
+standardmeldung(meldungspeicherung,altelehrer(j+1).paraphe+hell)FI PER .
+lehrerdatenwurdengeaendert:lehrerdatengeaendert:=FALSE ;IF bearbeitungdererm
+THEN i:=0;WHILE NOT lehrerdatengeaendertCAND i<anzermprolehrerREP 
+lehrerdatengeaendert:=standardmaskenfeld(fnrersteerm+j*felderprozeile+2*i)<>
+altelehrer(j+1).erm(i+1)COR standardmaskenfeld(fnrersterermgrund+j*
+felderprozeile+2*i)<>altelehrer(j+1).grund(i+1);iINCR 1PER ELSE 
+lehrerdatengeaendert:=standardmaskenfeld(fnrerstespr+j*felderprozeile)<>
+altelehrer(j+1).sprechzeitenFI ;lehrerdatengeaendert.speicherfehlerabfangen:
+IF dbstatus<>nullTHEN standardmeldung(meldungspeicherfehler,altelehrer(j+1).
+paraphe+hell);return(tofather);LEAVE lehrerspeichernFI .END PROC 
+lehrerspeichern;END PACKET listenweiselehrererf
+

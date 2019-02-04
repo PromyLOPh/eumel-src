@@ -1,0 +1,87 @@
+PACKET ispbenutzerberechtigungenDEFINES erstellebenutzungsberechtigung,
+identistart,aktuellebenutzerkenndatenlesen,pruefeberechtigung,
+setzeanfangsknotennamefuerbenutzerbestand,benutzerbestand:LET standardanfang=
+2,maskenname="mu identifikation",#benbest="cb benutzer",23.07.87#wer=47,
+falsch=39,#benmeth=2,#punkt=".";BOOL VAR pruefungnoetig,gefunden,berechtigt;
+INT VAR anzahlversuche;LET maxversuche=3;;TAG VAR aktuellemaske;INT VAR 
+aktuelleposition;TEXT VAR benutzername,geheimwort,benutzerberechtigung,
+startknotenname:="schulis";PROC hinweisauflizenzfreiesoftwaregeben:TEXT VAR 
+testname;holeberechtigungswert(testname);IF testname=""THEN 
+kopierhinweiszeigenFI .kopierhinweiszeigen:page;cursor(23,3);put(
+"schulis - Schulverwaltungssystem");cursor(27,8);put(
+"Lizenzfreie Software der");cursor(13,10);put(
+"Gesellschaft für Mathematik und Datenverarbeitung mbH");cursor(8,14);put(
+"Die Nutzung der Software ist nur im Schul- und Hochschulbereich ");cursor(20
+,15);put("für nichtkommerzielle Zwecke gestattet.");cursor(16,17);put(
+"Gewährleistung und Haftung werden ausgeschlossen.");cursor(26,23);put(
+"Weiter mit beliebiger Taste");pause(100).END PROC 
+hinweisauflizenzfreiesoftwaregeben;PROC identistart:
+frageentwicklernachseinemnamen;aktuellebenutzerkenndatenlesen;.
+frageentwicklernachseinemnamen:hinweisauflizenzfreiesoftwaregeben;page;
+benutzername:="";geheimwort:="";gefunden:=FALSE ;pruefungnoetig:=TRUE ;
+anzahlversuche:=0;standardkopfmaskeinitialisieren(startknotenname);
+standardkopfmaskeausgeben(text(vergleichsknoten));initmaske(aktuellemaske,
+maskenname);show(aktuellemaske);aktuelleposition:=standardanfang;.END PROC 
+identistart;PROC aktuellebenutzerkenndatenlesen:ROW 100TEXT VAR feld;
+berechtigt:=FALSE ;init(feld);feld(2):=benutzername;feld(3):=geheimwort;
+putget(aktuellemaske,feld,aktuelleposition);benutzername:=feld(2);geheimwort
+:=feld(3);END PROC aktuellebenutzerkenndatenlesen;PROC berechtigungholen:
+systemdbon;IF gefundenTHEN gefunden:=((startknotennameSUB 1)=wert(
+fnrbenutzbestand)CAND benutzername=wert(fnrbenutzname))FI ;
+benutzerberechtigung:="";IF NOT gefundenTHEN putwert(fnrbenutzname,
+benutzername);putwert(fnrbenutzbestand,(startknotennameSUB 1));search(
+dnrbenutz,TRUE );gefunden:=(dbstatus=ok);FI ;IF gefundenTHEN IF (geheimwort=
+wert(fnrbenutzgeheimwort))THEN benutzerberechtigung:=wert(fnrbenutzberecht);
+berechtigt:=TRUE ELSE berechtigt:=FALSE ;aktuelleposition:=standardanfang+1
+FI ELSE aktuelleposition:=standardanfangFI ;systemdboff;END PROC 
+berechtigungholen;PROC pruefeberechtigung:IF pruefungnoetigTHEN 
+berechtigungholen;IF NOT (gefundenAND berechtigt)THEN IF anzahlversuche<
+maxversucheTHEN anzahlversucheINCR 1ELSE anzahlversuche:=0;
+logbucheintraganmeldversuchFI ;meldedies;return(1)ELSE 
+logbucheintraganmeldung;setzebenutzerberechtigung(benutzerberechtigung);
+pruefungnoetig:=FALSE ;pageFI ELSE pageFI ;.meldedies:IF NOT gefundenTHEN 
+meldeauffaellig(aktuellemaske,wer)ELSE meldeauffaellig(aktuellemaske,falsch)
+FI .END PROC pruefeberechtigung;PROC logbucheintraganmeldung:LET 
+loggrenzeerreicht=9,keinreplyvonlog=2,meldungloggrenzeerreicht=93;INT VAR 
+logreply:=0;TEXT VAR eintrag:="Identifikation ";eintragCAT """";eintragCAT 
+name(myself);eintragCAT """ durch """;eintragCAT benutzername;eintragCAT """"
+;logeintrag(eintrag,logreply);IF logreply=loggrenzeerreichtTHEN 
+meldeauffaellig(aktuellemaske,meldungloggrenzeerreicht);pause(20)ELIF 
+logreply=keinreplyvonlogTHEN errorstop(
+"Zur Benutzung des schulis-Systems bitte erst LOG-Task einrichten")FI END 
+PROC logbucheintraganmeldung;PROC logbucheintraganmeldversuch:TEXT VAR 
+eintrag:="mehrfach Identifikation durch """;eintragCAT benutzername;eintrag
+CAT """ versucht";logeintrag(eintrag)END PROC logbucheintraganmeldversuch;
+PROC setzeanfangsknotennamefuerbenutzerbestand(TEXT CONST knotenname):
+startknotenname:=knotenname.END PROC 
+setzeanfangsknotennamefuerbenutzerbestand;TEXT PROC benutzerbestand:
+startknotennameEND PROC benutzerbestand;PROC erstellebenutzungsberechtigung(
+INT CONST felder,INT VAR fehlerin,TEXT VAR einausgabe):pruefeaufkorrektheit;
+pruefeaufpraefixeigenschaft;gebeergebnisaus.pruefeaufkorrektheit:INT VAR i,j,
+bottom;LET maxstring=100;ROW maxstringTEXT VAR strings;TEXT VAR string:="";
+FOR iFROM 1UPTO felderREP bottom:=(i-1)*11;string:=subtext(einausgabe,bottom+
+1,bottom+11);pruefeauffeldkorrektheit;IF korrektTHEN strings(i):=
+bereinigterstringELSE fehlerin:=i;LEAVE erstellebenutzungsberechtigungFI PER 
+.pruefeauffeldkorrektheit:BOOL VAR korrekt:=TRUE ;TEXT VAR bereinigterstring
+:="";TEXT VAR cstr:=compress(string);IF cstr=""THEN bereinigterstring:=""
+ELSE korrekt:=istmenuebaumkennung(cstr,bereinigterstring)FI .
+pruefeaufpraefixeigenschaft:FOR iFROM 1UPTO felderREP FOR jFROM 1UPTO felder
+REP IF i<>jTHEN IF istpraefix(strings(i),strings(j))THEN strings(j):=""FI FI 
+PER PER .gebeergebnisaus:TEXT VAR s,t:="";FOR iFROM 1UPTO felderREP s:=
+strings(i);IF s<>""THEN tCAT "/";tCAT sFI PER ;einausgabe:=t.END PROC 
+erstellebenutzungsberechtigung;BOOL PROC istmenuebaumkennung(TEXT CONST st,
+TEXT VAR bereinigterstring):INT VAR anfang:=1;INT VAR ende:=pos(st,punkt);
+INT VAR l:=length(st);IF ende=lTHEN istzahl(subtext(st,anfang,l-1),
+bereinigterstring)ELIF NOT (ende>0)THEN istzahl(subtext(st,anfang,l),
+bereinigterstring)ELIF istzahl(subtext(st,anfang,ende-1),bereinigterstring)
+THEN bereinigterstringCAT punkt;istmenuebaumkennung(subtext(st,ende+1,l),
+bereinigterstring)ELSE FALSE FI END PROC istmenuebaumkennung;BOOL PROC 
+istzahl(TEXT CONST t,TEXT VAR bereinigterstring):IF ((t<>"")CAND ((t<>"+")
+CAND (t<>"-")))CAND (length(t)<=2)THEN INT VAR i:=int(t);IF lastconversionok
+THEN bereinigterstringCAT text(i);TRUE ELSE FALSE FI ELSE FALSE FI END PROC 
+istzahl;BOOL PROC istpraefix(TEXT CONST s,t):IF (s="")OR (t="")THEN FALSE 
+ELSE pos(aufber(t),aufber(s))=1FI END PROC istpraefix;TEXT PROC aufber(TEXT 
+CONST t):INT CONST l:=length(t);IF (tSUB l)<>punktTHEN t+punktELSE tFI END 
+PROC aufber;PROC init(ROW 100TEXT VAR feld):INT VAR i;FOR iFROM 1UPTO 100REP 
+feld(i):=""PER END PROC initEND PACKET ispbenutzerberechtigungen
+

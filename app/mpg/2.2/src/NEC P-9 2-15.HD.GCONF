@@ -1,0 +1,244 @@
+INCLUDE "std primitives"; 
+INCLUDE "matrix printer"; 
+ 
+PLOTTER "NEC P9 HD",2,15,2880,2880,20.32,20.32; 
+ 
+COLORS "000999";
+ 
+(* Version vom 21.10.87 BJ *)
+
+(* Globale Daten fuer NEC P9 *) 
+ 
+LET hd p9 graf  = ""27"*"40"",    (* Nec P9 in 24-Nadel 360 Pixel/zoll Modus *) 
+    hd p9 feed  = ""28"3",        (* Zeilenabstand in 360 Pixel/Zoll setzen *) 
+    hd p9 nlq   = ""27"x"1"",     (* NLQ Modus waehlen *) 
+    hd p9 pos   = ""27"\";        (* in 1/180 Zoll-Schritten rel Positionieren *) 
+
+LET hd p9 x max   = 2879, 
+    hd p9 y max   = 2879, 
+    hd p9 y lines = 90,          (* y pixel / 16 (Punkte pro INT) / 2 (Maps) *) 
+    hd p9 x per ds= 1440,        (* Maximale x pixel pro Dataspace ( Darf *) 
+                                 (* Nicht mehr als 256 K sein !!!     *) 
+                                 (* x per ds = 256 * 1024 / p9 y lines / 4 *)
+    hd p9 x lines = 2;           (* x pixel / hd p9 x per ds *) 
+ 
+LET HDPYLINE = ROW hd p9 x per ds INT, 
+    HDPSMAP  = ROW hd p9 y lines HDPYLINE, 
+    HDPMAP   = ROW hd p9 x lines ROW 2 BOUND HDPSMAP; 
+ 
+HDPMAP VAR hd p9 map; 
+
+ROW hd p9 x lines ROW 2 DATASPACE VAR hd p9 ds;
+
+INT VAR hd p9 x pos, hd p9 y pos;
+ 
+(* Globale Daten Ende *) 
+
+PROC prepare: 
+  REP 
+   call (29, "", printer); (* wait for halt *) 
+   IF task(channel(plotter)) = niltask   (* Es koennte der MD worker dran sein *) 
+     THEN continue (channel (plotter))   (* Der startet den PRINTER wieder ! *) 
+     ELSE pause(300)                     (* folge : Kanal belegt -> dead *)
+   FI
+ UNTIL channel(myself) = channel(plotter) PER
+END PROC prepare;
+ 
+PROC initplot: 
+  INT VAR hd p9 i,hd p9 j; 
+  FOR hd p9 i FROM 1 UPTO hd p9 x lines REP 
+    FOR hd p9 j FROM 1 UPTO 2 REP 
+      hd p9 ds[hd p9 i][hd p9 j] := nilspace; 
+      hd p9 map[hd p9 i][hd p9 j] := hd p9 ds[hd p9 i][hd p9 j]
+    PER
+  PER
+END PROC initplot; 
+ 
+PROC endplot: 
+  hd p9 put map;
+  break(quiet);
+  call (26, "", printer);  (* start spool *)
+  enable stop
+END PROC endplot; 
+ 
+PROC hd p9 put map: 
+  open graf; 
+  put map; 
+  close graf;
+  forget dataspaces.
+ 
+  open graf: 
+    out(hd p9 nlq).   (* NLQ Modus waehlen, damit Positionierung in 1/180 *) 
+                      (* Schritten geht (sonst 1/120) *) 
+  close graf: 
+    out(""12"").      (* Form Feed ! Drucker muss auf richtige Seitenlaenge *) 
+                      (* eingestellt sein (EUMEL-DR macht kein FF) *) 
+ 
+  forget dataspaces: 
+    INT VAR i;
+    FOR i FROM 1 UPTO hd p9 x lines REP 
+      FOR j FROM 1 UPTO 2 REP 
+        forget(hd p9 ds[i][j]) 
+      PER 
+    PER. 
+ 
+  put map: 
+    INT VAR j,half; 
+    FOR j FROM 1 UPTO hd p9 y lines REP 
+      FOR half FROM 1 UPTO 2 REP 
+        open line; 
+        put half line; 
+        close line 
+      PER 
+    PER. 
+ 
+  open line: 
+    INT VAR actual pos :: 0, (* aktuelle x-pos 0..x max *)
+            last pos. 
+ 
+  close line: 
+    out(hd p9 feed); 
+    IF half = 1 
+      THEN out (""1"")           (* LF 1/360 Zoll *) 
+      ELSE out (""31"") 
+    FI; 
+    line. 
+ 
+  put half line: 
+    WHILE actual pos <= hd p9 x max REP 
+      put blank cols; 
+      put nonblank cols 
+    PER. 
+ 
+  put blank cols: 
+    last pos := actual pos; 
+    WHILE actual pos <= hd p9 x max CAND actual col is blank REP 
+      actual pos INCR 1 
+    PER; 
+    IF actual pos > last pos AND actual pos <= hd p9 x max
+      THEN out blank cols 
+    FI. 
+ 
+  put nonblank cols: 
+    last pos := actual pos; 
+    WHILE actual pos <= hd p9 x max CAND NOT actual col is blank REP 
+      actual pos INCR 1 
+    PER; 
+    IF actual pos > last pos
+      THEN out nonblank cols 
+    FI. 
+ 
+  out blank cols: 
+    IF actual pos - last pos > 1 
+      THEN TEXT VAR t :: "  "; 
+           replace(t, 1, (actual pos - last pos) DIV 2); 
+           out (hd p9 pos + t) 
+    FI; 
+    IF (actual pos - last pos) MOD 2 = 1 
+      THEN out (hd p9 graf + ""1""0"" + 3 * ""0"") 
+    FI. 
+ 
+  out nonblank cols: 
+    t := "  "; 
+    replace (t,1, actual pos - last pos); 
+    out(hd p9 graf + t); 
+    INT VAR k;
+    FOR k FROM last pos UPTO actual pos - 1 REP
+      INT VAR word :: hd p9 map [(k DIV hd p9 x per ds) + 1][half][j] 
+                                [(k MOD hd p9 x per ds) + 1], 
+              first byte :: word; 
+      rotate (word, 8);
+      out (code (word));
+      out (code (first byte));
+      out (""0"")
+    PER.
+ 
+  actual col is blank: 
+    hd p9  map [(actual pos DIV hd p9 x per ds) + 1][half][j]
+               [(actual pos MOD hd p9 x per ds) + 1] = 0 
+ 
+END PROC hd p9 put map; 
+ 
+PROC clear: 
+  hd p9 clear
+END PROC clear;
+
+PROC hd p9 clear: 
+  create initline;
+  initialize all lines.
+
+  create initline: 
+    HDPYLINE VAR initline; 
+    INT VAR i; 
+    FOR i FROM 1 UPTO hd p9 x per ds REP 
+      initline[i] := 0 
+    PER. 
+ 
+  initialize all lines: 
+    INT VAR j,k; 
+    FOR i FROM 1 UPTO hd p9 x lines REP
+      FOR j FROM 1 UPTO 2 REP 
+        FOR k FROM 1 UPTO hd p9 y lines REP 
+          hd p9 map[i][j][k] := initline 
+       PER 
+     PER
+   PER
+END PROC hd p9 clear; 
+ 
+PROC home: 
+  move to (0,0)
+END PROC home;
+
+PROC moveto (INT CONST x,y): 
+  hd p9 x pos := x;
+  hd p9 y pos := y
+END PROC moveto;
+ 
+PROC drawto (INT CONST x,y): 
+  printer line (hd p9 x pos,hd p9 y max - hd p9 y pos,
+                x, hd p9 y max - y,
+                PROC (INT CONST, INT CONST) hd p9 set pixel);
+  hd p9 x pos := x;
+  hd p9 y pos := y
+END PROC drawto;
+
+PROC setpixel (INT CONST x,y): 
+  hd p9 set pixel (x, hd p9 y max - x)
+END PROC setpixel;
+
+PROC hd p9 set pixel (INT CONST x,y):
+  setbit (hd p9 map [(x DIV hd p9 x per ds) + 1][(y AND 1) + 1][(y DIV 32) + 1] 
+                    [(x MOD hd p9 x per ds) + 1],15 - ((y DIV 2) AND 15))
+END PROC hd p9 set pixel;
+
+BOOL PROC hd p9 is pixel (INT CONST x,y):
+  bit (hd p9 map [(x DIV hd p9 x per ds) + 1][(y AND 1) + 1][(y DIV 32) + 1] 
+                 [(x MOD hd p9 x per ds) + 1],15 - ((y DIV 2) AND 15))
+END PROC hd p9 is pixel;
+
+PROC foreground (INT VAR type): 
+  type := 1
+END PROC foreground;
+
+PROC background (INT VAR type):
+  type := 0
+END PROC background; 
+        
+PROC setpalette: 
+END PROC setpalette;
+ 
+PROC circle (INT CONST x,y,rad,from,to): 
+  std circle (x,y,rad,from,to) 
+END PROC circle; 
+ 
+PROC box (INT CONST x1,y1,x2,y2,pattern): 
+  std box (x1, y1, x2, y2, pattern)
+END PROC box; 
+ 
+PROC fill (INT CONST x,y,pattern): 
+  printer fill (x,x, hd p9 y max - y, 1, 
+                BOOL PROC (INT CONST, INT CONST) hd p9 is pixel, 
+                PROC (INT CONST, INT CONST) hd p9 set pixel) 
+END PROC fill; 
+ 
+

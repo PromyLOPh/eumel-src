@@ -1,0 +1,271 @@
+PACKET eudas satzzugriffe
+
+(*************************************************************************)
+(*                                                                       *)
+(*     Feldstrukturierung von Texten                                     *)
+(*                                                                       *)
+(*     Version 03                                                        *)
+(*                                                                       *)
+(*     Autor: Thomas Berlage                                             *)
+(*     Stand: 17.04.87                                                   *)
+(*                                                                       *)
+(*************************************************************************)
+
+  DEFINES
+
+  SATZ,
+  := ,
+  satz initialisieren,
+  felderzahl,
+  feld lesen,
+  feld bearbeiten,
+  feld aendern,
+  feldindex :
+
+
+LET
+  maximale felderzahl = 256,
+  zeigerlaenge = 2;
+
+LET
+  blank = " ",
+  niltext = "";
+ 
+LET
+  illegale feldnummer =  #101#
+    " ist keine Feldnummer";
+
+TEXT VAR
+  raum fuer ein int := zeigerlaenge * blank;
+
+ 
+(**************************** Typ SATZ ***********************************)
+
+TYPE SATZ = TEXT;
+
+OP := (SATZ VAR links, SATZ CONST rechts) :
+
+  CONCR (links) := CONCR (rechts)
+
+END OP := ;
+
+
+(************************ Satz initialisieren ****************************)
+
+PROC satz initialisieren (SATZ VAR satz) :
+
+  satz initialisieren (satz, 0)
+
+END PROC satz initialisieren;
+
+PROC satz initialisieren (SATZ VAR satz, INT CONST felder) :
+
+  replace (raum fuer ein int, 1, 2 * felder + 3);
+  INT VAR i;
+  CONCR (satz) := niltext;
+  FOR i FROM 1 UPTO felder + 1 REP
+    CONCR (satz) CAT raum fuer ein int
+  END REP
+
+END PROC satz initialisieren;
+
+
+(*************************** Felderzahl **********************************)
+
+INT PROC felderzahl (SATZ CONST satz) :
+
+  INT VAR letzter zeiger := (CONCR (satz) ISUB 1) DIV 2;
+  INT CONST satzende := CONCR (satz) ISUB letzter zeiger;
+  REP
+    letzter zeiger DECR 1
+  UNTIL letzter zeiger <= 0 COR kein leeres feld END REP;
+  letzter zeiger .
+
+kein leeres feld :
+  (CONCR (satz) ISUB letzter zeiger) <> satzende .
+
+END PROC felderzahl;
+
+
+(************************** Feld lesen ***********************************)
+
+PROC feld lesen (SATZ CONST satz, INT CONST feldnr, TEXT VAR inhalt) :
+
+  feldgrenzen bestimmen (CONCR (satz), feldnr);
+  IF NOT is error THEN
+    inhalt := subtext (CONCR (satz), feldanfang, feldende)
+  END IF
+
+END PROC feld lesen;
+
+PROC feld bearbeiten (SATZ CONST satz, INT CONST feldnr,
+                      PROC (TEXT CONST, INT CONST, INT CONST) bearbeite) :
+
+  feldgrenzen bestimmen (CONCR (satz), feldnr);
+  IF NOT is error THEN
+    bearbeite (CONCR (satz), feldanfang, feldende)
+  END IF
+
+END PROC feld bearbeiten;
+
+
+(************************ Feldgrenzen bestimmen **************************)
+
+INT VAR
+  feldanfang,
+  feldende;
+
+PROC feldgrenzen bestimmen (TEXT CONST satz, INT CONST feldnr) :
+
+  IF illegales feld THEN
+    errorstop (text (feldnr) + illegale feldnummer)
+  ELIF vorhandenes feld THEN
+    feldanfang := satz ISUB feldnr;
+    feldende := (satz ISUB feldnr + 1) - 1
+  ELSE
+    feldanfang := 1; feldende := 0
+  END IF .
+
+illegales feld :
+  feldnr <= 0 OR feldnr > maximale felderzahl .
+
+vorhandenes feld :
+  feldnr + feldnr < (satz ISUB 1) - 1 .
+
+END PROC feldgrenzen bestimmen;
+
+
+(*************************** Feld aendern ********************************)
+
+TEXT VAR puffer;
+
+PROC feld aendern (SATZ VAR satz, INT CONST feldnr, TEXT CONST inhalt) : 
+
+  INT VAR zeigerstelle;
+  INT CONST satzfelder := ((CONCR (satz) ISUB 1) - 2) DIV 2;
+  IF normales feld THEN
+    normal ersetzen
+  ELSE
+    errorstop (text (feldnr) + illegale feldnummer)
+  END IF .
+
+normales feld :
+  feldnr > 0 AND feldnr <= maximale felderzahl .
+
+normal ersetzen :
+  INT CONST fehlende zeiger := feldnr - satzfelder;
+  IF fehlende zeiger <= 0 THEN
+    vorhandenes feld ersetzen
+  ELIF inhalt <> niltext THEN
+    neues feld anfuegen
+  END IF .
+
+neues feld anfuegen :
+  INT CONST endezeiger := CONCR (satz) ISUB (satzfelder + 1);
+  puffer := subtext (CONCR (satz), erstes feld, endezeiger - 1);
+  CONCR (satz) := subtext (CONCR (satz), 1, satzfelder + satzfelder);
+  korrigiere zeiger (CONCR (satz), 1, satzfelder, platz fuer zeiger);
+  neue zeiger anfuegen;
+  endezeiger anfuegen;
+  CONCR (satz) CAT puffer;
+  CONCR (satz) CAT inhalt .
+
+platz fuer zeiger :
+  fehlende zeiger + fehlende zeiger .
+
+neue zeiger anfuegen :
+  INT CONST neuer zeiger := endezeiger + platz fuer zeiger;
+  FOR zeigerstelle FROM satzfelder + 1 UPTO feldnr REP
+    zeiger anfuegen (CONCR (satz), neuer zeiger)
+  END REP .
+
+endezeiger anfuegen :
+  zeiger anfuegen (CONCR (satz), neuer zeiger + length (inhalt)) .
+
+erstes feld:
+  CONCR (satz) ISUB 1 .
+
+vorhandenes feld ersetzen :
+  INT CONST
+    feldanfang := CONCR (satz) ISUB feldnr,
+    naechster feldanfang := CONCR (satz) ISUB (feldnr + 1);
+  IF feldanfang > length (CONCR (satz)) THEN
+    optimiere leerfelder
+  ELSE
+    ersetze beliebig
+  END IF .
+
+optimiere leerfelder :
+  korrigiere zeiger (CONCR (satz), feldnr + 1, satzfelder + 1,
+                     length (inhalt));
+  CONCR (satz) CAT inhalt .
+
+ersetze beliebig :
+  puffer := subtext (CONCR (satz), naechster feldanfang);
+  CONCR (satz) := subtext (CONCR (satz), 1, feldanfang - 1);
+  korrigiere zeiger (CONCR (satz), feldnr + 1, satzfelder + 1,
+                   laengendifferenz);
+  CONCR (satz) CAT inhalt;
+  CONCR (satz) CAT puffer  .
+
+laengendifferenz :
+  length (inhalt) - feldlaenge .
+
+feldlaenge :
+  naechster feldanfang - feldanfang .
+
+END PROC feld aendern;
+
+PROC zeiger anfuegen (TEXT VAR satz, INT CONST zeigerwert) :
+
+  replace (raum fuer ein int, 1, zeigerwert);
+  satz CAT raum fuer ein int
+
+END PROC zeiger anfuegen;
+
+PROC korrigiere zeiger (TEXT VAR satz, INT CONST anfang, ende, differenz) :
+
+  INT VAR zeigerstelle;
+  FOR zeigerstelle FROM anfang UPTO ende REP
+    replace (satz, zeigerstelle, alter zeiger + differenz)
+  END REP .
+
+alter zeiger :
+  satz ISUB zeigerstelle .
+
+END PROC korrigiere zeiger;
+
+
+(*************************** 'feldindex' *********************************)
+
+INT PROC feldindex (SATZ CONST satz, TEXT CONST muster) :
+
+  INT VAR
+    anfang := (CONCR (satz) ISUB 1) - 1,
+    zeigerstelle := 1;
+
+  REP
+    anfang := pos (CONCR (satz), muster, anfang + 1);
+    IF anfang = 0 THEN
+      LEAVE feldindex WITH 0
+    END IF;
+    durchsuche zeiger ob feldanfang
+  UNTIL zeiger zeigt auf anfang CAND naechster zeiger hinter ende END REP;
+  zeigerstelle .
+
+durchsuche zeiger ob feldanfang :
+  WHILE (CONCR (satz) ISUB zeigerstelle) < anfang REP
+    zeigerstelle INCR 1
+  END REP .
+
+zeiger zeigt auf anfang :
+  (CONCR (satz) ISUB zeigerstelle) = anfang .
+
+naechster zeiger hinter ende :
+  (CONCR (satz) ISUB (zeigerstelle + 1)) = anfang + length (muster) .
+
+END PROC feldindex;
+
+
+END PACKET eudas satzzugriffe;
+

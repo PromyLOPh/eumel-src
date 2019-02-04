@@ -1,0 +1,73 @@
+PACKET dosdiskDEFINES opendosdisk,sectorspercluster,fatcopies,dirsectors,
+mediadescriptor,fatsectors,beginoffat,fatentrys,beginofdir,beginofcluster,
+clustersize,bpbexists,writebpb,eublock,bpbdumpmodus:INITFLAG VAR 
+bpbdsinitialisiert:=FALSE ;DATASPACE VAR bpbds;BOUND STRUCT (ALIGN dummy,ROW 
+512INT daten)VAR bpb;BOOL VAR bpbdumpflag:=FALSE ;REAL VAR beginofdataarea;
+INT VAR sectorspertrack,heads;IF exists("shard interface")THEN 
+loadshardinterfacetableFI ;TEXT CONST bpbtype254:="���"+"EUMELBPB"+"��"+"�"+
+"��"+"�"+"§�"+"§�"+"�"+"��"+"��"+"��"+"��",bpbtype255:="���"+"EUMELBPB"+"��"+
+"�"+"��"+"�"+"p�"+"��"+"�"+"��"+"��"+"��"+"��";PROC opendosdisk:enablestop;
+bpbdsanboundkoppeln;bpblesen;IF bpbungueltigTHEN versuchepseudobpbzuverwenden
+FI ;ueberpruefebpbaufgueltigkeit;globalevariableninitialisieren;IF 
+bpbdumpflagTHEN dumpschreibenFI .bpbdsanboundkoppeln:IF NOT initialized(
+bpbdsinitialisiert)THEN bpbds:=nilspace;bpb:=bpbdsFI .bpblesen:INT VAR return
+;checkrerun;readblock(bpbds,2,0,return);IF return<>0THEN lesefehler(return)
+FI .bpbungueltig:INT VAR wordno;FOR wordnoFROM 6UPTO 10REP IF bpb.daten[
+wordno+1]<>bpb.daten[wordno+2]THEN LEAVE bpbungueltigWITH FALSE FI PER ;TRUE 
+.versuchepseudobpbzuverwenden:lieserstenfatsektor;IF 
+fatsektorgueltigundpseudobpbvorhandenTHEN pseudobpbladenELSE errorstop(
+"Format unbekannt")FI .lieserstenfatsektor:checkrerun;readblock(bpbds,2,1,
+return);IF return<>0THEN lesefehler(return)FI .
+fatsektorgueltigundpseudobpbvorhanden:TEXT VAR fatstart:="1234";replace(
+fatstart,1,bpb.daten[1]);replace(fatstart,2,bpb.daten[2]);(fatstartSUB 2)="�"
+CAND (fatstartSUB 3)="�"CAND pseudobpbvorhanden.pseudobpbvorhanden:pos("��",
+fatstartSUB 1)>0.pseudobpbladen:INT VAR i;FOR iFROM 1UPTO 15REP bpb.daten[i]
+:=bpbpufferISUB iPER .bpbpuffer:IF pseudobpbname="�"THEN bpbtype255ELSE 
+bpbtype254FI .pseudobpbname:fatstartSUB 1.ueberpruefebpbaufgueltigkeit:IF 
+bytespersector<>512THEN errorstop(
+"DOS Format nicht implementiert (unzulässige Sektorgröße)")FI ;IF (fatsectors
+>64)THEN errorstop("ungültige DOS Disk (BPB)")FI .
+globalevariableninitialisieren:sectorspertrack:=bpbbyte(25)*256+bpbbyte(24);
+heads:=bpbbyte(27)*256+bpbbyte(26);beginofdataarea:=real(reservedsectors+
+fatcopies*fatsectors+dirsectors).dumpschreiben:dump("Sektoren pro Cluster",
+sectorspercluster);dump("Fat Kopien          ",fatcopies);dump(
+"Dir Sektoren        ",dirsectors);dump("Media Descriptor    ",
+mediadescriptor);dump("Sektoren pro Fat    ",fatsectors);dump(
+"Fat Anfang (0)      ",beginoffat(0));dump("Fat Einträge        ",fatentrys);
+dump("Dir Anfang          ",beginofdir).END PROC opendosdisk;PROC lesefehler(
+INT CONST fehlercode):errorstop(fehlertext).fehlertext:SELECT fehlercodeOF 
+CASE 1:"Diskettenlaufwerk nicht betriebsbereit"CASE 2:"Lesefehler"OTHERWISE 
+"Lesefehler "+text(fehlercode)END SELECT .END PROC lesefehler;TEXT VAR 
+konvertierpuffer:="12";INT PROC bpbbyte(INT CONST byteno):replace(
+konvertierpuffer,1,bpb.daten[bytenoDIV 2+1]);code(konvertierpufferSUB 
+pufferpos).pufferpos:IF evenbytenoTHEN 1ELSE 2FI .evenbyteno:(bytenoMOD 2)=0.
+END PROC bpbbyte;INT PROC bytespersector:bpbbyte(12)*256+bpbbyte(11)END PROC 
+bytespersector;INT PROC sectorspercluster:bpbbyte(13)END PROC 
+sectorspercluster;INT PROC reservedsectors:bpbbyte(15)*256+bpbbyte(14)END 
+PROC reservedsectors;INT PROC fatcopies:bpbbyte(16)END PROC fatcopies;INT 
+PROC dirsectors:direntrysDIV direntryspersector.direntrys:bpbbyte(18)*256+
+bpbbyte(17).direntryspersector:16.END PROC dirsectors;REAL PROC dossectors:
+real(bpbbyte(20))*256.0+real(bpbbyte(19))END PROC dossectors;INT PROC 
+mediadescriptor:bpbbyte(21)END PROC mediadescriptor;INT PROC fatsectors:
+bpbbyte(23)*256+bpbbyte(22)END PROC fatsectors;INT PROC beginoffat(INT CONST 
+fatcopyno):reservedsectors+fatcopyno*fatsectorsEND PROC beginoffat;INT PROC 
+fatentrys:anzahldatencluster+2.anzahldatencluster:int((dossectors-
+tabellensektoren)/real(sectorspercluster)).tabellensektoren:real(
+reservedsectors+fatcopies*fatsectors+dirsectors).END PROC fatentrys;INT PROC 
+beginofdir:reservedsectors+fatcopies*fatsectors.END PROC beginofdir;REAL 
+PROC beginofcluster(REAL CONST clusterno):beginofdataarea+(clusterno-2.0)*
+real(sectorspercluster)END PROC beginofcluster;INT PROC clustersize:512*
+sectorsperclusterEND PROC clustersize;BOOL PROC bpbexists(INT CONST no):
+exists("bpb ds")AND no>0AND no<4.END PROC bpbexists;PROC writebpb(INT CONST 
+no):INT VAR return;writeblock(old("bpb ds"),no+1,0,0,return);IF return<>0
+THEN errorstop("Schreibfehler")FI .END PROC writebpb;INT PROC eublock(INT 
+CONST dosblockno):IF hdversionTHEN dosblocknoELSE dosblocknofloppyformatFI .
+dosblocknofloppyformat:IF pageformatTHEN head*eusectorsperhead+trac*eusectors
++sectorELSE head*eusectors+trac*abs(euheads)*eusectors+sectorFI .pageformat:
+euheads<0.sector:dosblocknoMOD sectorspertrack.trac:(dosblocknoDIV 
+sectorspertrack)DIV heads.head:(dosblocknoDIV sectorspertrack)MOD heads.
+eusectorsperhead:eusectors*eutracks.eusectors:eulastsector-eufirstsector+1.
+END PROC eublock;INT PROC eublock(REAL CONST dosblockno):eublock(lowword(
+dosblockno)).END PROC eublock;PROC bpbdumpmodus(BOOL CONST status):
+bpbdumpflag:=statusEND PROC bpbdumpmodus;END PACKET dosdisk;
+

@@ -1,0 +1,516 @@
+PACKET ispidadefinierenDEFINES druckausgabeeingangaufbauenundeinlesen,
+druckausgabeeingangeinlesen,druckausgabeaufbauenundeinlesen,
+druckausgabeeinlesen,druckausgabeausgebenundbearbeiten,druckausgabespeichern,
+druckausgabeneueinfuegen,druckausgabeloeschenvorbereiten,
+druckausgabeloeschfrage,druckausgabeloeschen,
+druckausgabelisteaufbauenundeinlesen,druckausgabelisteeinlesen,
+ausgesuchtedruckausgabeausgebenundbearbeiten,ausgesuchtedruckausgabeeinlesen,
+ausgesuchtedruckausgabeloeschenvorbereiten,ausgesuchtedruckausgabeloeschfrage
+,listederdruckausgabenzeigen,listederdruckausgabeneinlesen,
+indruckausgabenblaettern,inselektionenzurdruckausgabeblaettern,
+inregelzurdruckausgabeblaettern,zurueckzurbearbeitung,formularausdrucken,
+setzenummerderdruckausgabe,nochmeldungauszugeben,pruefungida,:LET filenamezug
+="Hilfsdatei.Zugriff",filenamesel="Hilfsdatei.Selektion",#filenamedruck=
+"Hilfsdatei.Druck",#filenameform="FORMTEXT.",filenamedata="FORMDATA.";LET 
+maskenzusatz=" für Druckausgabe ";LET nameundtyp=1,objektklassen=2,#
+datenvorrat=3,#zugriffsregeln=4,selektion=5,druckformular=6,druckvariablen=7,
+druckwerte=8,druckdefinition=9;LET ntnummer=2,ntname=3;LET oleitobjekt=2;LET 
+zobjklasse=2,zregelnr=3,zobjklname=4,znummer=5,zersterzugriff=6,
+zerstervergleich=7;LET sersteselektion=2,serstervergleich=3;LET dvnummer=2,
+dvdefinition=3,dvlaenge=4,dvrechtsbuendig=5;LET dwschriftart=2,
+dwlinkerrandoben=3,dwlinkerrandlinks=4,dwzeilenproseite=5,dwzeichenprozeile=6
+;LET minanfang=1.0,maxanfang=10.0;LET ankreuzzeichen="x",anzahltrenner="<?>",
+namentrenner="<#>",zeilennrtrenner="<!>",vergleichtrenner="</>",vartrenner=
+"%",trenner=". ",leitobjektschueler="Schüler",leitobjektlehrer="Lehrer",#
+gueltigerstatus="nw",#niltext="",semikolon=";"#oblitrenner="$"#;LET 
+leitobjekt=1,vorwaerts=1#rueckwaerts=2#;LET tl=3,maxzugriffe=16,
+maxselektionen=17,maxobjektklassen=10;LET fnrerstesausgabefeld=2,
+anzmaskeneing=2,anzmaskenbearb=9,anzmaskentitel=9;LET meldunglistenerstellung
+=7,meldungalternative=56,meldungplausipruefung=57,meldungloeschfrage=65,
+meldungkeineliste=68,meldungkeinblaettern=72,meldungformdrucken=219,
+meldungfalscheeingabe=204,meldungdgibtesschon=205,meldungdgibtesnicht=206,
+meldungfalschenummer=207,meldungfalschesobjekt=208,meldungsammelndruckdef=209
+,meldungdruckendruckdef=210,meldungrgibtesschon=211,meldungrgibtesnicht=212,
+meldungvgibtesschon=213,meldungvgibtesnicht=214,meldungkeinleitobjekt=215,
+meldungfalscheregel=217,meldungfalschevariable=218,meldungkeinefonttabelle=
+250,meldungkeineobjektklasse=251;BOOL VAR loeschenderdruckausgabe:=FALSE ,
+neuedruckausgabe:=FALSE ,neuedruckvariable:=FALSE ,neuezugriffsregel:=FALSE ,
+druckenderdefinition:=FALSE ,druckvariablegibtesbereits:=FALSE ,
+zugriffsregelgibtesbereits:=FALSE ;BOOL VAR drvrechtsbuendig,drvdruckvar;
+FILE VAR f;INT VAR fnrletztesausgabefeld:=100,fehlseite:=0,fehlzeile:=0,
+fehlmeld:=0;INT VAR startpos,datenseite,merkzeile,anzahlderdateizeilen,
+leseanfangindatei,fnummer,zeilennr,nrdruckausgabe,anzfelder,dnr,zuwas;INT 
+VAR regelnr,regnr,objklasse;INT VAR zrregel,zrobjekt,zrindex,zranzahl;INT 
+VAR drvlaenge;ROW anzmaskenbearbINT VAR letztesmaskenfeld:=ROW anzmaskenbearb
+INT :(3,11,100,52,35,100,5,6,100);ROW anzmaskeneingTEXT VAR eingangsmaske:=
+ROW anzmaskeneingTEXT :("mdr name und typ der druckausgabe",
+"mdr objektklasse waehlen eingang");ROW anzmaskenbearbTEXT VAR bearbmaske:=
+ROW anzmaskenbearbTEXT :("mdr name und typ der druckausgabe",
+"mdr objektklasse waehlen bearb","","mdr zugriffsregeln bearb",
+"mdr selektionsbedingung bearb","","mdr variablen definieren bearb",
+"mdr werte fuer druckausgabe festlegen bearb",
+"mdr objektklasse waehlen eingang");ROW anzmaskentitelTEXT VAR 
+maskentiteleingang:=ROW anzmaskentitelTEXT :("Name und Nummer definieren",
+"Objektklassen wählen","Datenvorrat festlegen","Zugriffsregeln bearbeiten",
+"Selektionsbedingungen angeben","Druckformular editieren",
+"Druckvariablen definieren","Werte für Druckaufbereitung",
+"Definition ausdrucken");ROW 100TEXT VAR erfassungsfeld;TAG VAR maske;BOOL 
+VAR gespeichert:=FALSE ;TEXT VAR sfeldname,svergleichswert;TEXT VAR 
+filenameformtp:="DUMMY";TEXT VAR meldungstext:="",nummerderdruckausgabe:="",
+pattern,zeile,programmname;PROC druckausgabeeingangaufbauenundeinlesen(INT 
+CONST was):systemdboff;drvdruckvar:=ruecksprung;loeschenderdruckausgabe:=
+FALSE ;setzedruckausgabelistenauswahl(FALSE );
+setzelistederdruckausgabengezeigt(FALSE );fehlseite:=1;fehlzeile:=1;fehlmeld
+:=0;init(erfassungsfeld);startpos:=fnrerstesausgabefeld;zuwas:=was;
+programmname:=maskentiteleingang[zuwas];eingangsmaskeinitialisieren;
+felderausgebenundeinlesen;.eingangsmaskeinitialisieren:IF zuwas=1THEN 
+initmaske(maske,eingangsmaske[1])ELSE initmaske(maske,eingangsmaske[2])FI ;
+nummerderdruckausgabe:=niltext;setzeaktuellemaske(maske).
+felderausgebenundeinlesen:IF zuwas=1THEN standardstartproc(eingangsmaske[1])
+ELSE standardstartproc(eingangsmaske[2])FI ;fnrletztesausgabefeld:=
+letztesmaskenfeld[zuwas];feldschutzfestlegen(fnrerstesausgabefeld+1);
+loeschfeldverdecken;eventuellmeldungausgeben;get(maske,erfassungsfeld,
+startpos);nummerderdruckausgabe:=erfassungsfeld[fnrerstesausgabefeld];
+standardmaskenfeld(nummerderdruckausgabe,fnrerstesausgabefeld).END PROC 
+druckausgabeeingangaufbauenundeinlesen;PROC druckausgabeeingangeinlesen(INT 
+CONST was):putget(maske,nummerderdruckausgabe,fnrerstesausgabefeld);END PROC 
+druckausgabeeingangeinlesen;PROC druckausgabeaufbauenundeinlesen(INT CONST 
+was):IF ruecksprungTHEN bearbeitungsbildschirmausgeben(PROC 
+erneuteeingabeerforderlich)ELSE eingangsbildschirmueberpruefen(PROC 
+erneuteeingabeerforderlich)FI END PROC druckausgabeaufbauenundeinlesen;PROC 
+druckausgabeeinlesen(INT CONST was):IF was=druckformularTHEN editiere(
+filenameformtp,FALSE )ELSE get(maske,erfassungsfeld,startpos);
+standardfelderfuellen;FI END PROC druckausgabeeinlesen;PROC 
+druckausgabeausgebenundbearbeiten(INT CONST was):zuwas:=was;loeschemeldung(
+aktuellemaske);loeschenderdruckausgabe:=FALSE ;neuedruckausgabe:=FALSE ;
+SELECT wasOF CASE zugriffsregeln:neuezugriffsregel:=FALSE ;
+zugriffsregelueberpruefenCASE druckvariablen:neuedruckvariable:=FALSE ;
+druckvariableueberpruefenCASE druckdefinition:eingangsbildschirmueberpruefen(
+PROC druckdefinitiondrucken)OTHERWISE :zurueck;eingangsbildschirmueberpruefen
+(PROC maskenwertezeigenundbearbeiten)END SELECT ;.END PROC 
+druckausgabeausgebenundbearbeiten;PROC druckausgabespeichern(BOOL CONST 
+speichern,INT CONST was):IF speichernTHEN angabenabspeichern(was);gespeichert
+:=TRUE ELSE gespeichert:=FALSE ;meldungstext:=("Die Angaben "+
+meldungseinschub+" wurden nicht gespeichert ");hilfsfilesloeschen;IF NOT 
+druckausgabelistenauswahl#dr01.08.88#THEN forget(getformtextname,quiet);
+forget(filenameformtp,quiet)FI ;eventuellmeldungbeilistenabarbeitungFI ;
+stopbeifalschemnamen(TRUE )END PROC druckausgabespeichern;PROC 
+druckausgabeneueinfuegen(INT CONST was):loeschemeldung(aktuellemaske);
+loeschenderdruckausgabe:=FALSE ;SELECT wasOF CASE nameundtyp:neuedruckausgabe
+:=TRUE ;eingangsbildschirmueberpruefen(PROC maskenwertezeigenundbearbeiten)
+CASE zugriffsregeln:neuezugriffsregel:=TRUE ;zugriffsregelueberpruefenCASE 
+druckvariablen:neuedruckvariable:=TRUE ;druckvariableueberpruefenOTHERWISE :
+rueckschrittevorproc(2)END SELECT END PROC druckausgabeneueinfuegen;PROC 
+druckausgabeloeschenvorbereiten(INT CONST was):loeschemeldung(aktuellemaske);
+loeschenderdruckausgabe:=TRUE ;SELECT wasOF CASE nameundtyp:neuedruckausgabe
+:=FALSE ;eingangsbildschirmueberpruefen(PROC maskenwertezeigenundbearbeiten)
+CASE zugriffsregeln:neuezugriffsregel:=FALSE ;zugriffsregelueberpruefenCASE 
+druckvariablen:neuedruckvariable:=FALSE ;druckvariableueberpruefenOTHERWISE :
+rueckschrittevorproc(2)END SELECT ;END PROC druckausgabeloeschenvorbereiten;
+PROC druckausgabeloeschfrage:TEXT VAR xy;meldeauffaellig(aktuellemaske,
+meldungloeschfrage);startpos:=letztesmaskenfeld[zuwas]+1;get(maske,xy,
+startpos).END PROC druckausgabeloeschfrage;PROC druckausgabeloeschen(BOOL 
+CONST loeschen,INT CONST was):IF loeschenTHEN meldungstext:=("Die Angaben "+
+meldungseinschub+" wurden gelöscht ");angabenloeschen(was);ELSE meldungstext
+:=("Die Angaben "+meldungseinschub+" wurden nicht gelöscht ");
+hilfsfilesloeschen;FI ;loeschenderdruckausgabe:=FALSE ;
+eventuellmeldungbeilistenabarbeitung;END PROC druckausgabeloeschen;PROC 
+druckausgabelisteaufbauenundeinlesen(INT CONST was):
+setzedruckausgabelistenauswahl(FALSE );SELECT wasOF CASE nameundtyp:
+druckausgabenlistezeigenCASE zugriffsregeln:listederregelnzeigenCASE 
+druckvariablen:listederdruckvariablenzeigenEND SELECT ;IF (was=nameundtypAND 
+listederdruckausgabengezeigt)OR ((was=zugriffsregelnOR was=druckvariablen)
+AND druckausgabelistenauswahl)THEN druckausgabelisteeinlesen(was);FI .
+listederregelnzeigen:loeschemeldung(aktuellemaske);IF erlaubteregeleingabeOR 
+regelleerTHEN regellistezeigenELSE meldeauffaellig(aktuellemaske,
+meldungfalscheregel);return(1);LEAVE druckausgabelisteaufbauenundeinlesenFI .
+regelleer:erfassungsfeld[zobjklasse]=niltextAND erfassungsfeld[zregelnr]=
+niltext.listederdruckvariablenzeigen:loeschemeldung(aktuellemaske);IF 
+erlaubtevariableneingabeOR druckvariableleerTHEN variablenlistezeigenELSE 
+meldeauffaellig(aktuellemaske,meldungfalschevariable);return(1);LEAVE 
+druckausgabelisteaufbauenundeinlesenFI .druckvariableleer:erfassungsfeld[
+dvnummer]=niltext.END PROC druckausgabelisteaufbauenundeinlesen;PROC 
+druckausgabelisteeinlesen(INT CONST was):infeld(fnrerstesausgabefeld);
+standardnproc;maskenwertesichern;END PROC druckausgabelisteeinlesen;PROC 
+ausgesuchtedruckausgabeausgebenundbearbeiten(INT CONST was):
+behandlungderausgesuchten(PROC (INT CONST )druckausgabeausgebenundbearbeiten,
+erfassungsfeld,was);END PROC ausgesuchtedruckausgabeausgebenundbearbeiten;
+PROC ausgesuchtedruckausgabeeinlesen(INT CONST welche):druckausgabeeinlesen(
+welche)END PROC ausgesuchtedruckausgabeeinlesen;PROC 
+ausgesuchtedruckausgabeloeschenvorbereiten(INT CONST was):
+behandlungderausgesuchten(PROC (INT CONST )druckausgabeloeschenvorbereiten,
+erfassungsfeld,was);END PROC ausgesuchtedruckausgabeloeschenvorbereiten;PROC 
+ausgesuchtedruckausgabeloeschfrage:druckausgabeloeschfrageEND PROC 
+ausgesuchtedruckausgabeloeschfrage;PROC listederdruckausgabenzeigen:BOOL VAR 
+listeexistiertnicht:=FALSE ;loeschemeldung(aktuellemaske);
+nummerderdruckausgabe:=erfassungsfeld[fnrerstesausgabefeld];
+standardmaskenfeld(nummerderdruckausgabe,fnrerstesausgabefeld);IF 
+nummerinrichtigengrenzen(nummerderdruckausgabe)OR nummerderdruckausgabe=
+niltextTHEN #putkeypart(niltext);putdatapart(niltext);##vorläufig14.03.88#
+pruefenobdruckausgabenexistierenELSE meldeauffaellig(aktuellemaske,
+meldungfalschenummer);rueckschrittenachproc(1)FI .
+pruefenobdruckausgabenexistieren:meldeauffaellig(aktuellemaske,
+meldunglistenerstellung);putwert(fnridanummer,nummerderdruckausgabe);
+objektlistestarten(dnrida,standardmaskenfeld(fnrerstesausgabefeld),
+fnridanummer,TRUE ,listeexistiertnicht);IF listeexistiertnichtTHEN 
+meldeauffaellig(aktuellemaske,meldungkeineliste);rueckschrittenachproc(1)
+ELSE druckausgabelisteaufbauenundeinlesen(nameundtyp)FI .END PROC 
+listederdruckausgabenzeigen;PROC listederdruckausgabeneinlesen:
+druckausgabelisteeinlesen(nameundtyp)END PROC listederdruckausgabeneinlesen;
+PROC indruckausgabenblaettern(INT CONST wie,worin):inlisteblaettern(wie);IF 
+ruecksprungTHEN meldeauffaellig(aktuellemaske,meldungkeinblaettern);FI ;
+return(1)END PROC indruckausgabenblaettern;PROC 
+inselektionenzurdruckausgabeblaettern(INT CONST wie):loeschemeldung(
+aktuellemaske);selektionenindateieintragen(leseanfangindatei,erfassungsfeld);
+datenseiteraufoderrunter(wie);IF maxselektionen*(datenseite-1)>=
+anzahlderdateizeilenOR datenseite=0THEN meldeauffaellig(aktuellemaske,
+meldungkeinblaettern);datenseiterunteroderrauf(wie)ELSE 
+selektionenzeigenvorbereiten(datenseite);FI ;put(maske,erfassungsfeld,
+letztesmaskenfeld[zuwas]);startpos:=serstervergleich;rueckschrittenachproc(1)
+;END PROC inselektionenzurdruckausgabeblaettern;PROC 
+inregelzurdruckausgabeblaettern(INT CONST wie):loeschemeldung(aktuellemaske);
+zugriffsregelnindateieintragen(leseanfangindatei,erfassungsfeld);
+datenseiteraufoderrunter(wie);IF maxzugriffe*(datenseite-1)>=
+anzahlderdateizeilenOR datenseite=0THEN meldeauffaellig(aktuellemaske,
+meldungkeinblaettern);datenseiterunteroderrauf(wie)ELSE 
+zugriffezeigenvorbereiten(datenseite)FI ;put(maske,erfassungsfeld,
+letztesmaskenfeld[zuwas]);startpos:=zerstervergleich;rueckschrittenachproc(1)
+END PROC inregelzurdruckausgabeblaettern;INT PROC nochmeldungauszugeben:IF 
+meldungstext=niltextTHEN 0ELSE meldungstext:=niltext;IF gespeichertTHEN 191
+ELSE 195FI FI END PROC nochmeldungauszugeben;PROC setzenummerderdruckausgabe(
+TEXT CONST nr):nummerderdruckausgabe:=nrEND PROC setzenummerderdruckausgabe;
+BOOL PROC pruefungida:FALSE END PROC pruefungida;PROC zurueckzurbearbeitung(
+INT CONST anzahl):zurueck;setzedruckausgabelistenauswahl(FALSE );init(
+erfassungsfeld);enter(anzahl)END PROC zurueckzurbearbeitung;PROC 
+formularausdrucken:standardmeldung(meldungformdrucken,niltext);changeinfile(
+filenameformtp,"#","\#");print(filenameformtp);changeinfile(filenameformtp,"\#"
+,"#");rueckschrittenachproc(1)END PROC formularausdrucken;PROC 
+druckvariableueberpruefen:IF erlaubtevariableneingabeTHEN 
+standardkopfmaskeaktualisieren(programmname);IF druckausgabelistenauswahl
+THEN initmaske(maske,bearbmaske[zuwas]);setzeaktuellemaske(maske);show(
+aktuellemaske);loeschfeldverdecken;FI ;IF existenzdervariablennotwendigTHEN 
+fehlerbehandlung;rueckschrittenachproc(1)ELSE maskenwertezeigenundbearbeiten;
+FI ELSE meldeauffaellig(aktuellemaske,meldungfalschevariable);startpos:=
+fnrerstesausgabefeld;rueckschrittenachproc(1)FI .
+existenzdervariablennotwendig:(neuedruckvariableAND 
+druckvariableexistiertschon)OR (NOT neuedruckvariableAND NOT 
+druckvariableexistiertschon).druckvariableexistiertschon:getsteuercode(int(
+erfassungsfeld[dvnummer]),erfassungsfeld[dvdefinition],drvlaenge,
+drvrechtsbuendig,drvdruckvar);druckvariablegibtesbereits:=erfassungsfeld[
+dvdefinition]<>niltext;erfassungsfeld[dvdefinition]<>niltext.fehlerbehandlung
+:IF neuedruckvariableAND druckvariableexistiertschonTHEN meldeauffaellig(
+aktuellemaske,meldungvgibtesschon)ELSE meldeauffaellig(aktuellemaske,
+meldungvgibtesnicht)FI .END PROC druckvariableueberpruefen;PROC 
+eingangsbildschirmueberpruefen(PROC wasweiter):BOOL VAR 
+druckausgabegibtesschon:=druckausgabeexistiertbereits;IF eingangsbildschirmok
+THEN IF listederdruckausgabengezeigtTHEN nummerderdruckausgabesetzen(
+nummerderdruckausgabe);druckausgabegibtesschon:=druckausgabeexistiertbereits
+FI ;getform(int(nummerderdruckausgabe));openformular(int(
+nummerderdruckausgabe));init(erfassungsfeld);angegebenedruckausgabebearbeiten
+ELSE fehlerbehandlung1;rueckschrittenachproc(1)FI .eingangsbildschirmok:IF 
+listederdruckausgabengezeigtTHEN nureinedruckausgabeangekreuztELSE 
+nummerinrichtigengrenzen(nummerderdruckausgabe)FI .fehlerbehandlung1:IF 
+listederdruckausgabengezeigtTHEN meldeauffaellig(aktuellemaske,
+meldungalternative)ELSE meldeauffaellig(aktuellemaske,meldungfalschenummer)
+FI .angegebenedruckausgabebearbeiten:IF existenzderdruckausgabenoetigTHEN IF 
+zuwas=druckdefinitionTHEN #wasweiterersetztdr16.12.87#
+bearbeitungsbildschirmausgeben(PROC wasweiter);ELIF zuwas=selektionAND 
+getobjektklasse(leitobjekt)=niltextTHEN meldeauffaellig(aktuellemaske,
+meldungkeinleitobjekt);rueckschrittenachproc(1)ELSE saveupdateposition(dnrida
+);bearbeitungsbildschirmausgeben(PROC wasweiter);FI ELSE fehlerbehandlung2;
+rueckschrittenachproc(1)FI .existenzderdruckausgabenoetig:(
+druckausgabegibtesschonAND NOT neuedruckausgabe)OR (NOT 
+druckausgabegibtesschonAND neuedruckausgabe).fehlerbehandlung2:IF NOT 
+druckausgabegibtesschonAND NOT neuedruckausgabeTHEN meldeauffaellig(
+aktuellemaske,meldungdgibtesnicht);forget(filenameform+text(getactivformular)
+,quiet);forget(filenamedata+text(getactivformular),quiet)ELIF 
+druckausgabegibtesschonAND neuedruckausgabeTHEN meldeauffaellig(aktuellemaske
+,meldungdgibtesschon)FI ;.END PROC eingangsbildschirmueberpruefen;BOOL PROC 
+druckausgabeexistiertbereits:#putkeypart(niltext);putdatapart(niltext);##
+vorläufig14.03.88#inittupel(dnrida);putwert(fnridanummer,
+nummerderdruckausgabe);search(dnrida,TRUE );dbstatus=okEND PROC 
+druckausgabeexistiertbereits;PROC bearbeitungsbildschirmausgeben(PROC 
+wasweiter):programmname:=maskentiteleingang[zuwas]+maskenzusatz+
+nummerderdruckausgabe;standardkopfmaskeaktualisieren(programmname);
+bearbeitungsmaskeausgeben;eventuellmeldungausgeben;wasweiter.
+bearbeitungsmaskeausgeben:initmaske(maske,bearbmaske[zuwas]);
+setzeaktuellemaske(maske);fnrletztesausgabefeld:=letztesmaskenfeld[zuwas];
+show(aktuellemaske);loeschfeldverdecken;getform(int(nummerderdruckausgabe));
+openformular(int(nummerderdruckausgabe)).END PROC 
+bearbeitungsbildschirmausgeben;PROC zugriffsregelueberpruefen:IF 
+erlaubteregeleingabeTHEN standardkopfmaskeaktualisieren(programmname);IF 
+druckausgabelistenauswahlTHEN initmaske(maske,bearbmaske[zuwas]);
+setzeaktuellemaske(maske);show(aktuellemaske);loeschfeldverdeckenFI ;IF 
+existenzderregelnotwendigTHEN fehlerbehandlung;rueckschrittenachproc(1)ELSE 
+maskenwertezeigenundbearbeiten;FI ELSE #dr02.05.88#IF falscheregelTHEN 
+meldeauffaellig(aktuellemaske,meldungfalscheregel)ELIF 
+esexistiertkeineobjektklasseTHEN meldeauffaellig(aktuellemaske,
+meldungkeineobjektklasse)FI ;startpos:=fnrerstesausgabefeld;
+rueckschrittenachproc(1)FI .existenzderregelnotwendig:(neuezugriffsregelAND 
+zugriffsregelexistiertschon)OR (NOT neuezugriffsregelAND NOT 
+zugriffsregelexistiertschon).zugriffsregelexistiertschon:objklasse:=int(
+erfassungsfeld[zobjklasse]);regnr:=int(erfassungsfeld[zregelnr]);regelnr:=
+getregelnummer(objklasse,regnr);zugriffsregelgibtesbereits:=regelnr>0;regelnr
+>0.fehlerbehandlung:IF neuezugriffsregelAND zugriffsregelexistiertschonTHEN 
+meldeauffaellig(aktuellemaske,meldungrgibtesschon)ELSE meldeauffaellig(
+aktuellemaske,meldungrgibtesnicht)FI .falscheregel:erfassungsfeld[zobjklasse]
+=niltextCOR erfassungsfeld[zregelnr]=niltext.esexistiertkeineobjektklasse:
+erfassungsfeld[zobjklasse]<>niltext#dr02.05.88#CAND int(erfassungsfeld[
+zobjklasse])<=10CAND getobjektklasse(int(erfassungsfeld[zobjklasse]))=niltext
+.END PROC zugriffsregelueberpruefen;PROC erneuteeingabeerforderlich:
+allefeldersperren(FALSE );feldschutzfuerbearbeitungfestlegen(zuwas);startpos
+:=fnrerstesausgabefeld;put(maske,erfassungsfeld,letztesmaskenfeld[zuwas]);
+druckausgabeeinlesen(zuwas)END PROC erneuteeingabeerforderlich;PROC 
+angabenabspeichern(INT CONST was):INT VAR lvf;TEXT VAR txt;fehlseite:=1;
+fehlzeile:=1;fehlmeld:=0;SELECT wasOF CASE nameundtyp:nameundtypspeichern
+CASE objektklassen:objektklassenspeichernCASE zugriffsregeln:
+zugriffsregelspeichernCASE selektion:selektionspeichernCASE druckformular:
+druckformularspeichernCASE druckvariablen:druckvariablespeichernCASE 
+druckwerte:druckwertespeichernEND SELECT ;meldungstext:=("Die Angaben "+
+meldungseinschub+" wurden gespeichert ");eventuellmeldungbeilistenabarbeitung
+#dr01.08.88#.nameundtypspeichern:meldeauffaellig(aktuellemaske,
+meldungplausipruefung);IF nameundtypok(erfassungsfeld,fnummer)THEN 
+putformularinfo(erfassungsfeld[ntname],int(erfassungsfeld[ntnummer]),FALSE );
+nameundtypindbeintragen;sichernundhilfsfilesloeschenELSE 
+meldefehlernameundtyp;startpos:=fnummer;rueckschrittenachproc(1);LEAVE 
+angabenabspeichernFI .nameundtypindbeintragen:putwert(fnridanummer,
+erfassungsfeld[ntnummer]);putwert(fnridaname,erfassungsfeld[ntname]);IF 
+neuedruckausgabeTHEN insert(dnrida)ELSE restoreupdateposition(dnrida);update(
+dnrida)FI .objektklassenspeichern:meldeauffaellig(aktuellemaske,
+meldungplausipruefung);IF objektklassenzugelassenTHEN FOR lvfFROM 1UPTO 
+maxobjektklassenREP putobjektklasse(lvf,erfassungsfeld[lvf+1])PER ;
+sichernundhilfsfilesloeschenELSE meldeauffaellig(aktuellemaske,
+meldungfalschesobjekt);startpos:=lvf+1;rueckschrittenachproc(1);LEAVE 
+angabenabspeichernFI .objektklassenzugelassen:IF 
+leitobjektklasseleeroderungueltigTHEN lvf:=1;LEAVE objektklassenzugelassen
+WITH FALSE FI ;stopbeifalschemnamen(FALSE );FOR lvfFROM 1UPTO 
+maxobjektklassenREP IF erfassungsfeld[lvf+1]<>niltextTHEN IF 
+objektklassekeindateinameTHEN LEAVE objektklassenzugelassenWITH FALSE FI FI 
+PER ;stopbeifalschemnamen(TRUE );TRUE .leitobjektklasseleeroderungueltig:
+erfassungsfeld[oleitobjekt]=niltextCOR (pos(leitobjektschueler,erfassungsfeld
+[oleitobjekt])=0AND pos(leitobjektlehrer,erfassungsfeld[oleitobjekt])=0).
+objektklassekeindateiname:dateinr(erfassungsfeld[lvf+1])=0.
+zugriffsregelspeichern:zugriffsregelnindateieintragen(leseanfangindatei,
+erfassungsfeld);meldeauffaellig(aktuellemaske,meldungplausipruefung);IF 
+zugriffsregelnok(fehlseite,fehlzeile,fehlmeld)THEN zugriffsregelnabspeichern;
+sichernundhilfsfilesloeschenELSE stopbeifalschemnamen(TRUE );datenseite:=
+fehlseite;zugriffezeigenvorbereiten(datenseite);put(maske,erfassungsfeld,
+letztesmaskenfeld[zuwas]);meldeauffaellig(aktuellemaske,fehlmeld);startpos:=
+fehlzeile+((fehlzeile+2)*2);rueckschrittenachproc(1);LEAVE angabenabspeichern
+FI .zugriffsregelnabspeichern:wertesetzenbeineuerzugriffsregel;
+erstenvergleichsuchenundindexsetzen;zugriffsregelundvergleichswertespeichern.
+wertesetzenbeineuerzugriffsregel:IF neuezugriffsregelTHEN regelnr:=
+getanzahlregeln+1;zrobjekt:=objklasse;zrregel:=regnr;ELSE FI .
+erstenvergleichsuchenundindexsetzen:pattern:=vergleichtrenner;toline(f,1);
+readrecord(f,zeile);IF pos(zeile,pattern)=0THEN down(f,pattern);readrecord(f,
+zeile);FI ;zrindex:=int(subtext(zeile,1,pos(zeile,anzahltrenner)-1)).
+zugriffsregelundvergleichswertespeichern:putzugriffsregel(regelnr,zrobjekt,
+zrregel,zrindex,0);WHILE pos(zeile,vergleichtrenner)>0REP putvergleichswert(
+regelnr,subtext(zeile,pos(zeile,vergleichtrenner)+tl));toline(f,lineno(f)+1);
+readrecord(f,zeile);PER .selektionspeichern:selektionenindateieintragen(
+leseanfangindatei,erfassungsfeld);meldeauffaellig(aktuellemaske,
+meldungplausipruefung);IF selektionswerteok(dnr,fehlseite,fehlzeile,fehlmeld)
+THEN selektionenabspeichern;sichernundhilfsfilesloeschenELSE datenseite:=
+fehlseite;selektionenzeigenvorbereiten(datenseite);put(maske,erfassungsfeld,
+letztesmaskenfeld[zuwas]);meldeauffaellig(aktuellemaske,fehlmeld);startpos:=(
+fehlzeile*2)+1;rueckschrittenachproc(1);LEAVE angabenabspeichernFI .
+selektionenabspeichern:putanzahlselfelder(0);FOR lvfFROM 1UPTO anzattr(dnr)
+REP toline(f,lvf);readrecord(f,zeile);sfeldname:=subtext(zeile,1,pos(zeile,
+zeilennrtrenner)-1);svergleichswert:=subtext(zeile,pos(zeile,vergleichtrenner
+)+tl);putselektion(sfeldname,svergleichswert)PER .druckformularspeichern:
+standardmeldung(meldungplausipruefung,niltext);forget(getformtextname,quiet);
+copy(filenameformtp,getformtextname);IF fehlerinformularTHEN formfehlermelden
+;rueckschrittenachproc(1);LEAVE angabenabspeichernELSE forget(filenameformtp,
+quiet);sichernundhilfsfilesloeschenFI .druckvariablespeichern:meldeauffaellig
+(aktuellemaske,meldungplausipruefung);IF fehlerindruckvariable(erfassungsfeld
+[dvdefinition])THEN rueckschrittenachproc(1);LEAVE angabenabspeichernELSE 
+drvdruckvar:=ausdruckwardruckvariable;putsteuercode(int(erfassungsfeld[
+dvnummer]),erfassungsfeld[dvdefinition],int(erfassungsfeld[dvlaenge]),
+erfassungsfeld[dvrechtsbuendig]<>niltext,drvdruckvar);
+sichernundhilfsfilesloeschenFI .druckwertespeichern:meldeauffaellig(
+aktuellemaske,meldungplausipruefung);IF druckwerteokTHEN startpos:=
+fnrerstesausgabefeld;putdruckaufbereitung(erfassungsfeld[dwschriftart],real(
+erfassungsfeld[dwlinkerrandlinks]),real(erfassungsfeld[dwlinkerrandoben]),int
+(erfassungsfeld[dwzeilenproseite]),real(erfassungsfeld[dwzeichenprozeile]));
+sichernundhilfsfilesloeschenELSE IF lvf=0THEN meldeauffaellig(aktuellemaske,
+meldungfalscheeingabe);ELSE meldeauffaellig(aktuellemaske,
+meldungkeinefonttabelle);FI ;rueckschrittenachproc(1);LEAVE 
+angabenabspeichernFI .druckwerteok:lvf:=0;fonttabelleeingestelltCAND 
+fontexistiertauchCAND linkerrandrichtigCAND rechterrandrichtig.
+linkerrandrichtig:startpos:=dwlinkerrandlinks;real(erfassungsfeld[
+dwlinkerrandlinks])>=minanfangCAND real(erfassungsfeld[dwlinkerrandlinks])<=
+maxanfang.rechterrandrichtig:startpos:=dwlinkerrandoben;real(erfassungsfeld[
+dwlinkerrandoben])>=minanfangCAND real(erfassungsfeld[dwlinkerrandoben])<=
+maxanfang.fonttabelleeingestellt:startpos:=dwschriftart;disablestop;txt:=font
+(1);IF iserrorTHEN clearerror;lvf:=1FI ;enablestop;lvf=0.fontexistiertauch:
+startpos:=dwschriftart;font(erfassungsfeld[dwschriftart])>0.END PROC 
+angabenabspeichern;PROC maskenwertezeigenundbearbeiten:IF 
+loeschenderdruckausgabeTHEN allefeldersperren(TRUE );
+maskenwerteholenundausgeben(zuwas);druckausgabeloeschfrageELSE 
+allefeldersperren(FALSE );maskenwerteholenundausgeben(zuwas);
+druckausgabeeinlesen(zuwas)FI ;END PROC maskenwertezeigenundbearbeiten;PROC 
+maskenwerteholenundausgeben(INT CONST wozu):LET maxanzobjektklassen=10;INT 
+VAR feld,nrindex,lvf,lvi;TEXT VAR z,datname;datenseite:=1;SELECT wozuOF CASE 
+nameundtyp:nameundtypzeigenCASE objektklassen:objektklassenzeigenCASE 
+zugriffsregeln:zugriffsregelzeigenCASE selektion:selektionzeigenCASE 
+druckformular:druckformularzeigenCASE druckvariablen:druckvariablezeigenCASE 
+druckwerte:druckwertezeigenEND SELECT ;IF wozu<>druckformularTHEN put(maske,
+erfassungsfeld,letztesmaskenfeld[zuwas]);FI .nameundtypzeigen:BOOL VAR 
+ausgabelistenweise;erfassungsfeld[ntnummer]:=nummerderdruckausgabe;IF NOT 
+neuedruckausgabeTHEN ausgabelistenweise:=FALSE ;getformularinfo(
+erfassungsfeld[ntname],nrdruckausgabe,ausgabelistenweise);FI ;IF 
+neuedruckausgabeTHEN protect(maske,fnrerstesausgabefeld,TRUE )FI ;startpos:=
+fnrerstesausgabefeld+1;.objektklassenzeigen:FOR lvfFROM 1UPTO 
+maxanzobjektklassenREP erfassungsfeld[lvf+1]:=getobjektklasse(lvf)PER ;.
+zugriffsregelzeigen:objektklasseholen;moeglichezugriffezeigen;
+anzahlderdateizeilen:=lines(f);IF zugriffsregelgibtesbereitsTHEN 
+gespeichertezugriffezeigen;FI ;zugriffezeigenvorbereiten(datenseite);startpos
+:=zerstervergleich.moeglichezugriffezeigen:primaerzugriffholen;IF firstindex>
+0THEN sekundaerzugriffeholen;FI ;.primaerzugriffholen:forget(filenamezug,
+quiet);f:=sequentialfile(modify,filenamezug);datname:=erfassungsfeld[
+zobjklname];dnr:=dateinr(datname);anzfelder:=anzkey(dnr);zeilennr:=1;nrindex
+:=0;FOR lvfFROM 1UPTO anzfelderREP feld:=dnr+lvf;zeileindateischreiben;PER ;.
+sekundaerzugriffeholen:FOR lviFROM firstindexUPTO firstfree-1REP IF dateinr(
+primdatid(lvi))=dnrTHEN anzahlderfelderbestimmen;nrindexINCR 1;FOR lvfFROM 1
+UPTO anzfelderREP feld:=dnr+int(subtext(z,1,pos(z,semikolon)-1));z:=subtext(z
+,pos(z,semikolon)+1);zeileindateischreiben;PER ;FI ;PER ;.
+anzahlderfelderbestimmen:z:=zugriff(lvi);INT VAR posi;anzfelder:=0;posi:=pos(
+z,semikolon);WHILE posi>0REP anzfelderINCR 1;posi:=pos(z,semikolon,posi+1)
+PER ;.zeileindateischreiben:zeilezusammensetzen;toline(f,zeilennr);
+insertrecord(f);writerecord(f,zeile);zeilennrINCR 1;.zeilezusammensetzen:IF 
+lvf=1THEN zeile:=text(nrindex)+anzahltrenner;zeileCAT text(anzfelder);zeile
+CAT namentrenner;ELSE zeile:=namentrennerFI ;zeileCAT name(feld);zeileCAT 
+zeilennrtrenner;zeileCAT text(zeilennr);.gespeichertezugriffezeigen:
+gespeichertezugriffeholen;gespeichertezugriffeindateieintragen.
+gespeichertezugriffeholen:IF druckenderdefinitionTHEN regelnr:=
+benoetigteregelFI ;getzugriffsregel(regelnr,zrobjekt,zrregel,zrindex,zranzahl
+);.gespeichertezugriffeindateieintragen:pattern:=text(zrindex)+anzahltrenner;
+toline(f,1);readrecord(f,zeile);IF pos(zeile,pattern)>0THEN zugriffeeintragen
+ELSE down(f,pattern);IF patternfoundTHEN zugriffeeintragenFI FI .
+zugriffeeintragen:zeilennr:=lineno(f);FOR lvfFROM 1UPTO zranzahlREP toline(f,
+zeilennr);readrecord(f,zeile);zeileCAT vergleichtrenner;zeileCAT 
+getvergleichswert(regelnr,lvf);writerecord(f,zeile);zeilennrINCR 1;PER .
+selektionzeigen:forget(filenamesel,quiet);f:=sequentialfile(modify,
+filenamesel);dnr:=dateinr(getobjektklasse(leitobjekt));
+feldnamenindateischreiben;anzahlderdateizeilen:=lines(f);
+gespeicherteselektionenindateischreiben;selektionenzeigenvorbereiten(
+datenseite);startpos:=serstervergleich.feldnamenindateischreiben:FOR lvfFROM 
+1UPTO anzattr(dnr)REP toline(f,lvf);insertrecord(f);zeile:=name(dnr+lvf)+
+zeilennrtrenner+text(lvf)+vergleichtrenner;writerecord(f,zeile);PER .
+gespeicherteselektionenindateischreiben:IF getanzahlselfelder<>0THEN FOR lvf
+FROM 1UPTO getanzahlselfelderREP toline(f,lvf);readrecord(f,zeile);
+getselektion(lvf,sfeldname,svergleichswert);zeileCAT svergleichswert;
+writerecord(f,zeile);PER FI .druckformularzeigen:filenameformtp:=wert(
+fnridanummer)+trenner+wert(fnridaname);forget(filenameformtp,quiet);IF exists
+(getformtextname)THEN copy(getformtextname,filenameformtp)FI ;startpos:=
+fnrerstesausgabefeld.druckvariablezeigen:IF druckvariablegibtesbereitsTHEN 
+protect(maske,dvnummer,TRUE );IF drvlaenge=0THEN erfassungsfeld[dvlaenge]:=
+niltextELSE erfassungsfeld[dvlaenge]:=text(drvlaenge)FI ;IF drvrechtsbuendig
+THEN erfassungsfeld[dvrechtsbuendig]:=ankreuzzeichenELSE erfassungsfeld[
+dvrechtsbuendig]:=niltextFI FI ;startpos:=dvdefinition.druckwertezeigen:REAL 
+VAR linksoben,linkslinks,spalten;INT VAR zeilen;zurueck;getdruckaufbereitung(
+erfassungsfeld[dwschriftart],linkslinks,linksoben,zeilen,spalten);
+erfassungsfeld[dwlinkerrandlinks]:=text(linkslinks);erfassungsfeld[
+dwlinkerrandoben]:=text(linksoben);erfassungsfeld[dwzeilenproseite]:=text(
+zeilen);erfassungsfeld[dwzeichenprozeile]:=subtext(text(spalten),1,pos(text(
+spalten),".")-1);.END PROC maskenwerteholenundausgeben;PROC objektklasseholen
+:erfassungsfeld[zobjklname]:=getobjektklasse(int(erfassungsfeld[zobjklasse]))
+;END PROC objektklasseholen;PROC selektionenzeigenvorbereiten(INT CONST 
+seitennr):bildschirmausgabenselektionsammeln(seitennr);
+selektionsfeldersperren;freizeilenselektionloeschenEND PROC 
+selektionenzeigenvorbereiten;PROC bildschirmausgabenselektionsammeln(INT 
+CONST seitennr):INT VAR lvf;merkzeile:=maxselektionen+1;leseanfangindatei:=(
+seitennr-1)*maxselektionen+1;FOR lvfFROM 1UPTO maxselektionenREP IF lvf+
+leseanfangindatei-1<=anzahlderdateizeilenTHEN toline(f,lvf+leseanfangindatei-
+1);readrecord(f,zeile);erfassungsfeld[sersteselektion+(lvf-1)*2]:=subtext(
+zeile,1,pos(zeile,zeilennrtrenner)-1);IF pos(zeile,vergleichtrenner)>0THEN 
+erfassungsfeld[serstervergleich+(lvf-1)*2]:=subtext(zeile,pos(zeile,
+vergleichtrenner)+tl);FI ;ELSE merkzeile:=lvf;LEAVE 
+bildschirmausgabenselektionsammelnFI PER ;END PROC 
+bildschirmausgabenselektionsammeln;PROC selektionsfeldersperren:INT VAR lvf;
+allefeldersperren(TRUE );FOR lvfFROM 1UPTO maxselektionenREP protect(maske,
+serstervergleich+(lvf-1)*2,FALSE )PER END PROC selektionsfeldersperren;PROC 
+freizeilenselektionloeschen:INT VAR lv;FOR lvFROM merkzeileUPTO 
+maxselektionenREP erfassungsfeld[sersteselektion+(lv-1)*2]:=niltext;
+erfassungsfeld[serstervergleich+(lv-1)*2]:=niltext;protect(maske,
+serstervergleich+(lv-1)*2,TRUE )PER END PROC freizeilenselektionloeschen;
+PROC zugriffezeigenvorbereiten(INT CONST seitennr):
+bildschirmausgabenzugriffsammeln(seitennr);zugriffsfeldersperren;
+freizeilenzugriffloeschenEND PROC zugriffezeigenvorbereiten;PROC 
+bildschirmausgabenzugriffsammeln(INT CONST seitennr):INT VAR lvf;merkzeile:=
+maxzugriffe+1;leseanfangindatei:=(seitennr-1)*maxzugriffe+1;FOR lvfFROM 1
+UPTO maxzugriffeREP IF lvf+leseanfangindatei-1<=anzahlderdateizeilenTHEN 
+toline(f,lvf+leseanfangindatei-1);readrecord(f,zeile);erfassungsfeld[znummer+
+(lvf-1)*3]:=subtext(zeile,1,pos(zeile,anzahltrenner)-1);erfassungsfeld[
+zersterzugriff+(lvf-1)*3]:=subtext(zeile,pos(zeile,namentrenner)+tl,pos(zeile
+,zeilennrtrenner)-1);IF pos(zeile,vergleichtrenner)>0THEN erfassungsfeld[
+zerstervergleich+(lvf-1)*3]:=subtext(zeile,pos(zeile,vergleichtrenner)+tl);
+ELSE erfassungsfeld[zerstervergleich+(lvf-1)*3]:=niltextFI ;ELSE merkzeile:=
+lvf;LEAVE bildschirmausgabenzugriffsammelnFI PER ;.END PROC 
+bildschirmausgabenzugriffsammeln;PROC zugriffsfeldersperren:INT VAR lvf;
+allefeldersperren(TRUE );FOR lvfFROM 1UPTO maxzugriffeREP protect(maske,
+zerstervergleich+(lvf-1)*3,FALSE )PER END PROC zugriffsfeldersperren;PROC 
+freizeilenzugriffloeschen:INT VAR lv;FOR lvFROM merkzeileUPTO maxzugriffeREP 
+erfassungsfeld[znummer+(lv-1)*3]:=niltext;erfassungsfeld[zersterzugriff+(lv-1
+)*3]:=niltext;erfassungsfeld[zerstervergleich+(lv-1)*3]:=niltext;protect(
+maske,zerstervergleich+(lv-1)*3,TRUE )PER END PROC freizeilenzugriffloeschen;
+PROC datenseiteraufoderrunter(INT CONST wie):IF wie=vorwaertsTHEN datenseite
+INCR 1ELSE datenseiteDECR 1FI ;END PROC datenseiteraufoderrunter;PROC 
+datenseiterunteroderrauf(INT CONST wie):IF wie=vorwaertsTHEN datenseiteDECR 1
+ELSE datenseiteINCR 1FI END PROC datenseiterunteroderrauf;PROC 
+angabenloeschen(INT CONST was):SELECT wasOF CASE nameundtyp:
+nameundtyploeschenCASE zugriffsregeln:zugriffsregelloeschenCASE 
+druckvariablen:druckvariableloeschenEND SELECT .nameundtyploeschen:delform(
+getactivformular);forget(getformtextname,quiet);forget(filenamedata+text(
+getactivformular),quiet);delete(dnrida).zugriffsregelloeschen:deleteregel(
+regelnr);sichernundhilfsfilesloeschen;.druckvariableloeschen:putsteuercode(
+int(erfassungsfeld[dvnummer]),niltext,0,FALSE ,FALSE );
+sichernundhilfsfilesloeschen.END PROC angabenloeschen;PROC allefeldersperren(
+BOOL CONST freigabe):INT VAR lv;FOR lvFROM fnrerstesausgabefeldUPTO 
+letztesmaskenfeld[zuwas]+5REP protect(maske,lv,freigabe)PER ;protect(maske,
+letztesmaskenfeld[zuwas]+1,TRUE );startpos:=fnrerstesausgabefeld;END PROC 
+allefeldersperren;PROC changeinfile(TEXT CONST fname,vorher,nachher):INT VAR 
+lv;f:=sequentialfile(modify,fname);FOR lvFROM 1UPTO lines(f)REP toline(f,lv);
+readrecord(f,zeile);changeall(zeile,vorher,nachher);writerecord(f,zeile)PER ;
+toline(f,1)END PROC changeinfile;PROC druckdefinitiondrucken:
+druckenderdefinition:=TRUE ;zugriffsregelgibtesbereits:=TRUE ;meldeauffaellig
+(aktuellemaske,meldungsammelndruckdef);druckdefinitionzusammenstellen(PROC (
+INT CONST )maskenwerteholenundausgeben,erfassungsfeld);meldeauffaellig(
+aktuellemaske,meldungdruckendruckdef);sichernundhilfsfilesloeschen;
+nummerderdruckausgabe:=niltext;druckenderdefinition:=FALSE ;
+zugriffsregelgibtesbereits:=FALSE ;rueckschrittevorproc(1)#dr16.12.87#END 
+PROC druckdefinitiondrucken;BOOL PROC erlaubteregeleingabe:LET maxeingabe=10;
+(nummernummerisch(erfassungsfeld[zobjklasse])CAND int(erfassungsfeld[
+zobjklasse])>1CAND int(erfassungsfeld[zobjklasse])<=maxeingabeCAND 
+getobjektklasse(int(erfassungsfeld[zobjklasse]))<>niltext)CAND (
+nummernummerisch(erfassungsfeld[zregelnr])CAND int(erfassungsfeld[zregelnr])>
+0CAND int(erfassungsfeld[zregelnr])<=maxeingabe)END PROC erlaubteregeleingabe
+;BOOL PROC erlaubtevariableneingabe:LET maxeingabe=100;(nummernummerisch(
+erfassungsfeld[dvnummer])CAND int(erfassungsfeld[dvnummer])>0CAND int(
+erfassungsfeld[dvnummer])<=maxeingabe)END PROC erlaubtevariableneingabe;PROC 
+eventuellmeldungausgeben:IF meldungstext<>niltextTHEN meldeauffaellig(
+aktuellemaske,meldungstext);meldungstext:=niltext;FI END PROC 
+eventuellmeldungausgeben;PROC eventuellmeldungbeilistenabarbeitung:IF 
+druckausgabelistenauswahlTHEN meldeauffaellig(aktuellemaske,meldungstext);
+kurzepause;meldungstext:=niltext;enter(1)ELSE IF listederdruckausgabengezeigt
+CAND (zuwas=zugriffsregelnOR zuwas=druckvariablen)CAND NOT (
+druckausgabelistenauswahl)THEN zurueckzurbearbeitung(2)ELSE 
+rueckschrittevorproc(2)FI ;FI .kurzepause:pause(10).END PROC 
+eventuellmeldungbeilistenabarbeitung;PROC feldschutzfestlegen(INT CONST abwo)
+:INT VAR lv;protect(maske,1,TRUE );FOR lvFROM abwoUPTO letztesmaskenfeld[
+zuwas]REP protect(maske,lv,TRUE )PER END PROC feldschutzfestlegen;PROC 
+feldschutzfuerbearbeitungfestlegen(INT CONST wozu):protect(maske,1,TRUE );
+SELECT wozuOF CASE zugriffsregeln:feldschutzfestlegen(fnrerstesausgabefeld+2)
+CASE druckvariablen:feldschutzfestlegen(fnrerstesausgabefeld+1)OTHERWISE :
+allefeldersperren(FALSE )END SELECT ;END PROC 
+feldschutzfuerbearbeitungfestlegen;PROC loeschfeldverdecken:LET rahmenzeichen
+="=";put(aktuellemaske,rahmenzeichen,letztesmaskenfeld[zuwas]+1);END PROC 
+loeschfeldverdecken;TEXT PROC meldungseinschub:TEXT VAR t;SELECT zuwasOF 
+CASE zugriffsregeln:t:="zur Regel k"+compress(erfassungsfeld[zobjklasse])+"r"
++compress(erfassungsfeld[zregelnr])CASE druckvariablen:t:=
+"zur Druckvariablen "+erfassungsfeld[dvnummer]OTHERWISE :t:=
+"zur Druckausgabe "+text(getactivformular)END SELECT ;tEND PROC 
+meldungseinschub;PROC standardfelderfuellen:INT VAR lv;FOR lvFROM 1UPTO 
+letztesmaskenfeld[zuwas]REP standardmaskenfeld(erfassungsfeld[lv],(lv))PER 
+END PROC standardfelderfuellen;END PACKET ispidadefinieren;
+

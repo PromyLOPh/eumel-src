@@ -1,0 +1,97 @@
+PACKET multi user plotter:                       (* Autor : Rudolf Ruland  *)
+                                                 (* Stand : 24.03.86       *)
+                                              (*Änderung: 09.09.86/15:32 *)
+ 
+INT VAR c;
+put ("gib Plotterkanal : "); get (c);
+
+  server channel (c);
+  station only (FALSE) ;
+  spool duty ("Ausgabe mit dem Plotter");
+  spool control task (myself);
+ 
+LET ack              = 0 ,
+ 
+    fetch code       = 11 ,
+    param fetch code = 21 ,
+    picfile type     = 1103 ;
+
+INT VAR reply, old heap size, sender station;
+TEXT VAR picfile name, userid, password, sendername;
+PICFILE VAR picfile ;
+
+DATASPACE VAR ds, picfile ds;
+ 
+BOUND STRUCT (TEXT picfile name, userid, password, sendername, INT station) VAR msg;
+BOUND TEXT VAR error msg ;
+ 
+spool manager (PROC plotter);
+ 
+PROC plotter :
+
+  disable stop ;
+  command dialogue (FALSE);
+  ds := nilspace; picfile ds := nilspace; 
+  continue (server channel) ;
+    check error ("Kanal belegt");
+ 
+  old heap size := heap size ;
+  REP
+    execute plot ;
+ 
+    IF is error
+      THEN put error;
+           clear error;
+    FI ;
+ 
+    IF heap size > old heap size + 4
+      THEN collect heap garbage ;
+           old heap size := heap size
+    FI
+  PER 
+ 
+ENDPROC plotter ;
+
+ 
+PROC execute plot :
+
+  enable stop ;
+  forget (picfile ds) ; picfile ds := nilspace ;
+  call (father, fetch code, picfile ds, reply) ;
+  IF reply = ack CAND type (picfile ds) = picfile type
+     THEN get picfile params;
+          plot picfile
+  FI ;
+ 
+. get picfile params :
+    forget (ds); ds := nilspace;
+    call (father, param fetch code, ds, reply);
+    IF reply <> ack
+       THEN error msg := ds; errorstop (error msg);
+       ELSE msg := ds;
+            picfile name   := msg. picfile name;
+            userid         := msg. userid;
+            password       := msg. password;
+            sendername     := msg. sender name;
+            sender station := msg. station;
+    FI;
+ 
+. plot picfile :
+    picfile := picfile ds;
+    plotter (picfile)  .
+
+ENDPROC execute plot ;
+ 
+ 
+PROC check error (TEXT CONST message) :
+    IF is error
+       THEN clear error;
+            rename myself (message);
+            IF is error THEN clear error; end (myself) FI;
+            pause (18000);
+            end (myself);
+    FI;
+END PROC check error;
+ 
+ENDPACKET multi user plotter ;
+

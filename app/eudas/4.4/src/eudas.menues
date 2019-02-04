@@ -1,0 +1,2616 @@
+PACKET eudas menues
+
+(*************************************************************************)
+(*                                                                       *)
+(*     Menue-Manager                                                     *)
+(*                                                                       *)
+(*     Version 09                                                        *)
+(*                                                                       *)
+(*     Autor: Thomas Berlage                                             *)
+(*     Stand: 31.07.87                                                   *)
+(*                                                                       *)
+(*************************************************************************)
+
+  DEFINES
+
+##                   (* Nur Multi-User *)
+  global manager,
+  menue manager,
+##
+  lock,
+  free,
+  menuedaten einlesen,
+  menuenamen,
+  menue loeschen,
+
+  waehlbar,
+  ausfuehrtaste,
+  menue anbieten,
+  auswahl anbieten,
+  wahl,
+  esc hop ausfuehren,
+
+  hilfe anbieten,
+  status anzeigen,
+
+  dialogfenster,
+  dialogfenster loeschen,
+  dialog,
+  neuer dialog,
+  ja,
+  editget,
+  fehler ausgeben :
+
+
+(***************************** Zeilenanalyse *****************************)
+
+ROW 8 TEXT VAR kommandotext :=
+  ROW 8 TEXT : ("MENUE", "BILD", "FELD", "ENDE", "AUSWAHL",
+                 "VORSPANN", "HILFE", "SEITE");
+
+LET
+  menue kommando    = 1,
+  bild kommando     = 2,
+  feld kommando     = 3,
+  ende kommando     = 4,
+  auswahl kommando  = 5,
+  vorspann kommando = 6,
+  hilfe kommando    = 7,
+  seite kommando    = 8;
+
+LET
+  bold = 2,
+  integer = 3,
+  string = 4,
+  end of line = 7;
+
+LET
+  fehler in zeile =  #701#
+    "FEHLER in Zeile ";
+
+FILE VAR file;
+
+TEXT VAR
+  zeile,
+  kommando;
+
+
+PROC zeile lesen :
+
+  IF eof (file) THEN
+    zeile := "%DUMMY"
+  ELSE
+    read record (file, zeile);
+    IF zeile = niltext THEN zeile := blank END IF;
+    cout (line no (file));
+    down (file)
+  END IF
+
+END PROC zeile lesen;
+
+BOOL PROC kommandozeile :
+
+  IF (zeile SUB 1) = kommandozeichen THEN
+    kommando isolieren
+  ELSE
+    FALSE
+  END IF .
+
+kommando isolieren :
+  INT VAR typ;
+  replace (zeile, 1, blank);
+  scan (zeile);
+  replace (zeile, 1, kommandozeichen);
+  next symbol (kommando, typ);
+  IF typ <> bold THEN
+    fehler (kein kommando angegeben);
+    FALSE
+  ELSE
+    TRUE
+  END IF .
+
+END PROC kommandozeile;
+
+BOOL PROC kommando ist (INT CONST identifikation) :
+
+  kommandotext (identifikation) = kommando
+
+END PROC kommando ist;
+
+INT PROC int parameter :
+
+  TEXT VAR symbol;
+  INT VAR typ;
+  next symbol (symbol, typ);
+  IF typ = integer THEN
+    int (symbol)
+  ELSE
+    IF typ <> end of line THEN fehler (kein int parameter) END IF;
+    -1
+  END IF
+
+END PROC int parameter;
+
+TEXT PROC text parameter :
+
+  TEXT VAR symbol;
+  INT VAR typ;
+  next symbol (symbol, typ);
+  IF typ = string THEN
+    symbol
+  ELSE
+    IF typ <> end of line THEN fehler (kein text parameter) END IF;
+    niltext
+  END IF
+
+END PROC text parameter;
+
+PROC fehler (TEXT CONST meldung) :
+
+  note (fehler in zeile); note (line no (file) - 1); note line;
+  note (meldung); note line;
+  line; putline (meldung)
+
+END PROC fehler;
+
+
+(***************************** Fensterkoordinaten ************************)
+
+INT VAR
+  y laenge,
+  x laenge,
+  x pos,
+  y pos;
+
+PROC f cursor (INT CONST x, y) :
+
+  cursor (x pos + x - 1, y pos + y - 1)
+
+END PROC f cursor;
+
+
+(**************************** Einlesen zentral ***************************)
+
+LET
+  zeile ohne zusammenhang =  #702#
+    "Zeile ist ohne Zusammenhang",
+  k menuedaten im speicher =  #703#
+    "K Menuedaten im Speicher";
+
+PROC menuedaten einlesen (TEXT CONST dateiname) :
+
+  ggf initialisieren;
+  file := sequential file (input, dateiname);
+  modify (file);
+  to line (file, 1);
+  WHILE NOT eof (file) REP
+    zeile lesen;
+    IF kommandozeile THEN
+      eventuell verteilen
+    ELIF NOT anything noted THEN
+      fehler (zeile ohne zusammenhang)
+    END IF
+  END REP;
+  seiten anzeigen;
+  IF anything noted THEN
+    note edit (file)
+  END IF .
+
+eventuell verteilen :
+  IF kommando ist (menue kommando) THEN
+    menue aus datei lesen
+  ELIF kommando ist (auswahl kommando) THEN
+    auswahl aus datei lesen
+  ELIF kommando ist (hilfe kommando) THEN
+    hilfe aus datei lesen
+  ELIF NOT anything noted THEN
+    fehler (zeile ohne zusammenhang)
+  END IF .
+
+seiten anzeigen :
+  IF online THEN
+    line; put (anzahl ds seiten DIV 2);
+    putline (k menuedaten im speicher)
+  END IF .
+
+anzahl ds seiten :
+  ds pages (menueds (1)) + ds pages (menueds (2)) + ds pages (menueds (3)) .
+
+END PROC menuedaten einlesen;
+
+
+(**************************** TYPE MENUE *********************************)
+
+TYPE MENUE = STRUCT (SATZ
+                       bild,
+                       hilfen,
+                       kommandos,
+                     TEXT
+                       feldtasten,
+                       feldzeilen);
+
+BOUND ROW 200 MENUE VAR menues;
+
+
+(************************** Menue Einlesen *******************************)
+
+TEXT VAR
+  m feldzeilen,
+  m feldtasten;
+
+SATZ VAR
+  m hilfen,
+  m kommandos;
+
+LET
+  niltext = "",
+  blank = " ",
+  feldmarkierung = ""223"",
+  markierungsspalte = 2,
+  kommandozeichen = "%",
+  piep = ""7"",
+  esc = ""27"",
+  cleol = ""5"";
+
+LET
+  bildkommando erwartet =  #704#
+    "% BILD erwartet",
+  keine feldnr angegeben =  #705#
+    "Feldnummer beim %FELD-Kommando fehlt",
+  ende fehlt =  #706#
+    "% ENDE erwartet",
+  kein name angegeben =  #707#
+    "Name fehlt",
+  kein kommando angegeben =  #708#
+    "Kommandozeile enthaelt kein Kommando",
+  kein int parameter =  #709#
+    "Parameter soll eine Zahl sein",
+  kein text parameter =  #710#
+    "Parameter soll ein TEXT sein",
+  keine wiederholungszeile =  #711#
+    "Wiederholungszeile fehlt";
+
+
+PROC menue aus datei lesen :
+
+  TEXT VAR name := text parameter;
+  IF name = niltext THEN
+    fehler (kein name angegeben)
+  ELSE
+    INT VAR index;
+    neues menue einfuegen;
+    menue aus datei lesen (menues (index))
+  END IF .
+
+neues menue einfuegen :
+  index := link (thesaurus (2), name);
+  IF index = 0 THEN
+    insert (thesaurus (2), name, index)
+  END IF .
+
+END PROC menue aus datei lesen;
+
+PROC menue aus datei lesen (MENUE VAR m) :
+
+  menue initialisieren;
+  bild einlesen;
+  felddefinitionen bearbeiten;
+  auf ende testen;
+  ergebnis abspeichern .
+
+menue initialisieren :
+  satz initialisieren (m. bild);
+  satz initialisieren (m hilfen);
+  satz initialisieren (m kommandos);
+  m feldtasten := niltext;
+  m feldzeilen := niltext .
+
+bild einlesen :
+  teste auf bild kommando;
+  INT VAR zeilennr := 1;
+  REP
+    zeile lesen;
+    IF kommandozeile THEN
+      LEAVE bild einlesen
+    ELSE
+      bildzeile bearbeiten;
+      zeilennr INCR 1
+    END IF
+  END REP .
+
+teste auf bild kommando :
+  zeile lesen;
+  IF NOT (kommandozeile CAND kommando ist (bild kommando)) THEN
+    fehler (bild kommando erwartet)
+  END IF .
+
+bildzeile bearbeiten :
+  IF (zeile SUB markierungsspalte) = feldmarkierung THEN
+    m feldzeilen CAT code (zeilennr);
+    replace (zeile, markierungsspalte, blank)
+  END IF;
+  feld aendern (m. bild, zeilennr, zeile) .
+
+felddefinitionen bearbeiten :
+  WHILE kommando ist (feld kommando) REP
+    eine felddefinition bearbeiten
+  END REP .
+
+eine felddefinition bearbeiten :
+  INT VAR feldnr := int parameter;
+  IF feldnr = -1 THEN
+    fehler (keine feldnr angegeben);
+    feldnr := 100
+  END IF;
+  hilfe text einlesen;
+  feldtasten einlesen;
+  kommandos einlesen .
+
+hilfe text einlesen :
+  feld aendern (m hilfen, feldnr, text parameter) .
+
+feldtasten einlesen :
+  TEXT CONST tasten := text parameter;
+  INT VAR p;
+  FOR p FROM 1 UPTO length (tasten) REP
+    m feldtasten CAT code (feldnr);
+    m feldtasten CAT (tasten SUB p)
+  END REP .
+
+kommandos einlesen :
+  TEXT VAR k := niltext;
+  zeile lesen;
+  WHILE NOT kommandozeile REP
+    k CAT zeile;
+    zeile lesen
+  END REP;
+  feld aendern (m kommandos, feldnr, k) .
+
+auf ende testen :
+  IF NOT kommando ist (ende kommando) THEN
+    fehler (ende fehlt)
+  END IF .
+
+ergebnis abspeichern :
+  m. hilfen := m hilfen;
+  m. kommandos := m kommandos;
+  m. feldtasten := m feldtasten;
+  m. feldzeilen := m feldzeilen .
+
+END PROC menue aus datei lesen;
+
+
+(************************** Menue in Datei *******************************)
+(*
+PROC menue in datei schreiben (MENUE CONST m, FILE VAR f, TEXT CONST name) :
+
+  output (f);
+  put (f, "% MENUE");
+  putline (f, textdarstellung (name));
+  bild rekonstruieren;
+  felddefinitionen rekonstruieren;
+  putline (f, "% ENDE") .
+
+bild rekonstruieren :
+  INT VAR zeilennr;
+  putline (f, "% BILD");
+  FOR zeilennr FROM 1 UPTO felderzahl (m. bild) REP
+    feld lesen (m. bild, zeilennr, zeile);
+    feldmarkierungen wiederherstellen;
+    putline (f, zeile)
+  END REP .
+
+feldmarkierungen wiederherstellen :
+  INT VAR zeilenpos := pos (m. feldzeilen, code (zeilennr));
+  IF zeilenpos > 0 THEN
+    REP
+      replace (zeile, markierungsspalte, feldmarkierung);
+      zeilenpos INCR 1
+    UNTIL (m. feldzeilen SUB zeilenpos) <> code (zeilennr) END REP
+  END IF .
+
+felddefinitionen rekonstruieren :
+  INT VAR feldnr;
+  FOR feldnr FROM 1 UPTO length (m. feldzeilen) REP
+    put (f, "% FELD");
+    put (f, feldnr);
+    feld lesen (m. hilfen, feldnr, zeile);
+    put (f, textdarstellung (zeile));
+    feldzeichen sammeln;
+    kommandos ausgeben
+  END REP .
+
+feldzeichen sammeln :
+  INT VAR stelle := 1;
+  zeile := niltext;
+  WHILE stelle < length (m. feldtasten) REP
+    IF code (m. feldtasten SUB stelle) = feldnr THEN
+      zeile CAT (m. feldtasten SUB stelle + 1)
+    END IF;
+    stelle INCR 1
+  END REP;
+  putline (f, textdarstellung (zeile)) .
+
+kommandos ausgeben :
+  INT VAR anfang := 1;
+  feld lesen (m. kommandos, feldnr, zeile);
+  REP
+    stelle := pos (zeile, ";", anfang);
+    IF stelle = 0 THEN
+      zeilenrest ausgeben;
+      LEAVE kommandos ausgeben
+    ELSE
+      putline (f, subtext (zeile, anfang, stelle));
+      anfang := stelle + 1
+    END IF
+  END REP .
+
+zeilenrest ausgeben :
+  IF anfang <= length (zeile) THEN
+    putline (f, subtext (zeile, anfang))
+  END IF .
+
+END PROC menue in datei schreiben;
+*)
+
+(*************************** Menue anbieten ******************************)
+
+LET
+  ausfuehren status = #712#
+    "Kommando wird ausgeführt ..",
+  gib kommando =  #713#
+    ""15"Gib Kommando: ",
+  falsche ausfuehrtaste =  #714#
+    "falsche Ausfuehrtaste",
+  t existiert nicht =  #715#
+    " existiert nicht.";
+
+LET
+  blank 24 = "                        ",
+  begin mark = ""15"",
+  end mark = ""14"",
+  ausfuehren marke = "*"8"";
+
+INT VAR
+  rekursionstiefe := 0,
+  markenpos,
+  gezeichnete zeilen;
+
+BOOL VAR
+  funktionssperre veraendert,
+  menue init durchgefuehrt;
+
+TEXT VAR 
+  balken,
+  sperrzeichen,
+  menuefunktionstasten := ""32""1""2""3""8""10""13""27"",
+  edit kommando,
+  altes kommando := niltext;
+
+ROW 6 TEXT VAR
+  funktionssperre;
+
+FENSTER VAR balkenfenster;
+fenster initialisieren (balkenfenster);
+fenstergroesse setzen (balkenfenster, 1, 1, 79, 1);
+
+
+PROC waehlbar (INT CONST menue, funktion, BOOL CONST moeglich) :
+
+  IF moeglich THEN
+    ggf sperre aufheben
+  ELSE
+    sperre setzen
+  END IF;
+  funktionssperre veraendert := TRUE .
+
+ggf sperre aufheben :
+  IF length (funktionssperre (menue)) >= funktion THEN
+    replace (funktionssperre (menue), funktion, " ")
+  END IF .
+
+sperre setzen :
+  WHILE length (funktionssperre (menue)) < funktion REP
+    funktionssperre (menue) CAT " "
+  END REP;
+  replace (funktionssperre (menue), funktion, "-") .
+
+END PROC waehlbar;
+
+PROC ausfuehrtaste (TEXT CONST taste) :
+
+  IF length (taste) <> 1 COR taste schon belegt THEN
+    errorstop (falsche ausfuehrtaste)
+  ELSE
+    replace (menuefunktionstasten, 1, taste)
+  END IF .
+
+taste schon belegt :
+  taste <> ""13"" AND pos (menuefunktionstasten, taste, 2) > 0 .
+
+END PROC ausfuehrtaste;
+
+PROC menue anbieten (ROW 6 TEXT CONST menuenamen,
+                     FENSTER VAR f, BOOL CONST esc erlaubt,
+                     PROC (INT CONST, INT CONST) interpreter) :
+
+  ROW 6 INT VAR
+    m anfang,
+    m ende,
+    m wahl;
+
+  INT VAR
+    menuenr intern,
+    leistenindex := 0,
+    neuer leistenindex := 1,
+    leave code := 0,
+    besetzte menues;
+
+  TEXT VAR 
+    menuebalken;
+
+  ROW 6 TEXT VAR
+    sperre;
+
+  ggf initialisieren;
+  menuebalken aufbauen;
+  funktionssperre aufbauen;
+  disable stop;
+  REP
+    menuebalken und sperre aktualisieren;
+    menue aufrufen;
+    funktion ausfuehren
+  END REP .
+
+menuebalken aufbauen :
+  rekursionstiefe INCR 1;
+  INT CONST meine rekursionstiefe := rekursionstiefe;
+  menuebalken := ""6""0""0"";
+  identifikation extrahieren;
+  weitere menues anfuegen;
+  menuebalken CAT cl eol .
+
+identifikation extrahieren :
+  INT VAR ppos := pos (menuenamen (1), ".");
+  IF ppos > 0 THEN
+    menuebalken CAT subtext (menuenamen (1), 1, ppos - 1)
+  END IF;
+  menuebalken CAT ":   " .
+
+weitere menues anfuegen :
+  besetzte menues := 0;
+  WHILE besetzte menues < 6 CAND noch ein menue vorhanden REP
+    besetzte menues INCR 1;
+    ein weiteres menue;
+    m wahl (besetzte menues) := 1
+  END REP .
+
+noch ein menue vorhanden :
+  menuenamen (besetzte menues + 1) <> niltext .
+
+ein weiteres menue :
+  m anfang (besetzte menues) := length (menuebalken);
+  ppos := pos (menuenamen (besetzte menues), ".");
+  IF ppos = 0 THEN
+    menuebalken CAT menuenamen (besetzte menues)
+  ELSE
+    menuebalken CAT subtext (menuenamen (besetzte menues), ppos + 1)
+  END IF;
+  menuebalken CAT "   ";
+  m ende (besetzte menues) := length (menuebalken) - 1 .
+
+funktionssperre aufbauen :
+  INT VAR i;
+  FOR i FROM 1 UPTO 6 REP
+    funktionssperre (i) := niltext
+  END REP;
+  funktionssperre veraendert := TRUE;
+  interpreter (0, 0) .
+
+menuebalken und sperre aktualisieren :
+  IF neuer leistenindex > 0 THEN
+    altes menue demarkieren;
+    neues menue markieren;
+    leistenindex := neuer leistenindex;
+    neuer leistenindex := 0;
+    neues menue auswaehlen
+  ELIF rekursionstiefe <> meine rekursionstiefe THEN
+    balken := menuebalken;
+    funktionssperre := sperre;
+    rekursionstiefe := meine rekursionstiefe
+  ELIF funktionssperre veraendert THEN
+    sperre := funktionssperre
+  END IF .
+
+altes menue demarkieren :
+  IF leistenindex > 0 THEN
+    replace (menuebalken, m anfang (leistenindex), " ");
+    replace (menuebalken, m ende (leistenindex), " ");
+    IF menue init durchgefuehrt THEN
+      interpreter (leistenindex, -1)
+    END IF
+  END IF .
+
+neues menue markieren :
+  replace (menuebalken, m anfang (neuer leistenindex), begin mark);
+  replace (menuebalken, m ende (neuer leistenindex), end mark);
+  fenster veraendert (balkenfenster);
+  balken := menuebalken;
+  menuebalken anzeigen .
+
+neues menue auswaehlen :
+  menuenr intern := link (thesaurus (2), menuenamen (leistenindex));
+  IF menuenr intern = 0 THEN
+    existiert nicht (menuenamen (leistenindex));
+    LEAVE menue anbieten
+  END IF;
+  menue init durchgefuehrt := FALSE;
+  funktionssperre veraendert := TRUE;
+  fenster veraendert (f) .
+
+menue aufrufen :
+  leave code := leistenindex;
+  anbieten (menues (menuenr intern), f, leave code, m wahl (leistenindex),
+            PROC (INT CONST, INT CONST) interpreter) .
+
+funktion ausfuehren :
+  SELECT leave code OF
+  CASE 0 :  menue verlassen
+  CASE 1 :  kommandodialog
+  CASE 2 :  menuewechsel nach rechts
+  CASE 3 :  menuewechsel nach links
+  CASE 4 :  wahl behandeln
+  OTHERWISE direkte menuewahl
+  END SELECT .
+
+menuewechsel nach rechts :
+  IF leistenindex < besetzte menues THEN
+    neuer leistenindex := leistenindex + 1
+  ELSE
+    neuer leistenindex := 1
+  END IF .
+
+menuewechsel nach links :
+  IF leistenindex > 1 THEN
+    neuer leistenindex := leistenindex - 1
+  ELSE
+    neuer leistenindex := besetzte menues
+  END IF .
+
+direkte menuewahl :
+  leave code := leave code - 10;
+  IF leave code <= besetzte menues THEN
+    neuer leistenindex := leave code
+  END IF .
+
+kommandodialog :
+  IF esc erlaubt THEN
+    BOOL VAR bild veraendert := FALSE;
+    REP
+      editget kommando;
+      kommando ausfuehren
+    UNTIL erfolgreich END REP;
+    IF bild veraendert THEN
+      bildschirm neu;
+      dialogfenster loeschen;
+      interpreter (leistenindex, -2)
+    END IF
+  END IF .
+
+kommando ausfuehren :
+  IF echtes kommando THEN
+    bild veraendert := TRUE;
+    status anzeigen (ausfuehren status);
+    cursor (1, 2); out (cl eop);
+    do (edit kommando)
+  END IF .
+
+echtes kommando :
+  pos (edit kommando, ""33"", ""254"", 1) > 0 .
+
+erfolgreich :
+  NOT is error .
+
+menue verlassen :
+  IF menue init durchgefuehrt THEN
+    interpreter (leistenindex, -1)
+  END IF;
+  fenster veraendert (f);
+  LEAVE menue anbieten .
+
+wahl behandeln :
+  IF m wahl (leistenindex) > 0 THEN
+    interpreter (menuenr intern, m wahl (leistenindex))
+  ELSE
+    m wahl (leistenindex) := - m wahl (leistenindex)
+  END IF .
+
+END PROC menue anbieten;
+
+PROC menuebalken anzeigen :
+
+  BOOL VAR veraendert;
+  fensterzugriff (balkenfenster, veraendert);
+  IF veraendert THEN out (balken) END IF
+
+END PROC menuebalken anzeigen;
+
+PROC anbieten (MENUE CONST m, FENSTER VAR f, INT VAR menuenr, wahl,
+               PROC (INT CONST, INT CONST) interpreter) :
+
+  INT VAR
+    tastenzustand := 0;
+
+  fehler behandeln;
+  neuen fensterzugriff anmelden (f);
+  IF gezeichnete zeilen = 0 THEN
+    markenpos := 0
+  END IF;
+  neuer dialog;
+  geaenderte funktionssperre beruecksichtigen;
+  REP
+    menuebalken anzeigen;
+    auf eingabe warten;
+    menuefunktion
+  END REP .
+
+fehler behandeln :
+  IF wahl > length (m. feldzeilen) THEN
+    wahl := markenpos;
+  ELIF is error THEN
+    fehler ausgeben;
+    interpreter (menuenr, -2);
+  END IF .
+
+geaenderte funktionssperre beruecksichtigen :
+  IF funktionssperre veraendert THEN
+    sperrzeichen setzen;
+    bereits angezeigte funktionen korrigieren;
+    funktionssperre veraendert := FALSE
+  END IF .
+
+sperrzeichen setzen :
+  sperrzeichen := blank 24;
+  INT VAR i;
+  FOR i FROM 1 UPTO length (funktionssperre (menuenr)) REP
+    replace (sperrzeichen, code (m. feldzeilen SUB i),
+             funktionssperre (menuenr) SUB i)
+  END REP .
+
+bereits angezeigte funktionen korrigieren :
+  INT VAR f index;
+  FOR f index FROM 1 UPTO length (m. feldzeilen) REP
+    INT CONST funktionszeile := code (m. feldzeilen SUB f index);
+    IF funktionszeile > gezeichnete zeilen THEN
+      LEAVE bereits angezeigte funktionen korrigieren
+    END IF;
+    erstes zeichen ausgeben (m. bild, funktionszeile)
+  END REP .
+
+auf eingabe warten :
+  REP
+    ausgabe und zeichen annehmen;
+    IF is error THEN
+      halt vom terminal behandeln
+    ELSE
+      LEAVE auf eingabe warten
+    END IF
+  END REP .
+
+ausgabe und zeichen annehmen :
+  TEXT VAR eingabe;
+  BOOL VAR menue jetzt fertig ausgegeben := FALSE;
+  WHILE gezeichnete zeilen < y laenge REP
+    eingabe := getcharety;
+    eventuell eine zeile ausgeben
+  END REP;
+  bildschirm update;
+  cursor positionieren (m, wahl);
+  getchar mit enable stop (eingabe) .
+
+eventuell eine zeile ausgeben :
+  IF eingabe = niltext THEN
+    ggf init durchfuehren;
+    gezeichnete zeilen INCR 1;
+    menuezeile markiert oder nicht markiert ausgeben
+  ELSE
+    LEAVE ausgabe und zeichen annehmen
+  END IF .
+
+ggf init durchfuehren :
+  IF NOT menue init durchgefuehrt AND gezeichnete zeilen = 0 THEN
+    interpreter (menuenr, 0);
+    menue init durchgefuehrt := TRUE
+  END IF .
+
+menuezeile markiert oder nicht markiert ausgeben :
+  IF gezeichnete zeilen = code (m. feldzeilen SUB wahl) THEN
+    menuezeile ausgeben (m. bild, gezeichnete zeilen, TRUE);
+    markenpos := wahl
+  ELSE
+    menuezeile ausgeben (m. bild, gezeichnete zeilen, FALSE)
+  END IF;
+  IF gezeichnete zeilen = y laenge THEN
+    menue jetzt fertig ausgegeben := TRUE
+  END IF .
+
+bildschirm update :
+  IF menue jetzt fertig ausgegeben AND NOT is error THEN
+    interpreter (menuenr, -2);
+    IF is error THEN clear error END IF
+  END IF .
+
+halt vom terminal behandeln :
+  fehler ausgeben;
+  menuebalken anzeigen;
+  gezeichnete zeilen := 0 .
+
+menuefunktion :
+  INT VAR posi;
+  SELECT tastenzustand OF
+  CASE 0 : normale funktion
+  CASE 1 : hop funktion
+  CASE 2 : esc funktion
+  END SELECT .
+
+normale funktion :
+  SELECT pos (menuefunktionstasten, eingabe) OF
+  CASE 1 : leerzeichen ausfuehren
+  CASE 2 : tastenzustand := 1
+  CASE 3 : rechts ausfuehren
+  CASE 4 : oben ausfuehren
+  CASE 5 : links ausfuehren
+  CASE 6 : unten ausfuehren
+  CASE 7 : return ausfuehren
+  CASE 8 : tastenzustand := 2
+  OTHERWISE sondertaste
+  END SELECT .
+
+hop funktion :
+  SELECT pos (""1""3""10"", eingabe) OF
+  CASE 1 : hop hop ausfuehren
+  CASE 2 : hop oben ausfuehren
+  CASE 3 : hop unten ausfuehren
+  OTHERWISE out (piep)
+  END SELECT;
+  tastenzustand := 0 .
+
+esc funktion :
+  SELECT pos (""1""27"?qh", eingabe) OF
+  CASE 1 : esc hop ausfuehren
+  CASE 2 : esc esc ausfuehren
+  CASE 3 : esc fragezeichen ausfuehren
+  CASE 4, 5 : esc q ausfuehren
+  OTHERWISE belegte taste
+  END SELECT;
+  tastenzustand := 0 .
+
+rechts ausfuehren :
+  leave code := 2;
+  LEAVE anbieten .
+
+oben ausfuehren :
+  IF wahl > 1 THEN
+    wahl DECR 1
+  ELSE
+    wahl := length (m. feldzeilen)
+  END IF .
+
+links ausfuehren :
+  leave code := 3;
+  LEAVE anbieten .
+
+unten ausfuehren :
+  IF wahl < length (m. feldzeilen) THEN
+    wahl INCR 1
+  ELSE
+    wahl := 1
+  END IF .
+
+return ausfuehren :
+  unten ausfuehren .
+
+sondertaste :
+  IF menuewahl THEN
+    menuewahl bearbeiten
+  ELIF wahl fuer bestimmtes feld THEN
+    feld waehlen
+  ELIF eingabe <= ""32"" THEN
+    push (esc + eingabe)
+  END IF .
+
+menuewahl :
+  pos ("123456", eingabe) > 0 .
+
+menuewahl bearbeiten :
+  leave code := code (eingabe) - 38;
+  LEAVE anbieten .
+
+wahl fuer bestimmtes feld :
+  posi := 0;
+  REP
+    posi := pos (m. feldtasten, eingabe, posi + 1)
+  UNTIL (posi MOD 2) = 0 END REP;
+  posi > 0 AND feld mit bildschirmposition .
+
+feld mit bildschirmposition :
+  code (m. feldtasten SUB posi - 1) <= length (m. feldzeilen) .
+
+feld waehlen :
+  wahl := code (m. feldtasten SUB posi - 1);
+  cursor positionieren (m, wahl);
+  IF (funktionssperre (menuenr) SUB wahl) <> "-" THEN
+    wahl getroffen (m, wahl, gezeichnete zeilen);
+    leave code := 4;
+    LEAVE anbieten
+  END IF .
+
+hop hop ausfuehren :
+  wahl := 1 .
+
+hop oben ausfuehren :
+  wahl := 1 .
+
+hop unten ausfuehren :
+  wahl := length (m. feldzeilen) .
+
+belegte taste :
+  IF esc sonderfunktion THEN
+    wahl := code (m. feldtasten SUB posi - 1);
+    leave code := 4;
+    LEAVE anbieten
+  ELSE
+    push (lernsequenz auf taste (eingabe))
+  END IF .
+
+esc sonderfunktion :
+  posi := 0;
+  REP
+    posi := pos (m. feldtasten, eingabe, posi + 1)
+  UNTIL (posi MOD 2) = 0 CAND
+        (posi = 0 COR feld ohne bildschirmposition) END REP;
+  posi > 0 .
+
+feld ohne bildschirmposition :
+  code (m. feldtasten SUB posi - 1) > length (m. feldzeilen) .
+
+esc esc ausfuehren :
+  leave code := 1;
+  LEAVE anbieten .
+
+esc fragezeichen ausfuehren :
+  TEXT VAR hilfe name;
+  feld lesen (m. hilfen, wahl, hilfe name);
+  hilfe anbieten (hilfe name, d fenster);
+  IF is error THEN fehler ausgeben END IF;
+  interpreter (menuenr, -2);
+  neuen fensterzugriff anmelden (f) .
+
+esc q ausfuehren :
+  leave code := 0;
+  LEAVE anbieten .
+
+leerzeichen ausfuehren :
+  IF (funktionssperre (menuenr) SUB wahl) <> "-" THEN
+    wahl getroffen (m, wahl, gezeichnete zeilen);
+    leave code := 4;
+    LEAVE anbieten
+  END IF .
+
+leave code :
+  menuenr .
+
+END PROC anbieten;
+
+PROC neuen fensterzugriff anmelden (FENSTER CONST f) :
+
+  BOOL VAR veraendert;
+  fensterzugriff (f, veraendert);
+  fenstergroesse (f, x pos, y pos, x laenge, y laenge);
+  IF veraendert THEN
+    gezeichnete zeilen := 0;
+    f cursor (1, 1)
+  END IF
+
+END PROC neuen fensterzugriff anmelden;
+
+PROC cursor positionieren (MENUE CONST m, INT CONST wahl) :
+
+  INT CONST wahlzeile := code (m. feldzeilen SUB wahl);
+  IF markenpos > 0 THEN
+    IF markenpos = wahl THEN
+      erstes zeichen ausgeben (m. bild, wahlzeile)
+    ELSE
+      INT CONST markenzeile := code (m. feldzeilen SUB markenpos);
+      menuezeile ausgeben (m. bild, markenzeile, FALSE);
+      menuezeile ausgeben (m. bild, wahlzeile, TRUE);
+      markenpos := wahl
+    END IF
+  END IF;
+  f cursor (1, wahlzeile)
+
+END PROC cursor positionieren;
+
+PROC getchar mit enable stop (TEXT VAR z) :
+
+  enable stop;
+  getchar (z)
+
+END PROC getchar mit enable stop;
+
+PROC wahl getroffen (MENUE CONST m, INT VAR wahl,
+                     INT CONST gezeichnete zeilen) :
+
+  INT CONST
+    y pos := code (m. feldzeilen SUB wahl);
+  IF zeile bereits gezeichnet THEN
+    ausfuehrung markieren
+  END IF;
+  TEXT VAR k;
+  feld lesen (m. kommandos, wahl, k);
+  IF k <> niltext AND k <> blank THEN
+    do (k);
+    bildschirm neu;
+    wahl := - wahl
+  END IF .
+
+zeile bereits gezeichnet :
+  gezeichnete zeilen >= y pos .
+
+ausfuehrung markieren :
+  f cursor (1, y pos);
+  out (ausfuehren marke) .
+
+END PROC wahl getroffen;
+
+PROC esc hop ausfuehren :
+
+  TEXT VAR
+    puffer := niltext,
+    ausgang;
+  lernsequenz auf taste legen (""0"", niltext);
+  push (""27""1""0""0"");
+  editget (puffer, 32000, 0, ""0"", "", ausgang);
+  puffer := lernsequenz auf taste (""0"");
+  IF puffer <> niltext THEN
+    gelerntes auf richtige taste legen
+  ELSE
+    letzten nullcode auslesen
+  END IF .
+
+gelerntes auf richtige taste legen :
+  REP
+    getchar (ausgang)
+  UNTIL pos (""1""2""8""11""12"", ausgang) = 0 END REP;
+  lernsequenz auf taste legen (ausgang, puffer) .
+
+letzten nullcode auslesen :
+  getchar (ausgang) .
+
+END PROC esc hop ausfuehren;
+
+
+INT VAR
+  anfang,
+  ende,
+  mark ende;
+
+PROC erstes zeichen ausgeben (SATZ CONST bild, INT CONST bildzeile) :
+
+  f cursor (1, bildzeile);
+  IF (sperrzeichen SUB bildzeile) <> blank THEN
+    out (sperrzeichen SUB bildzeile)
+  ELSE
+    feld bearbeiten (bild, bildzeile,
+      PROC (TEXT CONST, INT CONST, INT CONST) zeichen 1)
+  END IF
+
+END PROC erstes zeichen ausgeben;
+
+PROC zeichen 1 (TEXT CONST satz, INT CONST anfang, ende) :
+
+  out (satz SUB anfang + ende - ende)
+
+END PROC zeichen 1;
+
+PROC menuezeile ausgeben (SATZ CONST bild,
+                          INT CONST zeilennr, BOOL CONST markiert) :
+
+  enable stop;
+  IF markiert THEN
+    erstes zeichen ausgeben (bild, zeilennr);
+    out (begin mark);
+    anfang := 3; mark ende := 1;
+  ELSE
+    f cursor (1, zeilennr);
+    IF (sperrzeichen SUB zeilennr) = "-" THEN
+      out ("-"); anfang := 2
+    ELSE
+      anfang := 1
+    END IF;
+    mark ende := 0
+  END IF;
+  bildzeile ausgeben (bild, zeilennr)
+
+END PROC menuezeile ausgeben;
+
+PROC menuezeile ausgeben (SATZ CONST bild, INT CONST zeilennr) :
+
+  anfang := 1; mark ende := 0;
+  bildzeile ausgeben (bild, zeilennr)
+
+END PROC menuezeile ausgeben;
+
+PROC bildzeile ausgeben (SATZ CONST bild, INT CONST zeilennr) :
+
+  IF zeilennr <= felderzahl (bild) THEN
+    zeileninhalt ausgeben
+  ELSE
+    ende := 0
+  END IF;
+  zeilenrest loeschen .
+
+zeileninhalt ausgeben :
+  feld bearbeiten (bild, zeilennr,
+    PROC (TEXT CONST, INT CONST, INT CONST) abschnitt ausgeben) .
+
+zeilenrest loeschen :
+  IF x pos + x laenge >= 80 AND mark ende = 0 THEN
+    out (cleol)
+  ELSE
+    x laenge - ende - mark ende - 1 TIMESOUT blank;
+    ggf endemarkierung;
+    out (":")
+  END IF .
+
+ggf endemarkierung :
+  IF mark ende > 0 THEN
+    out (end mark)
+  END IF .
+
+END PROC bildzeile ausgeben;
+
+PROC abschnitt ausgeben (TEXT CONST t, INT CONST von, bis) :
+
+  INT CONST offset := von - 1;
+  anfang INCR offset;
+  ende := min (bis, x laenge + offset - mark ende - 1);
+  outsubtext (t, anfang, ende);
+  ende DECR offset
+
+END PROC abschnitt ausgeben;
+
+PROC editget kommando :
+
+  LET esc k = ""27"k";
+  TEXT VAR
+    exit char;
+  fenster veraendert (balkenfenster);
+  bei fehler altes kommando wiederholen;
+  markierte zeile ausgeben;
+  REP
+    kommando editieren
+  UNTIL exit char <> esc k END REP;
+  IF pos (edit kommando , ""33"", ""254"", 1) > 0 THEN
+    altes kommando := edit kommando
+  END IF .
+
+bei fehler altes kommando wiederholen :
+  IF is error THEN
+    fehler ausgeben;
+    edit kommando := altes kommando
+  ELSE
+    edit kommando := niltext
+  END IF .
+
+markierte zeile ausgeben :
+  cursor (1, 1);
+  out (gib kommando);
+  x laenge - 15 TIMESOUT blank;
+  out (end mark) .
+
+kommando editieren :
+  cursor (16, 1);
+  editget (edit kommando, 32000, 62, "", "kh", exit char);
+  IF is error THEN
+    clear error
+  ELIF exit char = esc k THEN
+    edit kommando := altes kommando
+  ELIF exit char = esc h THEN
+    edit kommando := niltext
+  END IF .
+
+END PROC edit get kommando;
+
+PROC existiert nicht (TEXT CONST dateiname) :
+
+  errorstop (textdarstellung (dateiname) + t existiert nicht)
+
+END PROC existiert nicht;
+
+
+(*************************** Auswahl Einlesen ****************************)
+
+TYPE AUSWAHL = STRUCT (
+                 SATZ
+                   kopf,
+                   vorspann,
+                   nachspann,
+                 TEXT
+                   wiederholung,
+                   feldspalten,
+                   feldlaengen);
+
+BOUND ROW 200 AUSWAHL VAR auswahlen;
+
+
+PROC auswahl aus datei lesen :
+
+  TEXT VAR name := text parameter;
+  IF name = niltext THEN
+    fehler (kein name angegeben)
+  ELSE
+    INT VAR index := link (thesaurus (3), name);
+    IF index = 0 THEN
+      insert (thesaurus (3), name, index)
+    END IF;
+    auswahl aus datei lesen (auswahlen (index))
+  END IF
+
+END PROC auswahl aus datei lesen;
+
+PROC auswahl aus datei lesen (AUSWAHL VAR a) :
+
+  menue initialisieren;
+  IF kopf vorhanden THEN
+    kopf einlesen
+  END IF;
+  bild einlesen;
+  teste auf ende .
+
+menue initialisieren :
+  satz initialisieren (a. kopf);
+  satz initialisieren (a. vorspann);
+  satz initialisieren (a. nachspann);
+  a. wiederholung := niltext;
+  a. feldspalten := niltext;
+  a. feldlaengen := niltext .
+
+kopf vorhanden :
+  zeile lesen;
+  kommandozeile CAND kommando ist (vorspann kommando) .
+
+kopf einlesen :
+  INT VAR zeilennr := 1;
+  REP 
+    zeile lesen;
+    IF kommandozeile THEN
+      LEAVE kopf einlesen
+    ELSE
+      kopfzeile bearbeiten;
+      zeilennr INCR 1
+    END IF
+  END REP .
+
+kopfzeile bearbeiten :
+  feld aendern (a. kopf, zeilennr, zeile) .
+
+bild einlesen :
+  teste auf bildkommando;
+  zeilennr := 1;
+  BOOL VAR noch vorspann := TRUE;
+  REP
+    zeile lesen;
+    IF kommandozeile THEN
+      teste ob wiederholung gewesen;
+      LEAVE bild einlesen
+    ELSE
+      bildzeile bearbeiten;
+      zeilennr INCR 1
+    END IF
+  END REP .
+
+teste auf bildkommando :
+  IF NOT (kommandozeile CAND kommando ist (bild kommando)) THEN
+    fehler (bild kommando erwartet)
+  END IF .
+
+teste ob wiederholung gewesen :
+  IF noch vorspann THEN
+    fehler (keine wiederholungszeile)
+  END IF .
+
+bildzeile bearbeiten :
+  IF noch vorspann THEN
+    teste auf wiederholung
+  ELSE
+    nachspannzeile
+  END IF .
+
+teste auf wiederholung :
+  IF pos (zeile, feldmarkierung) > 0 THEN
+    behandle wiederholungszeile;
+    zeilennr := 0;
+    noch vorspann := FALSE
+  ELSE
+    feld aendern (a. vorspann, zeilennr, zeile)
+  END IF .
+
+behandle wiederholungszeile :
+  spalten suchen;
+  a. wiederholung := zeile;
+  feldlaengen berechnen .
+
+spalten suchen :
+  INT VAR feldpos := 0;
+  REP
+    feldpos := pos (zeile, feldmarkierung, feldpos + 1);
+    IF feldpos > 0 THEN
+      a. feldspalten CAT code (feldpos)
+    END IF
+  UNTIL feldpos = 0 END REP .
+
+feldlaengen berechnen :
+  FOR feldpos FROM 1 UPTO length (a. feldspalten) - 1 REP
+    a. feldlaengen CAT code (spaltenabstand - 4)
+  END REP;
+  a. feldlaengen CAT ""0"" .
+
+spaltenabstand :
+  code (a. feldspalten SUB feldpos + 1) - code (a. feldspalten SUB feldpos) .
+
+nachspannzeile :
+  feld aendern (a. nachspann, zeilennr, zeile) .
+
+teste auf ende :
+  IF NOT kommando ist (ende kommando) THEN
+    fehler (ende fehlt)
+  END IF .
+
+END PROC auswahl aus datei lesen;
+
+
+(*************************** Auswahl anbieten ****************************)
+
+LET
+  hop links unten = ""1""8""10"",
+  plus esc q = "+"27"q";
+
+LET
+  fenster zu klein =  #716#
+    "Fenster zu klein",
+  auswahlstatus =  #717#
+"AUSWAHL:  Ankreuzen: 'x'  Durchstreichen: 'o'  Beenden: ESC q  Hilfe: ESC ?";
+
+INT VAR
+  wahlen,
+  spalten,
+  kopfzeilen,
+  bis vorspann,
+  wiederholungszeilen,
+  bis wiederholung,
+  gesamtzeilen,
+  gerollt;
+
+LET INTVEC = TEXT;
+
+INTVEC VAR gewaehlt;
+
+TEXT VAR spaltenpositionen;
+
+
+PROC auswahl anbieten (TEXT CONST name, FENSTER CONST f, TEXT CONST hilfe,
+                       PROC (TEXT VAR, INT CONST) inhalt) :
+
+  ggf initialisieren;
+  INT CONST index := link (thesaurus (3), name);
+  IF index = 0 THEN
+    existiert nicht (name)
+  ELSE
+    anbieten (auswahlen (index), f, hilfe, PROC (TEXT VAR, INT CONST) inhalt)
+  END IF
+
+END PROC auswahl anbieten;
+
+PROC anbieten (AUSWAHL CONST a, FENSTER CONST f, TEXT CONST hilfe,
+               PROC (TEXT VAR, INT CONST) inhalt) :
+
+  INT VAR
+    gezeichnete zeilen := 0,
+    tastenzustand := 0;
+  enable stop;
+  fensterzugriff durchfuehren;
+  status anzeigen (auswahlstatus);
+  anzahl der wahlen feststellen;
+  bildparameter berechnen;
+  auswahl initialisieren;
+  REP
+    auf eingabe warten;
+    auswahlfunktion durchfuehren
+  END REP .
+
+fensterzugriff durchfuehren :
+  BOOL VAR dummy;
+  fensterzugriff (f, dummy);
+  fenstergroesse (f, x pos, y pos, x laenge, y laenge) .
+
+anzahl der wahlen feststellen :
+  INT VAR
+    schritt := 1024;
+  wahlen := schritt;
+  REP
+    schritt := schritt DIV 2;
+    inhalt (zeile, wahlen);
+    IF zeile = niltext THEN
+      wahlen DECR schritt
+    ELSE
+      wahlen INCR schritt
+    END IF
+  UNTIL schritt = 1 END REP;
+  inhalt (zeile, wahlen);
+  IF zeile = niltext THEN wahlen DECR 1 END IF .
+
+auswahl initialisieren :
+  INT VAR
+    akt zeile := bis vorspann + 1,
+    akt spalte := 1,
+    akt wahl := 1;
+  gewaehlt := niltext;
+  spaltenpositionen := a. feldspalten .
+
+bildparameter berechnen :
+  kopfzeilen := felderzahl (a. kopf);
+  bis vorspann := kopfzeilen + felderzahl (a. vorspann);
+  spalten := length (a. feldspalten);
+  wiederholungszeilen := (wahlen + spalten - 1) DIV spalten;
+  bis wiederholung := bis vorspann + wiederholungszeilen;
+  gesamtzeilen := bis wiederholung + felderzahl (a. nachspann);
+  gerollt := 0;
+  IF bis vorspann >= y laenge THEN
+    errorstop (fenster zu klein)
+  END IF .
+
+auf eingabe warten :
+  REP
+    ausgabe und zeichen annehmen;
+    IF is error THEN
+      clear error;
+      gezeichnete zeilen := 0
+    ELSE
+      LEAVE auf eingabe warten
+    END IF
+  END REP .
+
+ausgabe und zeichen annehmen :
+  TEXT VAR eingabe;
+  WHILE gezeichnete zeilen < y laenge REP
+    eingabe := getcharety;
+    eventuell eine zeile ausgeben
+  END REP;
+  cursor positionieren;
+  getchar mit enable stop (eingabe) .
+
+eventuell eine zeile ausgeben :
+  IF eingabe = niltext THEN
+    gezeichnete zeilen INCR 1;
+    entsprechende zeile ausgeben
+  ELSE
+    LEAVE ausgabe und zeichen annehmen
+  END IF .
+
+entsprechende zeile ausgeben :
+  INT CONST tatsaechliche zeile := gezeichnete zeilen + gerollt;
+  f cursor (1, gezeichnete zeilen);
+  IF gezeichnete zeilen <= kopfzeilen THEN
+    menuezeile ausgeben (a. kopf, gezeichnete zeilen)
+  ELIF tatsaechliche zeile <= bis vorspann THEN
+    menuezeile ausgeben (a. vorspann, tatsaechliche zeile - kopfzeilen)
+  ELIF tatsaechliche zeile <= bis wiederholung THEN
+    wiederholungszeile ausgeben
+  ELSE
+    menuezeile ausgeben (a. nachspann,
+                         tatsaechliche zeile - bis wiederholung)
+  END IF .
+
+wiederholungszeile ausgeben :
+  auswahlzeile ausgeben (a, erste wahl,
+                         PROC (TEXT VAR, INT CONST) inhalt) .
+
+erste wahl :
+  (tatsaechliche zeile - bis vorspann - 1) * spalten + 1 .
+
+cursor positionieren :
+  f cursor (code (spaltenpositionen SUB akt spalte), akt zeile) .
+
+auswahlfunktion durchfuehren :
+  SELECT tastenzustand OF
+  CASE 0 : normale funktion
+  CASE 1 : hop funktion
+  CASE 2 : esc funktion
+  END SELECT .
+
+normale funktion :
+  SELECT pos (""1""2""3""8""9""10""13""27" +x-o", eingabe) OF
+  CASE 1 : tastenzustand := 1
+  CASE 2 : rechts ausfuehren
+  CASE 3 : oben ausfuehren
+  CASE 4 : links ausfuehren
+  CASE 5 : tab ausfuehren
+  CASE 6 : unten ausfuehren
+  CASE 7 : return ausfuehren
+  CASE 8 : tastenzustand := 2
+  CASE 9 : leertaste ausfuehren
+  CASE 10, 11 : plus ausfuehren
+  CASE 12, 13 : minus ausfuehren
+  OTHERWISE sondertaste
+  END SELECT .
+
+hop funktion :
+  SELECT pos (""1""2""3""8""10""13"+x-o", eingabe) OF
+  CASE 1 : hop hop ausfuehren
+  CASE 2 : hop rechts ausfuehren
+  CASE 3 : hop oben ausfuehren
+  CASE 4 : hop links ausfuehren
+  CASE 5 : hop unten ausfuehren
+  CASE 6 : hop return ausfuehren
+  CASE 7, 8 : hop plus ausfuehren
+  CASE 9, 10 : hop minus ausfuehren
+  OTHERWISE out (piep)
+  END SELECT;
+  tastenzustand := 0 .
+
+esc funktion :
+  SELECT pos (""1"19?qh", eingabe) OF
+  CASE 1 : esc hop ausfuehren
+  CASE 2 : esc 1 ausfuehren
+  CASE 3 : esc 9 ausfuehren
+  CASE 4 : esc fragezeichen ausfuehren
+  CASE 5 : esc q ausfuehren
+  CASE 6 : errorstop (niltext)
+  OTHERWISE belegte taste
+  END SELECT;
+  tastenzustand := 0 .
+
+rechts ausfuehren :
+  IF akt spalte < spalten AND akt wahl < wahlen THEN
+    akt spalte INCR 1;
+    akt wahl INCR 1
+  END IF .
+
+oben ausfuehren :
+  IF akt wahl > spalten THEN
+    akt zeile DECR 1;
+    akt wahl DECR spalten;
+    IF akt zeile <= kopfzeilen THEN
+      akt zeile INCR 1;
+      gerollt DECR 1;
+      gezeichnete zeilen := kopfzeilen
+    END IF
+  END IF .
+
+links ausfuehren :
+  IF akt spalte > 1 THEN
+    akt spalte DECR 1;
+    akt wahl DECR 1
+  END IF .
+
+tab ausfuehren :
+  IF akt spalte = spalten THEN
+    push (""13"")     (* return *)
+  ELSE
+    push (""1""2"")   (* hop rechts *)
+  END IF .
+
+unten ausfuehren :
+  IF akt wahl + spalten <= wahlen THEN
+    akt zeile INCR 1;
+    akt wahl INCR spalten;
+    IF akt zeile > y laenge THEN
+      akt zeile DECR 1;
+      gerollt INCR 1;
+      gezeichnete zeilen := kopfzeilen
+    END IF
+  END IF .
+
+return ausfuehren :
+  IF akt zeile + gerollt < bis wiederholung THEN
+    push (hop links unten)
+  END IF .
+
+leertaste ausfuehren :
+  push (plus esc q) .
+
+plus ausfuehren :
+  IF wahlpos (akt wahl) = 0 AND akt wahl <= wahlen THEN
+    gewaehlt CAT akt wahl;
+    IF akt zeile <= gezeichnete zeilen THEN
+      wahlnummer (akt zeile, akt spalte, length (gewaehlt) DIV 2)
+    END IF
+  END IF .
+
+minus ausfuehren :
+  INT CONST alte pos := wahlpos (akt wahl);
+  IF alte pos > 0 THEN
+    wahl entfernen;
+    wahlpositionen ausgeben
+  END IF .
+
+wahl entfernen :
+  change (gewaehlt, 2 * alte pos - 1, 2 * alte pos, niltext) .
+
+sondertaste :
+  IF eingabe < blank THEN
+    push (lernsequenz auf taste (eingabe))
+  ELSE
+    out (piep)
+  END IF .
+
+hop hop ausfuehren :
+  hop links ausfuehren; nach oben .
+
+hop rechts ausfuehren :
+  WHILE akt wahl < wahlen AND akt spalte < spalten REP
+    akt wahl INCR 1; akt spalte INCR 1
+  END REP .
+
+hop oben ausfuehren :
+  IF akt zeile = kopfzeilen + 1 THEN
+    nach oben rollen
+  ELSE
+    nach oben
+  END IF .
+
+nach oben rollen :
+  INT VAR um := min (y laenge - kopfzeilen, gerollt);
+  gerollt DECR um;
+  INT CONST runter := noch angezeigter vorspann;
+  akt zeile INCR runter;
+  akt wahl DECR (um - runter) * spalten;
+  IF um > 0 THEN
+    gezeichnete zeilen := kopfzeilen
+  END IF .
+
+noch angezeigter vorspann :
+  max (0, bis vorspann - kopfzeilen - gerollt) .
+
+nach oben :
+  WHILE akt wahl > spalten AND akt zeile > kopfzeilen + 1 REP
+    akt zeile DECR 1;
+    akt wahl DECR spalten
+  END REP .
+
+hop links ausfuehren :
+  akt wahl DECR (akt spalte - 1);
+  akt spalte := 1 .
+
+hop unten ausfuehren :
+  IF akt zeile = y laenge THEN
+    nach unten rollen
+  ELSE
+    nach unten
+  END IF .
+
+nach unten rollen :
+  um := min (y laenge - kopfzeilen, gesamtzeilen - akt zeile - gerollt);
+  gerollt INCR um;
+  INT CONST rauf := max (0, akt zeile + gerollt - bis wiederholung
+                                                + spaltenkorrektur);
+  akt zeile DECR rauf;
+  akt wahl INCR (um - rauf) * spalten;
+  IF um > 0 THEN
+    gezeichnete zeilen := kopfzeilen
+  END IF .
+
+spaltenkorrektur :
+  IF akt spalte - 1 > wahlen MOD spalten THEN
+    1
+  ELSE
+    0
+  END IF .
+
+nach unten :
+  WHILE akt zeile < y laenge AND akt wahl + spalten <= wahlen REP
+    akt zeile INCR 1;
+    akt wahl INCR spalten
+  END REP .
+
+hop return ausfuehren :
+  gerollt INCR (akt zeile - kopfzeilen - 1);
+  akt zeile := kopfzeilen + 1;
+  gezeichnete zeilen := kopfzeilen .
+
+hop plus ausfuehren :
+  INT VAR w;
+  FOR w FROM 1 UPTO wahlen REP
+    IF wahlpos (w) = 0 THEN
+      gewaehlt CAT w
+    END IF
+  END REP;
+  wahlpositionen ausgeben .
+
+hop minus ausfuehren :
+  gewaehlt := niltext;
+  wahlpositionen ausgeben .
+
+esc fragezeichen ausfuehren :
+  hilfe anbieten (hilfe, f);
+  status anzeigen (auswahlstatus);
+  gezeichnete zeilen := 0 .
+
+esc q ausfuehren :
+  LEAVE anbieten .
+
+belegte taste :
+  push (lernsequenz auf taste (eingabe)) .
+
+esc 1 ausfuehren :
+  akt zeile := bis vorspann + 1;
+  akt wahl := 1;
+  akt spalte := 1;
+  gerollt := 0;
+  gezeichnete zeilen := kopfzeilen .
+
+esc 9 ausfuehren :
+  IF bis wiederholung <= y laenge THEN
+    akt zeile := bis wiederholung
+  ELSE
+    akt zeile := max (kopfzeilen + 1,
+                      y laenge + bis wiederholung - gesamtzeilen)
+  END IF;
+  gerollt := bis wiederholung - akt zeile;
+  akt spalte := (wahlen - 1) MOD spalten + 1;
+  akt wahl := wahlen;
+  gezeichnete zeilen := kopfzeilen .
+
+END PROC anbieten;
+
+PROC wahlpositionen ausgeben :
+
+  INT VAR z, s, w;
+  w := erste angezeigte wahl;
+  FOR z FROM erste wahlzeile UPTO letzte wahlzeile REP
+    FOR s FROM 1 UPTO spalten REP
+      wahlnummer (z, s, wahlpos (w));
+      w INCR 1
+    END REP
+  END REP .
+
+erste angezeigte wahl :
+  max (0, gerollt - bis vorspann + kopfzeilen) * spalten + 1 .
+
+erste wahlzeile :
+  max (kopfzeilen, bis vorspann - gerollt) + 1 .
+
+letzte wahlzeile :
+  min (y laenge, bis wiederholung - gerollt) .
+
+END PROC wahlpositionen ausgeben;
+
+
+TEXT VAR zwei bytes := "xx";
+
+INT PROC wahlpos (INT CONST feld) :
+
+  replace (zwei bytes, 1, feld);
+  INT VAR p := 0;
+  REP
+    p := pos (gewaehlt, zwei bytes, p + 1)
+  UNTIL p = 0 OR p MOD 2 = 1 END REP;
+  (p + 1) DIV 2
+
+END PROC wahlpos;
+
+OP CAT (INTVEC VAR intvec, INT CONST wert) :
+
+  replace (zwei bytes, 1, wert);
+  intvec CAT zwei bytes
+
+END OP CAT;
+
+PROC auswahlzeile ausgeben (AUSWAHL CONST a, INT CONST erste wahl,
+                            PROC (TEXT VAR, INT CONST) inhalt) :
+
+  INT VAR
+    p := 1,
+    feld,
+    s := 1;
+  FOR feld FROM erste wahl UPTO erste wahl + spalten - 1 REP
+    outsubtext (a. wiederholung, p, spaltenpos - 5);
+    position ausgeben;
+    inhalt (zeile, feld);
+    INT CONST f laenge := min (jeweilige feldlaenge, length (zeile));
+    outsubtext (zeile, 1, f laenge);
+    p := spaltenpos + f laenge + 2;
+    s INCR 1
+  END REP;
+  zeilenrest loeschen .
+
+spaltenpos :
+  code (spaltenpositionen SUB s) .
+
+position ausgeben :
+  INT CONST n := wahlpos (feld);
+  IF n = 0 THEN
+    out ("    o ")
+  ELSE
+    out (text (n, 3)); out (" x ")
+  END IF .
+
+jeweilige feldlaenge :
+  IF s = spalten THEN
+    x laenge - spaltenpos - 1
+  ELSE
+    code (a. feldlaengen SUB s)
+  END IF .
+
+zeilenrest loeschen :
+  outsubtext (a. wiederholung, p, x laenge);
+  IF x pos + x laenge >= 80 THEN
+    out (cl eol)
+  ELSE
+    x laenge - max (p, length (a. wiederholung)) TIMESOUT blank
+  END IF .
+
+END PROC auswahlzeile ausgeben;
+
+PROC wahlnummer (INT CONST zeile, spalte, wert) :
+
+  f cursor (code (spaltenpositionen SUB spalte) - 4, zeile);
+  IF wert = 0 THEN
+    out ("    o ")
+  ELSE
+    out (text (wert, 3)); out (" x ")
+  END IF
+
+END PROC wahlnummer;
+
+INT PROC wahl (INT CONST stelle) :
+
+  IF stelle + stelle <= length (gewaehlt) THEN
+    gewaehlt ISUB stelle
+  ELSE
+    0
+  END IF
+
+END PROC wahl;
+
+
+(************************ Hilfen *****************************************)
+
+LET
+  maxgebiete = 200,
+  maxseiten = 5000;
+
+LET HILFE = STRUCT (
+              INT anzahl seiten,
+              ROW maxgebiete THESAURUS hilfsnamen,
+              ROW maxgebiete SATZ seitenindex,
+              ROW maxseiten SATZ seiten);
+
+BOUND HILFE VAR h;
+
+INT VAR hx, hy, hxl, hyl;
+
+BOOL VAR hilfen sparen := FALSE;
+
+
+(************************* Hilfe einlesen ********************************)
+
+LET
+  hilfsgebiet existiert bereits = #718#
+    "Das Hilfsgebiet existiert bereits",
+  seite existiert nicht =  #719#
+    "Diese Seite ist in der anderen Hilfe nicht vorhanden";
+
+
+PROC hilfe aus datei lesen :
+
+  TEXT VAR name := text parameter;
+  BOOL VAR hilfe ueberspringen;
+  IF name = niltext THEN
+    fehler (kein name angegeben)
+  ELSE
+    eintrag reservieren;
+    seiten einlesen;
+    hilfe abspeichern
+  END IF .
+
+eintrag reservieren :
+  INT CONST trennung := pos (name, "/");
+  TEXT VAR gebiet;
+  IF trennung = 0 THEN
+    gebiet := name
+  ELSE
+    gebiet := subtext (name, 1, trennung - 1)
+  END IF;
+  gebietsindex bestimmen;
+  einzelindex bestimmen .
+
+gebietsindex bestimmen :
+  INT VAR gebietsindex := link (thesaurus (1), gebiet);
+  hilfe ueberspringen := FALSE;
+  IF gebietsindex = 0 THEN
+    insert (thesaurus (1), gebiet, gebietsindex);
+    h. hilfsnamen (gebietsindex) := empty thesaurus;
+    satz initialisieren (h. seitenindex (gebietsindex));
+  ELIF trennung = 0 THEN
+    fehler (hilfsgebiet existiert bereits);
+    LEAVE hilfe aus datei lesen
+  ELIF hilfen sparen THEN
+    hilfe ueberspringen := TRUE
+  END IF .
+
+einzelindex bestimmen :
+  INT VAR einzelindex;
+  TEXT VAR einzelname := subtext (name, trennung + 1);
+  IF trennung = 0 THEN
+    einzelindex := 1
+  ELSE
+    einzelindex := link (h. hilfsnamen (gebietsindex), einzelname);
+    IF einzelindex = 0 AND NOT hilfe ueberspringen THEN
+      insert (h. hilfsnamen (gebietsindex), einzelname, einzelindex)
+    END IF
+  END IF .
+
+seiten einlesen :
+  INT VAR vorlaeufige seiten := h. anzahl seiten;
+  IF vorlaeufige seiten < 0 THEN
+    vorlaeufige seiten := 0
+  END IF;
+  TEXT VAR alle seiten := niltext;
+  zeile lesen;
+  WHILE kommandozeile CAND kommando ist (seite kommando) REP
+    eine seite einlesen
+  END REP .
+
+eine seite einlesen :
+  INT CONST seitennr := int parameter;
+  TEXT CONST referenz := text parameter;
+  IF referenz <> niltext THEN
+    seitenreferenz besorgen;
+    zeile lesen
+  ELSE
+    neue seite einlesen
+  END IF .
+
+seitenreferenz besorgen :
+  TEXT VAR referenzseiten;
+  seiten bestimmen (referenz, referenzseiten);
+  IF seitennr + seitennr <= length (referenzseiten) THEN
+    alle seiten CAT (referenzseiten ISUB seitennr)
+  ELIF NOT (anything noted OR hilfe ueberspringen) THEN
+    fehler (seite existiert nicht)
+  END IF .
+
+neue seite einlesen :
+  INT VAR zeilennr := 1;
+  IF NOT hilfe ueberspringen THEN
+    vorlaeufige seiten INCR 1;
+    alle seiten CAT vorlaeufige seiten;
+    satz initialisieren (h. seiten (vorlaeufige seiten))
+  END IF;
+  REP
+    zeile lesen;
+    IF kommandozeile THEN
+      LEAVE neue seite einlesen
+    ELIF NOT hilfe ueberspringen THEN
+      feld aendern (h. seiten (vorlaeufige seiten), zeilennr, zeile);
+      zeilennr INCR 1
+    END IF
+  END REP .
+
+hilfe abspeichern :
+  IF NOT kommando ist (ende kommando) THEN
+    fehler (ende fehlt)
+  END IF;
+  IF NOT (anything noted OR hilfe ueberspringen) THEN
+    feld aendern (h. seitenindex (gebietsindex), einzelindex, alle seiten);
+    h. anzahl seiten := vorlaeufige seiten
+  END IF .
+
+END PROC hilfe aus datei lesen;
+
+PROC seiten bestimmen (TEXT CONST name, TEXT VAR alle seiten) :
+
+  INT CONST trennung := pos (name, "/");
+  INT VAR
+    gebiet,
+    einzelindex := 0;
+  IF trennung = 0 THEN
+    gebiet := link (thesaurus (1), name)
+  ELSE
+    gebiet := link (thesaurus (1), subtext (name, 1, trennung - 1));
+    einzelindex suchen
+  END IF;
+  IF einzelindex = 0 THEN
+    einzelindex := 1
+  END IF;
+  IF gebiet = 0 THEN
+    errorstop (hilfe existiert nicht)
+  ELSE
+    feld lesen (h. seitenindex (gebiet), einzelindex, alle seiten)
+  END IF .
+
+einzelindex suchen :
+  IF gebiet > 0 THEN
+    einzelindex :=
+      link (h. hilfsnamen (gebiet), subtext (name, trennung + 1))
+  END IF .
+
+END PROC seiten bestimmen;
+
+
+(************************* Hilfe anbieten ********************************)
+
+LET
+  hilfe existiert nicht =  #720#
+    "Hilfe existiert nicht",
+  hilfe ist leer =  #721#
+    "Hilfe ist leer",
+  hilfe status =  #722#
+"HILFE:  Beenden: ESC q     Seite weiter: ESC w     Seite zurueck: ESC z";
+
+
+PROC hilfe anbieten (TEXT CONST name, FENSTER CONST f) :
+
+  enable stop;
+  ggf initialisieren;
+  TEXT VAR alle seiten;
+  fensterzugriff anmelden;
+  seiten bestimmen (name, alle seiten);
+  IF alle seiten = niltext THEN
+    errorstop (hilfe ist leer)
+  ELSE
+    seiten ausgeben
+  END IF .
+
+fensterzugriff anmelden :
+  fenster veraendert (f);
+  fenstergroesse (f, hx, hy, hxl, hyl) .
+
+seiten ausgeben :
+  tastenpuffer loeschen;
+  status anzeigen (hilfe status);
+  INT VAR seitenindex := 1;
+  REP
+    eine seite ausgeben;
+    kommando annehmen
+  END REP .
+
+eine seite ausgeben :
+  INT CONST tatsaechliche seite := alle seiten ISUB seitenindex;
+  seite ausgeben (h. seiten (tatsaechliche seite)) .
+
+kommando annehmen :
+  TEXT VAR eingabe;
+  REP
+    getchar (eingabe);
+    IF eingabe = esc THEN
+      getchar (eingabe);
+      kommando ausfuehren;
+      LEAVE kommando annehmen
+    ELSE
+      out (piep)
+    END IF
+  END REP .
+
+kommando ausfuehren :
+  SELECT pos ("qwz?"1"", eingabe) OF
+  CASE 1 :  LEAVE hilfe anbieten
+  CASE 2 :  eine seite weiter
+  CASE 3 :  eine seite zurueck
+  CASE 4 :  an anfang
+  CASE 5 :  esc hop ausfuehren
+  OTHERWISE out (piep)
+  END SELECT .
+
+eine seite weiter :
+  IF 2 * seitenindex < length (alle seiten) THEN
+    seitenindex INCR 1
+  END IF .
+
+eine seite zurueck :
+  IF seitenindex > 1 THEN
+    seitenindex DECR 1
+  END IF .
+
+an anfang :
+  seitenindex := 1 .
+
+END PROC hilfe anbieten;
+
+PROC seite ausgeben (SATZ CONST seite) :
+
+  INT VAR zeilennr;
+  FOR zeilennr FROM 1 UPTO hyl REP
+    cursor (hx, hy + zeilennr - 1);
+    feld bearbeiten (seite, zeilennr,
+      PROC (TEXT CONST, INT CONST, INT CONST) zeile ausgeben)
+  END REP;
+  cursor (hx, hy + hyl - 1)
+
+END PROC seite ausgeben;
+
+PROC zeile ausgeben (TEXT CONST bild, INT CONST von, bis) :
+
+  IF bis - von + 1 > hxl THEN
+    ende := von + hxl - 1
+  ELSE
+    ende := bis
+  END IF;
+  outsubtext (bild, von, ende);
+  IF hx + hxl >= 80 THEN
+    out (cleol)
+  ELSE
+    hxl + von - ende - 1 TIMESOUT blank
+  END IF
+
+END PROC zeile ausgeben;
+
+
+(*********************** Statuszeile *************************************)
+
+PROC status anzeigen (TEXT CONST status) :
+
+  cursor (1, 1);
+  out (status);
+  out (cl eol);
+  fenster veraendert (balkenfenster)
+
+END PROC status anzeigen;
+
+
+(******************************* Dialog **********************************)
+
+LET
+  cleop = ""4"",
+  esc fragezeichen = ""27"?",
+  esc q = ""27"q",
+  esc h = ""27"h";
+
+LET
+  ja nein text =  #723#
+    " ? (j/n) ",
+  ja zeichen =  #724#
+    "jJ",
+  nein zeichen =  #725#
+    "nN",
+  ja status =  #726#
+"FRAGE:  Bejahen: j,J    Verneinen: n,N    Abbrechen: ESC h    Hilfe: ESC ?",
+  editget status ohne esc z =  #727#
+"EINGABE:  Bestätigen: RETURN    Abbrechen: ESC h    Hilfe: ESC ?",
+  editget status mit esc z =  #728#
+"EINGABE:  Bestätigen: RETURN   Zeigen: ESC z   Abbruch: ESC h  Hilfe: ESC ?",
+  fehler status =  #729#
+""15"!!! FEHLER !!! "14"     Quittieren: ESC q     Hilfe zur Meldung: ESC ?";
+
+FENSTER VAR d fenster;
+fenster initialisieren (d fenster);
+
+INT VAR
+  dialogzeile,
+  dx,
+  dy,
+  dxl,
+  dyl;
+
+
+PROC dialogfenster (INT CONST x, y, x l, y l) :
+
+  fenstergroesse setzen (d fenster, x, y, x l, y l);
+  dx := x; dy := y; dxl := x l; dyl := y l
+
+END PROC dialogfenster;
+
+PROC neuer dialog :
+
+  dialogzeile := dyl
+
+END PROC neuer dialog;
+
+PROC dialog :
+
+  BOOL VAR veraendert;
+  fensterzugriff (d fenster, veraendert);
+  dialogzeile INCR 1;
+  IF dialogzeile > dyl OR veraendert THEN
+    dialogfenster loeschen;
+    dialogzeile := 1
+  END IF;
+  cursor (dx, dy + dialogzeile - 1) .
+
+END PROC dialog;
+
+PROC dialogfenster loeschen :
+
+  BOOL CONST bis zeilenende := dx + dxl >= 80;
+  dialogzeile := 0;
+  REP
+    cursor (dx, dy + dialogzeile);
+    IF bis zeilenende THEN
+      out (cleol)
+    ELSE
+      dxl TIMESOUT blank
+    END IF;
+    dialogzeile INCR 1
+  UNTIL dialogzeile >= dyl END REP .
+
+END PROC dialogfenster loeschen;
+
+BOOL PROC ja (TEXT CONST frage, hilfe) :
+
+  REP
+    status anzeigen (ja status);
+    dialog;
+    out (frage); out (ja nein text);
+    tastenpuffer loeschen;
+    zeichen annehmen und auswerten
+  END REP;
+  FALSE .
+
+zeichen annehmen und auswerten :
+  TEXT VAR eingabe;
+  REP
+    getchar (eingabe);
+    IF pos (ja zeichen, eingabe) > 0 THEN
+      out (eingabe); LEAVE ja WITH TRUE
+    ELIF pos (nein zeichen, eingabe) > 0 THEN
+      out (eingabe); LEAVE ja WITH FALSE
+    ELIF eingabe = esc THEN
+      esc funktionen
+    ELSE
+      out (piep)
+    END IF
+  END REP .
+
+esc funktionen :
+  getchar (eingabe);
+  IF eingabe = "?" THEN
+    hilfe anbieten (hilfe, d fenster);
+    neuer dialog;
+    LEAVE zeichen annehmen und auswerten
+  ELIF eingabe = "h" THEN
+    errorstop (niltext);
+    LEAVE ja WITH FALSE
+  ELIF eingabe = ""1"" THEN
+    esc hop ausfuehren
+  ELSE
+    out (piep)
+  END IF .
+
+END PROC ja;
+
+PROC editget (TEXT CONST prompt, TEXT VAR eingabe, TEXT CONST res, hilfe) :
+
+  TEXT VAR exit char;
+  passenden status anzeigen;
+  dialog;
+  out (prompt); out (blank);
+  editget (eingabe, 1000, editlaenge, "", "?hq" + res, exit char);
+  IF exit char = esc fragezeichen THEN
+    hilfe anbieten (hilfe, d fenster);
+    neuer dialog;
+    editget (prompt, eingabe, res, hilfe)
+  ELIF exit char = esc h OR exit char = esc q THEN
+    errorstop (niltext)
+  ELIF length (exit char) = 2 THEN
+    eingabe := exit char
+  END IF .
+
+passenden status anzeigen :
+  IF pos (res, "z") > 0 THEN
+    status anzeigen (editget status mit esc z)
+  ELSE
+    status anzeigen (editget status ohne esc z)
+  END IF .
+
+editlaenge :
+  dxl - length (prompt) - 1 .
+
+END PROC editget;
+
+PROC fehler ausgeben :
+
+  TEXT CONST meldung := errormessage;
+  IF error code = 1 THEN
+    page; bildschirm neu
+  END IF;
+  clear error;
+  tastenpuffer loeschen;
+  IF meldung <> niltext THEN
+    status anzeigen (fehler status);
+    meldung ausgeben;
+    eingabe abwarten;
+    neuer dialog
+  END IF .
+
+meldung ausgeben :
+  dialog;
+  out (piep); out (">>> ");
+  outsubtext (errormessage, 1, dxl) .
+
+eingabe abwarten :
+  TEXT VAR eingabe;
+  getchar (eingabe);
+  IF eingabe = esc THEN
+    esc funktionen
+  END IF .
+
+esc funktionen :
+  getchar (eingabe);
+  IF eingabe = "?" THEN
+    hilfe anbieten ("FEHLER/" + text (errorcode), d fenster)
+  ELIF eingabe = ""1"" THEN
+    esc hop ausfuehren
+  END IF .
+
+END PROC fehler ausgeben;
+
+PROC tastenpuffer loeschen :
+
+  WHILE getcharety <> niltext REP END REP
+
+END PROC tastenpuffer loeschen;
+
+
+(************************** Menue Manager ********************************)
+
+LET
+  max ds = 3,
+  save order = 12,
+  erase order = 14,
+  fetch order = 1070,
+  lock order = 1068,
+  free order = 1069,
+  ack = 0,
+  error nak = 2;
+ 
+ROW maxds DATASPACE VAR menue ds;
+
+ROW maxds THESAURUS VAR thesaurus;
+
+BOOL VAR vater ist menuemanager := FALSE;
+
+INITFLAG VAR menueinitialisierung;
+
+
+PROC ggf initialisieren :
+
+  IF NOT initialized (menueinitialisierung) THEN
+    initialisierung durchfuehren
+  END IF .
+
+initialisierung durchfuehren :
+  BOOL VAR erfolgreich := vater ist menuemanager;
+  datenraeume holen;
+  IF erfolgreich THEN
+    ankoppeln
+  ELSE
+    menue loeschen (FALSE)
+  END IF .
+
+datenraeume holen :
+  INT VAR nr;
+  FOR nr FROM 1 UPTO maxds
+  WHILE erfolgreich REP
+    versuche zu holen
+  END REP .
+
+versuche zu holen :
+##                      (* nur im Multi-User *)
+  INT VAR
+    reply,
+    retries;
+  FOR retries FROM 1 UPTO 10 REP
+    forget (menue ds (nr));
+    menue ds (nr) := nilspace;
+    pingpong (father, fetch order + nr, menue ds (nr), reply);
+    IF reply = ack THEN
+      LEAVE versuche zu holen
+    ELIF reply <> error nak THEN
+      pause (15)
+    END IF
+  UNTIL reply = error nak END REP;
+  forget (menue ds (nr));
+  menue ds (nr) := nilspace;
+##
+  erfolgreich := FALSE .
+
+END PROC ggf initialisieren;
+
+THESAURUS PROC menuenamen (INT CONST nr) :
+
+  ggf initialisieren;
+  IF nr < 0 THEN
+    h. hilfsnamen (- nr)
+  ELSE
+    thesaurus (nr)
+  END IF
+
+END PROC menuenamen;
+
+PROC menue loeschen (TEXT CONST name, INT CONST nr) :
+
+  ggf initialisieren;
+  IF nr < 0 THEN
+    loeschen (name, h. hilfsnamen (- nr))
+  ELSE
+    loeschen (name, thesaurus (nr))
+  END IF
+
+END PROC menue loeschen;
+
+PROC loeschen (TEXT CONST name, THESAURUS VAR t) :
+
+  INT CONST index := link (t, name);
+  IF index > 0 THEN
+    delete (t, index)
+  END IF
+
+END PROC loeschen;
+
+PROC menue loeschen (BOOL CONST hilfen reduzieren) :
+
+  INT VAR nr;
+  menueinitialisierung := TRUE;
+  hilfen sparen := hilfen reduzieren;
+  FOR nr FROM 1 UPTO max ds REP
+    forget (menue ds (nr));
+    menue ds (nr) := nilspace;
+    thesaurus (nr) := empty thesaurus
+  END REP;
+  ankoppeln
+
+END PROC menue loeschen;
+
+PROC ankoppeln :
+
+  h := menue ds (1);
+  menues := menue ds (2);
+  auswahlen := menue ds (3)
+
+END PROC ankoppeln;
+
+##                        (* nur im Multi-User *)
+
+LET
+  lock aktiv =  #730#
+    "Datei wird von anderer Task geaendert.",
+  auftrag nur fuer soehne =  #731#
+    "Auftrag nur fuer Soehne erlaubt";
+
+THESAURUS VAR locks := empty thesaurus;
+
+ROW 200 TASK VAR lock owner;
+
+TEXT VAR save file name;
+
+BOUND STRUCT (TEXT name, write pass, read pass) VAR msg;
+
+PROC menue manager (DATASPACE VAR ds, INT CONST order, phase,
+                    TASK CONST order task) :
+
+  enable stop;
+  vater ist menue manager := TRUE;
+  IF order >= lock order AND order <= fetch order + max ds THEN
+    menue auftrag
+  ELSE
+    IF order = save order OR order = erase order THEN
+      save pre
+    END IF;
+    free manager (ds, order, phase, order task)
+  END IF .
+
+menue auftrag :
+  IF order = lock order THEN
+    lock ausfuehren
+  ELIF order = free order THEN
+    free ausfuehren
+  ELSE
+    menue fetch
+  END IF .
+
+lock ausfuehren :
+  msg := ds;
+  set lock (msg. name, order task);
+  send (order task, ack, ds) .
+
+free ausfuehren :
+  msg := ds;
+  reset lock (msg. name);
+  send (order task, ack, ds) .
+
+save pre :
+  IF phase = 1 THEN
+    lock ueberpruefen
+  ELSE
+    reset lock (save file name)
+  END IF .
+
+lock ueberpruefen :
+  msg := ds;
+  save file name := msg. name;
+  IF gesperrt und task ungleich THEN
+    errorstop (lock aktiv)
+  END IF .
+
+gesperrt und task ungleich :
+  INT VAR stelle := link (locks, save file name);
+  stelle > 0 CAND NOT (lock owner (stelle) = order task) .
+
+menue fetch :
+  IF order task < myself THEN
+    ggf initialisieren;
+    forget (ds); ds := menue ds (order - fetch order);
+    send (order task, ack, ds)
+  ELSE
+    errorstop (auftrag nur fuer soehne)
+  END IF .
+
+END PROC menue manager;
+
+PROC set lock (TEXT CONST dateiname, TASK CONST owner) :
+
+  INT VAR i := link (locks, dateiname);
+  IF i = 0 THEN
+    insert (locks, dateiname, i);
+    ggf reorganisieren;
+    lock owner (i) := owner
+  ELIF exists (lock owner (i)) THEN
+    IF NOT (lock owner (i) = owner) THEN
+      errorstop (lock aktiv)
+    END IF
+  ELSE
+    lock owner (i) := owner
+  END IF .
+
+ggf reorganisieren :
+  IF i = 0 THEN
+    locks reorganisieren;
+    insert (locks, dateiname, i)
+  END IF .
+
+locks reorganisieren :
+  TEXT VAR eintrag;
+  i := 0;
+  REP
+    get (locks, eintrag, i);
+    IF i = 0 THEN
+      LEAVE locks reorganisieren
+    END IF;
+    IF NOT exists (eintrag) OR NOT exists (lock owner (i)) THEN
+      delete (locks, i)
+    END IF
+  END REP .
+
+END PROC set lock;
+
+PROC reset lock (TEXT CONST dateiname) :
+
+  INT VAR i;
+  delete (locks, dateiname, i)
+
+END PROC reset lock;
+
+PROC global manager :
+
+  global manager (PROC (DATASPACE VAR, INT CONST, INT CONST,
+                        TASK CONST) menue manager)
+
+END PROC global manager;
+##
+
+PROC lock (TEXT CONST dateiname, TASK CONST manager) :
+
+  call (lock order, dateiname, manager)
+
+END PROC lock;
+
+PROC free (TEXT CONST dateiname, TASK CONST manager) :
+
+  call (free order, dateiname, manager)
+
+END PROC free;
+
+END PACKET eudas menues;
+

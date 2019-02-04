@@ -1,0 +1,177 @@
+
+PACKET basic transput DEFINES
+                      out ,
+                      outsubtext ,
+                      outtext ,
+                      TIMESOUT ,
+                      cout ,
+                      display ,
+                      inchar ,
+                      incharety ,
+                      cat input ,
+                      pause ,
+                      cursor ,
+                      get cursor ,
+                      channel ,
+                      online ,
+                      control ,
+                      blockout ,
+                      blockin :
+ 
+ 
+
+LET channel field  = 4 ,
+    blank times 64 =
+    "                                                                " ;
+
+LET BLOCKIO = STRUCT (ALIGN page align, ROW 256 INT buffer) ,
+              buffer page = 2 ;
+
+BOUND BLOCKIO VAR block io ;
+DATASPACE VAR block io ds ;
+INITFLAG VAR this packet := FALSE ;
+
+
+PROC out (TEXT CONST text ) : 
+ EXTERNAL 60 
+ENDPROC out ; 
+ 
+PROC outsubtext ( TEXT CONST source, INT CONST from ) : 
+ EXTERNAL 62 
+END PROC outsubtext; 
+ 
+PROC outsubtext (TEXT CONST source, INT CONST from, to) : 
+ EXTERNAL 63 
+END PROC outsubtext;
+
+PROC outtext ( TEXT CONST source, INT CONST from, to ) : 
+  out subtext (source, from, to) ; 
+  INT VAR trailing ;
+  IF from <= LENGTH source 
+    THEN trailing := to - LENGTH source 
+    ELSE trailing := to + 1 - from 
+  FI ;
+  IF trailing > 0 
+    THEN trailing TIMESOUT " " 
+  FI 
+ENDPROC outtext ;
+
+OP TIMESOUT (INT CONST times, TEXT CONST text) : 
+
+  IF text = " "
+    THEN fast timesout blank
+    ELSE timesout
+  FI .
+
+fast timesout blank :
+  INT VAR i := 0 ;
+  WHILE i + 64 < times REP
+    out (blank times 64) ;
+    i INCR 64
+  PER ;
+  outsubtext (blank times 64, 1, times - i) .
+
+timesout :
+  FOR i FROM 1 UPTO times REP 
+    out(text) 
+  ENDREP .
+
+ENDOP TIMESOUT ;
+ 
+PROC display (TEXT CONST text) :
+  IF online
+    THEN out (text)
+  FI
+ENDPROC display ;
+
+PROC inchar (TEXT VAR character ) :
+ EXTERNAL 64
+ENDPROC inchar ;
+ 
+TEXT PROC incharety :
+ EXTERNAL 65
+END PROC incharety ;
+ 
+TEXT PROC incharety (INT CONST time limit) :
+ internal pause (time limit) ;
+ incharety
+ENDPROC incharety ;
+ 
+PROC pause (INT CONST time limit) :
+ internal pause (time limit) ;
+ TEXT CONST dummy := incharety
+ENDPROC pause ;
+ 
+PROC pause :
+ TEXT VAR dummy; inchar (dummy)
+ENDPROC pause ;
+
+PROC internal pause (INT CONST time limit) :
+ EXTERNAL 66
+ENDPROC internal pause ;
+
+PROC cat input (TEXT VAR t, esc char) :
+ EXTERNAL 68
+ENDPROC cat input ;
+
+ 
+PROC cursor (INT CONST x, y) :
+ out (""6"") ;
+ out (code(y-1)) ;
+ out (code(x-1)) ;
+ENDPROC cursor ;
+ 
+PROC get cursor (INT VAR x, y) :
+  EXTERNAL 67
+ENDPROC get cursor ;
+ 
+PROC cout (INT CONST number) :
+  EXTERNAL 61
+ENDPROC cout ;
+
+
+INT PROC channel :
+  pcb (channel field)
+ENDPROC channel ;
+
+BOOL PROC online :
+  pcb (channel field) <> 0
+ENDPROC online ;
+ 
+
+PROC control (INT CONST code1, code2, code3, INT VAR return code) :
+  EXTERNAL 84
+ENDPROC control ;
+
+PROC blockout (ROW 256 INT CONST block, INT CONST code1, code2,
+               INT VAR return code) :
+
+  access block io ds ;
+  block io.buffer := block ;
+  blockout (block io ds, buffer page, code1, code2, return code) .
+
+access block io ds :
+  IF NOT initialized (this packet)
+    THEN block io ds := nilspace
+  FI ;
+  block io := block io ds .
+
+ENDPROC blockout ;
+
+PROC blockin (ROW 256 INT VAR block, INT CONST code1, code2,
+              INT VAR return code) :
+
+  access block io ds ;
+  blockin (block io ds, buffer page, code1, code2, return code) ;
+  block := block io.buffer .
+
+access block io ds :
+  IF NOT initialized (this packet)
+    THEN block io ds := nilspace
+  FI ;
+  block io := block io ds .
+
+ENDPROC blockin ;
+
+ENDPACKET basic transput ;
+

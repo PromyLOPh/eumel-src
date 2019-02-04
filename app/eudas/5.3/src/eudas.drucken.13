@@ -1,0 +1,2001 @@
+PACKET eudas drucken
+
+(*************************************************************************)
+(*                                                                       *)
+(*     Drucken von EUDAS-Dateien nach Druckmuster                        *)
+(*                                                                       *)
+(*     Version 13                                                        *)
+(*                                                                       *)
+(*     Autor: Thomas Berlage                                             *)
+(*     Stand: 06.02.89                                                   *)
+(*                                                                       *)
+(*************************************************************************)
+
+  DEFINES
+
+(*dump,    (* Test *) *)
+
+  drucke,
+  interpretiere,
+  gruppentest,
+
+  druckdatei,
+  direkt drucken,
+  druckrichtung,
+  max druckzeilen,
+
+  gruppenwechsel,
+  lfd nr :
+
+
+(*************************** Musterinterpreter ***************************)
+
+(*
+  EXPORTS
+
+  INT max musterspeicher
+  INT VAR interpretationsmodus
+  interpretiere (INT CONST erste zeile, erstes muster,
+                 PROC (INT CONST, TEXT VAR) abk)
+*)
+
+
+LET
+  max musterspeicher = 25,
+  SPEICHER = STRUCT (INT  feldanfang,
+                          feldlaenge,
+                          setzmodus,
+                          bearbeitet bis,
+                     TEXT inhalt);
+
+ROW max musterspeicher SPEICHER VAR musterspeicher;
+
+INT VAR interpretationsmodus;
+
+LET
+  niltext = "",
+  blank = " ",
+  fis = "#",
+  zwei blanks = "  ";
+
+TEXT VAR ausgabezeile;
+
+
+PROC interpretiere (INT CONST erste zeile, erstes muster,
+                    PROC (INT CONST, TEXT VAR) abkuerzungen) : 
+
+  INT VAR
+    kommandoindex,
+    anzahl leerzeilen := 0,
+    anzahl wiederholungen := 0,
+    aktuelles muster := erstes muster;
+
+  muster auf zeile (erste zeile);
+  WHILE NOT druckmusterende REP
+    musterzeile lesen;
+    IF leerzeile THEN
+      anzahl leerzeilen INCR 1
+    ELSE
+      letzte leerzeilen beruecksichtigen;
+      zeile auswerten
+    END IF
+  END REP .
+
+zeile auswerten :
+  IF kommandozeile (kommandoindex) THEN
+    kommando auswerten
+  ELSE
+    zeile interpretieren;
+    anzahl wiederholungen := 0
+  END IF .
+
+kommando auswerten :
+  SELECT kommandoindex OF
+  CASE modus index :  modus umstellen
+  CASE mehr index  :  anzahl wiederholungen setzen
+  OTHERWISE LEAVE interpretiere
+  END SELECT .
+
+letzte leerzeilen beruecksichtigen :
+  WHILE anzahl leerzeilen > 0 REP
+    zeile drucken (blank);
+    anzahl leerzeilen DECR 1
+  END REP .
+
+modus umstellen :
+  int param (interpretationsmodus) .
+
+anzahl wiederholungen setzen :
+  int param (anzahl wiederholungen) .
+
+leerzeile :
+  musterzeile = niltext OR musterzeile = blank .
+
+zeile interpretieren :
+  INT VAR
+    zeilenzaehler := 0,
+    zu bearbeitende inhalte := 0;
+  BOOL VAR
+    blanks dazwischen := FALSE;
+
+  REP
+    einen zeilendurchgang;
+    zeilenzaehler INCR 1;
+    IF interpretationsmodus = 3 THEN
+      blanks dazwischen := TRUE
+    END IF
+  UNTIL zeile fertig bearbeitet END REP .
+
+zeile fertig bearbeitet :
+  IF interpretationsmodus <= 2 THEN
+    TRUE
+  ELIF anzahl wiederholungen <> 0 THEN
+    zeilenzaehler = anzahl wiederholungen
+  ELSE
+    zu bearbeitende inhalte = 0
+  END IF .
+
+einen zeilendurchgang :
+  INT VAR
+    letztes feldende := 1,
+    reservelaenge := 0,
+    benoetigte reserve := 0,
+    einzulesendes muster := 1,
+    einzusetzendes muster := 1;
+
+  ausgabezeile := niltext;
+  REP
+    IF musterinhalt abspeichern THEN
+      musterinhalt besorgen
+    END IF;
+    IF festes muster THEN
+      zeilenabschnitt ausgeben
+    END IF;
+    einsetzdaten sammeln;
+    einzulesendes muster INCR 1
+  END REP .
+
+musterinhalt abspeichern :
+  zeilenzaehler = 0 .
+
+musterinhalt besorgen :
+  naechstes muster (lesespeicher. feldanfang, lesespeicher. feldlaenge,
+                    lesespeicher. setzmodus);
+  IF NOT zeilenende THEN
+    tabellenmodus beruecksichtigen;
+    musterinhalt lesen
+  END IF .
+
+zeilenende :
+  lesespeicher. feldanfang > length (musterzeile) .
+
+tabellenmodus beruecksichtigen :
+  IF linksschieben verboten AND setzmodus variabel THEN
+    folgende leerzeichen schlucken
+  END IF .
+
+setzmodus variabel :
+  (lesespeicher. setzmodus AND 1) = 0 .
+
+folgende leerzeichen schlucken :
+  INT VAR nach name := lesespeicher. feldanfang + lesespeicher. feldlaenge;
+  IF (musterzeile SUB nach name) = blank THEN
+    WHILE (musterzeile SUB nach name + 1) = blank REP
+      nach name INCR 1;
+      lesespeicher. feldlaenge INCR 1
+    END REP
+  END IF .
+
+musterinhalt lesen :
+  INT CONST musterfunktion := musterindex (aktuelles muster);
+  IF musterfunktion > 0 THEN
+    feld lesen (musterfunktion, lesespeicher. inhalt)
+  ELSE
+    abkuerzungen (-musterfunktion, lesespeicher. inhalt)
+  END IF;
+  aktuelles muster INCR 1;
+  lesespeicher. bearbeitet bis := 0;
+  IF lesespeicher. inhalt <> niltext THEN
+    zu bearbeitende inhalte INCR 1
+  END IF .
+
+festes muster :
+  lesespeicher. setzmodus >= 4 .
+
+lesespeicher :
+  musterspeicher (einzulesendes muster) .
+
+einsetzdaten sammeln :
+  INT CONST reserve := setzdifferenz (lesespeicher);
+  IF reserve > 0 THEN
+    reserve merken
+  ELSE
+    benoetigte reserve DECR reserve
+  END IF .
+
+reserve merken :
+  reservelaenge INCR reserve;
+  IF linksschieben verboten AND reservelaenge > benoetigte reserve THEN
+    reservelaenge := benoetigte reserve
+  END IF;
+  IF kein inhalt mehr einzusetzen AND variabel THEN
+    loeschbare blanks zaehlen
+  END IF .
+
+linksschieben verboten :
+  interpretationsmodus = 2 OR interpretationsmodus = 4 .
+
+kein inhalt mehr einzusetzen :
+  reserve = lesespeicher. feldlaenge .
+
+variabel :
+  (lesespeicher. setzmodus AND 1) = 0 .
+
+loeschbare blanks zaehlen :
+  IF lesespeicher. feldanfang = 1 COR
+     (musterzeile SUB (lesespeicher. feldanfang - 1)) = blank THEN
+    INT VAR ende := feldende (einzulesendes muster);
+    WHILE (musterzeile SUB ende) = blank REP
+      ende INCR 1;
+      lesespeicher. feldlaenge INCR 1;
+      reservelaenge INCR 1
+    END REP
+  END IF .
+
+zeilenabschnitt ausgeben :
+  IF einzulesendes muster = 1 THEN
+    IF zeilenende THEN
+      zeile ganz ausgeben
+    END IF
+  ELSE
+    zeile bis dahin zusammenstellen
+  END IF .
+
+zeile ganz ausgeben :
+  IF blanks dazwischen THEN
+    zeile drucken (blank)
+  ELSE
+    zeile drucken (musterzeile)
+  END IF;
+  LEAVE einen zeilendurchgang .
+
+zeile bis dahin zusammenstellen :
+  INT VAR
+    blankluecke := 0,
+    blankpuffer := lesespeicher. feldanfang;
+  INT CONST
+    endeluecke := blankpuffer - length (musterzeile);
+  blankluecke suchen;
+  alle zwischenliegenden muster in ausgabedatei kopieren;
+  letzten zwischenraum kopieren;
+  zeilenende behandeln .
+
+blankluecke suchen :
+  IF endeluecke > 0 THEN
+    reservelaenge INCR endeluecke;
+    blankpuffer DECR (endeluecke - 1)
+  END IF;
+  rueckwaerts zwei blanks suchen .
+
+rueckwaerts zwei blanks suchen :
+  INT CONST
+    ende voriges feld := feldende (einzulesendes muster - 1),
+    leerstelle :=
+      pos (musterzeile, zwei blanks, ende voriges feld, blankpuffer);
+  IF leerstelle > 0 THEN
+    blankpuffer := leerstelle;
+    groesse der blankluecke bestimmen
+  ELIF endeluecke < 0 AND (musterzeile SUB (blankpuffer - 1)) <> blank THEN
+    blankpuffer := ende voriges feld
+  END IF .
+
+groesse der blankluecke bestimmen :
+  INT VAR ende der luecke := blankpuffer + 1;
+  REP
+    blankluecke INCR 1;
+    ende der luecke INCR 1
+  UNTIL (musterzeile SUB ende der luecke) <> blank END REP;
+  reservelaenge INCR blankluecke .
+
+alle zwischenliegenden muster in ausgabedatei kopieren :
+  INT VAR verschiebung := 0;
+  WHILE einzusetzendes muster < einzulesendes muster REP
+    setzspeicher in einzelvariablen lesen;
+    musterzwischenraum kopieren;
+    muster einsetzen;
+    einzusetzendes muster INCR 1
+  END REP .
+
+setzspeicher in einzelvariablen lesen :
+  INT CONST
+    feldanfang := setzspeicher. feldanfang,
+    feldlaenge := setzspeicher. feldlaenge,
+    setzmodus := setzspeicher. setzmodus .
+
+musterzwischenraum kopieren :
+  zwischenraum (letztes feldende, feldanfang, blanks dazwischen);
+  letztes feldende := feldanfang + feldlaenge .
+
+setzspeicher :
+  musterspeicher (einzusetzendes muster) .
+
+muster einsetzen :
+  INT CONST ueberschuss := - setzdifferenz (setzspeicher);
+  IF ueberschuss = - feldlaenge THEN
+    leeres feld behandeln
+  ELIF ueberschuss <= 0 THEN
+    in voller laenge einsetzen
+  ELIF variable laenge AND reserve vorhanden THEN
+    einsetzen und nach rechts schieben
+  ELSE
+    bis zur grenze einsetzen
+  END IF .
+
+leeres feld behandeln :
+  IF variable laenge THEN
+    verschiebung INCR ueberschuss;
+    IF linksschieben verboten THEN
+      verschiebung korrigieren
+    END IF
+  ELSE
+    blanks anfuegen (-ueberschuss)
+  END IF .
+
+verschiebung korrigieren :
+  IF verschiebung < 0 THEN
+    blanks anfuegen (-verschiebung);
+    verschiebung := 0
+  END IF .
+
+in voller laenge einsetzen :
+  IF rechtsbuendig THEN
+    blanks anfuegen (-ueberschuss)
+  END IF;
+  musterspeicher ganz ausgeben (setzspeicher);
+  zu bearbeitende inhalte DECR 1;
+  IF feste laenge THEN
+    ggf mit blanks auffuellen
+  ELSE
+    verschiebung INCR ueberschuss;
+    linksschieben korrigieren
+  END IF .
+
+rechtsbuendig :
+  (setzmodus AND 2) = 2 .
+
+feste laenge :
+  (setzmodus AND 1) = 1 .
+
+ggf mit blanks auffuellen :
+  IF NOT rechtsbuendig THEN
+    blanks anfuegen (-ueberschuss)
+  END IF .
+
+linksschieben korrigieren :
+  IF linksschieben verboten AND verschiebung < 0 THEN
+    blanks anfuegen (-verschiebung);
+    verschiebung := 0
+  END IF .
+
+variable laenge :
+  NOT feste laenge .
+
+reserve vorhanden :
+  ueberschuss <= reservelaenge .
+
+einsetzen und nach rechts schieben :
+  musterspeicher ganz ausgeben (setzspeicher);
+  zu bearbeitende inhalte DECR 1;
+  verschiebung INCR ueberschuss;
+  reservelaenge DECR ueberschuss .
+
+bis zur grenze einsetzen :
+  INT VAR
+    umbruchblanks := 0,
+    anfang := setzspeicher. bearbeitet bis + 1,
+    setz ende := anfang + feldlaenge - 1,
+    einsetzlaenge := feldlaenge;
+  IF variable laenge THEN
+    setz ende INCR reservelaenge;
+    einsetzlaenge INCR reservelaenge
+  END IF;
+  IF rechtsbuendig AND keine mehrfachzeilen THEN
+    rechten teil einsetzen
+  END IF;
+  textanweisungen beruecksichtigen;
+  IF mehrfachzeilen erlaubt THEN
+    umbruch
+  END IF;
+  teilfeld ausgeben;
+  IF variable laenge THEN
+    verschiebung INCR reservelaenge;
+    reservelaenge := 0
+  END IF .
+
+rechten teil einsetzen :
+  INT CONST nach rechts := length (setzspeicher. inhalt) - setz ende;
+  anfang INCR nach rechts;
+  setz ende INCR nach rechts .
+
+textanweisungen beruecksichtigen :
+  INT VAR mehr platz;
+  REP
+    mehr platz := einsetzlaenge - setz ende + anfang - 1 +
+                  kommandolaenge (setzspeicher. inhalt, anfang, setz ende);
+    IF mehr platz = 0 THEN
+      LEAVE textanweisungen beruecksichtigen
+    ELIF rechtsbuendig THEN
+      anfang DECR mehr platz
+    ELSE
+      setz ende INCR mehr platz
+    END IF
+  END REP .
+
+mehrfachzeilen erlaubt :
+  interpretationsmodus >= 3 .
+
+keine mehrfachzeilen :
+  NOT mehrfachzeilen erlaubt .
+
+teilfeld ausgeben :
+  IF rechtsbuendig THEN
+    blanks anfuegen (umbruchblanks)
+  END IF;
+  druckausgabe (setzspeicher. inhalt, anfang, setz ende);
+  IF linksbuendig THEN
+    blanks anfuegen (umbruchblanks)
+  END IF .
+
+linksbuendig :
+  NOT rechtsbuendig .
+
+umbruch :
+  IF pos (setzspeicher. inhalt, blank, anfang, setz ende) > 0 THEN
+    ende zuruecksetzen
+  END IF;
+  INT CONST naechstes wort :=
+    pos (setzspeicher. inhalt, ""33"", ""254"", setz ende + 1);
+  IF naechstes wort = 0 THEN
+    setzspeicher. bearbeitet bis := length (setzspeicher. inhalt);
+    zu bearbeitende inhalte DECR 1
+  ELSE
+    setzspeicher. bearbeitet bis := naechstes wort - 1
+  END IF .
+
+ende zuruecksetzen :
+  setz ende INCR 1; umbruchblanks DECR 1;
+  WHILE (setzspeicher. inhalt SUB setz ende) <> blank REP
+    setz ende DECR 1;
+    umbruchblanks INCR 1
+  END REP;
+  WHILE (setzspeicher. inhalt SUB setz ende)  = blank REP
+    setz ende DECR 1;
+    umbruchblanks INCR 1
+  UNTIL ende < anfang END REP .
+
+letzten zwischenraum kopieren :
+  zwischenraum (letztes feldende, blankpuffer, blanks dazwischen);
+  IF verschiebung < 0 THEN
+    IF blankpuffer <= length (musterzeile) THEN
+      blanks anfuegen (-verschiebung)
+    END IF;
+    letztes feldende := blankpuffer
+  ELSE
+    letztes feldende := blankpuffer + min (verschiebung, blankluecke)
+  END IF .
+
+zeilenende behandeln :
+  IF endeluecke > 0 THEN
+    rest der musterzeile drucken;
+    zeile ausgeben;
+    LEAVE einen zeilendurchgang
+  ELSE
+    folgenden abschnitt vorbereiten
+  END IF .
+
+rest der musterzeile drucken :
+  IF NOT blanks dazwischen THEN
+    druckausgabe (musterzeile, letztes feldende, length (musterzeile))
+  END IF .
+
+zeile ausgeben :
+  INT VAR neues ende := length (ausgabezeile);
+  IF (ausgabezeile SUB neues ende) = blank THEN
+    REP
+      neues ende DECR 1
+    UNTIL (ausgabezeile SUB neues ende) <> blank END REP;
+    ausgabezeile := subtext (ausgabezeile, 1, neues ende)
+  END IF;
+  IF absatzmarkierung noetig THEN
+    ausgabezeile CAT blank
+  END IF;
+  zeile drucken (ausgabezeile) .
+
+absatzmarkierung noetig :
+  (musterzeile SUB LENGTH musterzeile) = blank AND
+    (interpretationsmodus <> 3 OR zu bearbeitende inhalte = 0) .
+
+folgenden abschnitt vorbereiten :
+  reservelaenge := 0;
+  benoetigte reserve := 0 .
+
+END PROC interpretiere;
+
+INT PROC feldende (INT CONST speicherindex) :
+
+  musterspeicher (speicherindex). feldanfang +
+    musterspeicher (speicherindex). feldlaenge
+
+END PROC feldende;
+
+INT PROC setzdifferenz (SPEICHER CONST speicher) :
+
+  speicher. feldlaenge - length (speicher. inhalt) +
+    kommandolaenge (speicher. inhalt) + speicher. bearbeitet bis
+
+END PROC setzdifferenz;
+
+INT PROC kommandolaenge (TEXT CONST inh) :
+
+  kommandolaenge (inh, 1, length (inh))
+
+END PROC kommandolaenge;
+
+INT PROC kommandolaenge (TEXT CONST inh, INT CONST von, bis) :
+
+  INT CONST
+    first fis := pos (inh, fis, von, bis);
+  INT VAR
+    p := first fis,
+    n,
+    laenge := 0;
+
+  WHILE p > 0 REP
+    naechstes fis suchen;
+    IF kein naechstes THEN
+      rand korrigieren
+    ELSE
+      laenge addieren
+    END IF;
+    fis anfang suchen
+  END REP;
+  laenge .
+
+naechstes fis suchen :
+  n := pos (inh, fis, p + 1, bis) .
+
+kein naechstes :
+  n = 0 .
+
+rand korrigieren :
+  IF bis = length (inh) THEN
+    laenge INCR first fis
+  ELSE
+    laenge INCR (bis - p + 1)
+  END IF .
+
+laenge addieren :
+  laenge INCR (n - p + 1) .
+
+fis anfang suchen :
+  IF n > 0 THEN
+    p := pos (inh, fis, n + 1, bis)
+  ELSE
+    p := 0
+  END IF .
+
+END PROC kommando laenge;
+
+LET
+  zehn blanks = "          ";
+
+PROC blanks anfuegen (INT CONST anzahl) :
+
+  INT VAR zaehler := anzahl;
+  WHILE zaehler >= 10 REP
+    ausgabezeile CAT zehn blanks;
+    zaehler DECR 10
+  END REP;
+  WHILE zaehler > 0 REP
+    ausgabezeile CAT blank;
+    zaehler DECR 1
+  END REP
+
+END PROC blanks anfuegen;
+
+PROC musterspeicher ganz ausgeben (SPEICHER VAR speicher) :
+
+  IF speicher. bearbeitet bis = 0 THEN
+    ausgabezeile CAT speicher. inhalt
+  ELSE
+    druckausgabe (speicher. inhalt, speicher. bearbeitet bis + 1,
+                  length (speicher. inhalt))
+  END IF;
+  speicher. bearbeitet bis := length (speicher. inhalt)
+
+END PROC musterspeicher ganz ausgeben;
+
+PROC zwischenraum (INT CONST von, bis, BOOL CONST blanks dazwischen) :
+
+  IF blanks dazwischen THEN
+    blanks anfuegen (bis - von)
+  ELSE
+    druckausgabe (musterzeile, von, bis - 1)
+  END IF
+
+END PROC zwischenraum;
+
+TEXT VAR ausgabepuffer;
+
+PROC druckausgabe (TEXT CONST context, INT CONST von, bis) :
+
+  ausgabepuffer := subtext (context, von, bis);
+  ausgabezeile CAT ausgabepuffer
+
+END PROC druckausgabe;
+
+
+(************************* Musterscanner *********************************)
+
+(*
+  EXPORTS
+
+  FILE VAR druckmuster
+  naechstes muster (TEXT VAR mustername)
+  naechstes muster (INT VAR musteranfang, musterlaenge, setzmodus)
+  musterzeile lesen
+  TEXT musterzeile
+  INT zeilennr
+  muster auf zeile (INT CONST neue zeile)
+  BOOL kommandozeile (INT VAR kommandoindex)
+  int param (INT VAR param)
+  INT m pos
+  BOOL druckmusterende
+  ueberlesen (TEXT CONST zeichen)
+  INT musterzeilenbreite
+  standard musterzeilenbreite
+*)
+
+
+FILE VAR druckmuster;
+
+TEXT VAR musterzeile;
+
+INT VAR m pos;
+
+LET
+  keine schliessende klammer =  #401#
+    "keine schliessende Klammer in Feldmuster",
+  kein kommando in kommandozeile =  #402#
+    "kein Kommando in Kommandozeile",
+  unbekanntes kommando =  #403#
+    "unbekanntes Kommando";
+
+LET
+  fix symbol = "&",
+  var symbol = "%",
+  com symbol = "%",
+  klammer auf = "<",
+  klammer zu = ">";
+
+LET
+  kommandos =  #404#
+   " "1"VOR "1"VORSPANN "2"WDH "2"WIEDERHOLUNG "3"NACH "3"NACHSPANN
+   "4"ABK "4"ABKUERZUNGEN "5"GRUPPE "6"MODUS "7"MEHR "
+ 
+
+LET
+  vor index     = 1,
+  wdh index     = 2,
+  nach index    = 3,
+  abk index     = 4,
+  gruppe index  = 5,
+  modus index   = 6,
+  mehr index    = 7,
+  do index      = 100;
+ 
+INT VAR
+  musterzeilenbreite,
+  name anfang,
+  name ende;
+
+BOOL VAR
+  druckmusterende,
+  zeile gelesen;
+
+
+.
+zeilennr :
+  line no (druckmuster) .
+
+standard musterzeilenbreite :
+  musterzeilenbreite := maxlinelength (druckmuster) .
+
+
+PROC ueberlesen (TEXT CONST zeichen) :
+
+  REP
+    m pos INCR 1
+  UNTIL (musterzeile SUB m pos) <> zeichen END REP
+
+END PROC ueberlesen;
+
+PROC naechstes muster (INT VAR anfang, laenge, setzmodus) :
+
+  m pos auf naechsten anfang;
+  IF zeilenende THEN
+    anfang := max (musterzeilenbreite, length (musterzeile)) + 1;
+    laenge := 0;
+    setzmodus := 5
+  ELSE
+    anfang := m pos;
+    muster lesen
+  END IF .
+
+m pos auf naechsten anfang :
+  m pos auf zeichen (fix symbol, var symbol) .
+
+zeilenende :
+  m pos > length (musterzeile) .
+
+muster lesen :
+  TEXT CONST musterzeichen := musterzeile SUB m pos;
+  IF musterzeichen = var symbol THEN
+    setzmodus := 0
+  ELSE
+    setzmodus := 4
+  END IF;
+  anfangszeichen ueberlesen;
+  feldnamen lesen;
+  endezeichen ueberlesen .
+ 
+anfangszeichen ueberlesen :
+  ueberlesen (musterzeichen);
+  IF m pos - 1 > anfang THEN
+    ist rechtsbuendig
+  END IF .
+
+ist rechtsbuendig :
+  setzmodus INCR 3 .
+
+feldnamen lesen :
+  IF (musterzeile SUB m pos) = klammer auf THEN
+    bis klammer zu lesen
+  ELSE
+    bis blank oder muster lesen
+  END IF;
+  IF leerer feldname THEN
+    naechstes muster (anfang, laenge, setzmodus);
+    LEAVE naechstes muster
+  END IF .
+
+leerer feldname :
+  name anfang > name ende .
+
+bis klammer zu lesen :
+  name anfang := m pos + 1;
+  name ende := pos (musterzeile, klammer zu, name anfang);
+  IF name ende = 0 THEN
+    fehler (keine schliessende klammer, subtext (musterzeile, m pos));
+    name ende := length (musterzeile)
+  ELSE
+    name ende DECR 1
+  END IF;
+  m pos := name ende + 2 .
+
+bis blank oder muster lesen :
+  name anfang := m pos;
+  m pos auf zeichen (blank, var symbol);
+  INT CONST zwischenpos := pos (musterzeile, fix symbol, name anfang, m pos);
+  IF zwischenpos > 0 THEN
+    m pos := zwischenpos
+  END IF;
+  name ende := m pos - 1 .
+
+endezeichen ueberlesen :
+  IF musterzeichen angetroffen THEN
+    ist fest;
+    ueberlesen (musterzeichen)
+  END IF;
+  laenge := m pos - anfang .
+
+musterzeichen angetroffen :
+  (musterzeile SUB m pos) = musterzeichen .
+
+ist fest :
+  setzmodus := setzmodus OR 1 .
+
+END PROC naechstes muster;
+
+PROC naechstes muster (TEXT VAR name) :
+
+  INT VAR d1, laenge, d3;
+  naechstes muster (d1, laenge, d3);
+  IF laenge > 0 THEN
+    name := subtext (musterzeile, name anfang, name ende)
+  ELSE
+    name := niltext
+  END IF
+
+END PROC naechstes muster;
+
+PROC m pos auf zeichen (TEXT CONST zeichen 1, zeichen 2) :
+
+  INT CONST 
+    pos 1 := pos (musterzeile, zeichen 1, m pos),
+    pos 2 := pos (musterzeile, zeichen 2, m pos);
+  m pos := length (musterzeile) + 1;
+  IF pos 1 > 0 THEN
+    m pos := pos 1
+  END IF;
+  IF pos 2 > 0 AND pos 2 < m pos THEN
+    m pos := pos 2
+  END IF
+
+END PROC m pos auf zeichen;
+
+PROC muster auf zeile (INT CONST zeile) :
+
+  to line (druckmuster, zeile);
+  zeile gelesen := FALSE;
+  druckmusterende := eof (druckmuster)
+
+END PROC muster auf zeile;
+
+PROC musterzeile lesen :
+
+  IF zeile gelesen THEN
+    down (druckmuster)
+  ELSE
+    zeile gelesen := TRUE
+  END IF;
+  read record (druckmuster, musterzeile);
+  m pos := 1;
+  druckmusterende := line no (druckmuster) >= lines (druckmuster)
+
+END PROC musterzeile lesen;
+
+BOOL PROC kommandozeile (INT VAR kommandoindex) :
+
+  m pos := 1;
+  IF (musterzeile SUB 1) <> com symbol THEN
+    FALSE
+  ELIF (musterzeile SUB 2) <> com symbol THEN
+    kommando abtrennen;
+    kommandoindex bestimmen;
+    TRUE
+  ELSE
+    kommandoindex := do index;
+    TRUE
+  END IF .
+
+kommando abtrennen :
+  TEXT VAR kommando;
+  ueberlesen (blank);
+  IF m pos > length (musterzeile) THEN
+    fehler (kein kommando in kommandozeile, musterzeile);
+    kommandoindex := 0;
+    LEAVE kommandozeile WITH TRUE
+  END IF;
+  INT CONST blank pos := pos (musterzeile, blank, m pos);
+  IF blank pos = 0 THEN
+    kommando := subtext (musterzeile, m pos);
+    kommando CAT blank;
+    m pos := length (musterzeile) + 1
+  ELSE
+    kommando := subtext (musterzeile, m pos, blank pos);
+    m pos := blank pos
+  END IF .
+
+kommandoindex bestimmen :
+  INT CONST wo := pos (kommandos, kommando);
+  IF wo > 0 CAND (kommandos SUB (wo - 2)) = blank THEN
+    kommandoindex := code (kommandos SUB (wo - 1))
+  ELSE
+    kommandoindex := 0;
+    fehler (unbekanntes kommando, kommando);
+  END IF .
+
+END PROC kommandozeile;
+
+PROC int param (INT VAR param) :
+
+  ueberlesen (blank);
+  INT CONST par anfang := m pos;
+  WHILE ziffer REP
+    m pos INCR 1
+  END REP;
+  IF m pos > par anfang THEN
+    param := int (subtext (musterzeile, par anfang, m pos - 1))
+  ELSE
+    param := -1
+  END IF .
+
+ziffer :
+  pos ("0123456789", musterzeile SUB m pos) > 0 .
+
+END PROC int param;
+
+
+(**************************** Codegenerierung ****************************)
+
+(*
+  EXPORTS
+
+  FILE VAR programm
+  BOOL wird uebersetzt
+  proc name (TEXT CONST name)
+  end proc
+  anweisung (TEXT CONST text)
+  anweisung (TEXT CONST pre, mid, post)
+  anweisung (TEXT CONST pre, INT CONST spalte, TEXT CONST post)
+  interpret anweisung (INT CONST zeile, muster)
+*)
+
+FILE VAR programm;
+
+TEXT VAR
+  aktuelle proc;
+
+BOOL VAR
+  wird uebersetzt;
+
+
+PROC proc name (TEXT CONST name) :
+
+  aktuelle proc := name;
+  programmausgabe ("PROC ", name, " :")
+
+END PROC proc name;
+
+PROC end proc :
+
+  programmausgabe ("END PROC ", aktuelle proc, ";")
+
+END PROC end proc;
+
+PROC anweisung (TEXT CONST programmtext) :
+
+  wird uebersetzt := TRUE;
+  putline (programm, programmtext)
+
+END PROC anweisung;
+
+PROC anweisung (TEXT CONST pre, mid, post) :
+
+  wird uebersetzt := TRUE;
+  programmausgabe (pre, mid, post)
+
+END PROC anweisung;
+
+PROC programmausgabe (TEXT CONST pre, mid, post) :
+
+  write (programm, pre);
+  write (programm, mid);
+  write (programm, post);
+  line (programm)
+
+END PROC programmausgabe;
+
+TEXT VAR textpuffer;
+
+PROC anweisung (TEXT CONST pre, INT CONST spalte, TEXT CONST post) :
+
+  text puffer := subtext (musterzeile, spalte);
+  anweisung (pre, textpuffer, post)
+
+END PROC anweisung;
+
+PROC interpret anweisung (INT CONST zeile, muster) :
+
+  programmausgabe (";  interpretiere (",
+                  text (zeile) + ", " + text (muster),
+                  ", PROC (INT CONST, TEXT VAR) abk);")
+
+END PROC interpret anweisung;
+
+
+(************************ Muster uebersetzen *****************************)
+
+(*
+  EXPORTS
+
+  druckmuster uebersetzen
+  ROW 3 ABSCHNITT VAR abschnitte
+  ROW max muster INT VAR musterindex
+  fehler (TEXT CONST meldung)
+  ROW maxgruppen GRUPPE VAR gruppen
+
+*)
+
+
+LET
+  vorzeitiges ende =  #405#
+    "kein % WIEDERHOLUNG gefunden",
+  nur gruppe erlaubt =  #406#
+    "Nur GRUPPE-Anweisung erlaubt",
+  kein do mehr erlaubt nach gruppen =  #407#
+    "keine ELAN-Anweisung im Initialisierungsteil nach Gruppendefinition",
+  illegale gruppennummer =  #408#
+    "illegale Gruppennummer",
+  gruppe schon definiert =  #409#
+    "diese Gruppe wurde schon definiert",
+  abkuerzung nicht definiert =  #410#
+    "diese Abkuerzung ist nicht definiert",
+  abschnitt mehrfach definiert =  #411#
+    "dieser Abschnitt wurde schon einmal definiert",
+  falscher modus =  #412#
+    "falscher Modus",
+  im musterteil nicht erlaubt =  #413#
+    "diese Anweisung darf im Musterteil nicht vorkommen",
+  im abkuerzungsteil nicht erlaubt =  #414#
+    "im Abkuerzungsteil darf keine Anweisung auftreten",
+  zuviele muster pro zeile =  #415#
+    "in dieser Zeile stehen zu viele Feldmuster",
+  zuviele muster =  #416#
+    "das Druckmuster enthaelt zu viele Feldmuster",
+  name der abkuerzung fehlt =  #417#
+    "nach dem ""&"" soll direkt der Name einer Abkuerzung folgen",
+  kein doppelpunkt nach abkuerzung =  #418#
+    "kein Doppelpunkt nach Abkuerzung",
+  abkuerzung mehrfach definiert =  #419#
+    "Abkuerzung mehrfach definiert",
+  zu viele abkuerzungen =  #420#
+    "das Druckmuster enthaelt zu viele Abkuerzungen";
+
+LET
+  max muster = 200,
+  max gruppen = 4,
+  max abkuerzungen = 250,
+
+  GRUPPE = STRUCT (BOOL wechsel,
+                        definiert,
+                   TEXT inhalt),
+
+  ABSCHNITT = STRUCT (INT  erstes muster,
+                           erste zeile,
+                      TEXT proc name);
+
+
+ROW max muster INT VAR musterindex;
+
+INT VAR anzahl muster;
+
+ROW maxgruppen GRUPPE VAR gruppen;
+
+ROW 3 ABSCHNITT VAR abschnitte;
+
+SATZ VAR abkuerzungen;
+
+TEXT VAR
+  abkuerzungszeile;
+
+INT VAR
+  anzahl abkuerzungen;
+
+
+OP CAT (TEXT VAR intvec, INT CONST wert) :
+
+  TEXT VAR platz fuer int := "  ";
+  replace (platz fuer int, 1, wert);
+  intvec CAT platz fuer int
+
+END OP CAT;
+
+PROC druckmuster uebersetzen :
+
+  enable stop;
+  muster auf zeile (1);
+  uebersetzungsvariablen initialisieren;
+  initialisierungsteil uebersetzen;
+  WHILE NOT druckmusterende REP
+    einen von drei abschnitten uebersetzen
+  END REP;
+  abkuerzungen einsetzen .
+
+uebersetzungsvariablen initialisieren :
+  INT VAR kommandoindex;
+  INT VAR i;
+  anzahl abkuerzungen := 0;
+  satz initialisieren (abkuerzungen);
+  abkuerzungszeile := niltext;
+  anzahl muster := 0;
+  wird uebersetzt := FALSE;
+  abschnitte (1) := ABSCHNITT : (0, 0, "vorspann");
+  abschnitte (2) := ABSCHNITT : (0, 0, "wdh");
+  abschnitte (3) := ABSCHNITT : (0, 0, "nachspann");
+  FOR i FROM 1 UPTO max gruppen REP
+    gruppen (i). definiert := FALSE
+  END REP .
+
+initialisierungsteil uebersetzen :
+  BOOL VAR
+    schon gruppendefinition := FALSE;
+
+  REP
+    IF druckmusterende THEN
+      fehler (vorzeitiges ende);
+      LEAVE druckmuster uebersetzen
+    END IF;
+    musterzeile lesen;
+    IF kommandozeile (kommandoindex) THEN
+      initialisierungskommando uebersetzen
+    END IF
+  END REP .
+
+initialisierungskommando uebersetzen :
+  SELECT kommandoindex OF
+
+  CASE do index :
+    do kommando kopieren
+
+  CASE gruppe index :
+    gruppendefinition aufnehmen
+
+  CASE vor index, wdh index, nach index :
+    IF NOT schon gruppendefinition THEN
+      proc name ("gruppen")
+    END IF;
+    end proc;
+    LEAVE initialisierungsteil uebersetzen
+
+  OTHERWISE
+    IF kommandoindex > 0 THEN
+      fehler (nur gruppe erlaubt)
+    END IF
+
+  END SELECT .
+
+do kommando kopieren :
+  IF schon gruppendefinition THEN
+    fehler (kein do mehr erlaubt nach gruppen, musterzeile)
+  ELSE
+    replace (musterzeile, 1, "  ");
+    anweisung (musterzeile)
+  END IF .
+
+gruppendefinition aufnehmen :
+  IF NOT schon gruppendefinition THEN
+    proc name ("gruppen");
+    schon gruppendefinition := TRUE
+  END IF;
+  INT VAR gruppennr;
+  int param (gruppennr);
+  IF gruppennr < 1 OR gruppennr > max gruppen THEN
+    fehler (illegale gruppennummer, musterzeile)
+  ELIF gruppen (gruppennr). definiert THEN
+    fehler (gruppe schon definiert, musterzeile)
+  ELSE
+    gruppen (gruppennr). definiert := TRUE;
+    ausdruck uebersetzen
+  END IF .
+
+ausdruck uebersetzen :
+  anweisung ("gruppentest (", text (gruppennr), ", ");
+  anweisung ("            ", m pos, ");") .
+
+einen von drei abschnitten uebersetzen :
+  SELECT kommandoindex OF
+  CASE vor index  :  vorspann uebersetzen
+  CASE wdh index  :  wiederholungsteil uebersetzen
+  CASE nach index :  nachspann uebersetzen
+  END SELECT .
+
+vorspann uebersetzen :
+  abschnitt uebersetzen (abschnitte (1), kommandoindex) .
+
+wiederholungsteil uebersetzen :
+  int param (spalten); int param (spaltenbreite);
+  abschnitt uebersetzen (abschnitte (2), kommandoindex) .
+
+nachspann uebersetzen :
+  abschnitt uebersetzen (abschnitte (3), kommandoindex) .
+
+abkuerzungen einsetzen :
+  IF wird uebersetzt THEN
+    fehlende procs definieren;
+    abk headline
+  END IF;
+  abkuerzungen ueberpruefen;
+  IF wird uebersetzt THEN
+    abk ende;
+    druckaufruf
+  END IF .
+
+abkuerzungen ueberpruefen :
+  FOR i FROM 1 UPTO anzahl abkuerzungen REP
+    IF (abkuerzungszeile ISUB i) > 0 THEN
+      fehler (abkuerzung nicht definiert,
+              name der abkuerzung, abkuerzungszeile ISUB i)
+    ELSE
+      anweisung in abk proc generieren
+    END IF
+  END REP .
+
+name der abkuerzung :
+  TEXT VAR puffer;
+  feld lesen (abkuerzungen, i, puffer);
+  puffer .
+
+fehlende procs definieren :
+  FOR i FROM 1 UPTO 3 REP
+    IF abschnitte (i). erste zeile = 0 THEN
+      abschnitt proc definieren
+    END IF
+  END REP .
+
+abschnitt proc definieren :
+  proc name (abschnitte (i). proc name);
+  end proc .
+
+abk headline :
+  anweisung ("PROC abk (INT CONST nr, TEXT VAR inhalt) :");
+  IF anzahl abkuerzungen > 0 THEN
+    anweisung ("SELECT nr OF")
+  ELSE
+    anweisung ("inhalt := text (nr)")
+  END IF .
+
+anweisung in abk proc generieren :
+  TEXT CONST lfd index := text (i);
+  anweisung ("CASE " + lfd index, " : inhalt := abk", lfd index) .
+
+abk ende :
+  IF anzahl abkuerzungen > 0 THEN
+    anweisung ("END SELECT")
+  END IF;
+  anweisung ("END PROC abk;") .
+
+druckaufruf :
+  anweisung
+    ("drucke (PROC gruppen, PROC vorspann, PROC wdh, PROC nachspann)") .
+
+END PROC druckmuster uebersetzen;
+
+PROC abschnitt uebersetzen (ABSCHNITT VAR abschnitt,
+                            INT VAR kommandoindex) :
+
+  BOOL VAR war do zeile := TRUE;  (* generiert erstes 'interpretiere' *)
+  proc name (abschnitt. proc name);
+  abschnitt anfang speichern;
+  musterteil uebersetzen;
+  abkuerzungen uebersetzen .
+
+abschnitt anfang speichern :
+  IF abschnitt. erste zeile <> 0 THEN
+    fehler (abschnitt mehrfach definiert, musterzeile)
+  END IF;
+  abschnitt. erste zeile := zeilennr + 1;
+  abschnitt. erstes muster := anzahl muster + 1 .
+
+musterteil uebersetzen :
+  WHILE NOT druckmusterende REP
+    musterzeile lesen;
+    IF kommandozeile (kommandoindex) THEN
+      abschnitt kommando uebersetzen
+    ELSE
+      interpret anweisung generieren;
+      musterzeile auf feldmuster untersuchen
+    END IF
+  END REP;
+  abschnitt beenden;
+  LEAVE abschnitt uebersetzen .
+
+abschnitt kommando uebersetzen :
+  SELECT kommandoindex OF
+
+  CASE do index :
+    replace (musterzeile, 1, "  ");
+    anweisung (musterzeile);
+    war do zeile := TRUE
+
+  CASE vor index, wdh index, nach index :
+    abschnitt beenden;
+    LEAVE abschnitt uebersetzen
+
+  CASE abk index :
+    abschnitt beenden;
+    LEAVE musterteil uebersetzen
+
+  CASE modus index :
+    interpret anweisung generieren;
+    INT VAR parameter;
+    int param (parameter);
+    IF parameter < 1 OR parameter > 4 THEN
+      fehler (falscher modus, musterzeile)
+    END IF
+
+  CASE mehr index :
+    interpret anweisung generieren
+
+  OTHERWISE
+    IF kommandoindex > 0 THEN
+      fehler (im musterteil nicht erlaubt)
+    END IF
+
+  END SELECT .
+
+interpret anweisung generieren :
+  IF war do zeile THEN
+    interpret anweisung (zeilennr, anzahl muster + 1);
+    war do zeile := FALSE
+  END IF .
+
+abschnitt beenden :
+  end proc .
+
+musterzeile auf feldmuster untersuchen :
+  TEXT VAR name;
+  INT VAR muster pro zeile := 0;
+ 
+  REP
+    naechstes muster (name);
+    IF name = niltext THEN
+      LEAVE musterzeile auf feldmuster untersuchen
+    END IF;
+    muster pro zeile INCR 1;
+    muster uebersetzen
+  END REP .
+
+muster uebersetzen :
+  IF muster pro zeile >= max musterspeicher THEN
+    fehler (zu viele muster pro zeile)
+  END IF;
+  IF anzahl muster = max muster THEN
+    fehler (zu viele muster)
+  ELSE
+    anzahl muster INCR 1
+  END IF;
+  vorlaeufigen musterindex suchen .
+
+vorlaeufigen musterindex suchen :
+  INT VAR feldnr := feldnummer (name);
+  IF feldnr = 0 THEN
+    feldnr := feldindex (abkuerzungen, name);
+    IF feldnr = 0 THEN
+      abkuerzung eintragen (name, zeilennr);
+      musterindex (anzahl muster) := -anzahl abkuerzungen
+    ELSE
+      musterindex (anzahl muster) := -feldnr
+    END IF
+  ELSE
+    musterindex (anzahl muster) := feldnr
+  END IF .
+
+abkuerzungen uebersetzen :
+  BOOL VAR erste abkuerzungszeile := TRUE;
+  WHILE NOT druckmusterende REP
+    musterzeile lesen;
+    IF kommandozeile (kommandoindex) THEN
+      auf ende pruefen
+    ELIF zeile nicht leer THEN
+      abkuerzung behandeln
+    END IF
+  END REP .
+
+auf ende pruefen :
+  SELECT kommandoindex OF
+  CASE vor index, wdh index, nach index :
+    LEAVE abkuerzungen uebersetzen
+  OTHERWISE
+    IF kommandoindex > 0 THEN
+      fehler (im abkuerzungsteil nicht erlaubt)
+    END IF
+  END SELECT .
+
+abkuerzung behandeln :
+  IF erste abkuerzungszeile THEN
+    anweisung (".");
+    erste abkuerzungszeile := FALSE
+  END IF;
+  IF erste zeile einer abkuerzung THEN
+    namen isolieren
+  ELSE
+    anweisung (musterzeile)
+  END IF .
+
+erste zeile einer abkuerzung :
+  (musterzeile SUB 1) = fix symbol .
+
+namen isolieren :
+  TEXT VAR abkuerzungsname;
+  naechstes muster (abkuerzungsname);
+  IF abkuerzungsname = niltext THEN
+    fehler (name der abkuerzung fehlt, musterzeile);
+    LEAVE namen isolieren
+  END IF;
+  doppelpunkt suchen;
+  an compiler uebergeben .
+
+doppelpunkt suchen :
+  LET doppelpunkt = ":";
+  m pos DECR 1;   (* wegen 'ueberlesen' *)
+  ueberlesen (blank);
+  IF (musterzeile SUB m pos) = doppelpunkt THEN
+    m pos INCR 1
+  ELSE
+    fehler (kein doppelpunkt nach abkuerzung, musterzeile)
+  END IF .
+
+an compiler uebergeben :
+  abkuerzung eintragen (abkuerzungsname, 0);
+  anweisung (refinement name, m pos - 1, "") .
+
+refinement name :
+  "abk" + text (feldindex (abkuerzungen, abkuerzungsname)) .
+
+zeile nicht leer :
+  musterzeile <> niltext AND musterzeile <> blank .
+
+END PROC abschnitt uebersetzen;
+
+PROC abkuerzung eintragen (TEXT CONST name, INT CONST zeile) :
+
+  INT CONST vorhanden := feldindex (abkuerzungen, name);
+  IF vorhanden > 0 THEN
+    alten eintrag ergaenzen
+  ELSE
+    neu anlegen
+  END IF .
+
+alten eintrag ergaenzen :
+  IF (abkuerzungszeile ISUB vorhanden) > 0 THEN
+    replace (abkuerzungszeile, vorhanden, zeile) 
+  ELIF zeile = 0 THEN
+    fehler (abkuerzung mehrfach definiert, name)
+  END IF .
+
+neu anlegen :
+  IF anzahl abkuerzungen = max abkuerzungen THEN
+    fehler (zu viele abkuerzungen)
+  ELSE
+    anzahl abkuerzungen INCR 1
+  END IF;
+  abkuerzungszeile CAT zeile;
+  feld aendern (abkuerzungen, anzahl abkuerzungen, name) .
+
+END PROC abkuerzung eintragen;
+
+LET
+  fehler in =  #421#
+    "FEHLER in Zeile ",
+  fehler bei =  #422#
+    " bei >>",
+  fehler ende =  #423#
+    "<<";
+
+PROC fehler (TEXT CONST fehlermeldung, bei, INT CONST zeile) :
+
+  LET
+    blanks = "   ";
+  TEXT VAR
+    meldung := fehler in;
+  meldung CAT text (zeile);
+  IF bei <> niltext THEN
+    meldung CAT fehler bei;
+    meldung CAT bei;
+    meldung CAT fehler ende
+  END IF;
+  note (meldung); note line;
+  note (blanks); note (fehlermeldung); note line;
+  IF online AND command dialogue THEN
+    line;
+    putline (meldung);
+    put (blanks); putline (fehlermeldung)
+  END IF
+
+END PROC fehler;
+
+PROC fehler (TEXT CONST fehlermeldung) :
+
+  fehler (fehlermeldung, niltext, zeilennr)
+
+END PROC fehler;
+
+PROC fehler (TEXT CONST fehlermeldung, bei) :
+
+  fehler (fehlermeldung, bei, zeilennr)
+
+END PROC fehler;
+
+
+(************************** Drucksteuerung *******************************)
+
+(*
+  EXPORTS
+
+  drucke (TEXT CONST dateiname)
+  drucke (PROC gruppen, PROC vor, PROC wdh, PROC nach)
+  druckdatei (TEXT CONST dateiname)
+  direkt drucken (BOOL CONST modus)
+  BOOL direkt drucken
+  max druckzeilen (INT CONST zeilen)
+  BOOL gruppenwechsel (INT CONST gruppennr)
+  gruppentest (INT CONST gruppe, TEXT CONST merkmal)
+  TEXT lfd nr
+  zeile drucken (TEXT CONST zeile)
+  INT spalten
+  INT spaltenbreite
+*)
+
+
+LET
+  erzeugtes programm =   #424#
+    "erzeugtes Programm",
+  keine datei geoeffnet =  #425#
+    "keine Datei geoeffnet",
+  interner fehler =  #426#
+    "interner Fehler",
+  druckausgabe steht in =  #427#
+    "Druckausgabe steht in",
+  zum drucker geschickt =  #428#
+    "zum Drucker geschickt.",
+  direkt drucken nicht moeglich =  #429#
+    "direkt Drucken nicht moeglich",
+  eudas ausgabe punkt =  #430#
+    ".a$";
+
+TEXT VAR
+  spaltenpuffer,
+  druckdateiname := "";
+
+BOOL VAR
+  wechsel erfolgt,
+  wechsel 0,
+  externer dateiname,
+  direkt ausdrucken := FALSE;
+
+FILE VAR ausgabe;
+
+INT VAR
+  spalten,
+  spaltenbreite,
+  gedruckte spalten,
+  gemeinsamer anfang,
+  gedruckte zeilen,
+  richtung := 1,
+  max zeilen := 4000,
+  satzzaehler;
+
+
+PROC drucke :
+
+  drucke (last param)
+
+END PROC drucke;
+
+PROC drucke (TEXT CONST dateiname) :
+
+  enable stop;
+  last param (dateiname);
+  druckmuster := sequential file (input, dateiname);
+  modify (druckmuster);
+  IF anzahl dateien = 0 THEN
+    errorstop (keine datei geoeffnet)
+  END IF;
+  disable stop;
+  programmdatei einrichten;
+  druckmuster uebersetzen;
+  IF anything noted THEN
+    note edit (druckmuster)
+  ELIF wird uebersetzt THEN
+    programm uebersetzen
+  ELSE
+    drucke (PROC dummy gruppentest,
+            PROC std vor, PROC std wdh, PROC std nach)
+  END IF;
+  forget (programmdatei, quiet) .
+
+programmdatei einrichten :
+  TEXT VAR programmdatei;
+  INT VAR i := 0;
+  REP
+    i INCR 1;
+    programmdatei := text (i)
+  UNTIL NOT exists (programmdatei) END REP;
+  programm := sequential file (output, programmdatei);
+  headline (programm, erzeugtes programm) .
+
+programm uebersetzen : 
+  run (programmdatei);
+  last param (dateiname) .
+
+END PROC drucke;
+
+PROC dummy gruppentest :  END PROC dummy gruppentest;
+
+PROC std vor :
+
+  abschnitt ausfuehren (1)
+
+END PROC std vor;
+
+PROC std wdh :
+
+  abschnitt ausfuehren (2)
+
+END PROC std wdh;
+
+PROC std nach :
+
+  abschnitt ausfuehren (3)
+
+END PROC std nach;
+
+PROC abschnitt ausfuehren (INT CONST nr) :
+
+  IF abschnitte (nr). erste zeile > 0 THEN
+    interpretiere (abschnitte (nr). erste zeile,
+                   abschnitte (nr). erstes muster,
+                   PROC (INT CONST, TEXT VAR) std abk)
+  END IF
+
+END PROC abschnitt ausfuehren;
+
+PROC std abk (INT CONST nr, TEXT VAR inhalt) :
+
+  errorstop (interner fehler);
+  inhalt := code (nr)         (* Dummy-Anweisung, damit Parameter benutzt *)
+
+END PROC std abk;
+
+PROC drucke (PROC grp test, PROC vorspann, PROC wdh, PROC nachspann) :
+
+  INT VAR
+    modus,
+    letzter satz,
+    letzte kombination;
+
+  enable stop;
+  druckdatei eroeffnen;
+  auf ersten satz;
+  gruppen initialisieren;
+  satzzaehler := 1;
+  WHILE NOT dateiende REP
+    bei gruppenwechsel nachspann und vorspann;
+    cout (satznummer);
+    wiederholungsteil interpretieren;
+    weiter (modus);
+    ende der druckdatei ueberpruefen
+  END REP;
+  letzten nachspann drucken;
+  datei ausdrucken;
+  auf satz (1) .
+
+auf ersten satz :
+  letzter satz := 0;
+  auf satz (1);
+  IF markierte saetze > 0 THEN
+    modus := 3;
+    IF NOT satz markiert THEN weiter (modus) END IF
+  ELSE
+    modus := 2;
+    IF NOT satz ausgewaehlt THEN weiter (modus) END IF
+  END IF .
+
+gruppen initialisieren :
+  INT VAR i;
+  FOR i FROM 1 UPTO maxgruppen REP
+    gruppen (i). inhalt := niltext
+  END REP .
+
+bei gruppenwechsel nachspann und vorspann :
+  IF letzter satz = 0 THEN
+    grp test;
+    alle gruppen wechseln;
+    abschnitt interpretieren (PROC vorspann)
+  ELSE
+    wechsel 0 := FALSE;
+    gruppenwechsel testen;
+    gruppenwechsel mit nachspann
+  END IF;
+  letzter satz := satznummer;
+  letzte kombination := satzkombination .
+
+gruppenwechsel testen :
+  wechsel erfolgt := FALSE;
+  grp test .
+
+gruppenwechsel mit nachspann :
+  IF wechsel erfolgt THEN
+    nachspann drucken (letzter satz, letzte kombination, PROC nachspann)
+  END IF;
+  satzzaehler INCR 1;
+  IF wechsel erfolgt THEN
+    abschnitt interpretieren (PROC vorspann)
+  END IF .
+
+wiederholungsteil interpretieren :
+  IF spaltenbreite < 1 THEN
+    standard musterzeilenbreite
+  ELSE
+    musterzeilenbreite := spaltenbreite
+  END IF;
+  IF gedruckte spalten < spalten THEN
+    to line (ausgabe, gemeinsamer anfang)
+  ELSE
+    to line (ausgabe, gedruckte zeilen + 1);
+    gemeinsamer anfang := gedruckte zeilen + 1;
+    gedruckte spalten := 0
+  END IF;
+  interpretationsmodus := 1;
+  wdh;
+  gedruckte spalten INCR 1 .
+
+ende der druckdatei ueberpruefen :
+  IF gedruckte zeilen > maxzeilen THEN
+    datei ausdrucken;
+    druckdatei eroeffnen
+  END IF .
+
+letzten nachspann drucken :
+  alle gruppen wechseln;
+  IF letzter satz = 0 THEN
+    abschnitt interpretieren (PROC nachspann)
+  ELSE
+    nachspann drucken (letzter satz, letzte kombination, PROC nachspann)
+  END IF;
+  muster auf zeile (1) .
+
+END PROC drucke;
+
+PROC alle gruppen wechseln :
+
+  INT VAR i;
+  FOR i FROM 1 UPTO max gruppen REP
+    gruppen (i). wechsel := TRUE
+  END REP;
+  wechsel 0 := TRUE;
+  wechsel erfolgt := TRUE
+
+END PROC alle gruppen wechseln;
+
+PROC abschnitt interpretieren (PROC abschnitt) :
+
+  gedruckte spalten := spalten;
+  to line (ausgabe, gedruckte zeilen + 1);
+  standard musterzeilenbreite;
+  interpretationsmodus := 1;
+  abschnitt
+
+END PROC abschnitt interpretieren;
+
+PROC nachspann drucken (INT CONST letzter satz, letzte kombination,
+                        PROC nachspann) :
+
+  INT CONST
+    aktueller satz := satznummer,
+    aktuelle kombination := satzkombination;
+  auf satz (letzter satz);
+  WHILE satzkombination <> letzte kombination REP weiter (1) END REP;
+  abschnitt interpretieren (PROC nachspann);
+  auf satz (aktueller satz);
+  WHILE satzkombination <> aktuelle kombination REP weiter (1) END REP
+
+END PROC nachspann drucken;
+
+PROC druckdatei eroeffnen :
+
+  IF aktueller editor > 0 THEN
+    in editfile schreiben
+  ELSE
+    in ausgabedatei schreiben
+  END IF;
+  druckanweisungen uebertragen .
+
+in editfile schreiben :
+  ausgabe := edit file;
+  IF col > 1 THEN
+    split line (ausgabe, col, FALSE);
+    down (ausgabe); col (ausgabe, 1)
+  END IF;
+  gedruckte zeilen := line no (ausgabe) - 1 .
+
+in ausgabedatei schreiben :
+  IF NOT externer dateiname THEN
+    druckdateinamen generieren
+  END IF;
+  ausgabe := sequential file (modify, druckdateiname);
+  max linelength (ausgabe, max linelength (druckmuster));
+  gedruckte zeilen := lines (ausgabe) .
+
+druckdateinamen generieren :
+  INT VAR zaehler := 0;
+  REP
+    zaehler INCR 1;
+    druckdateiname :=
+       headline (druckmuster) + eudas ausgabe punkt + text (zaehler);
+  UNTIL NOT exists (druckdateiname) END REP .
+
+druckanweisungen uebertragen :
+  muster auf zeile (1);
+  WHILE NOT druckmusterende REP
+    zeile uebertragen
+  END REP .
+
+zeile uebertragen :
+  musterzeile lesen;
+  INT VAR kommandoindex;
+  IF kommandozeile (kommandoindex) THEN
+    auf ende testen
+  ELSE
+    zeile drucken (musterzeile)
+  END IF .
+
+auf ende testen :
+  IF kommandoindex <> do index AND kommandoindex <> gruppe index THEN
+    LEAVE druckanweisungen uebertragen
+  END IF .
+
+END PROC druckdatei eroeffnen;
+
+PROC datei ausdrucken :
+
+  IF aktueller editor > 0 THEN
+    LEAVE datei ausdrucken
+  ELIF externer dateiname THEN
+    externer dateiname := FALSE;
+  ELIF direkt ausdrucken THEN
+    disable stop;
+    ausdruck versuchen
+  ELIF online AND richtung > 1 THEN
+    line; put (druckausgabe steht in);
+    putline (textdarstellung (druckdateiname));
+    pause (40)
+  END IF;
+  to line (ausgabe, 1) .
+
+ausdruck versuchen :
+  TEXT CONST param := std;
+  last param (druckdateiname);
+  do ("print (std)");
+  IF is error THEN
+    clear error;
+    errorstop (direkt drucken nicht moeglich)
+  ELIF online THEN
+    line; put (textdarstellung (druckdateiname));
+    putline (zum drucker geschickt);
+    forget (druckdateiname, quiet);
+    pause (40)
+  END IF;
+  last param (param) .
+
+END PROC datei ausdrucken;
+
+PROC zeile drucken (TEXT CONST zeile) :
+
+  IF gedruckte spalten >= spalten OR gedruckte spalten = 0 THEN
+    insert record (ausgabe);
+    write record (ausgabe, zeile);
+    gedruckte zeilen INCR 1
+  ELSE
+    an zeile anfuegen
+  END IF;
+  down (ausgabe) .
+
+an zeile anfuegen :
+  IF eof (ausgabe) THEN
+    spaltenpuffer := niltext;
+    insert record (ausgabe);
+    gedruckte zeilen INCR 1
+  ELSE
+    read record (ausgabe, spaltenpuffer)
+  END IF;
+  spaltenpuffer verlaengern;
+  write record (ausgabe, spaltenpuffer) .
+
+spaltenpuffer verlaengern :
+  INT CONST ziellaenge := musterzeilenbreite * gedruckte spalten;
+  WHILE length (spaltenpuffer) < ziellaenge REP
+    spaltenpuffer CAT blank
+  END REP;
+  spaltenpuffer CAT zeile .
+
+END PROC zeile drucken;
+
+PROC druckrichtung (INT CONST r) :
+
+  richtung := r;
+  direkt ausdrucken := (r = 0)
+
+END PROC druckrichtung;
+
+INT PROC druckrichtung :
+
+  richtung
+
+END PROC druckrichtung;
+
+PROC direkt drucken (BOOL CONST modus) :
+
+  direkt ausdrucken := modus;
+  IF modus THEN
+    richtung := 0
+  ELIF richtung = 0 THEN
+    richtung := 1
+  END IF
+
+END PROC direkt drucken;
+
+BOOL PROC direkt drucken :
+
+  direkt ausdrucken
+
+END PROC direkt drucken;
+
+PROC druckdatei (TEXT CONST dateiname) :
+
+  druckdateiname := dateiname;
+  externer dateiname := TRUE
+
+END PROC druckdatei;
+
+TEXT PROC druckdatei :
+
+  druckdateiname
+
+END PROC druckdatei;
+
+PROC max druckzeilen (INT CONST zeilen) :
+
+  max zeilen := zeilen
+
+END PROC max druckzeilen;
+
+PROC gruppentest (INT CONST gruppennr, TEXT CONST merkmal) :
+
+  IF merkmal <> gruppen (gruppennr). inhalt THEN
+    gruppen (gruppennr). inhalt := merkmal;
+    gruppen (gruppennr). wechsel := TRUE;
+    wechsel erfolgt := TRUE
+  ELSE
+    gruppen (gruppennr). wechsel := FALSE
+  END IF
+
+END PROC gruppentest;
+
+BOOL PROC gruppenwechsel (INT CONST gruppennr) :
+
+  IF gruppennr > 0 THEN
+    gruppen (gruppennr). wechsel
+  ELSE
+    wechsel 0
+  END IF
+
+END PROC gruppenwechsel;
+
+TEXT PROC lfd nr :
+
+  text (satzzaehler)
+
+END PROC lfd nr;
+
+(*
+PROC dump :
+
+  FILE VAR d := sequential file (output, "EUDAS-DUMP");
+  put (d, "anzahl muster :"); put (d, anzahl muster); line (d);
+  INT VAR i;
+  FOR i FROM 1 UPTO anzahl muster REP
+    put (d, musterindex (i));
+  END REP;
+  line (d);
+  put (d, "anzahl abkuerzungen :"); put (d, anzahl abkuerzungen);
+  line (d);
+  FOR i FROM 1 UPTO anzahl abkuerzungen REP
+    TEXT VAR p; feld lesen (abkuerzungen, i, p);
+    write (d, """"); write (d, p); write (d, """ ");
+    put (d, abkuerzungsindex ISUB i)
+  END REP;
+  line (d);
+  FOR i FROM 1 UPTO 3 REP
+    put (d, abschnitte (i). proc name); put (d, abschnitte (i). erste zeile);
+    put (d, abschnitte (i). erstes muster); line (d)
+  END REP;
+  edit ("EUDAS-DUMP");
+  forget ("EUDAS-DUMP")
+
+END PROC dump; *)
+
+END PACKET eudas drucken;
+

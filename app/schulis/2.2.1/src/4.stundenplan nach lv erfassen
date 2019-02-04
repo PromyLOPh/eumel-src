@@ -1,0 +1,133 @@
+PACKET stundenplannachlverfassenDEFINES stundenplannachlvspeichern,
+stundenplannachlvreorganisiertverlassen,stundenplannachlvkopieren,
+stundenplannachlvzeigen:LET stdplmaske="ms stdplan nach lv bearb",
+feldeingjgst=2,feldeingfach=3,feldeingkenn=4,feldeingakthj=5,laengelv=8,
+lvmitleeremraum="x",leererraum="    ",leererlehrer="    ",schuljahr=
+"Schuljahr",halbjahr="Schulhalbjahr",kennungwstd="W",kennungraum="R",
+kennungparaphe="P",kennunglv="L",kennungzulzeit="ZZ",ausgabeparam="#",
+maxstunden=66,meldungplausi=57,meldungfeldfuellen=52,meldungfalschejgst=305,
+meldungzuvielewstd=369,meldungjgstergaenzen=304,meldungfalschesfach=310,
+meldungkeinestartlv=68,meldungspeichern=50,meldungwarten=69,
+meldungdatenaufbereitet=357,meldungkeinesugruppen=334,meldungzuvielesugruppen
+=356,meldunglehrerbesetzt=361,meldungraumbesetzt=370,meldungsugrupbesetzt=362
+,meldungzeitgesperrt=363,meldungkeinelv=326,meldungaenderungsfehler=364,
+meldunguvfehler=403,meldungserverfehler=376,meldungbasisinkon=378,
+meldunganderewahl=318,meldungfalscherraum=359,meldungzuvielelv=358;ROW 
+maxstundenTEXT VAR lvausstdpl;ROW maxstundenTEXT VAR lvvombs;TEXT VAR schhj,
+schj,aktfachkenn,aktlv,eintraglv,lveintrag,raumeintrag,pareintrag,hjsjanhang
+:="";INT VAR i,fstat,hjkennalt:=-1,aktjgst,uvokfeld:=2,wstdderlv,hjkennneu:=0
+;BOOL VAR spok:=TRUE ,uvok:=TRUE ,aenderungsfehler:=FALSE ;PROC 
+stundenplannachlvkopieren:INT VAR aktfeld:=infeld;TEXT VAR feldinhalt:="";IF 
+aktfeld=67THEN fehlermeldunganwunzulELSE kopierenFI ;return(1).kopieren:
+feldinhalt:=standardmaskenfeld(aktfeld);standardmaskenfeld(feldinhalt,aktfeld
++1);standardfelderausgeben;infeld(aktfeld).fehlermeldunganwunzul:
+standardmeldung(meldunganderewahl,"").END PROC stundenplannachlvkopieren;
+PROC stundenplannachlvreorganisiertverlassen:
+stundenplanreorganisierenundsichern(fstat);IF fstat<>0THEN return(1);
+meldungausgeben(fstat)ELSE enter(2)FI END PROC 
+stundenplannachlvreorganisiertverlassen;PROC stundenplannachlvzeigen:INT VAR 
+jgst:=0;TEXT VAR jg:="",fach:="",kennung:="";standardmeldung(meldungwarten,
+" ");jg:=standardmaskenfeld(feldeingjgst);fach:=standardmaskenfeld(
+feldeingfach);kennung:=standardmaskenfeld(feldeingkenn);pruefeeingabe;
+maskeundinitialisierung;holstartlv;stundenplannachlvausgeben.pruefeeingabe:
+IF jg<>""THEN jgst:=int(jg);IF lastconversionokTHEN pruefjgstELSE 
+fehlermeldungfalschejgstFI ;FI ;prueffach;pruefkennung.pruefjgst:IF jgst<>0
+THEN IF jgst<5COR jgst>13THEN fehlermeldungfalschejgstFI FI .
+fehlermeldungfalschejgst:standardmeldung(meldungfalschejgst,"");infeld(
+feldeingjgst);return(1);LEAVE stundenplannachlvzeigen.prueffach:IF fach<>""
+THEN IF jg=""THEN standardmeldung(meldungjgstergaenzen,"");infeld(
+feldeingjgst);return(1);LEAVE stundenplannachlvzeigenELSE fach:=compress(fach
+);inittupel(dnrfaecher);putwert(fnrffach,fach);search(dnrfaecher,TRUE );IF 
+dbstatus<>okTHEN fehlermeldungfalschesfachFI FI FI .fehlermeldungfalschesfach
+:standardmeldung(meldungfalschesfach,"");infeld(feldeingfach);return(1);
+LEAVE stundenplannachlvzeigen.pruefkennung:IF kennung<>""THEN IF jg=""THEN 
+standardmeldung(meldungfeldfuellen,"");infeld(feldeingjgst);return(1);LEAVE 
+stundenplannachlvzeigenFI ;IF fach=""THEN standardmeldung(meldungfeldfuellen,
+"");infeld(feldeingfach);return(1);LEAVE stundenplannachlvzeigenFI ;FI .
+maskeundinitialisierung:aktlv:="";aktjgst:=0;aktfachkenn:="";IF akthj<>""
+THEN hjkennneu:=0ELSE hjkennneu:=1FI ;IF hjkennneu<>hjkennaltTHEN hjkennalt:=
+hjkennneu;schj:=schulkenndatum(schuljahr);schhj:=schulkenndatum(halbjahr);IF 
+hjkennneu=1THEN geplanteshjundsjberechnen(schhj,schj)FI ;
+stundenplanhalbjahrsetzen(schhj,schj);hjsjanhang:=schhj+". "+text(schj,2)+"/"
++subtext(schj,3);holestdplanFI .akthj:standardmaskenfeld(feldeingakthj).
+holestdplan:standardmeldung(meldungdatenaufbereitet,"");
+stundenplanbasisundstundenplanholen(fstat);IF fstat<>0CAND fstat<>8THEN 
+stundenplanbasisundstundenplanerstellen(fstat);IF fstat<>0THEN return(1);
+meldungausgeben(fstat);LEAVE stundenplannachlvzeigenELSE 
+stundenplanbasissichern(fstat);stundenplansichern(fstat);IF fstat<>0THEN 
+return(1);meldungausgeben(fstat);LEAVE stundenplannachlvzeigenFI FI ELIF 
+fstat=8THEN meldungausgeben(fstat)FI .holstartlv:fach:=text(fach+" ",2);
+inittupel(dnrlehrveranstaltungen);putwert(fnrlvsj,schj);putwert(fnrlvhj,schhj
+);putintwert(fnrlvjgst,jgst);putwert(fnrlvfachkennung,fach+kennung);search(
+dnrlehrveranstaltungen,FALSE );IF dbstatus>2THEN fehlermeldungkeinestartlv
+ELSE aktjgst:=intwert(fnrlvjgst);aktfachkenn:=wert(fnrlvfachkennung);aktlv:=
+text(jgstaufbereiten(aktjgst)+aktfachkenn,laengelv)FI .
+fehlermeldungkeinestartlv:standardmeldung(meldungkeinestartlv,"");infeld(
+feldeingjgst);return(1);LEAVE stundenplannachlvzeigen.END PROC 
+stundenplannachlvzeigen;PROC stundenplannachlvausgeben:standardstartproc(
+stdplmaske);fuellemaske;IF NOT uvokTHEN infeld(uvokfeld);standardmeldung(
+meldunguvfehler," ")FI ;standardnproc.END PROC stundenplannachlvausgeben;
+PROC fuellemaske:standardkopfmaskeaktualisieren("Stundenplan "+hjsjanhang+
+" für Lehrveranstaltung "+aktlv+"");uvok:=TRUE ;raumeintrag:="";lveintrag:=
+"";pareintrag:="";wstdderlv:=int(datenzurlv(kennungwstd,aktlv));FOR iFROM 1
+UPTO maxstundenREP planeintraglesen(i,kennunglv,aktlv,lveintrag,raumeintrag,
+pareintrag);IF raumeintrag<>""THEN IF raumeintrag=leererraumTHEN raumeintrag
+:=lvmitleeremraumELSE raumeintrag:=compress(raumeintrag)FI ;lvausstdpl(i):=
+raumeintrag;standardmaskenfeld(raumeintrag,i+1);IF pareintrag=leererlehrer
+THEN IF uvokTHEN uvok:=FALSE ;uvokfeld:=i+1;eintraglv:=lveintragFI FI ELSE 
+lvausstdpl(i):="";standardmaskenfeld("",i+1);FI PER ;infeld(1);
+standardfelderausgeben;infeld(2).END PROC fuellemaske;PROC meldungausgeben(
+INT VAR fstat):IF fstat=2THEN standardmeldung(meldungserverfehler,"");ELIF 
+fstat=4THEN standardmeldung(meldungkeinesugruppen,"");ELIF fstat=5THEN 
+standardmeldung(meldungzuvielesugruppen,"")ELIF fstat=6THEN standardmeldung(
+meldungkeinelv,"")ELIF fstat=7THEN standardmeldung(meldungzuvielelv,"")ELIF 
+fstat=9THEN standardmeldung(meldungbasisinkon,"");ELSE LEAVE meldungausgeben
+FI END PROC meldungausgeben;PROC stundenplannachlvspeichern(BOOL CONST 
+speichern):TEXT VAR raumeintrag,t:="",lv:="";INT VAR bisherigejgst:=0,anzwstd
+;IF speichernTHEN aenderungenvornehmen;FI ;naechstersatz;return(1).
+naechstersatz:succ(dnrlehrveranstaltungen);IF dbstatus>2COR wert(fnrlvsj)<>
+schjCOR wert(fnrlvhj)<>schhjTHEN stundenplannachlvreorganisiertverlassen;
+LEAVE stundenplannachlvspeichernELIF intwert(fnrlvjgst)<>bisherigejgstTHEN 
+stundenplanreorganisierenundsichern(fstat);bisherigejgst:=intwert(fnrlvjgst)
+FI ;aktjgst:=intwert(fnrlvjgst);aktfachkenn:=wert(fnrlvfachkennung);aktlv:=
+text(jgstaufbereiten(aktjgst)+aktfachkenn,laengelv);fuellemaske;IF NOT uvok
+THEN infeld(uvokfeld);standardmeldung(meldunguvfehler,eintraglv+ausgabeparam)
+FI .aenderungenvornehmen:standardmeldung(meldungplausi," ");plausipruefung;
+standardmeldung(meldungspeichern," ");aenderungsfehler:=FALSE ;speicherung;
+IF aenderungsfehlerTHEN standardmeldung(meldungaenderungsfehler,"");return(1)
+;LEAVE stundenplannachlvspeichernELSE stundenplansichern(fstat)FI ;IF fstat<>
+0THEN meldungausgeben(fstat);return(1);LEAVE stundenplannachlvspeichernFI .
+plausipruefung:anzwstd:=0;FOR iFROM 1UPTO maxstundenREP infeld(i+1);
+raumeintrag:=standardmaskenfeld(i+1);IF raumeintrag<>""THEN pruefezeit;IF 
+raumeintrag<>lvmitleeremraumTHEN prueferaum;lvvombs(i):=raumeintragELSE 
+lvvombs(i):=leererraumFI ;schnittraeume;schnittlehrer;schnittsugruppen;
+wstdzahlok;anzwstdINCR 1;ELSE lvvombs(i):=""FI ;PER .pruefezeit:IF NOT 
+bezeichnungzulaessig(kennungzulzeit,text(i))THEN standardmeldung(
+meldungzeitgesperrt,tagstunde(i,TRUE )+" Std."+ausgabeparam);return(1);LEAVE 
+stundenplannachlvspeichernFI .prueferaum:IF NOT bezeichnungzulaessig(
+kennungraum,raumeintrag)THEN standardmeldung(meldungfalscherraum,"");return(1
+);LEAVE stundenplannachlvspeichernFI .schnittraeume:IF raumunterrichtTHEN 
+standardmeldung(meldungraumbesetzt,"");return(1);LEAVE 
+stundenplannachlvspeichernFI .raumunterricht:lv:=geplantelvfuer(i,kennungraum
+,raumeintrag);lv<>aktlvCAND lv<>"".schnittlehrer:t:=datenzurlv(kennungparaphe
+,aktlv);IF t<>leererlehrerTHEN IF lehrerunterrichtTHEN standardmeldung(
+meldunglehrerbesetzt,t+ausgabeparam);return(1);LEAVE 
+stundenplannachlvspeichernFI FI .lehrerunterricht:lv:=geplantelvfuer(i,
+kennungparaphe,t);lv<>aktlvCAND lv<>"".schnittsugruppen:IF 
+sugruppenichtunterrichtsfreiTHEN standardmeldung(meldungsugrupbesetzt,lv+
+ausgabeparam);return(1);LEAVE stundenplannachlvspeichernFI .
+sugruppenichtunterrichtsfrei:schuelergruppenschnittbeizeit(i,kennunglv,aktlv,
+"",lv,t).wstdzahlok:IF anzwstd=wstdderlvTHEN standardmeldung(
+meldungzuvielewstd,"");return(1);LEAVE stundenplannachlvspeichernFI .
+speicherung:FOR iFROM 1UPTO maxstundenREP IF lvausstdpl(i)<>""COR lvvombs(i)
+<>""THEN infeld(i+1);IF loeschenTHEN planeintragentfernenELSE 
+planeintragschreibenFI ;FI ;PER .loeschen:lvausstdpl(i)<>""CAND lvvombs(i)=""
+.planeintragentfernen:planeintragloeschen(i,aktlv,spok);IF NOT spokTHEN 
+aenderungsfehler:=TRUE FI .planeintragschreiben:IF lvausstdpl(i)<>""THEN 
+planeintragloeschen(i,aktlv,spok);IF spokTHEN planeintragvornehmen(i,aktlv,
+lvvombs(i),spok);FI ;ELSE planeintragvornehmen(i,aktlv,lvvombs(i),spok);FI ;
+IF NOT spokTHEN aenderungsfehler:=TRUE FI .END PROC 
+stundenplannachlvspeichern;TEXT PROC jgstaufbereiten(INT CONST jgst):TEXT 
+VAR lv:="0";lvCAT text(jgst);subtext(lv,length(lv)-1)END PROC jgstaufbereiten
+;END PACKET stundenplannachlverfassen;
+

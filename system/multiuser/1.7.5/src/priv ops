@@ -1,0 +1,268 @@
+(* ------------------- VERSION 10     22.04.86 ------------------- *)
+PACKET privileged operations DEFINES           (* Autor: J.Liedtke *)
+ 
+     block ,
+     calendar ,
+     collect garbage blocks ,
+     define collector , 
+     fixpoint ,
+     info password ,
+     prio ,
+     save system ,
+     send ,
+     set clock ,
+     set date ,
+     shutup ,
+     unblock :
+ 
+LET prio field           = 6 ,
+    cr                   = ""13"" ,
+    archive channel      = 31 ,
+
+    ack                  = 0 , 
+
+    garbage collect code = 1 ,
+    fixpoint code        = 2 ,
+    shutup code          = 4 ,
+    shutup and save code = 12 ,
+    reserve code         = 19 ,
+    release code         = 20 ;
+
+
+
+INT PROC prio (TASK CONST task) :
+  pcb (task, prio field)
+ENDPROC prio ;
+
+PROC prio (TASK CONST task, INT CONST new prio) :
+  pcb (task, prio field, new prio)
+ENDPROC prio ;
+
+TEXT VAR date text ;
+
+PROC collect garbage blocks :
+
+  system operation (garbage collect code)
+
+ENDPROC collect garbage blocks ;
+
+PROC fixpoint :
+
+  system operation (fixpoint code)
+
+ENDPROC fixpoint ;
+
+PROC info password (TEXT CONST old info password, new info password) :
+
+  INT VAR error code ;
+  IF online
+    THEN say (""3""5""10"")
+  FI ;
+  IF LENGTH new info password < 10
+    THEN infopw (old info password + cr, new info pw, error code) ;
+         IF error code = 0
+           THEN shutup
+           ELSE errorstop ("Falsches Info-Passwort")
+         FI
+    ELSE errorstop ("Passwort zu lang (max. 9 Zeichen)")
+  FI ;
+  cover tracks .
+
+new info pw :
+  IF new info password = "-"
+    THEN "-" + 9 * "0"
+    ELSE new info password + "cr"
+  FI .
+
+ENDPROC info password ;
+
+PROC shutup :
+
+  system operation (shutup code) ;
+  IF command dialogue
+     THEN wait for configurator ;
+          page ;
+          set date
+  FI
+
+ENDPROC shutup ;
+
+PROC save system :
+
+  INT VAR reply ;
+  TASK VAR channel owner ;
+  enable stop ;
+  reserve archive channel ;
+  IF yes ("Leere Floppy eingelegt")
+  THEN
+    reserve archive channel ;
+    system operation (shutup and save code) ;
+    release archive channel ;
+    IF command dialogue
+      THEN wait for configurator ; 
+           page ;
+           set date
+    FI 
+  FI ;
+  release archive channel .
+
+reserve archive channel :
+  channel owner := task (archive channel) ;
+  IF NOT is niltask (channel owner) 
+    THEN  ask channel owner to reserve the channel ;
+          IF channel owner does not reserve channel
+            THEN errorstop ("Task """ + name (channel owner)
+                                      + """ gibt Kanal " 
+                                      + text (archive channel)
+                                      + " nicht frei") 
+         FI 
+  FI . 
+ 
+ask channel owner to reserve the channel :
+  forget (ds) ;
+  ds := nilspace ;
+  pingpong (channel owner, reserve code, ds, reply) . 
+
+channel owner does not reserve channel : 
+  (reply <> ack) AND task exists . 
+ 
+task exists : 
+  reply <> -1 . 
+
+release archive channel :
+  forget (ds) ;
+  ds := nilspace ;
+  pingpong (channel owner, release code, ds, reply) .
+
+ENDPROC save system ;
+
+PROC system operation (INT CONST code) :
+
+  INT VAR size, used ;
+  storage (size, used) ;
+  IF used <= size
+    THEN sys op (code)
+    ELSE errorstop ("Speicherengpass")
+  FI
+
+ENDPROC system operation ;
+
+DATASPACE VAR ds := nilspace ;
+
+PROC wait for configurator :
+
+  INT VAR i , receipt ;
+  FOR i FROM 1 UPTO 20 WHILE configurator exists REP
+    pause (30) ;
+    forget (ds) ;
+    ds := nilspace ;
+    ping pong (configurator, ack, ds, receipt)
+  UNTIL receipt >= 0 PER .
+
+configurator exists :
+  disable stop ;
+  TASK VAR configurator := task ("configurator") ;
+  clear error ;
+  NOT is niltask (configurator) .
+
+ENDPROC wait for configurator ;
+
+BOOL VAR hardware clock ok ; 
+REAL VAR now ;
+ 
+PROC set date : 
+ 
+  hardware clock ok := TRUE ; 
+  try to get date and time from hardware ; 
+  IF NOT hardware clock ok 
+    THEN get date and time from user 
+  FI ; 
+  define date and time . 
+ 
+try to get date and time from hardware : 
+  disable stop ;
+  REAL VAR previous now ;
+  now := 0.0 ; 
+  INT VAR try ; 
+  FOR try FROM 1 UPTO 3 WHILE hardware clock ok REP 
+    previous now := now ; 
+    now := date (hardwares today) + time (hardwares time) 
+  UNTIL now = previous now OR is error PER ; 
+  clear error ;
+  enable stop .
+
+get date and time from user :
+  line (2) ;
+  put ("      Bitte geben Sie das heutige Datum ein :") ;
+  date text := date ;
+  TEXT VAR exit char ;
+  editget (date text, cr, "", exit char) ;
+  now := date (date text) ;
+  line ;
+  put ("      und die aktuelle Uhrzeit :") ;
+  date text := time of day ;
+  editget (date text, cr, "", exit char) ;
+  now INCR time (date text) ;
+  IF NOT last conversion ok 
+    THEN errorstop ("Falsche Zeitangabe")
+  FI .
+
+hardwares today :  calendar (3) + "." + calendar (4) + "." + calendar (5) . 
+
+hardwares time  :  calendar (2) + ":" + calendar (1) . 
+ 
+define date and time : 
+  set clock (now) . 
+ 
+ENDPROC set date ; 
+ 
+TEXT PROC calendar (INT CONST index) : 
+ 
+  INT VAR bcd ; 
+  control (10, index, 0, bcd) ; 
+  IF bcd < 0  
+    THEN hardware clock ok := FALSE ; "" 
+    ELSE text (low digit + 10 * high digit) 
+  FI . 
+ 
+low digit :  bcd AND 15 . 
+
+high digit:  (bcd AND (15*256)) DIV 256 . 
+ 
+ENDPROC calendar ; 
+
+PROC infopw (TEXT CONST old, new, INT VAR error code) :
+  EXTERNAL 81
+ENDPROC infopw ;
+
+PROC sys op (INT CONST code) :
+  EXTERNAL 90
+ENDPROC sys op ;
+
+PROC set clock (REAL CONST time) :
+  EXTERNAL 103
+ENDPROC set clock ;
+
+PROC pcb (TASK CONST task, INT CONST field, value) :
+  EXTERNAL 105
+ENDPROC pcb ;
+
+PROC unblock (TASK CONST task) :
+  EXTERNAL 108
+ENDPROC unblock ;
+
+PROC block (TASK CONST task) :
+  EXTERNAL 109
+ENDPROC block ;
+
+PROC send (TASK CONST from, to, INT CONST order, DATASPACE VAR ds,
+           INT VAR receipt) :
+  EXTERNAL 127
+ENDPROC send ;
+
+PROC define collector (TASK CONST task) :
+  EXTERNAL 128
+ENDPROC define collector ;
+
+ENDPACKET privileged operations ;
+

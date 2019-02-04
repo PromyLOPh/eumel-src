@@ -1,0 +1,679 @@
+PACKET halbjahresdatenbearbeitenDEFINES halbjahresdatenbearbeiten,
+halbjahresdatenblaettern,halbjahresdatenspeichern,
+listezuhalbjahresdatenzeigen,
+halbjahresdatenausgewaehlterschuelerbearbeitenvorbereiten,
+halbjahresdatendesschuelersnichtbearbeiten,
+halbjahresdatendesschuelersbearbeiten,halbjahresdatenentfernenvorbereiten,
+halbjahresdatenentfernen,halbjahresdatennichtentfernen,pruefunghjd,
+hjderfassungswert:LET maskennamebearb1="ms bearb halbjahresdaten 1",
+maskennamebearb2="ms bearb halbjahresdaten 2",maskennameeingang=
+"ms bearb halbjahresdaten 0",fnrname=2,fnrrufname=3,fnrgebdatum=4,
+fnrgewschuljahr=5,fnrgewhalbjahr=6,fnrgewjgst=7,fnrabgangbestand=8,
+fnrausgabename=2,fnrausgaberufname=3,fnrausgabegebdatum=4,fnrausgabeaktjgst=5
+,fnrausgabeaktzug=6,fnrausgabeabgegangen=7,fnrausgabegewschj=8,
+fnrausgabegewhj=9,fnrausgabegewjgst=10,fnrausgabegewzug=11,fnrblbriefwarn=12,
+fnrblbriefbem=13,fnrblbriefnwarn=14,fnrblbriefnbem=15,fnrversetzung=16,
+fnrnachpr1=17,fnrnachpr2=18,fnrnachpr3=19,fnrnachprbem=20,fnrnachprabgelegt=
+21,fnrnachprnote=22,fnrzeugbem1=23,fnrzeugbem2=24,fnrzeugbem3=25,
+fnrversaeumtmit=26,fnrversaeumtohne=27,fnrverspaetet=28,fnrfachanf=12,
+fnrfachende=24,fnrkursartanf=25,fnrkursartende=37,fnrklausuranf=38,
+fnrklausurende=50,fnrkursanf=51,fnrkursende=63,fnrnoteanf=64,fnrnoteende=76,
+fnrbemanf=77,fnrbemende=89,fnrwarnunganf=90,fnrwarnungende=102,
+schueleraktuell="ls",schuelerabgegangen="abg",schulhalbjahr="Schulhalbjahr",
+schuljahr="Schuljahr",bestandblauerbrief="c02 blauer brief",
+bestandbemerkungen="c02 bemerkungen",bestandzeugnisnoten="c02 zeugnisnoten",
+bestandartlv="c02 art lehrveranstaltung",trenner="�",stdplausileiste=
+"0000000000000",paramausgabe="#",anzschluesselsu=3,fmeldnichtimbestand=55,
+meldungnureinesderfaechererl=147,meldungfachangabeunzulaessig=310,
+meldungversetzungskzunzulaessig=136,meldungwirklichloeschen=65,
+meldunggibtsnicht=71,meldunghjdgibtsnicht=168,meldungunerlaubterwert=34,
+meldunglistenerstellung=7,meldungkeineliste=68,meldungletzter=67,
+meldungspeicherung=50,meldungkeinespeicherung=63,meldungfalschesdatum=157,#
+meldungkeinewiederholungsdaten=160,#meldunghalbjahrnichtrelevant=161,
+meldungungueltigekursart=164,meldungfeldfuellen=170,meldungschuljahrangeben=
+171,meldungjgstangeben=172,meldungfalschejgst=173,meldungfalschefunktion=72,
+meldungnichtentfernt=62,meldungentfernt=61,meldungspeicherfehler=73,
+meldungvornamepraez=129,meldunginakthjkeineaenderung=379,pruefemeldung=57,
+dateiname="Schülerliste",oblitrenner="$",leer="",niltext="",punkt=".",
+textabgegangen="abgegangen",schrittefuerobjektliste=2,anzmasken=3,eingang=1,
+bearb1=2,bearb2=3,maxfeldbearb0=8,maxfeldbearb1=28,maxfeldbearb2=102,
+saetzederliste=17,pruefartdatum=6;BOOL VAR maskebearb1nochnichtda:=TRUE ,
+maskebearb2nochnichtda:=TRUE ,maskeeingangnochnichtda:=TRUE ,falschesdatum:=
+FALSE ;BOOL VAR schuljahrgefuellt,halbjahrgefuellt,jgstgefuellt,
+halbjahresdatenschonvorhanden;FILE VAR f;INT VAR fehlerfeld:=0,ind,bs,
+posgewhalbjahr,fnrfehler,fehlerstatus,fmeld:=0,lv:=0,feldnummer:=0;ROW 
+anzschluesselsuTEXT VAR schluessel;ROW anzmaskenROW maxfeldbearb2TEXT VAR 
+erfassungsfeld;ROW anzmaskenTAG VAR maske;TEXT VAR sicherunghjd:="",
+schuelertid:="",hjdtid:="",vergleichszeile:="",hjdfachleiste:="",hjdartleiste
+:="",hjdklausurleiste:="",hjdkennungenleiste:="",verglfachleiste:="",
+verglartleiste:="",verglklausurleiste:="",verglkennungenleiste:="",leiste,
+plausivar:="",plausileiste:="",pruefbestand:="",plausitxt,akthalbjahr:="",
+aktschuljahr:="",gewhalbjahr:="",gewschuljahr:="",jgst,zug,vglgewhalbjahr:=""
+,vglakthalbjahr:="",gewjgst:="",gewzug:="",aktbestand,spalteninhalte,versetzg
+:=trenner+trenner+"v"+trenner+"n"+trenner+"s"+trenner+"f"+trenner+"w"+trenner
+,faecher:=trenner+trenner,blbrief:=trenner+trenner,bemerk:=trenner+trenner,
+noten:=trenner+trenner,artlv:=trenner+trenner;LET logtextbeginn="Anw. 1.2.3 "
+;PROC halbjahresdatenentfernen:standardmeldung(meldungentfernt,niltext);
+infeld(fnrname);inittupel(dnrhalbjahresdaten);schluesselfuerhjdsetzen(
+dnrhalbjahresdaten,schluessel,gewschuljahr,gewhalbjahr,gewjgst);
+logeintragvornehmen("Entfernen");delete(dnrhalbjahresdaten);IF 
+aktuellesschulhalbjahrinbearbeitungTHEN loeschehjdtidinsu;FI ;enter(2).
+loeschehjdtidinsu:inittupel(dnrschueler);putwert(fnrsufamnames,schluessel(1))
+;putwert(fnrsurufnames,schluessel(2));putwert(fnrsugebdatums,schluessel(3));
+search(dnrschueler,TRUE );putwert(fnrsutidakthjd,"");update(dnrschueler).END 
+PROC halbjahresdatenentfernen;PROC halbjahresdatennichtentfernen:
+standardmeldung(meldungnichtentfernt,niltext);infeld(fnrname);return(2)END 
+PROC halbjahresdatennichtentfernen;PROC halbjahresdatenentfernenvorbereiten:
+BOOL VAR suexistiert:=FALSE ;IF maskeeingangnochnichtdaTHEN bs:=1;initmaske(
+maske(bs),maskennameeingang);init(bs,maxfeldbearb0);maskeeingangnochnichtda:=
+FALSE FI ;IF erfassungsfeld(bs)(fnrname)<>""CAND erfassungsfeld(bs)(
+fnrgebdatum)<>""CAND erfassungsfeld(bs)(fnrrufname)=""THEN meldungausgeben(
+meldungvornamepraez,fnrrufname);LEAVE halbjahresdatenentfernenvorbereitenFI ;
+schluesselbereitstellen;IF NOT falschesdatumTHEN pruefeobnameexistiert(
+suexistiert);IF suexistiertTHEN bs:=1;holedbwerte(bs);schluessel(1):=
+erfassungsfeld(bs)(fnrname);schluessel(2):=erfassungsfeld(bs)(fnrrufname);
+schluessel(3):=datumskonversion(erfassungsfeld(eingang)(fnrgebdatum));
+weiterepruefungELSE meldungausgeben(meldunggibtsnicht,fnrname)FI ELSE 
+meldungausgeben(meldungfalschesdatum,fnrgebdatum)FI .weiterepruefung:jgst:=
+jgstaufber(wert(fnrsusgrpjgst));zug:=wert(fnrsusgrpzugtut);akthalbjahr:=
+schulkenndatum(schulhalbjahr);erfassungsfeld(bs)(fnrgewschuljahr):=
+standardmaskenfeld(fnrgewschuljahr);erfassungsfeld(bs)(fnrgewhalbjahr):=
+standardmaskenfeld(fnrgewhalbjahr);IF int(standardmaskenfeld(fnrgewjgst))=0
+THEN erfassungsfeld(bs)(fnrgewjgst):=niltext;gewjgst:=standardmaskenfeld(
+fnrgewjgst);ELSE erfassungsfeld(bs)(fnrgewjgst):=jgstaufber(
+standardmaskenfeld(fnrgewjgst));gewjgst:=jgstaufber(standardmaskenfeld(
+fnrgewjgst));FI ;gewschuljahr:=standardmaskenfeld(fnrgewschuljahr);
+gewhalbjahr:=standardmaskenfeld(fnrgewhalbjahr);fnrfehler:=0;
+pruefenobeintraegefuerhjdausreichend;IF fnrfehler=0THEN IF eingabenummerisch(
+gewschuljahr)CAND korrekteschuljahreseingabe(gewschuljahr)THEN 
+weiterevorbereitungnachfehlerpruefungELSE meldungausgeben(
+meldungunerlaubterwert,fnrgewschuljahr)FI ELSE meldungausgeben(
+meldungfeldfuellen,fnrfehler)FI .pruefenobeintraegefuerhjdausreichend:
+schuljahrgefuellt:=standardmaskenfeld(fnrgewschuljahr)<>leer;halbjahrgefuellt
+:=standardmaskenfeld(fnrgewhalbjahr)<>leer;jgstgefuellt:=standardmaskenfeld(
+fnrgewjgst)<>leer;IF allefelderleerOR nurhalbjahrgefuelltTHEN fnrfehler:=
+fnrgewschuljahrELIF nurschuljahrgefuelltOR nurjgstgefuelltOR 
+nurschuljahrundjgstgefuelltTHEN fnrfehler:=fnrgewhalbjahrFI .allefelderleer:(
+NOT schuljahrgefuellt)CAND (NOT halbjahrgefuellt)CAND (NOT jgstgefuellt).
+nurhalbjahrgefuellt:(NOT schuljahrgefuellt)CAND (halbjahrgefuellt)CAND (NOT 
+jgstgefuellt).nurschuljahrgefuellt:(schuljahrgefuellt)CAND (NOT 
+halbjahrgefuellt)CAND (NOT jgstgefuellt).nurjgstgefuellt:(NOT 
+schuljahrgefuellt)CAND (NOT halbjahrgefuellt)CAND (jgstgefuellt).
+nurschuljahrundjgstgefuellt:(schuljahrgefuellt)CAND (NOT halbjahrgefuellt)
+CAND (jgstgefuellt).weiterevorbereitungnachfehlerpruefung:
+halbjahresdatenschonvorhanden:=FALSE ;IF allefeldergefuelltTHEN 
+angabevonsjhjjgstELIF nurschuljahrundhalbjahrgefuelltTHEN angabevonsjhjELIF 
+nurhalbjahrundjgstgefuelltTHEN angabevonhjjgstFI ;gibmaskemitrowaus(eingang,
+fnrname,fnrabgangbestand).allefeldergefuellt:(schuljahrgefuellt)CAND (
+halbjahrgefuellt)CAND (jgstgefuellt).nurschuljahrundhalbjahrgefuellt:(
+schuljahrgefuellt)CAND (halbjahrgefuellt)CAND (NOT jgstgefuellt).
+nurhalbjahrundjgstgefuellt:(NOT schuljahrgefuellt)CAND (halbjahrgefuellt)
+CAND (jgstgefuellt).angabevonsjhjjgst:jgst:=jgstaufber(wert(fnrsusgrpjgst));
+vglgewhalbjahr:=gewjgst+punkt+gewhalbjahr;vglakthalbjahr:=jgst+punkt+
+akthalbjahr;schuelerhjdlesen(dnrhalbjahresdaten,TRUE );IF 
+halbjahresdatenschonvorhandenTHEN loeschedatensatzELSE meldunghjdgibtesnicht
+FI .angabevonsjhj:schuelerhjdlesen(dnrhalbjahresdaten,FALSE );IF 
+halbjahresdatenschonvorhandenTHEN savetupel(dnrhalbjahresdaten,sicherunghjd);
+saveupdateposition(dnrhalbjahresdaten);gewjgst:=jgstaufber(wert(fnrhjdjgst));
+erfassungsfeld(eingang)(fnrgewjgst):=gewjgst;erfassungsfeld(bearb1)(
+fnrausgabegewjgst):=gewjgst;loeschedatensatzELSE meldungausgeben(
+meldungjgstangeben,fnrgewjgst)FI .angabevonhjjgst:schuelerhjdlesen(
+ixhjdfamrufgebjgsthj,TRUE );IF halbjahresdatenschonvorhandenTHEN savetupel(
+dnrhalbjahresdaten,sicherunghjd);saveupdateposition(dnrhalbjahresdaten);
+gewschuljahr:=wert(fnrhjdsj);erfassungsfeld(eingang)(fnrgewschuljahr):=gew
+schuljahr;erfassungsfeld(bearb1)(fnrausgabegewschj):=gewschuljahr;IF 
+wiederholungvorhanden(dnrhalbjahresdaten,ixhjdfamrufgebjgsthj)THEN 
+meldungbitteschuljahrangebenELSE restoreupdateposition(dnrhalbjahresdaten);
+loeschedatensatzFI ELSE meldungbitteschuljahrangebenFI .
+meldungbitteschuljahrangeben:meldungausgeben(meldungschuljahrangeben,
+fnrgewschuljahr).meldunghjdgibtesnicht:meldungausgeben(meldunghjdgibtsnicht,
+fnrgewschuljahr).loeschedatensatz:standardmaskenfeld(wert(fnrsufamnames),
+fnrname);standardmaskenfeld(wert(fnrsurufnames),fnrrufname);
+standardmaskenfeld(datumrekonversion(wert(fnrsugebdatums)),fnrgebdatum);
+standardmaskenfeld(gewschuljahr,fnrgewschuljahr);standardmaskenfeld(
+gewhalbjahr,fnrgewhalbjahr);standardmaskenfeld(gewjgst,fnrgewjgst);IF 
+aktbestand=schueleraktuellTHEN standardmaskenfeld("",fnrabgangbestand);ELSE 
+standardmaskenfeld("x",fnrabgangbestand);FI ;infeld(fnrname);
+standardfelderausgeben;meldungausgebeneinfach(meldungwirklichloeschen,fnrname
+).END PROC halbjahresdatenentfernenvorbereiten;PROC halbjahresdatenblaettern(
+BOOL CONST b):IF bTHEN IF bs=2THEN blaetteraufbearb2ELSE fehlermeldungFI 
+ELSE IF bs=3THEN blaetteraufbearb1ELSE fehlermeldungFI FI .fehlermeldung:
+standardmeldung(meldungfalschefunktion,"");return(1).blaetteraufbearb2:
+merkeinhaltbearb1;gibbearb2maskeaus;gibinhaltebearb2aus;.merkeinhaltbearb1:
+merkemaskeninhalt(bearb1,fnrausgabegewjgst,fnrverspaetet).gibbearb2maskeaus:
+IF maskebearb2nochnichtdaTHEN initmaske(maske(bearb2),maskennamebearb2);init(
+bearb2,maxfeldbearb2);FI ;standardstartproc(maskennamebearb2).
+gibinhaltebearb2aus:bs:=3;fuellehjddateninfelder;maskebearb2nochnichtda:=
+FALSE ;infeld(fnrausgabename);standardfelderausgeben;infeld(fnrfachanf);
+return(1).blaetteraufbearb1:merkeinhaltbearb2;gibbearb1maskeaus;
+gibinhaltebearb1aus.merkeinhaltbearb2:merkemaskeninhalt(bearb2,fnrfachanf,
+fnrwarnungende).gibbearb1maskeaus:standardstartproc(maskennamebearb1).
+gibinhaltebearb1aus:bs:=2;fuellehjddateninfelder;infeld(fnrausgabename);
+standardfelderausgeben;IF akthalbjahr=gewhalbjahrCAND aktschuljahr=
+gewschuljahrTHEN infeld(fnrblbriefwarn)ELSE infeld(fnrausgabegewjgst);FI ;
+return(1).END PROC halbjahresdatenblaettern;PROC gibmaskemitrowaus(INT CONST 
+maske,vonfeld,bisfeld):INT VAR lv;FOR lvFROM vonfeldUPTO bisfeldREP 
+standardmaskenfeld(erfassungsfeld(maske)(lv),lv);PER END PROC 
+gibmaskemitrowaus;PROC merkemaskeninhalt(INT CONST maske,vonfeld,bisfeld):
+INT VAR lv;FOR lvFROM vonfeldUPTO bisfeldREP erfassungsfeld(maske)(lv):=
+standardmaskenfeld(lv);PER END PROC merkemaskeninhalt;PROC 
+halbjahresdatenbearbeiten:BOOL VAR suexistiert:=FALSE ;reinitparsing;bs:=
+eingang;IF maskeeingangnochnichtdaTHEN initmaske(maske(bs),maskennameeingang)
+;init(bs,maxfeldbearb0);maskeeingangnochnichtda:=FALSE FI ;erfassungsfeld(bs)
+(fnrname):=standardmaskenfeld(fnrname);erfassungsfeld(bs)(fnrrufname):=
+standardmaskenfeld(fnrrufname);erfassungsfeld(bs)(fnrgebdatum):=
+standardmaskenfeld(fnrgebdatum);IF erfassungsfeld(bs)(fnrname)<>""CAND 
+erfassungsfeld(bs)(fnrgebdatum)<>""CAND erfassungsfeld(bs)(fnrrufname)=""
+THEN meldungausgeben(meldungvornamepraez,fnrrufname);LEAVE 
+halbjahresdatenbearbeitenFI ;schluesselbereitstellen;IF NOT falschesdatum
+THEN pruefeobnameexistiert(suexistiert);IF suexistiertTHEN 
+loeschedieerstellteobjektliste;holedbwerte(bs);schluessel(1):=erfassungsfeld(
+bs)(fnrname);schluessel(2):=erfassungsfeld(bs)(fnrrufname);schluessel(3):=
+datumskonversion(erfassungsfeld(bs)(fnrgebdatum));jgst:=jgstaufber(wert(
+fnrsusgrpjgst));zug:=wert(fnrsusgrpzugtut);akthalbjahr:=schulkenndatum(
+schulhalbjahr);aktschuljahr:=schulkenndatum(schuljahr);
+halbjahresdatendesschuelersbearbeiten;ELSE meldungausgeben(meldunggibtsnicht,
+fnrname)FI ELSE return(1)FI .END PROC halbjahresdatenbearbeiten;PROC 
+halbjahresdatendesschuelersbearbeiten:maskebearb1nochnichtda:=TRUE ;
+maskebearb2nochnichtda:=TRUE ;erfassungsfeld(bs)(fnrgewschuljahr):=
+standardmaskenfeld(fnrgewschuljahr);erfassungsfeld(bs)(fnrgewhalbjahr):=
+standardmaskenfeld(fnrgewhalbjahr);IF int(standardmaskenfeld(fnrgewjgst))=0
+THEN erfassungsfeld(bs)(fnrgewjgst):=niltext;gewjgst:=standardmaskenfeld(
+fnrgewjgst);ELSE erfassungsfeld(bs)(fnrgewjgst):=jgstaufber(
+standardmaskenfeld(fnrgewjgst));gewjgst:=erfassungsfeld(bs)(fnrgewjgst)FI ;
+gewschuljahr:=standardmaskenfeld(fnrgewschuljahr);gewhalbjahr:=
+standardmaskenfeld(fnrgewhalbjahr);infeld(fnrname);gibmaskemitrowaus(eingang,
+fnrname,fnrgewjgst);standardfelderausgeben;IF akthalbjahr=gewhalbjahrCAND 
+aktschuljahr=gewschuljahrTHEN IF erfassungsfeld(bs)(fnrgewjgst)<>niltextCAND 
+jgst<>gewjgstTHEN meldungausgeben(meldungfalschejgst,fnrgewjgst);LEAVE 
+halbjahresdatendesschuelersbearbeitenFI ;FI ;
+pruefenobeintraegefuerhjdausreichend;#dr16.07.87#IF fnrfehler=0THEN IF 
+eingabenummerisch(gewschuljahr)CAND korrekteschuljahreseingabe(gewschuljahr)
+THEN initmaske(maske(bs),maskennamebearb1);init(bearb1,maxfeldbearb1);
+erfassungsfeld(bearb1)(fnrausgabename):=schluessel(1);erfassungsfeld(bearb1)(
+fnrausgaberufname):=schluessel(2);erfassungsfeld(bearb1)(fnrausgabegebdatum)
+:=erfassungsfeld(eingang)(fnrgebdatum);erfassungsfeld(bearb1)(
+fnrausgabeaktjgst):=jgst;erfassungsfeld(bearb1)(fnrausgabeaktzug):=zug;IF 
+aktbestand="ls"THEN erfassungsfeld(bearb1)(fnrausgabeabgegangen):=
+"          "ELSE erfassungsfeld(bearb1)(fnrausgabeabgegangen):="abgegangen"
+FI ;erfassungsfeld(bearb1)(fnrausgabegewschj):=gewschuljahr;erfassungsfeld(
+bearb1)(fnrausgabegewhj):=gewhalbjahr;erfassungsfeld(bearb1)(
+fnrausgabegewjgst):=gewjgst;weiterevorbereitungnachfehlerpruefungELSE 
+meldungausgeben(meldungunerlaubterwert,fnrgewschuljahr)FI ELSE 
+meldungausgeben(meldungfeldfuellen,fnrfehler)FI .
+pruefenobeintraegefuerhjdausreichend:fnrfehler:=0;schuljahrgefuellt:=
+standardmaskenfeld(fnrgewschuljahr)<>leer;halbjahrgefuellt:=
+standardmaskenfeld(fnrgewhalbjahr)<>leer;jgstgefuellt:=standardmaskenfeld(
+fnrgewjgst)<>leer;IF allefelderleerOR nurhalbjahrgefuelltTHEN fnrfehler:=
+fnrgewschuljahrELIF nurschuljahrgefuelltOR nurjgstgefuelltOR 
+nurschuljahrundjgstgefuelltTHEN fnrfehler:=fnrgewhalbjahrFI .allefelderleer:(
+NOT schuljahrgefuellt)CAND (NOT halbjahrgefuellt)CAND (NOT jgstgefuellt).
+nurhalbjahrgefuellt:(NOT schuljahrgefuellt)CAND (halbjahrgefuellt)CAND (NOT 
+jgstgefuellt).nurschuljahrgefuellt:(schuljahrgefuellt)CAND (NOT 
+halbjahrgefuellt)CAND (NOT jgstgefuellt).nurjgstgefuellt:(NOT 
+schuljahrgefuellt)CAND (NOT halbjahrgefuellt)CAND (jgstgefuellt).
+nurschuljahrundjgstgefuellt:(schuljahrgefuellt)CAND (NOT halbjahrgefuellt)
+CAND (jgstgefuellt).weiterevorbereitungnachfehlerpruefung:
+halbjahresdatenschonvorhanden:=FALSE ;IF allefeldergefuelltTHEN 
+angabevonsjhjjgstELIF nurschuljahrundhalbjahrgefuelltTHEN angabevonsjhjELIF 
+nurhalbjahrundjgstgefuelltTHEN angabevonhjjgstFI ;gibmaskemitrowaus(bearb1,
+fnrname,fnrabgangbestand).allefeldergefuellt:(schuljahrgefuellt)CAND (
+halbjahrgefuellt)CAND (jgstgefuellt).nurschuljahrundhalbjahrgefuellt:(
+schuljahrgefuellt)CAND (halbjahrgefuellt)CAND (NOT jgstgefuellt).
+nurhalbjahrundjgstgefuellt:(NOT schuljahrgefuellt)CAND (halbjahrgefuellt)
+CAND (jgstgefuellt).angabevonsjhjjgst:IF halbjahrrelevantTHEN 
+schuelerhjdlesen(dnrhalbjahresdaten,TRUE );IF halbjahresdatenschonvorhanden
+THEN savetupel(dnrhalbjahresdaten,sicherunghjd);saveupdateposition(
+dnrhalbjahresdaten);IF passendejgstTHEN aenderungsvorbereitungELSE 
+meldungausgeben(meldungfalschejgst,fnrgewjgst);LEAVE 
+halbjahresdatendesschuelersbearbeitenFI ;ELSE aenderungsvorbereitungFI ;ELSE 
+meldungausgeben(meldunghalbjahrnichtrelevant,fnrgewjgst);LEAVE 
+halbjahresdatendesschuelersbearbeitenFI .passendejgst:int(gewjgst)=intwert(
+fnrhjdjgst).angabevonsjhj:schuelerhjdlesen(dnrhalbjahresdaten,FALSE );IF 
+halbjahresdatenschonvorhandenTHEN savetupel(dnrhalbjahresdaten,sicherunghjd);
+saveupdateposition(dnrhalbjahresdaten);gewjgst:=jgstaufber(wert(fnrhjdjgst));
+erfassungsfeld(eingang)(fnrgewjgst):=gewjgst;erfassungsfeld(bearb1)(
+fnrausgabegewjgst):=gewjgst;infeld(fnrgewjgst);standardmaskenfeld(gewjgst,
+fnrgewjgst);standardfelderausgeben;vglgewhalbjahr:=gewjgst+punkt+gewhalbjahr;
+vglakthalbjahr:=jgst+punkt+akthalbjahr;aenderungsvorbereitungELIF akthalbjahr
+=gewhalbjahrCAND aktschuljahr=gewschuljahrTHEN infeld(fnrgewjgst);
+standardmaskenfeld(jgst,fnrgewjgst);standardfelderausgeben;erfassungsfeld(
+bearb1)(fnrausgabegewjgst):=jgst;vglgewhalbjahr:=gewjgst+punkt+gewhalbjahr;
+vglakthalbjahr:=jgst+punkt+akthalbjahr;aenderungsvorbereitungELSE 
+meldungausgeben(meldungjgstangeben,fnrgewjgst);LEAVE 
+halbjahresdatendesschuelersbearbeitenFI .angabevonhjjgst:IF halbjahrrelevant
+THEN schuelerhjdlesen(ixhjdfamrufgebjgsthj,TRUE );IF 
+halbjahresdatenschonvorhandenTHEN savetupel(dnrhalbjahresdaten,sicherunghjd);
+saveupdateposition(dnrhalbjahresdaten);gewschuljahr:=wert(fnrhjdsj);
+erfassungsfeld(eingang)(fnrgewschuljahr):=gewschuljahr;erfassungsfeld(bearb1)
+(fnrausgabegewschj):=gewschuljahr;IF wiederholungvorhanden(dnrhalbjahresdaten
+,ixhjdfamrufgebjgsthj)THEN meldungbitteschuljahrangeben;LEAVE 
+halbjahresdatendesschuelersbearbeitenELSE infeld(fnrgewschuljahr);
+standardmaskenfeld(gewschuljahr,fnrgewschuljahr);standardfelderausgeben;
+aenderungsvorbereitungFI ELSE meldungbitteschuljahrangeben;LEAVE 
+halbjahresdatendesschuelersbearbeitenFI ELSE meldungausgeben(
+meldunghalbjahrnichtrelevant,fnrgewjgst);LEAVE 
+halbjahresdatendesschuelersbearbeitenFI .meldungbitteschuljahrangeben:
+meldungausgeben(meldungschuljahrangeben,fnrgewschuljahr).
+aenderungsvorbereitung:standardstartproc(maskennamebearb1);bs:=bearb1;IF 
+maskebearb1nochnichtdaTHEN maskebearb1nochnichtda:=FALSE FI ;
+bereiteaenderungvor.halbjahrrelevant:vglgewhalbjahr:=gewjgst+punkt+
+gewhalbjahr;vglakthalbjahr:=jgst+punkt+akthalbjahr;lieferehalbjahreszeile(
+vergleichszeile,vglakthalbjahr);posgewhalbjahr:=pos(vergleichszeile,
+vglgewhalbjahr);posgewhalbjahr>0.END PROC 
+halbjahresdatendesschuelersbearbeiten;PROC meldungausgeben(INT CONST welche,
+fehlerfeld):standardmeldung(welche,niltext);infeld(fehlerfeld);return(1)END 
+PROC meldungausgeben;PROC meldungausgebeneinfach(INT CONST welche,fehlerfeld)
+:standardmeldung(welche,niltext);infeld(fehlerfeld);standardnprocEND PROC 
+meldungausgebeneinfach;PROC schluesselbereitstellen:falschesdatum:=FALSE ;
+fehlerfeld:=0;schluessel(1):=standardmaskenfeld(fnrname);schluessel(2):=
+standardmaskenfeld(fnrrufname);schluessel(3):=datumrekonversion(
+standardmaskenfeld(fnrgebdatum));IF standardmaskenfeld(fnrgebdatum)<>niltext
+THEN pruefe(pruefartdatum,maske(bs),TEXT PROC (INT CONST )hjderfassungswert,
+fnrgebdatum,0,0,niltext,fehlerfeld);IF fehlerfeld<>0THEN infeld(fehlerfeld);
+falschesdatum:=TRUE ;FI FI ;IF NOT falschesdatumTHEN legeaktuellenbestandfest
+FI .END PROC schluesselbereitstellen;PROC legeaktuellenbestandfest:
+erfassungsfeld(bs)(fnrabgangbestand):=standardmaskenfeld(fnrabgangbestand);
+IF standardmaskenfeld(fnrabgangbestand)=""THEN aktbestand:=schueleraktuell
+ELSE aktbestand:=schuelerabgegangenFI END PROC legeaktuellenbestandfest;PROC 
+pruefeobnameexistiert(BOOL VAR suexist):TEXT VAR datenbankwerte,
+schluesselwerte;inittupel(dnrschueler);maskenwerteindatenbank;IF NOT 
+falschesdatumTHEN search(ixsustatfamrufgeb,FALSE );IF dbstatus=okCAND wert(
+fnrsustatuss)=aktbestandTHEN schuelertid:=gettid;hjdtid:=wert(fnrsutidakthjd)
+;datenbankwerte:=wert(fnrsurufnames)+datumrekonversion(wert(fnrsugebdatums));
+schluesselwerte:=schluessel(2)+schluessel(3);suexist:=(wert(fnrsufamnames)=
+schluessel(1)CAND ((schluessel(2)=leerAND schluessel(3)=leer)OR (pos(
+datenbankwerte,schluesselwerte)=1)))ELSE suexist:=FALSE FI FI .END PROC 
+pruefeobnameexistiert;PROC maskenwerteindatenbank:putwert(fnrsufamnames,
+schluessel(1));putwert(fnrsurufnames,schluessel(2));disablestop;putwert(
+fnrsugebdatums,datumskonversion(schluessel(3)));IF iserrorTHEN clearerror;
+standardmeldung(meldungfalschesdatum,"");infeld(fnrgebdatum);falschesdatum:=
+TRUE ;ELSE putwert(fnrsustatuss,aktbestand);FI ;enablestopEND PROC 
+maskenwerteindatenbank;PROC bereiteaenderungvor:IF 
+halbjahresdatenschonvorhandenTHEN restoretupel(dnrhalbjahresdaten,
+sicherunghjd);holedbwerte(bearb1);FI ;IF aktuelleshalbjahrTHEN IF NOT 
+halbjahresdatenschonvorhandenTHEN erfassungsfeld(bearb1)(fnrausgabegewzug):=
+zug;FI ;fuellehjddateninfelder;infeld(fnrausgabename);standardfelderausgeben;
+infeld(fnrblbriefwarn)ELSE IF NOT halbjahresdatenschonvorhandenTHEN 
+erfassungsfeld(bearb1)(fnrausgabegewzug):=gewzug;FI ;fuellehjddateninfelder;
+infeld(fnrausgabename);standardfelderausgeben;infeld(fnrausgabegewjgst)FI ;
+standardnproc.aktuelleshalbjahr:akthalbjahr=gewhalbjahrCAND aktschuljahr=
+gewschuljahr.END PROC bereiteaenderungvor;BOOL PROC wiederholungvorhanden(
+INT CONST dnr,index):ROW 5TEXT VAR feld;feld(1):=wert(dnr+1);feld(2):=wert(
+dnr+2);feld(3):=wert(dnr+3);feld(4):=wert(dnr+5);feld(5):=wert(dnr+6);succ(
+index);dbstatus=okCAND feld(1)=wert(dnr+1)CAND feld(2)=wert(dnr+2)CAND feld(3
+)=wert(dnr+3)CAND feld(4)=wert(dnr+5)CAND feld(5)=wert(dnr+6).END PROC 
+wiederholungvorhanden;PROC fuellehjddateninfelder:IF bs=2THEN 
+gibmaskemitrowaus(bearb1,fnrname,fnrverspaetet);ELSE gibmaskemitrowaus(bearb1
+,fnrname,fnrausgabegewzug);IF maskebearb2nochnichtdaTHEN fachfuellen;
+artfuellen;klausurfuellen;kursfuellen;notefuellen;bemfuellen;warnungfuellen;
+ELSE gibmaskemitrowaus(bearb2,fnrfachanf,fnrwarnungende)FI FI .fachfuellen:
+hjdfachleiste:=wert(fnrhjdfach);FOR indFROM 0UPTO (fnrfachende-fnrfachanf)
+REP standardmaskenfeld(wert(fnrhjdfach,(ind*2+1),2),(fnrfachanf+ind))PER .
+artfuellen:hjdartleiste:=wert(fnrhjdkursart);FOR indFROM 0UPTO (
+fnrkursartende-fnrkursartanf)REP standardmaskenfeld(wert(fnrhjdkursart,(ind*2
++1),2),(fnrkursartanf+ind))PER .klausurfuellen:hjdklausurleiste:=wert(
+fnrhjdklausurteiln);FOR indFROM 0UPTO (fnrklausurende-fnrklausuranf)REP 
+standardmaskenfeld(wert(fnrhjdklausurteiln,(ind+1),1),(fnrklausuranf+ind))
+PER .kursfuellen:TEXT VAR klzeichen;hjdkennungenleiste:=wert(
+fnrhjdlerngrpkenn);FOR indFROM 0UPTO (fnrkursende-fnrkursanf)REP 
+standardmaskenfeld(wert(fnrhjdlerngrpkenn,(4*ind+1),4),(fnrkursanf+ind))PER .
+notefuellen:FOR indFROM 0UPTO (fnrnoteende-fnrnoteanf)REP standardmaskenfeld(
+wert(fnrhjdnotepunkte,(2*ind+1),2),(fnrnoteanf+ind))PER .bemfuellen:FOR ind
+FROM 0UPTO (fnrbemende-fnrbemanf)REP standardmaskenfeld(wert(fnrhjdbemerk,(3*
+ind+1),3),(fnrbemanf+ind))PER .warnungfuellen:FOR indFROM 0UPTO (
+fnrwarnungende-fnrwarnunganf)REP standardmaskenfeld(wert(fnrhjdvermwarnung,(
+ind+1),1),(fnrwarnunganf+ind))PER .END PROC fuellehjddateninfelder;PROC 
+loeschedieerstellteobjektliste:forget(dateiname,quiet);END PROC 
+loeschedieerstellteobjektliste;PROC schuelerhjdlesen(INT CONST index,BOOL 
+CONST jgstgesetzt):IF jgstgesetztTHEN IF aktuellesschulhalbjahrinbearbeitung
+THEN IF hjdtid<>leerTHEN readtid(dnrhalbjahresdaten,hjdtid);
+halbjahresdatenschonvorhanden:=dbstatus=0ELSE inittupel(dnrhalbjahresdaten);
+halbjahresdatenschonvorhanden:=FALSE FI ELSE richtigsuchenundlesenFI ELSE 
+richtigsuchenundlesenFI ;IF halbjahresdatenschonvorhandenAND wert(
+fnrhjdkennung)<>""THEN gewzug:=wert(fnrhjdkennung)ELSE gewzug:=""FI .
+richtigsuchenundlesen:inittupel(dnrhalbjahresdaten);schluesselfuerhjdsetzen(
+dnrhalbjahresdaten,schluessel,gewschuljahr,gewhalbjahr,gewjgst);search(index,
+TRUE );halbjahresdatenschonvorhanden:=dbstatus=0.END PROC schuelerhjdlesen;
+PROC halbjahresdatenspeichern(BOOL CONST speichern):INT VAR aktjg:=int(jgst);
+IF speichernTHEN IF faecher=trenner+trennerTHEN holeaktdatenFI ;fehlerstatus
+:=0;merkeinhaltdesaktuellenschirms;pruefeplausibilitaet(fehlerstatus);IF 
+datenfehlerfreiTHEN standardmeldung(meldungspeicherung,"");datenspeichern;#
+eventuellinstatwuerfeleintragen;dr11.05.88#
+ueberpruefobkurswahlbasisnochaktuell;
+vorbereitendernaechstenschluesselbehandlung(2)ELSE return(1)FI ELSE 
+standardmeldung(meldungkeinespeicherung,"");
+vorbereitendernaechstenschluesselbehandlung(2)FI .
+ueberpruefobkurswahlbasisnochaktuell:IF NOT maskebearb2nochnichtdaTHEN IF 
+sek2jgstTHEN IF aktoderzukhjTHEN IF aenderunginkurswahldatenTHEN 
+loeschspezkurswahlbasisFI FI FI FI .sek2jgst:aktjg>9.aktoderzukhj:(int(
+gewjgst)=aktjgCAND int(gewhalbjahr)>=int(akthalbjahr))COR int(gewjgst)>aktjg.
+aenderunginkurswahldaten:hjdfachleiste<>verglfachleisteCOR hjdartleiste<>
+verglartleisteCOR hjdklausurleiste<>verglklausurleisteCOR hjdkennungenleiste
+<>verglkennungenleiste.loeschspezkurswahlbasis:kurswahlserveraktualisieren(
+jgst,gewjgst,gewhalbjahr).holeaktdaten:holeblbrief;holebemerk;holenoten;
+holefaecher;holeartlv.holeblbrief:inittupel(dnrschluessel);statleseschleife(
+dnrschluessel,bestandblauerbrief,"",fnrschlsachgebiet,fnrschlschluessel,PROC 
+briefcat).holebemerk:inittupel(dnrschluessel);statleseschleife(dnrschluessel,
+bestandbemerkungen,"",fnrschlsachgebiet,fnrschlschluessel,PROC bemerkcat).
+holenoten:inittupel(dnrschluessel);statleseschleife(dnrschluessel,
+bestandzeugnisnoten,"",fnrschlsachgebiet,fnrschlschluessel,PROC notencat).
+holefaecher:inittupel(dnrfaecher);statleseschleife(dnrfaecher,"","",fnrffach,
+fnrffachbez,PROC fachcat).holeartlv:inittupel(dnrschluessel);statleseschleife
+(dnrschluessel,bestandartlv,"",fnrschlsachgebiet,fnrschlschluessel,PROC 
+artcat).merkeinhaltdesaktuellenschirms:IF bs=2THEN merkemaskeninhalt(bearb1,
+fnrausgabegewjgst,fnrverspaetet)ELSE merkemaskeninhalt(bearb2,fnrfachanf,
+fnrwarnungende);FI .datenfehlerfrei:fehlerstatus=0.datenspeichern:IF 
+halbjahresdatenschonvorhandenTHEN logeintragvornehmen("Änderung");
+datenaendernELSE logeintragvornehmen("Neueinfügen");schluesselsetzen(
+dnrhalbjahresdaten);dateneinfuegenFI .datenaendern:dbwertesetzen;
+restoreupdateposition(dnrhalbjahresdaten);selupdate(dnrhalbjahresdaten);
+statusabfrage.dateneinfuegen:dbwertesetzen;insert(dnrhalbjahresdaten);
+statusabfrage;IF dbstatus=ok#dr11.05.88#THEN hjdtid:=gettid;
+eventuellneueshjdtideintragenFI .END PROC halbjahresdatenspeichern;PROC 
+logeintragvornehmen(TEXT CONST logergaenzung):TEXT VAR eintrag:=logtextbeginn
+;eintragCAT logergaenzung;eintragCAT " """;eintragCAT schluessel(1);eintrag
+CAT ", ";eintragCAT schluessel(2);eintragCAT ", ";eintragCAT schluessel(3);
+eintragCAT """";logeintrag(eintrag)END PROC logeintragvornehmen;PROC fachcat(
+BOOL VAR b):IF dbstatus<>0THEN b:=TRUE ELSE faecherCAT wert(fnrffach);faecher
+CAT trennerFI END PROC fachcat;PROC artcat(BOOL VAR b):IF wert(
+fnrschlsachgebiet)>bestandartlvCOR dbstatus<>0THEN b:=TRUE ELSE artlvCAT wert
+(fnrschlschluessel);artlvCAT trennerFI END PROC artcat;PROC briefcat(BOOL 
+VAR b):IF wert(fnrschlsachgebiet)>bestandblauerbriefCOR dbstatus<>0THEN b:=
+TRUE ELSE blbriefCAT wert(fnrschlschluessel);blbriefCAT trennerFI END PROC 
+briefcat;PROC bemerkcat(BOOL VAR b):IF wert(fnrschlsachgebiet)>
+bestandbemerkungenCOR dbstatus<>0THEN b:=TRUE ELSE bemerkCAT wert(
+fnrschlschluessel);bemerkCAT trennerFI END PROC bemerkcat;PROC notencat(BOOL 
+VAR b):IF wert(fnrschlsachgebiet)>bestandzeugnisnotenCOR dbstatus<>0THEN b:=
+TRUE ELSE notenCAT wert(fnrschlschluessel);notenCAT trennerFI END PROC 
+notencat;PROC statusabfrage:IF dbstatus<>0THEN standardmeldung(
+meldungspeicherfehler,text(dbstatus)+paramausgabe);pauseFI .END PROC 
+statusabfrage;PROC schluesselsetzen(INT CONST dateinummer):
+schluesselfuerhjdsetzen(dateinummer,schluessel,gewschuljahr,gewhalbjahr,
+gewjgst)END PROC schluesselsetzen;PROC dbwertesetzen:INT VAR lv;IF bs=2THEN 
+datenbearb1vombsholen;datenbearb2setzenELSE datenbearb1setzen;
+datenbearb2vombsholenFI .datenbearb1vombsholen:FOR lvFROM fnrausgabegewjgst
+UPTO fnrverspaetetREP erfassungsfeld(bearb1)(lv):=standardmaskenfeld(lv)PER ;
+setzedbwerte(bearb1);setzekennung;.setzekennung:IF 
+aktuellesschulhalbjahrinbearbeitungTHEN putwert(fnrhjdkennung,compress(zug))
+FI .datenbearb2setzen:IF NOT maskebearb2nochnichtdaTHEN setzedbwerte(bearb2)
+FI .datenbearb1setzen:setzedbwerte(bearb1).datenbearb2vombsholen:fachsetzen;
+artsetzen;klausursetzen;kurssetzen;notesetzen;bemerksetzen;kurswarnungsetzen.
+fachsetzen:spalteninhalte:="";FOR indFROM fnrfachanfUPTO fnrfachendeREP 
+plausivar:=standardmaskenfeld(ind);IF compress(plausivar)<>""THEN 
+spalteninhalteCAT text(plausivar,2)FI ;PER ;putwert(fnrhjdfach,spalteninhalte
+).artsetzen:spalteninhalte:="";FOR indFROM fnrkursartanfUPTO fnrkursartende
+REP IF (plausileisteSUB ((ind+1)MOD 13+1))="1"THEN spalteninhalteCAT text(
+standardmaskenfeld(ind),2)FI ;PER ;putwert(fnrhjdkursart,spalteninhalte).
+klausursetzen:spalteninhalte:="";FOR indFROM fnrklausuranfUPTO fnrklausurende
+REP IF (plausileisteSUB ((ind+1)MOD 13+1))="1"THEN spalteninhalteCAT text(
+standardmaskenfeld(ind),1)FI ;PER ;putwert(fnrhjdklausurteiln,spalteninhalte)
+.kurssetzen:spalteninhalte:="";FOR indFROM fnrkursanfUPTO fnrkursendeREP IF (
+plausileisteSUB ((ind+1)MOD 13+1))="1"THEN spalteninhalteCAT text(
+standardmaskenfeld(ind),4)FI ;PER ;putwert(fnrhjdlerngrpkenn,spalteninhalte).
+notesetzen:spalteninhalte:="";FOR indFROM fnrnoteanfUPTO fnrnoteendeREP IF (
+plausileisteSUB ((ind+1)MOD 13+1))="1"THEN spalteninhalteCAT text(
+standardmaskenfeld(ind),2)FI ;PER ;putwert(fnrhjdnotepunkte,spalteninhalte).
+bemerksetzen:spalteninhalte:="";FOR indFROM fnrbemanfUPTO fnrbemendeREP IF (
+plausileisteSUB ((ind+1)MOD 13+1))="1"THEN spalteninhalteCAT text(
+standardmaskenfeld(ind),3)FI ;PER ;putwert(fnrhjdbemerk,spalteninhalte).
+kurswarnungsetzen:spalteninhalte:="";FOR indFROM fnrwarnunganfUPTO 
+fnrwarnungendeREP IF (plausileisteSUB ((ind+1)MOD 13+1))="1"THEN 
+spalteninhalteCAT text(standardmaskenfeld(ind),1)FI ;PER ;putwert(
+fnrhjdvermwarnung,spalteninhalte).END PROC dbwertesetzen;PROC 
+vorbereitendernaechstenschluesselbehandlung(INT CONST rueckschritte):IF 
+exists(dateiname)THEN holenaechstenschluesselauslisteELSE enter(2)FI .
+holenaechstenschluesselausliste:BOOL VAR ok,kannbearbeitetwerden:=FALSE ;
+holenaechstenmehrtlgschluesselausdatei(ok);WHILE okREP pruefeobnameexistiert(
+ok);IF okTHEN kannbearbeitetwerden:=TRUE ;ok:=FALSE ELSE 
+holenaechstenmehrtlgschluesselausdatei(ok)FI PER ;IF kannbearbeitetwerden
+THEN bereiteeingangsmaskefuerausgewaehltenvor;return(rueckschritte)ELSE 
+behandleendederlistenabarbeitungFI .behandleendederlistenabarbeitung:
+standardmeldung(meldungletzter,"");enter(rueckschritte+
+schrittefuerobjektliste).END PROC vorbereitendernaechstenschluesselbehandlung
+;PROC bereiteeingangsmaskefuerausgewaehltenvor:standardstartproc(
+maskennameeingang);bs:=eingang;IF maskeeingangnochnichtdaTHEN initmaske(maske
+(bs),maskennameeingang);init(bs,maxfeldbearb0);maskeeingangnochnichtda:=
+FALSE FI ;jgst:=wert(fnrsusgrpjgst);zug:=wert(fnrsusgrpzugtut);akthalbjahr:=
+schulkenndatum(schulhalbjahr);fuellemaskenfeldereingang;gibmaskemitrowaus(
+eingang,fnrname,fnrabgangbestand);infeld(fnrname);standardfelderausgeben;
+setzefeldschutz;infeld(fnrgewschuljahr)END PROC 
+bereiteeingangsmaskefuerausgewaehltenvor;PROC pruefeplausibilitaet(INT VAR 
+fstatus):fmeld:=0;feldnummer:=0;pruefbestand:="";fstatus:=0;standardmeldung(
+pruefemeldung,"");pruefeplausibilitaetbearb1;IF NOT maskebearb2nochnichtda
+THEN pruefeplausibilitaetbearb2FI .fehlerbehandlungbearb1:IF bs=3THEN 
+standardstartproc(maskennamebearb1);bs:=2;fuellehjddateninfelder;infeld(
+fnrausgabename);standardfelderausgeben;FI ;fehlerausgabespeziell;infeld(
+fstatus);LEAVE pruefeplausibilitaet.fehlerausgabespeziell:IF fmeld=
+meldungversetzungskzunzulaessigTHEN standardmeldung(fmeld,erfassungsfeld(
+bearb1)(fnrversetzung)+paramausgabe);ELIF fmeld=meldungnureinesderfaechererl
+THEN standardmeldung(fmeld,plausitxt+paramausgabe);ELIF fmeld=
+meldunginakthjkeineaenderungTHEN standardmeldung(fmeld,erfassungsfeld(bearb1)
+(fnrrufname)+" "+erfassungsfeld(bearb1)(fnrname)+paramausgabe+jgst+zug+
+paramausgabe)ELSE standardmeldung(fmeld,"")FI .fehlerbehandlungbearb2:IF bs=2
+THEN standardstartproc(maskennamebearb2);bs:=3;fuellehjddateninfelder;infeld(
+fnrausgabename);standardfelderausgeben;FI ;fehlerausgabe;LEAVE 
+pruefeplausibilitaet.fehlerausgabe:infeld(fstatus);standardmeldung(fmeld,"").
+pruefeplausibilitaetbearb1:IF erfassungsfeld(bearb1)(fnrausgabegewjgst)=""
+THEN fstatus:=fnrausgabegewjgst;fmeld:=meldungjgstangeben;
+fehlerbehandlungbearb1ELIF erfassungsfeld(bearb1)(fnrausgabegewzug)=""THEN 
+fstatus:=fnrausgabegewzug;fmeld:=meldungfeldfuellen;fehlerbehandlungbearb1
+ELIF erfassungsfeld(bearb1)(fnrausgabegewjgst)<>jgstCAND aktuellessjhjTHEN 
+fstatus:=fnrausgabegewjgst;fmeld:=meldunginakthjkeineaenderung;
+fehlerbehandlungbearb1ELIF erfassungsfeld(bearb1)(fnrausgabegewzug)<>zugCAND 
+aktuellessjhjTHEN fstatus:=fnrausgabegewzug;fmeld:=
+meldunginakthjkeineaenderung;fehlerbehandlungbearb1ELSE gewjgst:=jgstaufber(
+erfassungsfeld(bearb1)(fnrausgabegewjgst));vglgewhalbjahr:=gewjgst+punkt+
+gewhalbjahr;vglakthalbjahr:=jgst+punkt+akthalbjahr;lieferehalbjahreszeile(
+vergleichszeile,vglakthalbjahr);posgewhalbjahr:=pos(vergleichszeile,
+vglgewhalbjahr);IF posgewhalbjahr<1THEN fstatus:=fnrausgabegewjgst;fmeld:=
+meldunghalbjahrnichtrelevant;fehlerbehandlungbearb1FI ;FI ;IF pos(blbrief,
+trenner+erfassungsfeld(bearb1)(fnrblbriefwarn)+trenner)<1THEN fstatus:=
+fnrblbriefwarn;fmeld:=fmeldnichtimbestand;fehlerbehandlungbearb1FI ;IF pos(
+blbrief,trenner+erfassungsfeld(bearb1)(fnrblbriefnwarn)+trenner)<1THEN 
+fstatus:=fnrblbriefnwarn;fmeld:=fmeldnichtimbestand;fehlerbehandlungbearb1FI 
+;IF pos(bemerk,trenner+erfassungsfeld(bearb1)(fnrblbriefbem)+trenner)<1THEN 
+fstatus:=fnrblbriefbem;fmeld:=fmeldnichtimbestand;fehlerbehandlungbearb1FI ;
+IF pos(bemerk,trenner+erfassungsfeld(bearb1)(fnrblbriefnbem)+trenner)<1THEN 
+fstatus:=fnrblbriefnbem;fmeld:=fmeldnichtimbestand;fehlerbehandlungbearb1FI ;
+IF pos(versetzg,trenner+erfassungsfeld(bearb1)(fnrversetzung)+trenner)<1THEN 
+fstatus:=fnrversetzung;fmeld:=meldungversetzungskzunzulaessig;
+fehlerbehandlungbearb1FI ;IF pos(faecher,trenner+erfassungsfeld(bearb1)(
+fnrnachpr1)+trenner)<1THEN fstatus:=fnrnachpr1;fmeld:=
+meldungfachangabeunzulaessig;fehlerbehandlungbearb1FI ;IF pos(faecher,trenner
++erfassungsfeld(bearb1)(fnrnachpr2)+trenner)<1THEN fstatus:=fnrnachpr2;fmeld
+:=meldungfachangabeunzulaessig;fehlerbehandlungbearb1FI ;IF pos(faecher,
+trenner+erfassungsfeld(bearb1)(fnrnachpr3)+trenner)<1THEN fstatus:=fnrnachpr3
+;fmeld:=meldungfachangabeunzulaessig;fehlerbehandlungbearb1FI ;IF pos(bemerk,
+trenner+erfassungsfeld(bearb1)(fnrnachprbem)+trenner)<1THEN fstatus:=
+fnrnachprbem;fmeld:=fmeldnichtimbestand;fehlerbehandlungbearb1FI ;plausitxt:=
+"";plausitxtCAT trenner;plausitxtCAT erfassungsfeld(bearb1)(fnrnachpr1);
+plausitxtCAT trenner;plausitxtCAT erfassungsfeld(bearb1)(fnrnachpr2);
+plausitxtCAT trenner;plausitxtCAT erfassungsfeld(bearb1)(fnrnachpr3);
+plausitxtCAT trenner;IF pos(plausitxt,trenner+erfassungsfeld(bearb1)(
+fnrnachprabgelegt)+trenner)<1THEN plausitxt:="";IF erfassungsfeld(bearb1)(
+fnrnachpr1)<>""THEN plausitxtCAT erfassungsfeld(bearb1)(fnrnachpr1);FI ;IF 
+erfassungsfeld(bearb1)(fnrnachpr2)<>""THEN plausitxtCAT ",";plausitxtCAT 
+erfassungsfeld(bearb1)(fnrnachpr2);FI ;IF erfassungsfeld(bearb1)(fnrnachpr3)
+<>""THEN plausitxtCAT ",";plausitxtCAT erfassungsfeld(bearb1)(fnrnachpr3);FI 
+;fstatus:=fnrnachprabgelegt;fmeld:=meldungnureinesderfaechererl;
+fehlerbehandlungbearb1FI ;IF pos(noten,trenner+erfassungsfeld(bearb1)(
+fnrnachprnote)+trenner)<1THEN fstatus:=fnrnachprnote;fmeld:=
+fmeldnichtimbestand;fehlerbehandlungbearb1FI ;IF pos(bemerk,trenner+
+erfassungsfeld(bearb1)(fnrzeugbem1)+trenner)<1THEN fstatus:=fnrzeugbem1;fmeld
+:=fmeldnichtimbestand;fehlerbehandlungbearb1FI ;IF pos(bemerk,trenner+
+erfassungsfeld(bearb1)(fnrzeugbem2)+trenner)<1THEN fstatus:=fnrzeugbem2;fmeld
+:=fmeldnichtimbestand;fehlerbehandlungbearb1FI ;IF pos(bemerk,trenner+
+erfassungsfeld(bearb1)(fnrzeugbem3)+trenner)<1THEN fstatus:=fnrzeugbem3;fmeld
+:=fmeldnichtimbestand;fehlerbehandlungbearb1FI ;plausitxt:=erfassungsfeld(
+bearb1)(fnrversaeumtmit);IF plausitxt<>""CAND plausitxt<>"0"THEN IF int(
+plausitxt)=0THEN fstatus:=fnrversaeumtmit;fmeld:=meldungunerlaubterwert;
+fehlerbehandlungbearb1FI FI ;plausitxt:=erfassungsfeld(bearb1)(
+fnrversaeumtohne);IF plausitxt<>""CAND plausitxt<>"0"THEN IF int(plausitxt)=0
+THEN fstatus:=fnrversaeumtohne;fmeld:=meldungunerlaubterwert;
+fehlerbehandlungbearb1FI FI ;plausitxt:=erfassungsfeld(bearb1)(fnrverspaetet)
+;IF plausitxt<>""CAND plausitxt<>"0"THEN IF int(plausitxt)=0THEN fstatus:=
+fnrverspaetet;fmeld:=meldungunerlaubterwert;fehlerbehandlungbearb1FI FI .
+aktuellessjhj:akthalbjahr=gewhalbjahrCAND aktschuljahr=gewschuljahr.
+pruefeplausibilitaetbearb2:verglfachleiste:="";verglartleiste:="";
+verglklausurleiste:="";verglkennungenleiste:="";plausileiste:=stdplausileiste
+;FOR lvFROM 0UPTO fnrfachende-fnrfachanfREP plausitxt:=erfassungsfeld(bearb2)
+(fnrfachanf+lv);IF plausitxt<>""THEN replace(plausileiste,lv+1,"1");
+verglfachleisteCAT text(plausitxt,2);IF pos(faecher,trenner+plausitxt+trenner
+)<1THEN fstatus:=fnrfachanf+lv;fmeld:=meldungfachangabeunzulaessig;
+fehlerbehandlungbearb2FI FI PER ;FOR lvFROM 0UPTO fnrkursartende-
+fnrkursartanfREP plausitxt:=erfassungsfeld(bearb2)(fnrkursartanf+lv);IF (
+plausileisteSUB (lv+1))="1"THEN verglartleisteCAT text(plausitxt,2)FI ;IF 
+plausitxt<>""THEN IF pos(artlv,trenner+plausitxt+trenner)<1THEN fstatus:=
+fnrkursartanf+lv;fmeld:=meldungungueltigekursart;fehlerbehandlungbearb2FI ;
+FI PER ;FOR lvFROM 0UPTO fnrkursende-fnrkursanfREP plausitxt:=erfassungsfeld(
+bearb2)(fnrkursanf+lv);IF (plausileisteSUB (lv+1))="1"THEN 
+verglkennungenleisteCAT text(plausitxt,4)FI PER ;FOR lvFROM 0UPTO 
+fnrklausurende-fnrklausuranfREP plausitxt:=erfassungsfeld(bearb2)(
+fnrklausuranf+lv);IF (plausileisteSUB (lv+1))="1"THEN verglklausurleisteCAT 
+text(plausitxt,1)FI PER ;FOR lvFROM 0UPTO fnrnoteende-fnrnoteanfREP plausitxt
+:=erfassungsfeld(bearb2)(fnrnoteanf+lv);IF plausitxt<>""THEN IF pos(noten,
+trenner+plausitxt+trenner)<1THEN fstatus:=fnrnoteanf+lv;fmeld:=
+fmeldnichtimbestand;fehlerbehandlungbearb2FI FI ;PER ;FOR lvFROM 0UPTO 
+fnrbemende-fnrbemanfREP plausitxt:=erfassungsfeld(bearb2)(fnrbemanf+lv);IF 
+plausitxt<>""THEN IF pos(bemerk,trenner+plausitxt+trenner)<1THEN fstatus:=
+fnrbemanf+lv;fmeld:=fmeldnichtimbestand;fehlerbehandlungbearb2FI FI ;PER ;
+FOR lvFROM 0UPTO fnrwarnungende-fnrwarnunganfREP plausitxt:=erfassungsfeld(
+bearb2)(fnrwarnunganf+lv);IF plausitxt<>""THEN IF pos(blbrief,trenner+
+plausitxt+trenner)<1THEN fstatus:=fnrwarnunganf+lv;fmeld:=fmeldnichtimbestand
+;fehlerbehandlungbearb2FI FI ;PER .END PROC pruefeplausibilitaet;PROC 
+listezuhalbjahresdatenzeigen:BOOL VAR listeexistiertnicht;falschesdatum:=
+FALSE ;bs:=eingang;IF maskeeingangnochnichtdaTHEN initmaske(maske(bs),
+maskennameeingang);init(bs,maxfeldbearb0);maskeeingangnochnichtda:=FALSE FI ;
+gewschuljahr:=standardmaskenfeld(fnrgewschuljahr);gewhalbjahr:=
+standardmaskenfeld(fnrgewhalbjahr);IF int(standardmaskenfeld(fnrgewjgst))=0
+THEN gewjgst:=standardmaskenfeld(fnrgewjgst);ELSE gewjgst:=jgstaufber(
+standardmaskenfeld(fnrgewjgst));FI ;schluesselbereitstellen;IF NOT 
+falschesdatumTHEN putwert(fnrsustatuss,aktbestand);standardmeldung(
+meldunglistenerstellung,"");initobli(saetzederliste);parsenooffields(5);
+objektlistestarten(ixsustatfamrufgeb,standardmaskenfeld(fnrname),
+fnrsufamnames,TRUE ,listeexistiertnicht);IF listeexistiertnichtTHEN 
+reinitparsing;standardmeldung(meldungkeineliste,"");return(1)ELSE 
+datensatzlistenausgabe(PROC (INT CONST )suerfassungschueler,TRUE ,BOOL PROC 
+pruefunghjd);FI ELSE return(1)FI .END PROC listezuhalbjahresdatenzeigen;BOOL 
+PROC pruefunghjd:wert(fnrsustatuss)=aktbestandEND PROC pruefunghjd;PROC 
+halbjahresdatenausgewaehlterschuelerbearbeitenvorbereiten:BOOL VAR ok,
+kannbearbeitetwerden:=FALSE ;loeschedieerstellteobjektliste;
+objektlistebeenden(dateiname,TRUE );reinitparsing;
+holeerstenmehrtlgschluesselausdatei(ok);WHILE okREP pruefeobnameexistiert(ok)
+;IF okTHEN kannbearbeitetwerden:=TRUE ;ok:=FALSE ELSE 
+holenaechstenmehrtlgschluesselausdatei(ok)FI PER ;IF kannbearbeitetwerden
+THEN bereiteeingangsmaskefuerausgewaehltenvor;standardnprocELSE 
+standardmeldung(meldungletzter,"");enter(2)FI .END PROC 
+halbjahresdatenausgewaehlterschuelerbearbeitenvorbereiten;PROC 
+fuellemaskenfeldereingang:INT VAR lv;holedbwerte(bs);erfassungsfeld(bs)(
+fnrgewschuljahr):=gewschuljahr;erfassungsfeld(bs)(fnrgewhalbjahr):=
+gewhalbjahr;erfassungsfeld(bs)(fnrgewjgst):=gewjgst;IF aktbestand=
+schueleraktuellTHEN erfassungsfeld(bs)(fnrabgangbestand):=""ELSE 
+erfassungsfeld(bs)(fnrabgangbestand):="x"FI ;FOR lvFROM fnrnameUPTO 
+fnrabgangbestandREP standardmaskenfeld(erfassungsfeld(bs)(lv),lv)PER .END 
+PROC fuellemaskenfeldereingang;PROC setzefeldschutz:INT VAR i;FOR iFROM 
+fnrnameUPTO fnrabgangbestandREP feldschutz(i)PER ;feldfrei(fnrgewschuljahr);
+feldfrei(fnrgewhalbjahr);feldfrei(fnrgewjgst);.END PROC setzefeldschutz;PROC 
+holeerstenmehrtlgschluesselausdatei(BOOL VAR ok):IF NOT exists(dateiname)
+THEN ok:=FALSE ;LEAVE holeerstenmehrtlgschluesselausdateiFI ;f:=
+sequentialfile(input,dateiname);holenaechstenmehrtlgschluesselausdatei(ok).
+END PROC holeerstenmehrtlgschluesselausdatei;PROC 
+holenaechstenmehrtlgschluesselausdatei(BOOL VAR ok):TEXT VAR thesaurustext:=
+"";INT VAR schluesselbeginn:=0;INT VAR schluesseltrennung:=0;INT VAR i:=1;IF 
+eof(f)THEN ok:=FALSE ;loeschedieerstellteobjektlisteELSE getline(f,
+thesaurustext);bestimmeschluesselausthesaurustext;ok:=TRUE FI .
+bestimmeschluesselausthesaurustext:schluesselbeginn:=pos(thesaurustext,
+oblitrenner);schluesseltrennung:=pos(thesaurustext,oblitrenner,
+schluesselbeginn+1);FOR iFROM 1UPTO anzschluesselsuREP IF schluesseltrennung>
+0THEN schluessel(i):=subtext(thesaurustext,schluesselbeginn+1,
+schluesseltrennung-1);schluesselbeginn:=schluesseltrennung;schluesseltrennung
+:=pos(thesaurustext,oblitrenner,schluesselbeginn+1);ELSE schluessel(i):=
+subtext(thesaurustext,schluesselbeginn+1);FI ;schluessel(3):=
+datumrekonversion(schluessel(3));PER ;.END PROC 
+holenaechstenmehrtlgschluesselausdatei;PROC 
+halbjahresdatendesschuelersnichtbearbeiten:
+vorbereitendernaechstenschluesselbehandlung(1)END PROC 
+halbjahresdatendesschuelersnichtbearbeiten;TEXT PROC hjderfassungswert(INT 
+CONST feldnr):IF (feldnr>maxfeldbearb2)OR (feldnr<1)THEN ""ELSE 
+erfassungsfeld(bs)(feldnr)FI .END PROC hjderfassungswert;PROC setzedbwerte(
+INT CONST mnr):SELECT mnrOF CASE eingang:setzedbwerteeingangCASE bearb1:
+setzedbwertebearb1CASE bearb2:setzedbwertebearb2END SELECT .
+setzedbwerteeingang:putwert(fnrsufamnames,erfassungsfeld[mnr][fnrname]);
+putwert(fnrsurufnames,erfassungsfeld[mnr][fnrrufname]);putwert(fnrsugebdatums
+,datumskonversion(erfassungsfeld[mnr][fnrgebdatum]));.setzedbwertebearb1:
+putwert(fnrhjdjgst,erfassungsfeld[mnr][fnrausgabegewjgst]);putwert(
+fnrhjdkennung,erfassungsfeld[mnr][fnrausgabegewzug]);putwert(fnrhjdvermblau,
+erfassungsfeld[mnr][fnrblbriefwarn]);putwert(fnrhjdbemblau,erfassungsfeld[mnr
+][fnrblbriefbem]);putwert(fnrhjdvermnachwarn,erfassungsfeld[mnr][
+fnrblbriefnwarn]);putwert(fnrhjdbemnachwarn,erfassungsfeld[mnr][
+fnrblbriefnbem]);putwert(fnrhjdversetzung,erfassungsfeld[mnr][fnrversetzung])
+;putwert(fnrhjdnachfach1,erfassungsfeld[mnr][fnrnachpr1]);putwert(
+fnrhjdnachfach2,erfassungsfeld[mnr][fnrnachpr2]);putwert(fnrhjdnachfach3,
+erfassungsfeld[mnr][fnrnachpr3]);putwert(fnrhjdbemnach,erfassungsfeld[mnr][
+fnrnachprbem]);putwert(fnrhjdnachfach,erfassungsfeld[mnr][fnrnachprabgelegt])
+;putwert(fnrhjdnacherg,erfassungsfeld[mnr][fnrnachprnote]);putwert(
+fnrhjdbemzeug1,erfassungsfeld[mnr][fnrzeugbem1]);putwert(fnrhjdbemzeug2,
+erfassungsfeld[mnr][fnrzeugbem2]);putwert(fnrhjdbemzeug3,erfassungsfeld[mnr][
+fnrzeugbem3]);putwert(fnrhjdversstdm,erfassungsfeld[mnr][fnrversaeumtmit]);
+putwert(fnrhjdversstdo,erfassungsfeld[mnr][fnrversaeumtohne]);putwert(
+fnrhjdverspaet,erfassungsfeld[mnr][fnrverspaetet]);.setzedbwertebearb2:
+setzedbwertfach;setzedbwertart;setzedbwertklausur;setzedbwertkurs;
+setzedbwertnote;setzedbwertbem;setzedbwertwarnung.setzedbwertfach:
+spalteninhalte:="";FOR indFROM fnrfachanfUPTO fnrfachendeREP spalteninhalte
+CAT text(erfassungsfeld[mnr][ind],2)PER ;putwert(fnrhjdfach,spalteninhalte).
+setzedbwertart:spalteninhalte:="";FOR indFROM fnrkursartanfUPTO 
+fnrkursartendeREP spalteninhalteCAT text(erfassungsfeld[mnr][ind],2)PER ;
+putwert(fnrhjdkursart,spalteninhalte).setzedbwertklausur:spalteninhalte:="";
+FOR indFROM fnrklausuranfUPTO fnrklausurendeREP spalteninhalteCAT text(
+erfassungsfeld[mnr][ind],1)PER ;putwert(fnrhjdklausurteiln,spalteninhalte).
+setzedbwertkurs:spalteninhalte:="";FOR indFROM fnrkursanfUPTO fnrkursendeREP 
+spalteninhalteCAT text(erfassungsfeld[mnr][ind],4)PER ;putwert(
+fnrhjdlerngrpkenn,spalteninhalte).setzedbwertnote:spalteninhalte:="";FOR ind
+FROM fnrnoteanfUPTO fnrnoteendeREP spalteninhalteCAT text(erfassungsfeld[mnr]
+[ind],2)PER ;putwert(fnrhjdnotepunkte,spalteninhalte).setzedbwertbem:
+spalteninhalte:="";FOR indFROM fnrbemanfUPTO fnrbemendeREP spalteninhalteCAT 
+text(erfassungsfeld[mnr][ind],3)PER ;putwert(fnrhjdbemerk,spalteninhalte).
+setzedbwertwarnung:spalteninhalte:="";FOR indFROM fnrwarnunganfUPTO 
+fnrwarnungendeREP spalteninhalteCAT text(erfassungsfeld[mnr][ind],1)PER ;
+putwert(fnrhjdvermwarnung,spalteninhalte).END PROC setzedbwerte;PROC 
+holedbwerte(INT CONST mnr):SELECT mnrOF CASE eingang:holedbwerteeingangCASE 
+bearb1:holedbwertebearb1CASE bearb2:holedbwertebearb2END SELECT .
+holedbwerteeingang:erfassungsfeld[mnr][fnrname]:=wert(fnrsufamnames);
+erfassungsfeld[mnr][fnrrufname]:=wert(fnrsurufnames);erfassungsfeld[mnr][
+fnrgebdatum]:=datumrekonversion(wert(fnrsugebdatums));.holedbwertebearb1:
+erfassungsfeld[mnr][fnrausgabegewjgst]:=jgstaufber(wert(fnrhjdjgst));
+erfassungsfeld[mnr][fnrausgabegewzug]:=wert(fnrhjdkennung);erfassungsfeld[mnr
+][fnrblbriefwarn]:=wert(fnrhjdvermblau);erfassungsfeld[mnr][fnrblbriefbem]:=
+wert(fnrhjdbemblau);erfassungsfeld[mnr][fnrblbriefnwarn]:=wert(
+fnrhjdvermnachwarn);erfassungsfeld[mnr][fnrblbriefnbem]:=wert(
+fnrhjdbemnachwarn);erfassungsfeld[mnr][fnrversetzung]:=wert(fnrhjdversetzung)
+;erfassungsfeld[mnr][fnrnachpr1]:=wert(fnrhjdnachfach1);erfassungsfeld[mnr][
+fnrnachpr2]:=wert(fnrhjdnachfach2);erfassungsfeld[mnr][fnrnachpr3]:=wert(
+fnrhjdnachfach3);erfassungsfeld[mnr][fnrnachprbem]:=wert(fnrhjdbemnach);
+erfassungsfeld[mnr][fnrnachprabgelegt]:=wert(fnrhjdnachfach);erfassungsfeld[
+mnr][fnrnachprnote]:=wert(fnrhjdnacherg);erfassungsfeld[mnr][fnrzeugbem1]:=
+wert(fnrhjdbemzeug1);erfassungsfeld[mnr][fnrzeugbem2]:=wert(fnrhjdbemzeug2);
+erfassungsfeld[mnr][fnrzeugbem3]:=wert(fnrhjdbemzeug3);erfassungsfeld[mnr][
+fnrversaeumtmit]:=wert(fnrhjdversstdm);erfassungsfeld[mnr][fnrversaeumtohne]
+:=wert(fnrhjdversstdo);erfassungsfeld[mnr][fnrverspaetet]:=wert(
+fnrhjdverspaet).holedbwertebearb2:.END PROC holedbwerte;BOOL PROC 
+korrekteschuljahreseingabe(TEXT CONST eingabe):eingabe=niltextOR eingabe=
+"9900"OR int(subtext(eingabe,1,2))=int(subtext(eingabe,3,4))-1END PROC 
+korrekteschuljahreseingabe;PROC eventuellneueshjdtideintragen:IF 
+aktuellesschulhalbjahrinbearbeitungTHEN neueshjdtideintragenFI .
+neueshjdtideintragen:readtid(dnrschueler,schuelertid);putwert(fnrsutidakthjd,
+hjdtid);replace(dnrschueler,schuelertid).END PROC 
+eventuellneueshjdtideintragen;#dr11.05.88PROC eventuellinstatwuerfeleintragen
+:IF aktuellesschulhalbjahrinbearbeitungCAND versetzungseintrag<>wert(
+fnrhjdversetzung)THEN kuerzelsummeeinsrunter(statnrversetzung,jgst,zug,
+aktbestand,versetzungseintrag);kuerzelsummeeinsrauf(statnrversetzung,jgst,zug
+,aktbestand,wert(fnrhjdversetzung));FI END PROC 
+eventuellinstatwuerfeleintragen;#BOOL PROC 
+aktuellesschulhalbjahrinbearbeitung:vglgewhalbjahr=vglakthalbjahrCAND 
+gewschuljahr=schulkenndatum(schuljahr)END PROC 
+aktuellesschulhalbjahrinbearbeitung;TEXT PROC ohnestrich(TEXT CONST txt):
+TEXT VAR t:=txt;changeall(t,"_",niltext);tEND PROC ohnestrich;PROC init(INT 
+CONST bsnr,maxfeld):FOR lvFROM 1UPTO maxfeldREP erfassungsfeld(bsnr)(lv):=""
+PER END PROC init;END PACKET halbjahresdatenbearbeiten;
+

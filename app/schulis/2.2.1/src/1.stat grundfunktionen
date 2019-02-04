@@ -1,0 +1,70 @@
+PACKET statgrundfunktionenDEFINES statleseschleife,statauszaehlen,statinit,
+statausgeben,statspalteausgeben,statzeilevertauschen,rechtstext,loeschespalte
+:LET matrixanfang=6,zeilenlaenge=8,zeilensummentitel=93,spaltensummenbasis=12
+,matrixspaltenzahl=6,matrixzeilenzahl=11,laengezaehlfeld=5,laengewertefeld=8;
+LET mv=100,nv=20,summentitel="Summe",maxfeld=100,niltext="     ";BOOL VAR 
+maskierung;INT VAR zeilenzahl,spaltenzahl;INT VAR aktuellestartzeile;INT VAR 
+aktuelleendzeile;INT VAR gesamtsumme:=0;ROW mvROW nvINT VAR statzaehler;ROW 
+mvINT VAR zeilenzeiger;INT PROC zaehler(INT CONST i,j):IF maskierungTHEN 
+statzaehler(zeilenzeiger(i))(j)ELSE statzaehler(i)(j)FI END PROC zaehler;
+PROC statzeilevertauschen(INT CONST i,j):INT VAR k:=zeilenzeiger(j);
+zeilenzeiger(j):=zeilenzeiger(i);zeilenzeiger(i):=k;maskierung:=TRUE END 
+PROC statzeilevertauschen;PROC statleseschleife(INT CONST indexnummer,TEXT 
+CONST startschluessel1,startschluessel2,INT CONST feldnr1,feldnr2,PROC (BOOL 
+VAR )stataktion):vorbereitungen;leseschleife.vorbereitungen:LET maxleseanzahl
+=10;BOOL VAR vorzeitigesende:=FALSE ;#INT CONST maxblock:=maxfeldDIV 
+zahlderfelder;#INT VAR anzahltupel;#INT CONST maxanzahl:=(maxintDIV maxblock)
+*maxblock#.leseschleife:putwert(feldnr1,startschluessel1);putwert(feldnr2,
+startschluessel2);search(indexnummer);IF dbstatus=0THEN einleseschleifeFI .
+einleseschleife:zaehlen;WHILE NOT schlussREP anzahltupel:=maxleseanzahl;
+multisucc(indexnummer,anzahltupel);stackdurchlaufPER ;.stackdurchlauf:IF 
+anzahltupel=0THEN dbstatus(1)ELSE WHILE anzahltupel<>0REP lesen;zaehlen;IF 
+vorzeitigesendeTHEN dbstatus(1);anzahltupel:=0FI ;PER FI .schluss:dbstatus<>0
+.zaehlen:stataktion(vorzeitigesende).lesen:multisucc;anzahltupelDECR 1;.END 
+PROC statleseschleife;PROC statauszaehlen(INT CONST zeile,spalte):statzaehler
+(zeile)(spalte)INCR 1;gesamtsummeINCR 1END PROC statauszaehlen;PROC 
+statauszaehlen(INT CONST zeile,spalte,anzahl):statzaehler(zeile)(spalte):=
+anzahl;gesamtsummeINCR anzahlEND PROC statauszaehlen;PROC statinit(INT CONST 
+zeilen,spalten):#INT VAR i,j;#gesamtsumme:=0;spaltenzahl:=spalten;
+aktuellestartzeile:=1;zeilenzahl:=0;maskierung:=FALSE ;statinit(zeilen)END 
+PROC statinit;PROC statinit(INT CONST zeilen):INT VAR i,j;FOR iFROM 
+zeilenzahl+1UPTO zeilenREP zeilenzeiger(i):=i;FOR jFROM 1UPTO spaltenzahlREP 
+statzaehler(i)(j):=0PER PER ;zeilenzahl:=zeilen;aktuelleendzeile:=min(
+zeilenzahl,matrixzeilenzahl)END PROC statinit;PROC statausgeben(INT CONST 
+startzeile,startspalte):initialisieren;spaltenausgeben;
+restlichespaltenloeschen;summenberechnen.initialisieren:INT VAR spalte;
+aktuellestartzeile:=startzeile;BOOL VAR gesamtsummeausgeben:=TRUE ;INT CONST 
+endzeile:=min(zeilenzahl,startzeile+matrixzeilenzahl-1);aktuelleendzeile:=
+endzeile;INT CONST endspalte:=min(spaltenzahl,startspalte+matrixspaltenzahl-1
+);INT VAR spaltennr:=1;.spaltenausgeben:FOR spalteFROM startspalteUPTO 
+endspalteREP statspalteausgeben(spalte,spaltennr);spaltennrINCR 1PER ;.
+summenberechnen:IF zeilensummedarstellbarTHEN statzeilensummeELSE 
+gesamtsummeausgeben:=FALSE ;FI ;IF spaltensummedarstellbarTHEN 
+statspaltensumme(startspalte,endspalte);ELSE gesamtsummeausgeben:=FALSE ;FI ;
+IF gesamtsummeausgebenTHEN statgesamtsummeFI .spaltensummedarstellbar:(
+endzeile=zeilenzahl).zeilensummedarstellbar:(endspalte=spaltenzahl).
+restlichespaltenloeschen:INT VAR i,basis:=matrixanfang+spaltennr-1;FOR iFROM 
+spaltennrUPTO matrixspaltenzahl+1REP loeschespalte(basis);basisINCR 1PER .
+END PROC statausgeben;PROC loeschespalte(INT CONST basis):INT VAR feldnr:=
+basis;WHILE feldnr<=maxfeldREP niltextIN feldnr;feldnrINCR zeilenlaengePER 
+END PROC loeschespalte;PROC statspalteausgeben(INT CONST spalte,spaltennr):
+INT VAR i,basis:=matrixanfang+spaltennr-1;FOR iFROM aktuellestartzeileUPTO 
+aktuelleendzeileREP text(zaehler(i,spalte),laengezaehlfeld)IN basis;basis
+INCR zeilenlaengePER ;WHILE basis<=maxfeldREP (niltextIN basis);basisINCR 
+zeilenlaengePER END PROC statspalteausgeben;PROC statzeilensumme:INT VAR i,
+basis:=spaltensummenbasis;FOR iFROM aktuellestartzeileUPTO aktuelleendzeile
+REP text(zeilensumme(i),laengezaehlfeld)IN basis;basisINCR zeilenlaengePER 
+END PROC statzeilensumme;PROC statgesamtsumme:INT VAR basis:=
+zeilensummentitel+zeilenlaenge-1;text(gesamtsumme,laengezaehlfeld)IN basis
+END PROC statgesamtsumme;PROC statspaltensumme(INT CONST startspalte,
+endspalte):titel;einzelsummen.titel:rechtstext(summentitel,laengewertefeld)
+IN zeilensummentitel.einzelsummen:INT VAR j,basis:=zeilensummentitel+1;FOR j
+FROM startspalteUPTO endspalteREP text(spaltensumme(j),laengezaehlfeld)IN 
+basis;basisINCR 1;PER .END PROC statspaltensumme;INT PROC zeilensumme(INT 
+CONST zeilennr):INT VAR summe:=0;INT VAR j;FOR jFROM 1UPTO spaltenzahlREP 
+summeINCR zaehler(zeilennr,j)PER ;summeEND PROC zeilensumme;INT PROC 
+spaltensumme(INT CONST spaltennr):INT VAR summe:=0;INT VAR i;FOR iFROM 1UPTO 
+zeilenzahlREP summeINCR zaehler(i,spaltennr)PER ;summeEND PROC spaltensumme;
+TEXT PROC rechtstext(TEXT CONST t,INT CONST laenge):((laenge-length(t))*" ")+
+tEND PROC rechtstext;END PACKET statgrundfunktionen
+

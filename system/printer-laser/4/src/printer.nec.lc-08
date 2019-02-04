@@ -1,0 +1,626 @@
+PACKET nec lc 08 printer
+ 
+(**************************************************************************)
+(*                                                Stand   : 29.01.88      *)
+(*  NEC Silentwriter LC-08                        Verison : 4             *)
+(*                                                Autor   : Rudolf Ruland *)
+(**************************************************************************)
+ 
+       DEFINES open,
+               close,
+               execute,
+ 
+               box commands,
+               insert box command,
+               delete box command,
+
+               paper size,
+               paper x size,
+               paper y size:
+ 
+LET
+(*  underline           =  1,
+    bold                =  2,
+    italics             =  4,
+    reverse             =  8,
+ 
+    underline linetype  =  1, *)
+ 
+    c document          =  1,
+    c page              =  2,
+ 
+    c write text        =  1,
+    c write cmd         =  2,
+    c carriage return   =  3, 
+    c move              =  4,
+    c draw              =  5,
+    c on                =  6, 
+    c off               =  7,
+    c type              =  8,
+
+    tag type            =  1;
+ 
+INT VAR symbol type;
+REAL VAR x size, y size;
+BOOL VAR is landscape, was cr;
+TEXT VAR bold buffer, mod string, command, symbol;
+THESAURUS VAR box cmds := empty thesaurus;
+
+(*********************************************************************)
+ 
+paper size (21.0, 29.7);
+ 
+PROC paper size (REAL CONST x, y) :
+ 
+  x size := x;
+  y size := y;
+ 
+END PROC paper size;
+ 
+PROC paper size : 
+ 
+  line;
+  putline ("Papierbreite  =  " + text (x size, 5, 2) + " cm  =  " + text (x size / 2.54, 5, 2) + " Zoll");
+  putline ("Papierlaenge  =  " + text (y size, 5, 2) + " cm  =  " + text (y size / 2.54, 5, 2) + " Zoll");
+ 
+END PROC paper size;
+ 
+REAL PROC paper x size : x size END PROC paper x size;
+REAL PROC paper y size : y size END PROC paper y size;
+
+
+THESAURUS PROC box commands : box cmds END PROC box commands;
+
+PROC insert box command (TEXT CONST new command) :
+
+  command := new command;
+  change all (command, " ", "");
+  insert (box cmds, command)
+
+END PROC insert box command;
+
+PROC delete box command (TEXT CONST old command) :
+
+  INT VAR dummy;
+  command := old command;
+  change all (command, " ", "");
+  delete (box cmds, command, dummy)
+
+END PROC delete box command;
+
+(*********************************************************************)
+ 
+PROC open (INT CONST op code, INT VAR param1, param2) :
+ 
+SELECT op code OF
+  CASE c document : open document 
+  CASE c page     : open page
+END SELECT; 
+ 
+ 
+. x steps : param1
+. y steps : param2
+. 
+  open document :
+    out (""28"Cz");                      (* Diablo 630 Emulation    *)
+    out (""27""13"P");                   (* Reset                   *)
+    out (""28"$");                       (* Formatlaenge loeschen   *)
+    out (""28"Ca"27"6"28"Cz");           (* Zeichensatz 2           *)
+    out (""28"Ra");                      (* USA-Zeichensatz         *)
+    out (""27""25"1");                   (* Sheet 1                 *)
+    is landscape := pos (material, "landscape") > 0;
+    IF is landscape
+       THEN x steps := x step conversion ( y size );
+            y steps := y step conversion ( x size );
+            out (""28")"128""0"");       (* Landscape-Mode          *)
+       ELSE x steps := x step conversion ( x size );
+            y steps := y step conversion ( y size );
+            out (""28")"001""0"");       (* Portait  -Mode          *)
+    FI;
+    was cr      := FALSE;
+    bold buffer := "";
+
+. x start : param1
+. y start : param2
+. 
+  open page :
+    IF is landscape
+       THEN x start := x step conversion (0.45);
+            y start := y step conversion (0.9);
+       ELSE x start := x step conversion (0.7);
+            y start := y step conversion (0.9);
+    FI;
+    IF   pos (material, "sheet1") > 0
+         THEN out (""27""25"1")
+    ELIF pos (material, "sheet2") > 0
+         THEN out (""27""25"2")
+    ELIF pos (material, "manual") > 0
+         THEN out (""27""25"E")
+    FI;
+    out (""28"'a"0""0""28"&a"0""0"");  (* Positionierung auf den Nullpunkt *)
+ 
+END PROC open; 
+ 
+ 
+PROC close (INT CONST op code, INT CONST param1) :
+ 
+SELECT op code OF
+  CASE c document : close document 
+  CASE c page     : close page
+  OTHERWISE : put (param1)
+END SELECT; 
+ 
+. 
+  close document :
+ 
+ 
+(*. remaining y steps : param1*)
+.
+  close page :
+    out (""12"") 
+ 
+END PROC close;
+ 
+ 
+PROC execute (INT CONST op code, TEXT CONST string, INT CONST param1, param2) :
+ 
+SELECT op code OF
+  CASE c write text       :  write text
+  CASE c write cmd        :  write cmd
+  CASE c carriage return  :  carriage return
+  CASE c move             :  move
+  CASE c draw             :  draw
+  CASE c on               :  on
+  CASE c off              :  off
+  CASE c type             :  type
+END SELECT
+
+ 
+. from : param1
+. to   : param2
+.
+  write text :
+    IF was cr
+       THEN was cr := FALSE;
+            out (bold buffer);
+    FI;
+    out subtext (string, from, to)
+ 
+.
+  write cmd :
+    IF was cr
+       THEN was cr := FALSE;
+            out (bold buffer);
+    FI;
+    command := subtext (string, from, to);
+    IF is box cmd
+       THEN disable stop;
+            do (command);
+            clear error;
+       ELSE out (command);
+    FI;
+ 
+    . is box cmd :
+        scan (command);
+        next symbol (symbol, symbol type);
+        (symbol type = tag type) CAND (box cmds CONTAINS symbol)
+
+
+(*. x steps to left margin : param1*)
+.
+  carriage return :
+    out (""13"");
+    was cr := TRUE;
+ 
+ 
+. x steps : param1
+. y steps : param2
+.
+  move :
+    IF x steps <> 0 THEN x move FI;
+    IF y steps <> 0 THEN y move FI;
+
+    . x move :
+        IF x steps > 0  THEN out (""28"&c") ELSE out (""28"&d") FI;
+        out (x steps low);
+        out (x steps high);
+
+        . x steps low  : code (abs (x steps) MOD 256)
+        . x steps high : code (abs (x steps) DIV 256)
+
+    . y move :
+        IF y steps > 0  THEN out (""28"'c") ELSE out (""28"'d") FI;
+        out (y steps low);
+        out (y steps high);
+
+        . y steps low  : code (abs (y steps) MOD 256)
+        . y steps high : code (abs (y steps) DIV 256)
+. 
+  draw :
+    stop
+ 
+ 
+. modification : param1
+.
+  on :
+    mod string := on string (modification);
+    IF mod string <> ""
+       THEN out (mod string);
+            IF pos (""27"W"27"O", mod string) > 0
+               THEN bold buffer CAT mod string;
+            FI;
+       ELSE stop
+    FI
+ 
+.
+  off :
+    mod string := off string (modification);
+    IF mod string <> ""
+       THEN out (mod string);
+            IF pos (""27"&", mod string) > 0
+               THEN bold buffer := subtext (bold buffer, 1, LENGTH bold buffer - 2);
+                    out (bold buffer);
+            FI;
+       ELSE stop
+    FI
+ 
+ 
+. font nr : param1
+.
+  type :
+    out (""28")");                            (* Font Identifikation *)
+    command := font string (font nr);
+    IF is landscape
+       THEN out subtext (command, 3, 4);
+       ELSE out subtext (command, 1, 2);
+    FI;
+    out (""28"E");                            (* Zeilenvorschub (VMI) *)
+    out (code (font height (font nr) + font depth (font nr) + font lead (font nr)));
+    out (""28"F");                            (* Zeichenabstand (HMI) *)
+    out (code (char pitch (font nr, " ")));
+    out (""27"P");                            (* proportional ein     *)
+    out subtext (command, 5);
+
+END PROC execute;
+ 
+END PACKET nec lc 08 printer;
+ 
+ 
+PACKET nec lc 08 box commands 
+
+(**************************************************************************)
+(*                                                                        *)
+(*      Kommandos zum Zeichen von Boxen, Linien und Schraffuren           *)
+(*                für den NEC Laserdrucker LC-08                          *)
+(*                                                                        *)
+(*                                                Autor   : Rudolf Ruland *)
+(*                                                Stand   : 29.01.88      *)
+(**************************************************************************)
+
+       DEFINES line,
+               x line,
+               y line,
+
+               box,
+               box frame,
+               box shade,
+
+               cake,
+               cake frame,
+               cake shade,
+               :
+
+INT VAR x, y, h, w;
+
+WHILE highest entry (box commands) > 0
+  REP delete box command (name (box commands, highest entry (box commands))) PER;
+insert box command ("line");
+insert box command ("xline");
+insert box command ("yline");
+insert box command ("box");
+insert box command ("boxshade");
+insert box command ("boxframe");
+insert box command ("cake");
+insert box command ("cakeshade");
+insert box command ("cakeframe");
+
+
+PROC line (REAL CONST x offset, y offset, width, height, INT CONST line width) :
+
+  IF line width > 0
+     THEN graph on (x offset, y offset, width, height);
+          out ("LW" + text (line width) + ";");
+          out ("PR;");
+          out ("PD" + text (+w) + "," + text (-h) + ";");
+          graph off;
+  FI;
+
+END PROC line;
+
+PROC x line (REAL CONST x offset, y offset, width, INT CONST line width) :
+
+  IF line width > 0
+     THEN graph on (x offset, y offset, width, 0.0);
+          out ("LW" + text (line width) + ";");
+          out ("PR;");
+          out ("PD" + text (+w) + "," + "0;");
+          graph off;
+  FI;
+
+END PROC x line;
+
+PROC y line (REAL CONST x offset, y offset, height, INT CONST line width) :
+
+  IF line width > 0
+     THEN graph on (x offset, y offset, 0.0, height);
+          out ("LW" + text (line width) + ";");
+          out ("PR;");
+          out ("PD0," + text (-h) + ";");
+          graph off;
+  FI;
+
+END PROC y line;
+
+
+PROC box (REAL CONST x offset, y offset, width, height,
+          INT CONST pattern type, line width) :
+
+  IF   pattern type = 0
+       THEN box frame (x offset, y offset, width, height, line width)
+  ELIF line width   = 0
+       THEN box shade (x offset, y offset, width, height, pattern type)
+       ELSE graph on (x offset, y offset, width, height);
+            out ("LW" + text (line width) + ";");
+            set pattern (pattern type);
+            out ("ER" + text (+w) + "," + text (-h) + ";");
+            graph off;
+  FI;
+
+END PROC box;
+
+
+PROC box shade (REAL CONST x offset, y offset, width, height,
+                INT CONST pattern type) :
+
+  IF pattern type <> 0
+     THEN graph on (x offset, y offset, width, height);
+          set pattern (pattern type);
+          out ("RR" + text (+w) + "," + text (-h) + ";");
+          graph off;
+  FI;
+
+END PROC box shade;
+
+
+PROC box frame (REAL CONST x offset, y offset, width, height,
+                INT CONST line width) :
+
+  IF line width <> 0
+     THEN graph on (x offset, y offset, width, height);
+          out ("LW" + text (line width) + ";");
+          out ("PR;");
+          out ("PD");
+          out (text (+w) + "," +            "0,");
+          out (           "0," + text (-h) + ",");
+          out (text (-w) + "," +            "0,");
+          out (           "0," + text (+h) + ";");
+          graph off;
+   FI;
+
+END PROC box frame;
+
+
+PROC cake (REAL CONST x offset, y offset, radius, start angle, sweep angle,
+          INT CONST pattern type, line width) :
+
+  IF   pattern type = 0
+       THEN cake frame (x offset, y offset, radius, start angle, sweep angle, line width)
+  ELIF line width   = 0
+       THEN cake shade (x offset, y offset, radius, start angle, sweep angle, pattern type)
+       ELSE graph on (x offset, y offset, radius, 0.0);
+            out ("LW" + text (line width) + ";");
+            set pattern (pattern type);
+            out ("EW" + text (+w) + "," + text (start angle) + "," + text (sweep angle) + ";");
+            graph off;
+  FI;
+
+END PROC cake;
+
+
+PROC cake shade (REAL CONST x offset, y offset, radius, start angle, sweep angle,
+                INT CONST pattern type) :
+
+  IF pattern type > 0 CAND w > 0
+     THEN graph on (x offset, y offset, radius, 0.0);
+          set pattern (pattern type);
+          out ("WG" + text (+w) + "," + text (start angle) + "," + text (sweep angle) + ";");
+          graph off;
+  FI;
+
+END PROC cake shade;
+
+
+PROC cake frame (REAL CONST x offset, y offset, radius, start angle, sweep angle,
+                 INT CONST line width) :
+
+
+  IF line width <> 0
+     THEN REAL CONST xs := real (x) + cos (start angle*pi/180.0) * real (w),
+                     ys := real (y) + sin (start angle*pi/180.0) * real (w);
+          graph on (x offset, y offset, radius, 0.0);
+          out ("LW" + text (line width) + ";");
+          out ("MA"+ text (xs) + "," + text (ys) + ";");
+          out ("FA"+ text ( x) + "," + text ( y) + "," + text (sweep angle) + ";");
+          out ("MA"+ text ( x) + "," + text ( y) + ";");
+          graph off;
+   FI;
+
+END PROC cake frame;
+
+
+PROC graph on (REAL CONST x offset, y offset, width, height) :
+
+  x := x pos + x step conversion (x offset);
+  y := plot y size - (y pos + y step conversion (y offset));
+  w := x step conversion (width);
+  h := y step conversion (height);
+  out (""28"Aa");
+  out ("DF;");
+  out ("MA"+ text (x) + "," + text (y) + ";");
+
+  . plot y size : 3389 - y step conversion (1.0)
+
+END PROC graph on;
+
+PROC graph off :
+
+  out (""28"Az");
+
+END PROC graph off;
+
+
+PROC set pattern (INT CONST pattern type) :
+
+  out ("XX1;");
+  out (pattern);
+
+  . pattern :
+      SELECT pattern type OF
+        CASE  1 : "FT2,1,0;"
+        CASE  2 : "FT2,1,90;"
+        CASE  3 : "FT2,1,45;"
+        CASE  4 : "FT3,1,0;"
+        CASE  5 : "FT3,1,45;"
+        CASE  6 : "FT2,100,0;"
+        CASE  7 : "FT2,100,90;"
+        CASE  8 : "FT2,100,45;"
+        CASE  9 : "FT3,100,0;"
+        CASE 10 : "FT3,100,45;"
+        OTHERWISE : "FT1;"
+      END SELECT
+
+END PROC set pattern;
+
+
+END PACKET nec lc 08 box commands;
+
+
+ 
+#page# 
+(******************************************************************)
+(***                                                            ***)
+(***   Generierung des Printers                                 ***)
+(***                                                            ***)
+(******************************************************************)
+ 
+LET printer name = "printer.nec.lc-08";
+ 
+TEXT VAR fonttab name := "fonttab.nec.lc-08";
+ 
+BOOL CONST multi user := (pcb (9) AND 255) <> 1;
+ 
+INT VAR pr channel;
+TEXT VAR buffer;
+ 
+command dialogue (TRUE);
+IF NOT multi user 
+  THEN errorstop ("Dieser Treiber arbeitet nur mit Multi-Tasking-EUMEL") 
+FI; 
+ask for print channel;
+load font table;
+forget (printer name, quiet);
+IF multi user THEN generate printer spool FI;
+command dialogue (TRUE);
+check on;
+.
+  ask for print channel : 
+    line;
+    put ("gib Druckerkanal:");
+    get (pr channel);
+    do ("serverchannel(" + text (pr channel) + ")" ) ;
+    line;
+.
+  load font table :
+    IF NOT exists (fonttab name)
+       THEN REP line (2); 
+                putline ("Bitte Archiv mit der Fonttabelle """ +
+                          fonttab name + """ einlegen!");
+                line;
+            UNTIL yes ("Archiv eingelegt") PER;
+            reserve archive;
+            fetch (fonttab name, archive);
+            release (archive);
+    FI;
+    font table (fonttab name);
+    IF multi user
+       THEN command dialogue (FALSE);
+            do ("save(""" + font tab name + """,task(""configurator""))")
+    FI;
+    forget (fonttab name, quiet);
+ 
+    . reserve archive :
+        INT VAR p1, p2;
+        archive (" "31" ");
+        disable stop;
+        list (archive);
+        IF is error
+           THEN buffer := errormessage;
+                p1 := pos (buffer, """", 1 ) + 1;
+                p2 := pos (buffer, """", p1) - 1;
+                IF p1 > 0 AND p2 > 0
+                   THEN clear error;
+                        buffer := subtext (buffer, p1, p2);
+                        archive (buffer);
+                FI;
+        FI;
+        enable stop;
+ 
+. generate printer spool :
+    eumel must advertise;
+    cursor (1, 12);
+    putline ("In allen bestehenden Tasks - insbesondere in der Task ""PUBLIC"" - muß");
+    putline ("die Fonttabelle mit dem Kommando");
+    line;
+    putline ("      font table (""" + font tab name + """)");
+    line;
+    putline ("eingestellt werden!!!");
+    line (4);
+    putline ("Generierung beendet, weiter mit 'SV'");
+    generate printer server;
+    do (buffer);
+ 
+. generate printer server :
+    buffer :=  "break (quiet);";
+    buffer CAT "spool manager (PROC printer);";
+    buffer CAT "INT VAR reply; DATASPACE VAR ds; FILE VAR file;";
+    buffer CAT "PROC printer:";
+    buffer CAT "  disable stop;";
+    buffer CAT "  continue (server channel);";
+    buffer CAT "  check error (error message);";
+    buffer CAT "  ds := nilspace;";
+    buffer CAT "  REP forget (ds);";
+    buffer CAT "      execute print;";
+    buffer CAT "      IF is error AND online THEN put error; clear error; FI;";
+    buffer CAT "  PER;";
+    buffer CAT "END PROC printer;";
+    buffer CAT "PROC execute print:";
+    buffer CAT "  LET ack = 0, fetch code = 11, file type = 1003;";
+    buffer CAT "  enable stop;";
+    buffer CAT "  ds := nilspace;";
+    buffer CAT "  call (father, fetch code, ds, reply);";
+    buffer CAT "  IF reply = ack CAND type (ds) = file type";
+    buffer CAT "     THEN file := sequential file (input, ds);";
+    buffer CAT "          print (file,";
+    buffer CAT "            PROC (INT CONST, INT VAR, INT VAR) open,";
+    buffer CAT "            PROC (INT CONST, INT CONST) close,";
+    buffer CAT "            PROC (INT CONST, TEXT CONST, INT CONST, INT CONST) execute);";
+    buffer CAT "  FI;";
+    buffer CAT "END PROC execute print;";
+    buffer CAT "PROC check error(TEXT CONST message):";
+    buffer CAT "  IF is error";
+    buffer CAT "     THEN clear error; rename myself (message);";
+    buffer CAT "          IF is error THEN end(myself) FI;";
+    buffer CAT "          pause (9000); end(myself);";
+    buffer CAT "  FI;";
+    buffer CAT "END PROC check error;";
+

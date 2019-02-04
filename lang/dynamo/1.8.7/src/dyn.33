@@ -1,0 +1,2073 @@
+(**************************************************************************)
+(**************************************************************************)
+(******                                                              ******)
+(******                                                              ******)
+(******     DYNAMO - III - ELAN  PRECOMPILER                         ******)
+(******                                                              ******)
+(******                                                              ******)
+(******     AUTOREN :  R. Keil,                                      ******)
+(******                T. Froehlich                                  ******)
+(******                                                              ******)
+(******     VERSION :  3.3.7                                         ******)
+(******                                                              ******)
+(******                                                              ******)
+(******     AENDERUNGEN:                                             ******)
+(******     05.10.1983                                               ******)
+(******     06.05.1985 Hua&DC: forget("zzdyn.const")                 ******)
+(******     08.04.1986 Ley : Anpassung an 1.7.5                      ******)
+(******     02.04.1987 C.Fallis & C.Rensen  Einbettung in BOX        ******)
+(******     18.05.1988 dc: Udi Katzirs changes                       ******)
+(******                    should declare vector        eingeführt   ******)
+(******     20.05.1988 dc: already used in loop body    eingeführt   ******)
+(******                Fehlermeldung bei Ref. int index unterdrückt  ******)
+(******                weil sie wahrscheinlich selbst ein Fehler ist ******) 
+(******     21.07.1988 Christian Szymanski                           ******)
+(******                Ausbettung aus BOX                            ******)
+(******                                                              ******) 
+(******                                                              ******)
+(**************************************************************************)
+(**************************************************************************)
+
+ 
+PACKET dynamo compiler 33 DEFINES init std, dynamo, insert macro,
+                                  erase, table dump, graphic:
+ 
+(**********************  T  A  B  L  E  S  ********************************)
+ 
+LET max tab size  = 950,
+    max hash size = 300,
+    library       = ""15"TAB1"14"",
+    tab name      = ""15"TAB2"14"";
+
+BOOL VAR is draw := FALSE;
+
+TYPE TABLE  = STRUCT (ROW max tab size TEXT name, init, right part,
+                      ROW max tab size INT  type, line no, pred, mac,
+                                            index, index type,
+                      ROW max tab size BOOL in use, idef, rdef,
+                                            already used in loop body,
+                                            should declare vector, 
+                      (*18.5.88 dc: Änderung von Udi Katzir   *) 
+                      ROW max hash size INT class,
+                      INT tab size,
+                          tab beg);
+
+(* already used in loop body: is set to TRUE , if that table-element has been
+   used to generate a line within a loop  --> PROC gen loop      20.5.88 dc*)
+
+(* should declare vector : used when rows are declared and indicates if the*)
+(* length of the row is to be taken from the index of the current variable *)
+
+BOUND TABLE VAR tab;
+ 
+PROC enter (TEXT CONST name, right part, INT CONST type of equ) :
+ INT VAR tab pos;
+ INT CONST hash class := hash (name);
+ search (name, tab pos, lmp, equtype, hash class);
+ table index := tab pos;
+ enter equ.
+
+ enter equ :
+  IF not found OR subscript COR CONCR (tab).type (tabpos) = mac param
+   THEN enter name
+  ELIF type of equ = nequ
+   THEN enter nequ
+  ELIF CONCR (tab).right part (tab pos) = nt
+   THEN complete nequ
+   ELSE err (name, 1)
+  FI.
+ 
+ equtype :
+  IF subscript
+   THEN type of equ
+   ELSE nil
+  FI.
+ 
+ enter name :
+  CONCR (tab).tab size INCR 1;
+  tab size := CONCR (tab).tab size;
+  IF tab size > max tab size
+   THEN errorstop ("dynamo table overflow")
+  FI;
+  IF type of equ = nequ
+   THEN CONCR (tab).init       (tab size) := right part;
+        CONCR (tab).right part (tab size) := nt
+   ELSE CONCR (tab).init       (tab size) := nt;
+        CONCR (tab).right part (tab size) := right part
+  FI;
+  init element.
+ 
+ init element :
+  CONCR (tab).name       (tab size) := name;
+  CONCR (tab).type       (tab size) := type of equ;
+  CONCR (tab).line no    (tab size) := line no;
+  CONCR (tab).mac        (tab size) := lmp;
+  CONCR (tab).index      (tab size) := nil;
+  CONCR (tab).index type (tab size) := nil;
+  CONCR (tab).in use     (tab size) := FALSE;
+  CONCR (tab).idef       (tab size) := FALSE;
+  CONCR (tab).rdef       (tab size) := FALSE;
+  CONCR (tab).already used in loop body (tab size) := FALSE;
+  CONCR (tab).pred       (tab size) := CONCR (tab).class (hash class);
+  CONCR (tab).class    (hash class) := tab size.
+ 
+ enter nequ :
+  IF CONCR (tab).init (tab pos) <> nt
+   THEN err (name, 2)
+  FI;
+  CONCR (tab).init (tab pos) := right part.
+ 
+ complete nequ :
+  CONCR (tab).right part (tab pos) := right part;
+  CONCR (tab).type       (tab pos) := type of equ;
+  CONCR (tab).line no    (tab pos) := line no.
+END PROC enter;
+ 
+PROC test (TEXT CONST name, INT VAR tab pos, INT CONST last mp, type, 
+                                                       err no) :
+ search (name, tab pos, last mp, type);
+ IF not found
+  THEN err (err no)
+ FI
+END PROC test;
+ 
+PROC search (TEXT CONST name, INT VAR tab pos, INT CONST last mp, type) :
+ search (name, tab pos, last mp, type, hash (name)) 
+END PROC search;
+ 
+PROC search (TEXT CONST name, INT VAR tab pos,
+             INT CONST last mp, type, hash class) :
+ not found := TRUE;
+ tab pos := CONCR (tab).class (hash class);
+ WHILE tab pos <> nil CAND name not found REP
+  tab pos := CONCR (tab).pred (tab pos)
+ PER.
+ 
+ name not found :
+  not found := NOT (CONCR (tab).name (tab pos) = name 
+                    AND same macro AND type ok);
+  not found.
+ 
+ same macro :
+  CONCR (tab).mac (tab pos) = last mp.
+ 
+ type ok :
+  type = nil OR CONCR (tab).type (tab pos) = type.
+END PROC search;
+
+PROC insert macro (TEXT CONST source) :
+ dynamo (source, ""8"", FALSE);
+ kill (""8"");
+ IF errors = nil
+  THEN kill (library);
+       copy (tab name, library)
+ FI
+END PROC insert macro;
+
+PROC init std (TEXT CONST std name) :
+ lmp := nil;
+ kill (library);
+ tab := new (library);
+ FOR i FROM 1 UPTO max hash size REP
+  CONCR (tab).class (i) := nil
+ END REP;
+ CONCR (tab).tab size := nil;
+ enter std procs;
+ CONCR (tab).tab beg := tab size + 1.
+
+enter std procs :
+ FILE VAR std file := sequential file (input, std name);
+ TEXT VAR name, params;
+ WHILE NOT eof (std file) REP
+  get (std file, name);
+  test eof;
+  IF params = "()"
+   THEN params := ""
+  FI;
+  enter (name, params, std p)
+ END REP.
+
+ test eof :
+  IF name = "/*"
+   THEN LEAVE enter std procs
+   ELSE get (std file, params) 
+  FI.
+END PROC init std;
+ 
+PROC next sym :
+ next sym (scan buf, sym, type, scan position)
+END PROC next sym;
+ 
+PROC next sym (TEXT CONST buf) :
+ next sym (buf, sym, type, scan position)
+END PROC next sym;
+ 
+PROC test open bracket (TEXT CONST sym) :
+ IF sym <> "("
+  THEN err (sym, 6)
+ FI
+END PROC test open bracket;
+ 
+PROC test closing bracket (TEXT CONST sym) :
+ IF sym <> ")"
+  THEN err (sym, 58)
+ FI
+END PROC test closing bracket;
+ 
+PROC test bold (INT CONST err no) :
+ IF type <> bold
+  THEN err (err no)
+ FI
+END PROC test bold;
+ 
+PROC test equal (INT CONST err no) :
+ IF sym <> "="
+  THEN err (err no)
+ FI
+END PROC test equal;
+ 
+BOOL OP IN (TEXT CONST pattern, source) :
+ pos (source, pattern) > nil.
+END OP IN;
+ 
+PROC scan (TEXT CONST buf) :
+ scan buf := buf;
+ scan position := 1
+END PROC scan;
+ 
+PROC err (TEXT CONST a, INT CONST b) :
+ err (a, b, line no)
+END PROC err;
+ 
+PROC err (INT CONST i) :
+ err (sym, i, line no)
+END PROC err;
+ 
+PROC gen (TEXT CONST a) :
+ out buf CAT a
+END PROC gen;
+ 
+PROC gen (TEXT CONST a, b) :
+ out buf CAT a;
+ out buf CAT b
+END PROC gen;
+ 
+PROC gen (TEXT CONST a, b, c) :
+ out buf CAT a;
+ out buf CAT b;
+ out buf CAT c
+END PROC gen;
+ 
+PROC gen (TEXT CONST a, b, c, d) :
+ out buf CAT a;
+ out buf CAT b;
+ out buf CAT c;
+ out buf CAT d
+END PROC gen;
+ 
+PROC genln (TEXT CONST a, b, c) :
+ gen (a, b, c);
+ lf
+END PROC genln;
+ 
+PROC lf :
+ putline (target, outbuf);
+ outbuf := nt
+END PROC lf;
+ 
+PROC gen ln (TEXT CONST t) :
+ outbuf CAT t;
+ putline (target, outbuf);
+ outbuf := nt
+END PROC gen ln; 
+ 
+PROC erase (BOOL CONST b) :
+ erase option := b
+END PROC erase;
+ 
+PROC dynamo (TEXT CONST s) :
+ TEXT VAR target name := s + ".elan";
+ dynamo (s, target name, TRUE);
+ IF erase option
+  THEN kill (target name)
+ FI;
+ last param (s)
+END PROC dynamo;
+ 
+PROC dynamo :
+ dynamo (last param)
+END PROC dynamo;
+ 
+PROC graphic (BOOL CONST mode):
+  is draw := NOT mode
+END PROC graphic;
+
+(**********************  C  O  M  P  I  L  E  R  ************************)
+ 
+LET bold         = 1,    number       = 2,
+    delimiter    = 3,    eol          = 4,
+    aux          = 1,    rate         = 2,
+    level        = 3,    nequ         = 4,
+    mac name     = 6,    std p        = 7, 
+    sub init     = 8,    table        = 9,
+    for          = 10,   mac param    = 11,
+    const        = 12,   print        = 1,
+    plot         = 2,    global param = 1,
+    none         = 3,    max print no = 10,
+    supp         = 5,    any          = "ß";
+
+FILE VAR source, target;
+ 
+ROW max print no TEXT VAR print param;
+ 
+ROW 10 TEXT VAR plot name, id;
+ROW 10 INT  VAR scale pointer;
+ROW 10 TEXT VAR lower bound, upper bound;
+ROW 10 BOOL VAR l fixed scale, u fixed scale;
+ 
+TEXT VAR   buffer, left part, right part, outbuf, print buf,
+           headline, sym, plot buf, asterisk buffer,
+           macro name, noise buffer, constant, run buffer,
+           scan buf;
+ 
+INT  VAR   print param no, print line no, tab beg, type, line no,
+           plot line no, scale counter, plot param no,
+           last pos, lmp, index, (* lmp = Last Macro Position *)
+           index type, for index, i, tab size, expansion no,
+           table index, scan position, old tab beg;
+ 
+BOOL VAR   k, kl, is first, fixed scale, in macro,
+           in loop, not found, internal, subscript,
+           erase option := FALSE;
+ 
+TEXT CONST nt := "";
+
+INT CONST  nil := 0;
+ 
+
+(*$$$$$$$$$$ ZUSATZ C & C 20.2.87 eingefuegt : error listing $$$$$$$$$*)
+(* Diese Prozedur erzeugt einen zweigeteilten Bildschirm, wobei       *)
+(* die Datei 'procsource' (d.h. das Dynamo-Quellprogramm) in der      *)
+(* oberen Haelfte und die Fehlerdatei 'notebook' in der unteren       *)
+(* Haelfte steht.       *)
+
+PROC error listing (FILE VAR procsource) :     (* C.S. 21.07.88 *)
+ note edit (procsource);
+END PROC error listing;
+(*$$$$$$$$$$$$$$$$$$$$ ENDE ZUSATZ $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$*)
+
+
+PROC dynamo (TEXT CONST source name, target name, BOOL CONST pass2) :
+ init dynamo;
+ first pass;
+ IF no errors
+    THEN second pass
+    ELSE error listing(source);
+         error stop ("")                   (* C.S. 21.07.88 *)
+ (* Falls Fehler im ersten Durchlauf gefunden wurden, wird der zweite  *)
+ (* Durchlauf erst gar nicht durchgefuehrt, sondern das fehlerhafte    *)
+ (* Dynamo-Programm und die Fehlerdatei werden ausgegeben .            *)
+ FI.
+ 
+ first pass :
+  WHILE NOT eof (source) REP
+   read source line;
+   translate line
+  PER;
+  IF NOT pass2
+   THEN LEAVE dynamo
+  FI;
+  end of first pass.
+ 
+ second pass :
+  generate initializations;
+  generate equations.
+ 
+ generate initializations :
+  generate rts call;
+  generate noise card;
+  generate table part;
+  generate for variables;
+  generate variable part;
+  generate table init;
+  generate init print;
+  generate init plot;
+  generate init scale;
+  generate asterisk;
+  gen repeat.
+ 
+ generate equations :
+  generate print line;
+  generate plot line;
+  gen equations (level);
+  gen equations (aux);
+  gen equations (supp);
+  gen equations (rate);
+  gen end repeat;
+  IF no errors
+   THEN run (target name)
+   ELSE error listing(source);
+        error stop ("")                   (* C.S. 21.07.88 *)
+ (* Falls im zweiten Durchlauf Fehler gefunden wurden, wird das     *)
+ (* ELAN-Zielprogramm nicht ausgefuehrt, sondern das fehlerhafte    *)
+ (* Dynamo-Quellprogramm und die Fehlerdatei werden ausgegeben .    *)
+ FI.
+ 
+ init dynamo :
+  kill (target name);
+  init tables;
+  source          := sequential file (input,  source name);
+  target          := sequential file (output, target name);
+  print buf       := nt;
+  outbuf          := nt;
+  plot buf        := nt;
+  noise buffer    := nt;
+  asterisk buffer := nt;
+  macro name      := nt;
+  run buffer      := "zzdyn";
+  line no         := nil;
+  plot param no   := nil;
+  last pos        := nil;
+  lmp             := nil;
+  index           := nil;
+  index type      := nil;
+  expansion no    := nil;
+  in macro        := FALSE;
+  internal        := FALSE;
+  in loop         := FALSE;
+  is first        := TRUE;
+  tab beg         := CONCR (tab).tab beg;
+  old tab beg     := CONCR (tab).tab size + 1;
+  init errors.
+ 
+ init tables :
+  kill (tab name);
+  copy (library, tab name);
+  tab := old (tab name).
+ 
+ read source line :
+  line no INCR 1;
+  getline (source, buffer);
+  cout (line no);
+  scan (buffer);
+  next sym.
+ 
+ translate line :
+  TEXT VAR start := sym;
+  next sym;
+  WHILE sym = " " REP next sym PER;
+  SELECT
+   pos ("a c l n r print plot note EOL spec * x macro mend for s noise run ",
+        start + " ") OF
+   CASE 1      : enter equ (TRUE,  FALSE, aux,   9)
+   CASE 3, 31  : constant equ
+   CASE 5      : enter equ (TRUE,  FALSE, level, 11)
+   CASE 7      : enter equ (FALSE, FALSE, nequ,  56)
+   CASE 9      : enter equ (FALSE, TRUE,  rate,  12)
+   CASE 11     : print card
+   CASE 17     : plot card
+   CASE 22, 27 : (* comment; empty line *)
+   CASE 36     : gen headline
+   CASE 15     : enter equ (FALSE, FALSE, table, 13)
+   CASE 38     : continuation card
+   CASE 40     : macro card
+   CASE 46     : macro end
+   CASE 51     : for card
+   CASE 55     : enter equ (TRUE, FALSE, supp, 9)
+   CASE 57     : noise card
+   CASE 63     : run card
+   OTHERWISE   : err (start, 3)
+  END SELECT.
+ 
+ macro card :
+  IF in macro
+   THEN err (4)
+  FI;
+  in macro := TRUE;
+  get macro name;
+  get macro param list.
+ 
+ get macro name :
+  IF type = bold
+   THEN enter (sym, nt, mac name);
+        CONCR (tab).line no (tab size) := nil;
+        macro name := sym;
+        lmp := tab size
+   ELSE err (5)
+  FI.
+ 
+ get macro param list :
+  next sym;
+  test open bracket (sym);
+  next sym;
+  WHILE sym <> ")" REP
+   IF type = bold
+    THEN enter (sym, nt, mac param)
+    ELSE err (7)
+   FI;
+   next sym;
+   IF sym = ","
+    THEN next sym
+   FI
+  END REP;
+  test closing bracket (sym).
+ 
+ macro end :
+  lmp := nil;
+  in macro := FALSE.
+ 
+ constant equ :
+  REP
+   analyze constant equ;
+   enter (left part, constant, const);
+   last pos := tab size
+  UNTIL end of constants PER.
+ 
+ analyze constant equ :
+  test bold (10);
+  left part := sym;
+  next sym;
+  test equal (21);
+  get constant.
+ 
+ end of constants :
+  next sym;
+  test delimiter.
+ 
+ get constant :
+  next sym;
+   IF  NOT sym is number (constant)
+   THEN err (37)
+  FI.
+ 
+ print card :
+  IF print buf = nt
+   THEN print buf := subtext (buffer, scanposition - length (sym));
+        print line no := line no
+   ELSE print buf CAT "," + subtext (buffer, scanposition - length (sym))
+  FI;
+  last pos := print.
+ 
+ plot card :
+  IF plot buf = nt
+   THEN plot buf := subtext (buffer, scanposition - length (sym));
+        plot line no := line no;
+   ELSE plot buf CAT "/" + subtext (buffer, scanposition - length (sym))
+  FI;
+  last pos := plot.
+ 
+ gen headline :
+  asterisk buffer := "asterisk (""" + subtext (buffer, 3) + """);".
+ 
+ generate asterisk :
+  IF asterisk buffer <> nt
+   THEN genln (asterisk buffer)
+  FI.
+ 
+ continuation card :
+  skip blanks;
+  TEXT CONST tail := subtext (buffer, i);
+  SELECT last pos OF
+   CASE print : print buf CAT "," + tail
+   CASE plot  : plot buf  CAT "/" + tail
+   CASE none  : err (14)
+   OTHERWISE  : content CAT tail
+  END SELECT. 
+ 
+ content :
+  IF CONCR (tab).type (last pos) = nequ
+   THEN CONCR (tab).init (last pos)
+   ELSE CONCR (tab).right part (last pos)
+  FI.
+ 
+ skip blanks :
+  i := 1;
+  REP
+   i INCR 1
+  UNTIL (buffer SUB i) <> " " END REP.
+ 
+ for card :
+  REP
+   read for variable
+  UNTIL end of forlist END REP.
+ 
+ end of forlist :
+  IF sym = "/"
+   THEN next sym; FALSE
+   ELSE TRUE
+  FI.
+ 
+ read for variable :
+  TEXT VAR init;          (* left part  = name *)
+  test bold (15);         (* right part = obere Grenze *)
+  left part := sym;       (* init       = untere Grenze *)
+  next sym;
+  test equal (16);
+  next sym;
+  pass ranges;
+  enter (left part, right part, for);
+  CONCR (tab).init (tab size) := init.
+ 
+ pass ranges :
+  test number (init);
+  IF   sym <> ","
+  THEN err (18)
+  FI;
+  next sym;
+  test number (right part).
+ 
+ noise card :
+  IF NOT sym is number (noise buffer)
+   THEN err (66)
+  FI.
+ 
+ run card :
+  test bold (65);
+  run buffer := sym.
+ 
+ gen repeat :
+  lf;
+  genln ("WHILE time <= length REP");genln (" cout(int(time));");
+  genln (" set time (time);").
+ 
+ gen end repeat : 
+  genln ("UNTIL " + draw ad + "stop request PER;");
+  IF plot buf <> nt
+   THEN genln (draw ad + "end of program;")
+  FI;
+  genln ("END PROC target program").
+ 
+ generate rts call :
+  genln ("forget (""zzdyn.const"",quiet);");
+  genln ("run card (""", run buffer, """);");
+  genln ("run time system (PROC target program);");
+  lf;
+  genln ("PROC target program :").
+ 
+ generate noise card :
+  IF noise buffer <> nt
+   THEN genln (" initialize random (", noise buffer, ");")
+  FI.
+ 
+ generate plot line :
+  IF plot buf <> nt
+   THEN gen plots
+  FI.
+ 
+ gen plots :
+  genln (draw ad + " new plot line (time);");
+  FOR i FROM 1 UPTO plot param no REP
+   genln (draw ad + " plot (", plot name (i), ");");
+   genln ("IF " + draw ad + " stop request THEN LEAVE target program " +
+          "END IF;")
+  END REP.
+ 
+ generate print line :
+  IF print buf <> nt
+   THEN gen prints
+  FI.
+ 
+ gen prints :
+  genln (" new line (time);");
+  FOR i FROM 1 UPTO print param no REP
+   genln (" print (", printparam (i), ");")
+  END REP.
+ 
+ generate init plot :
+  INT VAR tab pos;
+  IF plot buf <> nt
+   THEN search ("pltper", tab pos, nil, const);
+        IF not found
+         THEN IF is draw THEN
+                err ("draw", 25, plot line no)
+              ELSE
+                err ("plot", 25, plot line no)
+              END IF
+         ELSE genln (draw ad + "initialize plot (""", plot buf, """);");
+(*$$$$$$$$$$$$$ ZUSATZ Februar87 C&C eingefuegt: pltper INCR 0 $$$$$$$$$*)
+              genln ("pltper INCR 0.0 ;");
+              genln (" (* um Warnung des ELAN-Compilers zu unterdruecken *)")
+(*$$$$$$$$$$$$$$$$$$$$$$$$$$ ENDE ZUSATZ $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$*)
+        FI
+  FI.
+END PROC dynamo;
+ 
+PROC test number (TEXT VAR content) :
+ SELECT type OF
+  CASE bold   : content := sym
+  CASE number : content := trunc (sym)
+  OTHERWISE err (17)
+ END SELECT;
+ next sym
+END PROC test number;
+ 
+PROC enter equ (BOOL CONST x, y, INT CONST exp type, err no) :
+ get left part;
+ enter (left part, right part, exp type);
+ set index;
+ test global;
+ IF incorrect time script
+  THEN err (err no)
+ FI.
+ 
+ incorrect time script :
+  (k XOR x) OR (kl XOR y).
+ 
+ set index :
+  INT VAR last entry                  := table position;
+  last pos                            := last entry;
+  CONCR (tab).index      (last entry) := index;
+  CONCR (tab).index type (last entry) := index type.
+ 
+ table position :
+  IF exp type = nequ AND index type = nil AND NOT not found
+   THEN table index
+   ELSE tab size
+  FI.
+ 
+ test global :
+  IF in macro AND NOT internal
+   THEN search global
+  FI.
+ 
+ search global :
+  INT VAR tab pos;
+  search (left part, tab pos, lmp, mac param);
+  IF not found
+   THEN IF left part <> macro name
+         THEN err (left part, 64)
+        FI
+   ELSE CONCR (tab).index      (last entry) := tab pos;
+        CONCR (tab).index type (last entry) := -1;
+        CONCR (tab).index type (tab pos)    := global param;
+        CONCR (tab).index      (tab pos)    := last entry
+  FI.
+ 
+ get left part :
+  get name;
+  get time script;
+  get index.
+ 
+ get name :
+  internal := sym = "$";
+  IF internal
+   THEN next sym;
+        IF NOT in macro
+         THEN err (19)
+        FI
+  FI;
+  test bold (20);
+  left part := sym; next sym.
+ 
+ get time script :
+  IF sym = "."
+   THEN process time script
+   ELSE k := FALSE; kl := FALSE
+  FI;
+  subscript := sym = "(".
+ 
+ get index :
+  IF subscript
+   THEN process index
+   ELSE index := nil;
+        index type := nil
+  FI;
+  right part := subtext (buffer, scanposition);
+  test equal (21).
+ 
+ process time script :
+  next sym;
+  k := sym = "k"; kl := sym = "kl";
+  next sym.
+ 
+ process index :
+  next sym;
+  SELECT type OF
+   CASE number : index := int (sym)
+   CASE bold   : search for variable
+   OTHERWISE   : err (22)
+  END SELECT;
+  index type := type;
+  next sym;
+  test closing bracket (sym);
+  next sym.
+ 
+ search for variable :
+  test (sym, tab pos, lmp, for, 61);
+  index := tab pos.
+END PROC enter equ;
+ 
+PROC end of first pass :
+ INT VAR tab pos;
+ init time;
+ search macro calls;
+ search system constants.
+ 
+ init time :
+  search ("time", tab pos, nil, nequ);
+  IF not found
+   THEN enter ("time", "0.0", nequ)
+  FI; 
+  enter ("time", "time.j+dt", level).
+ 
+ search system constants :
+  sym := nt;
+  test ("dt", tab pos, nil, const, 35);
+  test ("length", tab pos, nil, const, 36).
+ 
+ search macro calls :
+  INT VAR old tabsize := tabsize;
+  FOR i FROM old tabbeg UPTO old tabsize REP
+   IF is normal equ
+    THEN enter global macro params
+   FI
+  END REP;
+  tab size := old tabsize.
+ 
+ is normal equ :
+  SELECT CONCR (tab).type (i) OF
+   CASE aux, rate, level, nequ, supp : TRUE
+   OTHERWISE                         : FALSE
+  END SELECT.
+ 
+ enter global macro params :
+  enter params (CONCR (tab).right part (i), FALSE);
+  enter params (CONCR (tab).init (i), TRUE).
+END PROC end of first pass;
+ 
+PROC enter params (TEXT CONST buf, BOOL CONST is init) :
+ TEXT VAR macro name;
+ IF pos (buf, "(") > nil
+  THEN read params
+ FI.
+ 
+ read params :
+  scan position := 1;
+  REP
+   next sym (buf, macro name, type, scan position);
+   IF type = bold
+    THEN next sym (buf);
+         IF sym = "("
+          THEN parameter list
+         FI
+   FI
+  UNTIL type = eol END REP.
+ 
+ parameter list :
+  INT VAR act param, tab pos;
+  search (macro name, tab pos, nil, nil);
+  IF NOT not found CAND CONCR (tab).type (tab pos) = mac name
+   THEN read param list
+  FI.
+ 
+ read param list :
+  CONCR (tab).index type (tab pos) INCR 1;
+  act param := tab pos;
+  REP
+   next sym (buf);
+   act param INCR 1;
+   IF CONCR (tab).type (act param) = mac param
+    THEN test parameter
+    ELSE err (macro name, 53)
+   FI
+  UNTIL end of parameter list END REP.
+ 
+ test parameter :
+  TEXT VAR param;
+  IF CONCR (tab).index type (act param) = global param
+   THEN get global param
+   ELSE get actual param
+  FI;
+  content CAT param + "%".
+ 
+ content :
+  IF is init
+   THEN CONCR (tab).init (act param)
+   ELSE CONCR (tab).right part (act param)
+  FI.
+ 
+ get global param :
+  INT VAR param index;
+  IF type = bold
+   THEN enter param
+  FI.
+ 
+ enter param :
+  param index := CONCR (tab).index (act param);
+  enter (sym, CONCR (tab).right part (param index),
+              CONCR (tab).type (param index));
+  CONCR (tab).init  (tab size) := CONCR (tab).init (param index);
+  CONCR (tab).index (tab size) := act param;
+  param := sym;
+  next sym (buf);
+  get time script.
+
+ get actual param :
+  INT VAR brackets := nil;
+  param := nt;
+  REP
+   param CAT sym;
+   next sym (buf);
+   get time script
+  UNTIL end of param END REP.
+ 
+ get time script :
+  IF sym = "."
+   THEN param CAT sym;
+        next sym (buf);
+        param CAT any;
+        next sym (buf)
+  FI.
+
+ end of param :
+  IF brackets = nil
+   THEN sym IN ",)"
+  ELIF sym = "("
+   THEN brackets INCR 1;
+        FALSE
+  ELIF sym = ")"
+   THEN brackets DECR 1;
+        TRUE
+   ELSE FALSE
+  FI.
+ 
+ end of parameter list :
+  SELECT pos (",)", sym) OF
+   CASE 1    : FALSE
+   CASE 2    : TRUE
+   OTHERWISE : err (50); TRUE
+  END SELECT.
+END PROC enter params;
+
+(*************************  P  A  S  S   2  ***************************)
+ 
+PROC generate init print :
+ INT VAR tab pos;
+ IF print buf <> nt
+  THEN test ("prtper", tab pos, nil, const, 24);
+       gen init
+ FI.
+ 
+ gen init :
+  print param no := nil;
+  headline := nt;
+  scan (print buf);
+  line no := print line no;
+  cout (line no);
+  REP
+   get parameter
+  UNTIL sym <> "," END REP;
+  genln ("initialize print (""", headline, """);");
+  (*$$$$$$$$$$$$$ ZUSATZ Februar87 C&C eingefuegt: prtper INCR 0 $$$$$$$$$$*)
+  genln ("prtper INCR 0.0 ;");
+  genln ("(* Um Warnung des ELAN-Compilers zu unterdruecken *)").
+  (*$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$ ENDE ZUSATZ $$$$$$$$$$$$$$$$$$$$$$$*)
+ get parameter :
+  next sym;
+  test bold (33);
+  get print param.
+ 
+ get print param :
+  test (sym, tab pos, nil, nil, 32);
+  enter name.
+ 
+ enter name :
+  TEXT VAR act param := sym;
+  INT VAR pos := scanposition - length (sym);
+  test subscript (act param, 33);
+  print param no INCR 1;
+  print param (print param no) := act param;
+  headline CAT text (subtext (print buf, pos, scanposition - 1), 13);
+  headline CAT " ".
+END PROC generate init print;
+ 
+PROC test subscript (TEXT VAR act param, INT CONST err no) :
+ INT VAR tab pos;
+ next sym;
+ IF sym = "("
+  THEN test index
+ FI.
+ 
+ test index :
+  next sym;
+  act param CAT " SUB ";
+  act param CAT subscript;
+  next sym;
+  test closing bracket (sym);
+  next sym.
+ 
+ subscript :
+  SELECT type OF
+   CASE number : trunc (sym)
+   CASE bold   : search index
+   OTHERWISE   : err (err no); nt
+  END SELECT.
+ 
+ search index :
+  test (sym, tab pos, nil, for, 61);
+  sym.
+END PROC test subscript;
+ 
+PROC generate init scale :
+ IF plot buf <> nt
+  THEN gen plot card
+ FI.
+ 
+ gen plot card :
+  scale counter := 1;
+  plot param no := nil;
+  line no := plot line no;
+  cout (line no);
+  scan (plot buf);
+  REP
+   equal scale;
+   different scale
+  UNTIL type = eol OR sym = " " END REP;
+  generate scales.
+ 
+ equal scale :
+  fixed scale := FALSE;
+  REP
+   next sym;
+   single scale param
+  UNTIL sym <> "," END REP.
+ 
+ different scale :
+  IF sym = "/"
+   THEN scale counter INCR 1
+  ELIF type <> eol
+   THEN err (sym, 26, plot line no)
+  FI.
+ 
+ generate scales :
+  clear scales;
+  gen plot scales.
+ 
+ gen plot scales :
+  FOR i FROM 1 UPTO plot param no REPEAT
+   gen (draw ad + "plot scale (""", id (i), """, ",
+        text (scale pointer (i)));
+   gen (", ", lower scale, ", ", upper scale);
+   gen (", ", text (l fixed scale (i)), ", ", text (u fixed scale (i)));
+   genln (");")
+  END REP.
+ 
+ lower scale :
+  IF l fixed scale (i)
+   THEN lower bound (i)
+   ELSE "9.0e126"
+  FI.
+ 
+ upper scale :
+  IF u fixed scale (i)
+   THEN upper bound (i)
+   ELSE "-9.0e126"
+  FI.
+ 
+ clear scales :
+  FOR i FROM scale counter+1 UPTO plot param no REP
+   lower bound (i) := "0.0";
+   upper bound (i) := "0.0"
+  PER.
+ 
+ single scale param :
+  test bold (27);
+  enter plot param.
+ 
+ enter plot param :
+  TEXT VAR param := sym;
+  test subscript (param, 22);
+  plot param no INCR 1;
+  IF plot param no > 10
+   THEN err (64);
+        LEAVE generate init scale
+  FI;
+  plot name (plot param no) := param;
+  scalepointer (plot param no) := scalecounter;
+  set id;
+  set scale.
+ 
+ set id :
+  IF sym = "="
+   THEN next sym;
+        id (plot param no) := (sym SUB 1);
+        next sym
+   ELSE id (plot param no) := text (plot param no - 1)
+  FI.
+ 
+ set scale :
+  IF sym = "("
+   THEN get plot scale;
+        fixed scale := TRUE
+   ELIF NOT fixed scale
+    THEN l fixed scale (scale counter) := FALSE;
+         u fixed scale (scale counter) := FALSE;
+  FI.
+ 
+ get plot scale :
+  IF fixed scale
+   THEN err (28)
+  FI;
+  read scale param (lower bound, l fixed scale, 29);
+  IF sym <> ","
+   THEN err (30)
+  FI;
+  read scale param (upper bound, u fixed scale, 30);
+  test closing bracket (sym);
+  next sym.
+END PROC generate init scale;
+ 
+PROC read scale param (ROW 10 TEXT VAR bound, ROW 10 BOOL VAR fixed scale, 
+                       INT CONST err no) :
+ TEXT VAR scale;
+ INT VAR tab pos;
+ next sym;
+ IF type = bold
+  THEN test (sym, tab pos, nil, const, 61);
+       bound (scale counter) := sym;
+       fixed scale (scale counter) := TRUE
+ ELIF sym is number (scale)
+  THEN bound (scale counter) := scale;
+       fixed scale (scale counter) := TRUE
+ ELIF sym = "*"
+  THEN fixed scale (scale counter) := FALSE
+  ELSE err (err no)
+ FI;
+ next sym
+END PROC read scale param;
+ 
+BOOL PROC sym is number (TEXT VAR constant) :
+ constant := nt;
+ IF sym IN "+-"
+  THEN constant := sym; next sym
+ FI;
+ IF type = number
+  THEN constant CAT sym;
+       TRUE
+  ELSE FALSE
+ FI
+END PROC sym is number;
+ 
+PROC gen equations (INT CONST equ type) :
+ INT  VAR i;
+ gen normal equs;
+ end of init list;
+ gen index equs.
+ 
+ gen normal equs :
+  FOR i FROM tabbeg UPTO tabsize REP
+   IF is normal equ
+    THEN generate equ
+   FI
+  END REP.
+ 
+ generate equ :
+  declare variables (i, equ type, FALSE).
+ 
+ is normal equ :
+  CONCR (tab).type (i) = equ type
+  AND NOT CONCR (tab).rdef (i) AND CONCR (tab).index type (i) <= nil
+  AND NOT CONCR (tab).already used in loop body(i).
+
+ gen index equs :
+  FOR i FROM tabbeg UPTO tabsize REP
+   IF is index equ
+    THEN gen loop (i, equ type)
+   FI
+  END REP.
+ 
+ is index equ :
+  CONCR (tab).type (i) = equ type AND
+  NOT CONCR (tab).rdef (i) AND CONCR (tab).index type (i) > nil
+  AND NOT CONCR (tab).already used in loop body(i).
+
+END PROC gen equations;
+ 
+PROC gen loop (INT CONST i, equ type) :
+ for index := CONCR (tab).index (i);
+ TEXT VAR gen buf;
+ SELECT CONCR (tab).index type (i) OF
+  CASE bold   : gen for loop
+  CASE number : generate replace
+ END SELECT.
+ 
+ generate replace :
+  INT VAR k := i;
+  expression (equ type, gen buf, k);
+  gen replace (gen buf, k, text (for index)).
+ 
+ gen for loop :
+  gen (" FOR ", CONCR (tab).name (for index), " FROM ",
+                CONCR (tab).init (for index));
+  genln (" UPTO ", CONCR (tab).right part (for index), " REP");
+  in loop := TRUE;
+  IF equ type = sub init
+   THEN gen replace (equ type, i)
+   ELSE search equal indices
+  FI;
+  in loop := FALSE;
+  genln (" PER;").
+ 
+ search equal indices :
+  INT VAR j;
+  FOR j FROM i UPTO tab size REP
+   IF is same index
+    THEN gen replace (equ type, j);
+         CONCR (tab).already used in loop body(j):=TRUE
+   FI
+  END REP.
+ 
+ is same index :
+  for index                      = CONCR (tab).index (j)
+  AND CONCR (tab).index type (j) = bold
+  AND CONCR (tab).type (j)       = CONCR (tab).type (i)
+  AND NOT CONCR (tab).rdef (j)
+  AND NOT CONCR (tab).already used in loop body(j).
+
+END PROC gen loop;
+ 
+PROC gen replace (TEXT VAR gen buf, INT CONST table index) :
+ gen replace (gen buf, table index, CONCR (tab).name (for index))
+END PROC gen replace;
+ 
+PROC gen replace (TEXT VAR gen buf, INT CONST table index, TEXT CONST index):
+ gen (" replace (", CONCR (tab).name (table index), ", ", index);
+ genln (", ", gen buf, ");")
+END PROC gen replace;
+ 
+PROC gen replace (INT CONST equ type, tabpos) :
+ INT VAR no := tab pos;
+ TEXT VAR gen buf;
+ expression (equ type, gen buf, no);
+ gen replace (gen buf, no)
+END PROC gen replace;
+ 
+PROC generate for variables :
+ is first := TRUE;
+ FOR i FROM tab beg UPTO tab size REP
+  IF CONCR (tab).type (i) = for
+   THEN gen for var
+  FI
+ END REP;
+ end of init list.
+ 
+ gen for var :
+  set line no (i);
+  IF is first
+   THEN gen ("INT VAR  ");
+        is first := FALSE
+   ELSE continue init list
+  FI;
+  gen (CONCR (tab).name (i)).
+END PROC generate for variables;
+ 
+PROC generate variable part :
+ generate constants;
+ generate variables;
+ generate missed inits.
+ 
+ generate constants :
+  INT VAR i;
+  FOR i FROM tab beg UPTO tabsize REP
+   IF CONCR (tab).type (i) = const AND NOT CONCR (tab).idef (i)
+    THEN gen const
+   FI
+  END REP.
+ 
+ generate variables :
+  FOR i FROM tab beg UPTO tab size REP
+   SELECT CONCR (tab).type (i) OF
+    CASE level, aux, nequ, rate : gen normal equ
+   END SELECT
+  END REP.
+ 
+ generate missed inits :
+  FOR i FROM tab beg UPTO tab size REP
+   SELECT CONCR (tab).type (i) OF
+    CASE aux, rate : gen missed init
+   END SELECT;
+  END REP;
+  end of init list.
+ 
+ gen missed init :
+  IF sub init necessary
+   THEN declare variables (i, sub init, TRUE)
+  FI.
+ 
+ sub init necessary :
+  CONCR (tab).init (i) = nt AND
+  NOT CONCR (tab).idef (i) AND CONCR (tab).index type (i) <= nil.
+ 
+ gen normal equ :
+  IF equ not yet declared
+   THEN declare variables (i, nequ, TRUE)
+  FI.
+ 
+ equ not yet declared :
+  NOT CONCR (tab).idef (i) AND CONCR (tab).init (i) <> nt
+  AND CONCR (tab).index type (i) <= nil.
+ 
+ gen const :
+  gen linefeed;
+  gen (" ");
+  gen zz (i);
+  gen (CONCR (tab).name (i), " := ", "constant (""", CONCR (tab).name (i));
+  gen (""", ", CONCR (tab).right part (i), ")").
+END PROC generate variable part;
+ 
+PROC end of init list :
+ IF NOT is first
+  THEN is first := TRUE;
+       genln (";")
+ FI
+END PROC end of init list;
+ 
+PROC gen zz (INT CONST no) :
+ IF CONCR (tab).mac (no) > nil
+  THEN gen ("zz", CONCR(tab).name (CONCR(tab).mac (no)), text (expansion no))
+ FI
+END PROC gen zz;
+ 
+PROC declare variables (INT CONST no, equ type, BOOL CONST is init) :
+ INT VAR mac no := CONCR (tab).mac (no);
+ IF mac no > nil
+  THEN gen local equs
+  ELSE declare variable (no, equ type, is init)
+ FI.
+ 
+ gen local equs :
+  INT VAR no of expansions := CONCR (tab).indextype (mac no);
+  FOR expansion no FROM 1 UPTO no of expansions REP
+   declare variable (no, equ type, is init)
+  END REP.
+END PROC declare variables;
+ 
+PROC declare variable (INT CONST no, exp type, BOOL CONST init) :
+ TEXT VAR gen buf;
+ INT VAR i := no;
+ IF (init AND NOT CONCR (tab).idef (no)) OR
+    (NOT init AND NOT CONCR (tab).rdef (no))
+  THEN gen equ
+ FI.
+
+gen equ :
+ expression (exp type, gen buf, i);
+ IF init
+  THEN gen linefeed
+ FI;
+ gen (" ");
+ gen zz (i);
+ gen (CONCR (tab).name (i), " := ", gen buf);
+ IF NOT init
+  THEN genln (";")
+ FI
+END PROC declare variable;
+ 
+PROC gen linefeed :
+ IF is first
+  THEN is first := FALSE;
+       gen ("REAL VAR ")
+  ELSE continue init list
+ FI
+END PROC gen linefeed;
+ 
+PROC set line no (INT CONST index) :
+ line no := CONCR (tab).line no (index);
+ cout (line no)
+END PROC set line no;
+ 
+PROC continue init list :
+ genln (","); gen ("         ");
+END PROC continue init list;
+ 
+PROC gen tab var :
+ IF is first
+  THEN gen ("TAB VAR "); is first := FALSE
+  ELSE continue init list
+ FI
+END PROC gen tab var;
+ 
+PROC generate table part :
+ is first := TRUE;
+ FOR i FROM tabbeg UPTO tabsize REP
+  SELECT CONCR (tab).type (i) OF
+   CASE table :            gen tab declaration;
+                           gen tab init
+   CASE aux, rate, level : IF CONCR (tab).index type (i) = bold
+                            THEN
+                             IF CONCR(tab).type(i)=aux THEN 
+                                IF NOT CONCR(tab).should declare vector(i)
+                                   THEN  
+                                   find maximum index for current variable 
+                                 FI; 
+                                 IF CONCR(tab).should declare vector(i)
+                                   THEN  
+                                    gen row init 
+                                 FI   
+                              ELSE
+                                  gen row init
+                              FI            (*18.5.88 dc*)
+                           FI
+  END SELECT
+ END REP;
+ end of init list.
+ 
+gen tab declaration :
+ gen tab var;
+ gen (CONCR (tab).name (i), " := vector (", vec length);
+ genln (");");
+ is first := TRUE.
+ 
+gen tab init :
+ INT VAR elem no := 1;
+ scan (CONCR (tab).right part (i)); next sym;
+ set line no (i);
+ WHILE type is number REP
+  gen ("replace (", CONCR (tab).name (i), ", ", text (elem no));
+  genln (", ", constant, ");");
+  next sym;
+  elem no INCR 1
+ UNTIL end of constant list END REP.
+ 
+ type is number :
+  IF sym is number (constant)
+   THEN TRUE
+   ELSE err (40); FALSE
+  FI.
+ 
+ end of constant list :
+  test delimiter.
+ 
+ vec length :
+  INT VAR p, l := 1;
+  FOR p FROM 2 UPTO length (CONCR (tab).right part (i)) REP
+   IF (CONCR (tab).right part (i) SUB p) IN ",/"
+    THEN l INCR 1
+   FI
+  PER; text (l).
+ 
+ gen row init :
+  gen tab var;
+  gen (CONCR (tab).name (i), " := vector (", row length, ")").
+ 
+ row length :
+  set line no (i);
+  CONCR (tab).right part (CONCR (tab).index (i)).
+
+ find maximum index for current variable:
+   INT VAR maximum, place, k; 
+   TEXT VAR name::CONCR(tab).name(i); 
+   maximum:=int(CONCR(tab).right part(CONCR(tab).index(i))); 
+   place:=i; 
+   FOR k FROM tabbeg UPTO tabsize REPEAT 
+       check maximum of index and change if needed; 
+       CONCR(tab).should declare vector(k):=FALSE 
+   PER;
+   CONCR(tab).should declare vector(place):=TRUE. 
+  
+check maximum of index and change if needed: 
+   IF same variable CAND need to change 
+      THEN 
+         maximum:=int(CONCR(tab).right part(CONCR(tab).index(k))); 
+         place:=k 
+   FI. 
+
+need to change: 
+      maximum < int(CONCR(tab).right part(CONCR(tab).index(k))). 
+   
+same variable: 
+      name =CONCR(tab).name(k)  CAND CONCR(tab).index type(k) = 1. 
+   
+ 
+END PROC generate table part;
+ 
+BOOL PROC test delimiter :
+ SELECT pos ("/, EOL", sym) OF
+  CASE 1, 2 : next sym; FALSE
+  CASE 3, 4 : TRUE
+  OTHERWISE : err (62); TRUE
+ END SELECT
+END PROC test delimiter;
+ 
+PROC generate table init :
+ INT VAR i, tab pos;
+ FOR i FROM tabbeg UPTO tabsize REP
+  IF CONCR (tab).index type (i) > nil AND NOT CONCR (tab).idef (i)
+   THEN gen tab init
+  FI
+ END REP.
+ 
+ gen tab init :
+  SELECT CONCR (tab).type (i) OF
+   CASE nequ      : gen loop (i, nequ)
+   CASE aux, rate : gen missed table init
+   CASE mac name  : CONCR (tab).line no (i) := nil
+  END SELECT.
+ 
+ gen missed table init :
+  search (CONCR (tab).name (i), tab pos, nil, nequ);
+  IF not found
+   THEN gen loop (i, sub init)
+  FI.
+END PROC generate table init;
+ 
+PROC sort equ (INT CONST tab pos, equ type) :
+ IF in loop
+  THEN gen replace (equ type, tab pos)
+  ELSE declare variable (tab pos, equ type, equ type = nequ OR
+                                            equ type = sub init)
+ FI
+END PROC sort equ;
+ 
+PROC expression (INT CONST equtype, TEXT VAR gen buf, INT VAR no) :
+ TEXT VAR symbol, buf := equation;
+ INT VAR spos := 1, stype, tabpos;
+ gen buf := nt;
+ set line no (no);
+ test global equ;
+ compile equ;
+ IF CONCR (tab).mac (no) = nil
+    COR expansion no >= CONCR (tab).index type (CONCR (tab).mac (no))
+  THEN set def flag
+ FI.
+
+ test global equ :
+  IF CONCR (tab).index type (no) < nil
+   THEN replace global mac param
+  FI.
+ 
+ replace global mac param :
+  INT CONST param index := CONCR (tab).index (no);
+  search (actual parameter (CONCR (tab).rightpart (paramindex)),
+          tabpos, nil, nil);
+  no := tabpos;
+  expression (type of param, gen buf, no);
+  LEAVE expression.
+ 
+ type of param :
+  IF equ type = sub init
+   THEN CONCR (tab).type (no)
+   ELSE equ type
+  FI.
+ 
+ compile equ :
+  IF CONCR (tab).in use (no)
+   THEN err (CONCR (tab).name (no), 43)
+   ELSE pass expression
+  FI.
+ 
+ pass expression :
+  CONCR (tab).in use (no) := TRUE;
+  expression2 (equtype, no, spos, stype, genbuf, symbol, buf);
+  CONCR (tab).in use (no) := FALSE.
+ 
+ equation :
+  IF equtype = nequ
+   THEN CONCR (tab).init (no)
+   ELSE CONCR (tab).right part (no)
+  FI.
+ 
+ set def flag :
+  SELECT equtype OF
+   CASE nequ, sub init : CONCR (tab).idef (no) := TRUE
+   CASE level          : test level
+   OTHERWISE           : CONCR (tab).rdef (no) := TRUE
+  END SELECT.
+
+ test level :
+  IF CONCR (tab).init (no) = nt AND CONCR (tab).index type (no) = nil
+   THEN err (CONCR (tab).name (no), 39)
+  FI.
+END PROC expression;
+ 
+PROC expression2 (INT CONST equtype, no, INT VAR spos, stype,
+                  TEXT VAR gen buf, symbol, buf) :
+ next sym (buf, symbol, stype, spos);
+ REP
+  factor (equtype, no, spos, gen buf, buf, symbol, stype)
+ UNTIL is no operator END REP.
+ 
+ is no operator :
+  IF symbol IN "+-*/"
+   THEN gen buf CAT symbol;
+        next sym (buf, symbol, stype, spos);
+        process obelix;
+        FALSE
+   ELSE TRUE
+  FI.
+ 
+ process obelix :
+  IF symbol = "*"
+   THEN gen buf CAT symbol;
+        next sym (buf, symbol, stype, spos)
+  FI.
+END PROC expression2;
+ 
+TEXT PROC actual parameter (TEXT CONST params) :
+ INT VAR position := nil, old position;
+ FOR i FROM 1 UPTO expansion no REP
+  old position := position;
+  position := pos (params, "%", position + 1)
+ END REP;
+ subtext (params, old position + 1, position - 1).
+END PROC actual parameter;
+ 
+PROC factor (INT CONST equtype, no, INT VAR spos, TEXT VAR genbuf,
+                       buf, symbol, INT VAR stype) :
+ BOOL VAR dollar := symbol = "$";
+ INT VAR tab pos, mac num := CONCR (tab).mac (no);
+ IF dollar
+  THEN next sym (buf, symbol, stype, spos)
+ FI;
+ SELECT stype OF 
+  CASE number    : process number
+  CASE bold      : process quantity
+  CASE delimiter : process delimiter
+  OTHERWISE      : err (symbol, 44)
+ END SELECT.
+ 
+ process number :
+  gen buf CAT symbol;
+  next sym (buf, symbol, stype, spos).
+ 
+ process quantity :
+  TEXT VAR name := symbol, time script;
+  INT VAR old spos := spos;
+  next sym (buf, symbol, stype, spos);
+  IF mac num > nil
+   THEN search (name, tab pos, mac num, mac param);
+        IF not found
+         THEN search (name, tab pos, mac num, nil);
+              IF not found
+               THEN search (name, tab pos, nil, nil)
+              FI
+        FI
+   ELSE search (name, tab pos, nil, nil)
+  FI;
+  IF is global param
+   THEN search (name, tab pos, macro number of param, nil)
+  FI;
+  IF not found
+   THEN err (name, 46)
+   ELSE test type
+  FI.
+ 
+ is global param :
+  not found AND CONCR (tab).index (no) > nil
+  AND CONCR (tab).index type (no) = nil.
+ 
+ macro number of param :
+  CONCR (tab).mac (CONCR (tab).index (no)).
+ 
+ test type :
+  INT VAR nop;
+  BOOL VAR is equ := FALSE;
+  search table entry;
+  get time script;
+  type := CONCR (tab).type (tab pos);
+  SELECT type OF
+   CASE std p     : std function
+   CASE table     : (* nanu *)
+   CASE mac param : replace param
+   CASE mac name  : macro expansion
+   CASE const     : constant
+   OTHERWISE test quantity
+  END SELECT;
+  IF symbol = "("
+   THEN test index
+   ELIF is equ
+    THEN gen buf CAT name
+  FI.
+ 
+ search table entry :
+  IF CONCR (tab).index type (tab pos) > nil AND
+     CONCR (tab).type (tab pos) = n equ
+   THEN search correct table;
+        IF not found
+         THEN err (name, 46);
+              LEAVE process quantity
+        FI
+  FI.
+ 
+ search correct table :
+  not found := TRUE;
+  WHILE tab pos <> nil CAND table not found REP
+   tab pos := CONCR (tab).pred (tab pos)
+  END REP.
+ 
+ table not found :
+  not found := NOT (CONCR (tab).name (tab pos) = name
+                    AND not in macro AND type ok);
+  not found.
+ 
+ not in macro :
+  CONCR (tab).mac (tab pos) = nil.
+ 
+ type ok :
+  type := CONCR (tab).type (tab pos);
+  type = aux OR type = rate OR type = level.
+ 
+ test quantity :
+  IF CONCR (tab).mac (tab pos) > nil
+   THEN name := "zz" + CONCR (tab).name (CONCR (tab).mac (tab pos))
+                + text (expansion no) + name
+  FI;
+  is equ := TRUE;
+  SELECT equtype OF
+   CASE nequ    : initialization
+   CASE aux     : auxiliary
+   CASE level   : level equation
+   CASE sub init: substitute init
+   CASE supp    : supplementary
+   OTHERWISE    : rate equation
+  END SELECT.
+ 
+ get time script :
+  time script := nt;
+  IF symbol = "."
+   THEN next sym (buf, time script, stype, spos);
+        next sym (buf, symbol, stype, spos)
+  FI;
+  BOOL VAR is any := time script = any.
+
+ replace param :
+  buf := text (buf, old spos - 2) +
+         actual param + subtext (buf, spos - 1);
+  spos := old spos - 1;
+  next sym (buf, symbol, stype, spos);
+  factor (equtype, no, spos, genbuf, buf, symbol, stype);
+  LEAVE factor.
+ 
+ actual param :
+  TEXT VAR param := actual parameter (content);
+  IF param contains time script OR is number
+   THEN param
+   ELSE param + "." + any
+  FI.
+ 
+ param contains time script :
+  (param SUB (length (param))) = any.
+ 
+ is number :
+  pos ("0123456789", param SUB (length (param))) > 0.
+
+ content :
+  IF type = nequ AND CONCR (tab).index (no) = nil
+   THEN CONCR (tab).init (tab pos)
+   ELSE CONCR (tab).right part (tab pos)
+  FI.
+
+ test index :
+  gen buf CAT "(";
+  gen buf CAT name;
+  next sym (buf, symbol, stype, spos);
+  gen buf CAT " SUB ";
+  SELECT stype OF
+   CASE number : int index
+   CASE bold   : var index
+   OTHERWISE   : err (symbol, 48) 
+   END SELECT;
+  test offset;
+  test closing bracket (symbol);
+  gen buf CAT symbol;
+  next sym (buf, symbol, stype, spos).
+ 
+ test offset :
+  next sym (buf, symbol, stype, spos);
+  IF symbol IN "+-"
+   THEN pass offset
+  FI.
+ 
+ pass offset :
+  gen buf CAT symbol;
+  next sym (buf, symbol, stype, spos);
+  gen buf CAT trunc (symbol);
+  IF stype <> number
+   THEN err (symbol, 48) 
+  FI;
+  next sym (buf, symbol, stype, spos).
+ 
+ int index :
+(*IF CONCR (tab).index (no) <> int (symbol)
+   THEN err (symbol, 48); 
+        message("Starten Sie trotzdem das übersetzte ELAN Programm") FI;*) 
+(*20.5.88 dc: hier kommt eine falsche Fehlermeldung                     *) 
+  gen buf CAT trunc (symbol).
+  
+ var index :
+  search (symbol, tab pos, mac num, for);
+  gen buf CAT symbol;
+  IF incorrect index
+   THEN err (symbol, 48) 
+  FI.
+ 
+ incorrect index :
+  not found COR CONCR (tab).name (CONCR (tab).index (no)) <> symbol.
+  
+ std function :
+  test open bracket (symbol);
+  nop := length (CONCR (tab).right part (tab pos));
+  gen buf CAT (name + " (");
+  IF nop > nil
+   THEN pass actual params
+   ELSE next sym (buf, symbol, stype, spos);
+        test closing bracket (symbol)
+  FI;
+  next sym (buf, symbol, stype, spos);
+  IF act param <> nop
+   THEN err (symbol, 49)
+  FI.
+  
+ pass actual params :
+  INT VAR table pos := tab pos, act param := nil;
+  REP
+   act param INCR 1;
+   IF (CONCR (tab).right part (table pos) SUB act param) = "t"
+    THEN test if param is table
+    ELSE expression2 (equtype, no, spos, stype, gen buf, symbol, buf)
+   FI
+  UNTIL no more params END REP.
+ 
+ no more params :
+  gen buf CAT symbol;
+  SELECT pos (",)", symbol) OF
+   CASE 1     : FALSE
+   CASE 2     : TRUE
+   OTHERWISE  : err (symbol, 50); TRUE
+  END SELECT.
+ 
+ test if param is table :
+  next sym (buf, symbol, stype, spos);
+  IF s type = bold
+   THEN search (symbol, tab pos, mac num, nil);
+        IF not found
+         THEN err (symbol, 51)
+         ELSE gen table
+        FI
+   ELSE err (symbol, 52)
+  FI.
+ 
+ gen table :
+  IF CONCR (tab).type (tab pos) = table
+   THEN gen buf CAT symbol;
+        next sym (buf, symbol, stype, spos)
+  ELIF CONCR (tab).index type (tab pos) > nil
+   THEN factor (equtype, no, spos, genbuf, buf, symbol, stype)
+   ELSE err (symbol, 52)
+  FI.
+ 
+ macro expansion :
+  CONCR (tab).line no (tab pos) INCR 1;
+  gen buf CAT "zz";
+  gen buf CAT name;
+  gen buf CAT text (CONCR (tab).line no (tab pos));
+  gen buf CAT name;
+  get actual parameters.
+ 
+ get actual parameters :
+  TEXT VAR char;
+  test open bracket (symbol);
+  get macro parameter list;
+  next sym (buf, symbol, stype, spos).
+ 
+ get macro parameter list :
+  REP
+   get act param
+  UNTIL end of parameter list END REP.
+ 
+ end of parameter list :
+  SELECT pos (",)", char) OF
+   CASE 1    : FALSE
+   CASE 2    : TRUE
+   OTHERWISE : TRUE
+  END SELECT.
+ 
+ get act param :
+  INT VAR brackets := nil;
+  char := buf SUB spos;
+  REP
+   spos INCR 1;
+   char := buf SUB spos
+  UNTIL end of param END REP;
+  spos INCR 1.
+ 
+ end of param :
+  IF brackets = nil
+   THEN char IN ",)"
+  ELIF char = "("
+   THEN brackets INCR 1;
+        FALSE
+  ELIF char = ")"
+   THEN brackets DECR 1;
+        FALSE
+  ELSE FALSE
+ FI.
+ 
+ constant :
+  is equ := TRUE;
+  CONCR (tab).idef (tab pos) := TRUE.
+ 
+ initialization :
+  IF time script = nt OR is any
+   THEN IF NOT CONCR (tab).idef (tab pos)
+         THEN IF CONCR (tab).init (tab pos) <> nt
+               THEN sort equ (tab pos, equ type)
+              ELIF is sub init
+               THEN sort equ (tab pos, sub init)
+               ELSE err (symbol, 39)
+              FI
+        FI
+   ELSE err (time script, 56)
+  FI.
+ 
+ is sub init :
+  CONCR (tab).init (tab pos) = nt AND correct type (type).
+
+ auxiliary :
+  IF time script = aux time script OR is any
+   THEN IF NOT CONCR (tab).rdef (tab pos) AND type = aux
+         THEN sort equ (tab pos, equtype)
+        FI
+   ELSE err (time script, 57)
+  FI.
+ 
+ aux time script :
+  SELECT type OF
+   CASE aux, level :  "k"
+   CASE rate       :  "jk"
+   OTHERWISE       :  " "
+  END SELECT.
+ 
+ level equation :
+  IF time script <> level time script AND NOT is any
+   THEN err (time script, 59)
+  FI.
+ 
+ level time script :
+  SELECT type OF
+   CASE aux, level : "j"
+   CASE rate       : "jk"
+   OTHERWISE       : " "
+  END SELECT.
+ 
+ rate equation :
+  IF time script <> rate time script AND NOT is any
+   THEN err (time script, 60)
+  FI.
+ 
+ rate time script :
+  SELECT type OF
+   CASE aux, level : "k"
+   CASE rate       : "jk"
+   OTHERWISE       : " "
+  END SELECT.
+ 
+ supplementary :
+  IF time script <> supp time script AND NOT is any
+   THEN err (time script, 57)
+  FI.
+ 
+ supp time script :
+  SELECT type OF
+   CASE aux, level, supp : "k"
+   CASE rate             : "jk"
+   OTHERWISE             : " "
+  END SELECT.
+ 
+ substitute init :
+  IF NOT CONCR (tab).idef (tab pos)
+   THEN gen sub init equ
+  FI.
+ 
+ gen sub init equ :
+  IF CONCR (tab).index type (tab pos) > nil
+   THEN IF CONCR (tab).index type (no) = nil
+         THEN process index equ
+        FI
+  ELIF CONCR (tab).init (tab pos) = nt
+   THEN IF correct type (type) 
+         THEN sort equ (tab pos, equtype)
+        FI
+   ELSE sort equ (tab pos, nequ)
+  FI.
+
+ process index equ :
+  INT VAR table type := sub init;
+  IF type <> nequ
+   THEN search nequ
+  FI;
+  IF NOT CONCR (tab).idef (tab pos) AND correct type (type)
+   THEN end of init list;
+        gen loop (tab pos, table type);
+        CONCR (tab).idef (tab pos) := TRUE
+  FI.
+ 
+ search nequ :
+  search (CONCR (tab).name (tabpos), table pos, nil, nequ);
+  IF NOT (not found CAND CONCR (tab).idef (tab pos))
+   THEN type := nequ;
+        tab pos := table pos;
+        table type := type
+  FI.
+ 
+ process delimiter :
+  genbuf CAT symbol;
+  SELECT pos ("(+-", symbol) OF
+   CASE 1   : process bracket
+   CASE 2, 3: process monadic operator
+   OTHERWISE err (symbol, 44)
+  END SELECT.
+ 
+ process bracket :
+  expression2 (equtype, no, spos, stype, genbuf, symbol, buf);
+  test closing bracket (symbol);
+  gen buf CAT symbol;
+  next sym (buf, symbol, stype, spos);
+  IF symbol = "("
+   THEN gen buf CAT "*";
+        factor (equtype, no, spos, gen buf, buf, symbol, stype)
+  FI.
+ 
+ process monadic operator :
+  next sym (buf, symbol, stype, spos);
+  factor (equtype, no, spos, gen buf, buf, symbol, stype).
+END PROC factor;
+ 
+BOOL PROC correct type (INT CONST equ type) :
+ SELECT equ type OF
+  CASE aux, rate, nequ : TRUE
+  OTHERWISE            : FALSE
+ END SELECT.
+END PROC correct type; 
+
+TEXT PROC draw ad:
+  IF is draw THEN "b" ELSE "" END IF
+END PROC draw ad;
+
+(*$$$$$$$$$$$$$$$ ZUSATZ Februar 87 C&C geaendert: Ausgabe "dump" $$$$$$$$*)
+
+(* In dieser Prozedur wird eine Datei 'dump' angelegt, in der alle        *)
+(* Dynamo-Standardfunktionen, Macros und die programmspezifischen         *)
+(* Variablen und Konstanten eingetragen werden.                           *)
+
+PROC table dump :
+IF   exists ("dump")
+THEN forget("dump",quiet)
+FI;
+FILE VAR dump := sequential file(output, "dump");
+sysout("dump");
+ FOR i FROM 1 UPTO CONCR (tab).tab size REP
+  put (i);
+  put ("NAM :"); put (CONCR (tab).name (i));
+  put ("RP :"); put (CONCR (tab).right part (i));
+  put ("INI :"); put (CONCR (tab).init (i));
+  put ("IND :"); put (CONCR (tab).index (i));
+  put ("IT :"); put (CONCR (tab).index type (i));
+  put ("TYP :"); put (CONCR (tab).type (i));
+  line;
+ END REP;
+sysout("")
+END PROC table dump
+(*$$$$$$$$$$$$$$$$$$$$ ENDE ZUSATZ $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$*)
+END PACKET dynamo compiler 33
+

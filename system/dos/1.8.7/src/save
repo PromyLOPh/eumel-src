@@ -1,0 +1,233 @@
+PACKET save DEFINES                   (* Copyright (C) 1985, 86, 87 *)
+                                      (* Frank Klapper              *)
+                                      (* 27.04.87                   *)
+  save:
+
+LET ascii        = 1,
+    ascii german = 2,
+    transparent  = 3,
+    row text     = 5,
+    ds           = 6,
+    atari st     = 10,
+    ibm          = 11,
+
+    ff           = ""12"",
+    ctrl z       = ""26"",
+    cr lf        = ""13""10"",
+
+    row text mode length = 4000;
+
+TEXT VAR buffer;
+
+BOUND STRUCT (INT size,
+              ROW row text mode length TEXT cluster row) VAR cluster struct;
+
+PROC save (TEXT CONST file name, DATASPACE CONST file ds, INT CONST mode):
+
+  SELECT mode OF 
+    CASE ascii, ascii german, atari st, ibm, transparent:
+                      save filemode (file ds, filename, mode)
+    CASE row text   : save row textmode (file ds, filename)
+    CASE ds         : save dsmode       (file ds, filename)
+    OTHERWISE error stop ("Unzulässige Betriebsart")
+  END SELECT.
+
+END PROC save;
+
+PROC save filemode (DATASPACE CONST file space, TEXT CONST name, INT CONST code type):
+
+  enable stop;
+  open save dos file (name);
+  FILE VAR file := sequential file (modify, file space);
+  buffer := "";
+  INT VAR line no;
+  FOR line no FROM 1 UPTO lines (file) REP
+    to line (file, line no);
+    buffer cat file line;
+    WHILE length (buffer) >= cluster size REP
+      write next save dos cluster (subtext (buffer, 1, cluster size));
+      buffer := subtext (buffer, cluster size + 1)
+    PER
+  PER;
+  IF ascii code
+    THEN buffer CAT ctrl z
+  FI;
+  write rest;
+  close save dos file;
+  buffer := "".
+
+buffer cat file line:
+  exec (PROC (TEXT CONST, INT CONST) cat adapted line, file, code type).
+ 
+ascii code:
+  (code type = ascii) OR (code type = ascii german).
+
+write rest:
+  WHILE buffer <> ""
+    REP write next save dos cluster (subtext (buffer, 1, cluster size));
+        buffer := subtext (buffer, cluster size + 1)
+  PER.
+ 
+END PROC save filemode; 
+ 
+PROC cat adapted line (TEXT VAR line, INT CONST code type):
+
+  IF code type = transparent
+    THEN buffer CAT line
+    ELSE change esc sequences;
+         change eumel print chars;
+         SELECT code type OF
+           CASE ascii       : ascii change
+           CASE ascii german: ascii german change
+           CASE atari st    : atari st change
+           CASE ibm         : ibm change
+         END SELECT;
+         buffer CAT line;
+         IF (line SUB length (line)) <> ff
+           THEN buffer CAT cr lf
+         FI
+  FI.
+
+change esc sequences:
+  change all (line, "#page#", ff);
+  INT VAR p := pos (line, "#");
+  WHILE p > 0 REP
+    IF is esc sequence
+      THEN change (line, p, p+4, coded char)
+    FI;
+    p := pos (line, "#", p+1)
+  PER.
+
+is esc sequence:
+  LET digits = "0123456789";
+  (line SUB (p+4)) = "#"         CAND pos (digits, line SUB p+1) > 0 CAND
+  pos (digits, line SUB p+2) > 0 CAND pos (digits, line SUB p+3) > 0.
+
+coded char:
+  code (int (subtext (line, p+1, p+3))).
+
+change eumel print chars:
+  p := pos (line, ""220"", ""223"", 1);
+  WHILE p > 0 REP
+    replace (line, p, std char);
+    p := pos (line, ""220"", ""223"", p + 1)
+  PER.
+
+std char:
+ "k-# " SUB (code (line SUB p) - 219).
+
+ascii change: 
+  change all (line, "ß", "#251#");
+  p := pos (line, "Ä", "ü", 1);
+  WHILE p > 0 REP
+    change (line, p, p, ersatzdarstellung (line SUB p));
+    p := pos (line, "Ä", "ü", p + 1)
+  PER.
+
+ascii german change: 
+  change all (line, "[", "#091#");
+  change all (line, "\", "#092#");
+  change all (line, "]", "#093#");
+  change all (line, "{", "#123#");
+  change all (line, "|", "#124#");
+  change all (line, "}", "#125#");
+  change all (line, "~", "#126#");
+  change all (line, "ß", ""126"");
+  p := pos (line, "Ä", "ü", 1);
+  WHILE p > 0 REP
+    replace (line, p, umlaut in ascii german);
+    p := pos (line, "Ä", "ü", p + 1)
+  PER.
+
+umlaut in ascii german:
+  "[\]{|}" SUB (code (line SUB p) - 213).
+
+ibm change: 
+  change all (line, "ß", ""225"");
+  p := pos (line, "Ä", "ü", 1);
+  WHILE p > 0 REP
+    replace (line, p, umlaut in ibm);
+    p := pos (line, "Ä", "ü", p + 1)
+  PER.
+
+atari st change: 
+  change all (line, "ß", ""158"");
+  p := pos (line, "Ä", "ü", 1);
+  WHILE p > 0 REP
+    replace (line, p, umlaut in ibm);
+    p := pos (line, "Ä", "ü", p + 1)
+  PER.
+
+umlaut in ibm:
+  ""142""153""154""132""148""129"" SUB (code (line SUB p) - 213).
+
+END PROC cat adapted line;
+
+TEXT PROC ersatzdarstellung (TEXT CONST char):
+
+  TEXT CONST t :: text (code (char SUB 1));
+  "#" + (3 - length (t)) * "0" + t + "#"
+
+END PROC ersatzdarstellung;
+
+PROC save rowtextmode (DATASPACE CONST space, TEXT CONST name):
+
+  enable stop;
+  open save dos file (name);
+  init save row textmode;
+  WHILE line no < cluster struct.size REP
+    fill buffer;
+    write next save dos cluster (subtext (buffer, 1, cluster size));
+    remember rest
+  PER;
+  write rest;
+  close save dos file;
+  buffer := "".
+
+init save rowtextmode:
+  cluster struct  := space;
+  buffer := "";
+  INT VAR line no := 0.
+
+fill buffer:
+  WHILE line no < cluster struct.size AND NOT buffer full REP
+    line no INCR 1;
+    buffer CAT cluster struct.cluster row [line no]
+  PER.
+
+buffer full:
+  LENGTH buffer >= cluster size.
+
+remember rest:
+  buffer := subtext (buffer, cluster size + 1).
+
+write rest:
+  WHILE buffer <> ""
+    REP write next save dos cluster (subtext (buffer, 1, cluster size));
+        remember rest
+  PER.
+
+END PROC save rowtextmode;
+ 
+PROC save ds mode (DATASPACE CONST out ds, TEXT CONST name):
+
+  enable stop;
+  open save dos file (name);
+  INT VAR page no := first non dummy ds page;
+  get last allocated ds page; 
+  WHILE page no <= last allocated ds page REP
+    write next save dos cluster (out ds, page no);
+  PER;
+  close save dos file.
+
+get last allocated ds page:
+  INT VAR last allocated ds page := -1, 
+          i;
+  FOR i FROM 1 UPTO ds pages (out ds) REP
+    last allocated ds page := next ds page (out ds, last allocated ds page) 
+  PER.
+
+END PROC save ds mode;
+
+END PACKET save;
+

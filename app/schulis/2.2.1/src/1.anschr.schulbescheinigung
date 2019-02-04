@@ -1,0 +1,61 @@
+PACKET anschrschulbescheinigungDEFINES schulbescheinigungeingang,
+schulbescheinigungstarten,sonderwerteschulbescheinigung,
+multistopschulbescheinigung:TEXT VAR schuelerschluessel1,schuelerschluessel2,
+schuelerschluessel3,bestandsschluessel1,bestandsschluessel2;BOOL VAR 
+anschreibenzeigen;INT VAR aktuellerindex,eingabestatus;LET vordruck=
+"vordruck schulbescheinigung";LET trennsymbol=" ",punkt=".";LET maske=
+"ms auswahl schueler o. klasse",namefeldnr=2,vornamefeldnr=3,
+geburtsdatumfeldnr=4,jgstfeldnr=5,zugtutorfeldnr=6,bildschirmfeldnr=7,
+druckerfeldnr=8,niltext="",fehlermeldnr=56,wartemeldnr=69,datumfehler=157,
+vater=1;PROC schulbescheinigungeingang:standardvproc(maske)END PROC 
+schulbescheinigungeingang;BOOL PROC sonderwerteschulbescheinigung:adressat((
+wert(fnrsurufnames)SUB 1)+punkt+trennsymbol+wert(fnrsufamnames));TRUE END 
+PROC sonderwerteschulbescheinigung;PROC schulbescheinigungstarten:
+lesemaskenwerte;IF NOT (auswahldruckeroderbildschirmok)THEN meldedenfehler;
+infeld(bildschirmfeldnr);zurueckzumdialogELSE IF schluesselmitdatumangegeben
+THEN IF schuelerschluessel3okTHEN indexnrbilden;startenausfuehrenELSE 
+standardmeldung(datumfehler,niltext);infeld(geburtsdatumfeldnr);
+zurueckzumdialogFI ;ELSE IF (alleschuelergewaehltXOR schuelergruppegewaehlt
+XOR einschuelerohnedatumgewaehlt)THEN indexnrbilden;startenausfuehrenELSE 
+meldedenfehler;zurueckzumdialogFI ;FI ;FI .lesemaskenwerte:
+schuelerschluessel1:=standardmaskenfeld(namefeldnr);schuelerschluessel2:=
+standardmaskenfeld(vornamefeldnr);schuelerschluessel3:=standardmaskenfeld(
+geburtsdatumfeldnr);bestandsschluessel1:=standardmaskenfeld(jgstfeldnr);
+bestandsschluessel2:=standardmaskenfeld(zugtutorfeldnr);anschreibenzeigen:=
+standardmaskenfeld(bildschirmfeldnr)<>niltext.auswahldruckeroderbildschirmok:
+(standardmaskenfeld(bildschirmfeldnr)<>niltext)XOR (standardmaskenfeld(
+druckerfeldnr)<>niltext).schluesselmitdatumangegeben:((bestandsschluessel1+
+bestandsschluessel2)=niltextAND schuelerschluessel1<>niltextAND 
+schuelerschluessel2<>niltextAND schuelerschluessel3<>niltext).
+alleschuelergewaehlt:(schuelerschluessel1+schuelerschluessel2+
+schuelerschluessel3+bestandsschluessel1+bestandsschluessel2)=niltext.
+schuelergruppegewaehlt:bestandsschluessel1<>niltextAND (schuelerschluessel1+
+schuelerschluessel2+schuelerschluessel3=niltext).einschuelerohnedatumgewaehlt
+:(bestandsschluessel1+bestandsschluessel2+schuelerschluessel3)=niltextAND 
+schuelerschluessel1<>niltext.schuelerschluessel3ok:standardpruefe(6,4,0,0,
+niltext,eingabestatus);IF NOT (eingabestatus=0)THEN FALSE ELSE TRUE FI .
+meldedenfehler:standardmeldung(fehlermeldnr,niltext).zurueckzumdialog:return(
+vater).indexnrbilden:standardmeldung(wartemeldnr,niltext);IF 
+bestandsschluessel1<>niltextTHEN IF bestandsschluessel2<>niltextTHEN 
+aktuellerindex:=ixsustatjgstzugELSE aktuellerindex:=ixsustatjgstFI ELSE 
+aktuellerindex:=dnrschuelerFI .startenausfuehren:
+initialisieredruckerfueranschreiben;#anschreibenstart(bestand,vordruck,
+dbmschulbescheinigung,schuelerschluessel1,schuelerschluessel2+
+schuelerschluessel3,anschreibenzeigen,laengedbmschulbescheinigung,BOOL PROC 
+sonderwerteschulbescheinigung);#dbstatus(ok);inittupel(dnrschueler);
+parsenooffields(19);uebernimmentsprechendedaten;anschreibenstart(
+aktuellerindex,vordruck,anschreibenzeigen,(schuelerschluessel1+
+schuelerschluessel2)<>"",BOOL PROC sonderwerteschulbescheinigung,BOOL PROC 
+multistopschulbescheinigung).uebernimmentsprechendedaten:putwert(
+fnrsufamnames,schuelerschluessel1);putwert(fnrsurufnames,schuelerschluessel2)
+;putwert(fnrsugebdatums,datumskonversion(schuelerschluessel3));putwert(
+fnrsusgrpjgst,bestandsschluessel1);putwert(fnrsusgrpzugtut,
+bestandsschluessel2);putwert(fnrsustatuss,"ls").END PROC 
+schulbescheinigungstarten;BOOL PROC multistopschulbescheinigung:BOOL VAR b:=
+FALSE ;IF wert(fnrsustatuss)="ls"THEN IF aktuellerindex<>dnrschuelerTHEN IF 
+aktuellerindex=ixsustatjgstTHEN b:=bestandsschluessel1=wert(fnrsusgrpjgst)
+ELSE b:=(bestandsschluessel1=wert(fnrsusgrpjgst)CAND bestandsschluessel2=wert
+(fnrsusgrpzugtut))FI ELSE b:=(schuelerschluessel1<>niltextCAND dbstatus=ok)
+COR (schuelerschluessel1=niltextCAND TRUE )FI ;FI ;bENDPROC 
+multistopschulbescheinigung;END PACKET anschrschulbescheinigung;
+

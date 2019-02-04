@@ -1,0 +1,79 @@
+PACKET idagenDEFINES formularzerlegen,erzeugequery:LET platzhalter="�",
+okkenner="k",linkeklammer="<",rechteklammer=">";FILE VAR formtext;TEXT VAR 
+zeile:="",blockstruktur:="";INT VAR lastblock:=0;TEXT PROC blockcode(INT 
+CONST objklasse,regel):"!"+text(objklasse)+"."+text(regel)+"!"ENDPROC 
+blockcode;BOOL PROC blockende(INT CONST objklasse,regel):pos(blockstruktur,
+blockcode(objklasse,regel))>0ENDPROC blockende;PROC blockmerken(INT CONST 
+objklasse,regel):blockstrukturCAT blockcode(objklasse,regel)ENDPROC 
+blockmerken;PROC unterblockeintragen(INT CONST blocknr,unterblock):TEXT VAR 
+ub:=getunterbloecke(blocknr),vz:=getvorzeilennr(blocknr);INT VAR zeilennr:=
+getzeilenanzahl(blocknr);ubCAT text(unterblock)+";";vzCAT text(zeilennr+1)+
+";";putunterbloecke(blocknr,ub);putvorzeilennr(blocknr,vz);ENDPROC 
+unterblockeintragen;PROC inaktuellenblockuebernehmen(TEXT CONST zeile,INT 
+CONST blocknr):TEXT VAR textzeile:=zeile,einfuegstellen:="";INT VAR zeilennr
+:=getzeilenanzahl(blocknr)+1,vonp,bisp,stcodenr;druckvariablenersetzen;
+putzeilenanzahl(blocknr,zeilennr);putzeile(blocknr,zeilennr,textzeile);
+puteinfuegstellen(blocknr,zeilennr,einfuegstellen);.druckvariablenersetzen:
+vonp:=pos(textzeile,linkeklammer);WHILE vonp>0REP bisp:=pos(textzeile,
+rechteklammer,vonp+1);IF bisp=0THEN bisp:=length(textzeile)FI ;stcodenr:=int(
+subtext(textzeile,vonp+1,bisp-1));einfuegstellenCAT text(stcodenr)+";";change
+(textzeile,vonp,bisp,platzhalter);vonp:=pos(textzeile,linkeklammer);PER .
+ENDPROC inaktuellenblockuebernehmen;PROC bearbeiteblock(INT CONST b):INT 
+CONST blocknr:=b;INT VAR p,bis,objklasse,regel;BOOL VAR eoformtext:=FALSE ;
+putzeilenanzahl(blocknr,0);putunterbloecke(blocknr,"");putvorzeilennr(blocknr
+,"");WHILE NOT eoformtextREP IF zugriffsregelgefundenTHEN okundregelbestimmen
+;IF blockende(objklasse,regel)THEN LEAVE bearbeiteblockELSE blockmerken(
+objklasse,regel);IF compress(zeile)=""CAND NOT eof(formtext)THEN getline(
+formtext,zeile);FI ;lastblockINCR 1;unterblockeintragen(blocknr,lastblock);
+putblockregelnummer(lastblock,getregelnummer(objklasse,regel));bearbeiteblock
+(lastblock)FI ;ELSE inaktuellenblockuebernehmen(zeile,blocknr)FI ;IF eof(
+formtext)THEN eoformtext:=TRUE ELSE getline(formtext,zeile);FI ;PER ;.
+zugriffsregelgefunden:p:=pos(zeile,linkeklammer+okkenner);p>0.
+okundregelbestimmen:bis:=p+2;objklasse:=int(zeileSUB bis);bisINCR 1;IF 
+istziffer(zeileSUB bis)THEN objklasse:=objklasse*10+int(zeileSUB bis);bis
+INCR 1;FI ;IF (zeileSUB bis)=rechteklammerTHEN regel:=1ELSE regel:=int(zeile
+SUB bis+1);bisINCR 2;IF istziffer(zeileSUB bis)THEN regel:=regel*10+int(zeile
+SUB bis);bisINCR 1;FI ;FI ;change(zeile,p,bis,"").ENDPROC bearbeiteblock;
+PROC formularzerlegen(INT CONST nr):openformular(nr);lastblock:=0;
+blockstruktur:="";zeile:="";formtext:=sequentialfile(input,getformtextname);
+IF NOT eof(formtext)THEN getline(formtext,zeile)FI ;IF eof(formtext)CAND 
+zeile=""THEN putzeilenanzahl(0,0);putunterbloecke(0,"");putvorzeilennr(0,"");
+ELSE bearbeiteblock(0)FI ENDPROC formularzerlegen;BOOL PROC istziffer(TEXT 
+CONST t):pos("0123456789",t)>0END PROC istziffer;LET textbegrenzer="""",
+klammerauf=" ( ",klammerzu=" ).",trenner=" / ",refinementname="verbund";FILE 
+VAR queryfile;TEXT PROC alstext(TEXT CONST t):textbegrenzer+t+textbegrenzer
+ENDPROC alstext;TEXT PROC bestimmeindexname(TEXT CONST dateiname,INT CONST nr
+):TEXT VAR n:=alstext(dateiname);INT VAR i,treffer:=0;IF nr>0CAND firstindex>
+0THEN FOR iFROM firstindexUPTO firstfree-1REP IF name(dateinr(primdatid(i)))=
+dateinameTHEN trefferINCR 1FI ;IF treffer=nrTHEN n:=n+" BY "+alstext(name(i))
+;FI UNTIL treffer=nrPER FI ;nENDPROC bestimmeindexname;TEXT PROC 
+bestimmeverbunde(INT CONST blocknr):TEXT VAR v:="";INT VAR nr,p:=1;REP nr:=
+decodezahl(getunterbloecke(blocknr),p);IF nr>0THEN IF v=""THEN vCAT 
+refinementname+text(nr)ELSE vCAT ";"+refinementname+text(nr)FI FI UNTIL nr=0
+PER ;vENDPROC bestimmeverbunde;TEXT PROC bestimmescanbedingung(INT CONST 
+regel,anzkeyfelder):TEXT VAR scan:="",vgl:="";INT VAR f;FOR fFROM 1UPTO 
+anzkeyfelderREP vgl:=getvergleichswert(regel,f);vergleichswertcodieren;IF 
+scan=""THEN scanCAT vglELSE scanCAT ";"+vglFI PER ;scan.
+vergleichswertcodieren:IF konstanteTHEN vgl:=linkeklammer+vgl+rechteklammer
+ELSE vgl:=textbegrenzer+vgl+textbegrenzerFI .konstante:(vglSUB 1)=
+textbegrenzer.ENDPROC bestimmescanbedingung;PROC verbund(INT CONST blocknr):
+TEXT VAR string:="";INT CONST regelnr:=getblockregelnummer(blocknr);INT VAR k
+,r,index,anzfelder;IF regelnr>0THEN getzugriffsregel(regelnr,k,r,index,
+anzfelder)FI ;line(queryfile);putline(queryfile,refinementname+text(blocknr)+
+":");IF regelnr>0THEN string:=bestimmeindexname(getobjektklasse(k),index);
+stringCAT klammerauf;stringCAT bestimmescanbedingung(regelnr,anzfelder);
+stringCAT trenner;stringCAT trenner;stringCAT trenner;stringCAT 
+bestimmeverbunde(blocknr);stringCAT klammerzu;putline(queryfile,string)ELSE 
+putline(queryfile,".")FI ENDPROC verbund;PROC erzeugequery(INT CONST nr):INT 
+VAR b;TEXT VAR string:="";forget(queryfilename,quiet);queryfile:=
+sequentialfile(output,queryfilename);FOR bFROM 1UPTO getblockanzahlREP IF b=1
+THEN initqueryELSE verbund(b)FI PER ;.queryfilename:"QUERY."+text(nr).
+initquery:string:=bestimmeindexname(getobjektklasse(1),getleitindex);string
+CAT klammerauf;stringCAT getscan;stringCAT trenner;stringCAT trenner;putline(
+queryfile,string);string:="";IF getselektion>""THEN stringCAT "selektion"FI ;
+stringCAT trenner;putline(queryfile,string);string:="";stringCAT 
+bestimmeverbunde(1);stringCAT klammerzu;putline(queryfile,string);IF 
+getselektion>""THEN line(queryfile);string:="selektion: ";stringCAT 
+getselektion;stringCAT ".";putline(queryfile,string);FI .ENDPROC erzeugequery
+;ENDPACKET idagen
+

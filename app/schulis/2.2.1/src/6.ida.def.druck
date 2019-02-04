@@ -1,0 +1,64 @@
+PACKET ispidadefinitiondruckenDEFINES druckdefinitionzusammenstellen,
+benoetigteregel,idaankreuzfelderpruefen:LET druckfile="Hilfsdatei.Druck",
+filenamezug="Hilfsdatei.Zugriff",niltext="";LET maxobjektklassen=10,
+maxvariablen=100,zobjklasse=2;BOOL VAR ba,bb;INT VAR ia,ib,ic,id,ie,lva,lvb,
+regelnummer;REAL VAR ra,rb,rc;TEXT VAR ta,tb,tc;FILE VAR f,g;PROC 
+druckdefinitionzusammenstellen(PROC (INT CONST )indatei,ROW 100TEXT VAR feld)
+:forget(druckfile,quiet);f:=sequentialfile(output,druckfile);
+nameundtypindateischreiben;objektklassenindateischreiben;
+zugriffsregelnindateischreiben(PROC (INT CONST )indatei,feld);
+selektionenindateischreiben(PROC (INT CONST )indatei);
+druckformularindateischreiben;druckvariablenindateischreiben;
+wertefuerdruckindateischreiben;print(druckfile);END PROC 
+druckdefinitionzusammenstellen;PROC nameundtypindateischreiben:putline(f,
+niltext);getformularinfo(ta,ia,ba);putline(f,"Nummer:  "+text(ia));putline(f,
+"  Name:  "+ta);END PROC nameundtypindateischreiben;PROC 
+objektklassenindateischreiben:putline(f,niltext);putline(f,"Objektklassen");
+putline(f,niltext);FOR iaFROM 1UPTO maxobjektklassenREP ta:=getobjektklasse(
+ia);IF ta<>niltextTHEN putline(f,"k"+text(ia)+":  "+ta);ELSE LEAVE 
+objektklassenindateischreibenFI PER ;END PROC objektklassenindateischreiben;
+PROC zugriffsregelnindateischreiben(PROC (INT CONST )indatei,ROW 100TEXT VAR 
+feld):putline(f,niltext);putline(f,"Zugriffsregeln");putline(f,niltext);FOR 
+lvaFROM 1UPTO getanzahlregelnREP bb:=TRUE ;getzugriffsregel(lva,ib,ic,id,ie);
+regelnummer:=lva;IF getobjektklasse(ib)<>niltextTHEN feld[zobjklasse]:=text(
+ib);indatei(4);g:=sequentialfile(modify,filenamezug);FOR lvbFROM 1UPTO lines(
+g)REP toline(g,lvb);readrecord(g,tb);IF pos(tb,"</>")>0THEN 
+zeilezusammensetzen;putline(f,ta);bb:=FALSE FI PER ;FI PER .
+zeilezusammensetzen:IF bbTHEN ta:="k"+text(ib,2)+"r"+text(ic,2)+" : ";ELSE ta
+:=9*" "FI ;taCAT text(subtext(tb,pos(tb,"<#>")+3,pos(tb,"<!>")-1),25);taCAT 
+" : ";taCAT subtext(tb,pos(tb,"</>")+3).END PROC 
+zugriffsregelnindateischreiben;PROC selektionenindateischreiben(PROC (INT 
+CONST )indatei):putline(f,niltext);putline(f,"Selektionen");putline(f,niltext
+);FOR lvaFROM 1UPTO getanzahlselfelderREP getselektion(lva,ta,tb);IF subtext(
+tb,pos(tb,"</>")+3)<>niltextTHEN zeilezusammensetzen;putline(f,tc)FI PER .
+zeilezusammensetzen:tc:=text(ta,25);tcCAT " : ";tcCAT tb.END PROC 
+selektionenindateischreiben;PROC druckformularindateischreiben:putline(f,
+niltext);putline(f,"Druckformular");putline(f,niltext);g:=sequentialfile(
+modify,getformtextname);FOR iaFROM 1UPTO lines(g)REP toline(g,ia);readrecord(
+g,ta);changeall(ta,"#","\#");putline(f,ta);PER ;END PROC 
+druckformularindateischreiben;PROC druckvariablenindateischreiben:putline(f,
+niltext);putline(f,"Druckvariablen");putline(f,niltext);FOR iaFROM 1UPTO 
+maxvariablenREP getsteuercode(ia,ta,ib,ba,bb);IF ta<>niltextTHEN changeall(ta
+,"#","\#");putline(f,text(ia,3)+":  "+ta);put(f,"      Länge: "+text(ib,2)+
+"  rechts-/linksbündig: ");IF baTHEN putline(f,"rechtsbündig")ELSE putline(f,
+"linksbündig")FI FI PER END PROC druckvariablenindateischreiben;PROC 
+wertefuerdruckindateischreiben:putline(f,niltext);putline(f,
+"Werte für die Druckaufbereitung");putline(f,niltext);getdruckaufbereitung(ta
+,ra,rb,ia,rc);putline(f,"                  Schrifttyp: "+ta);putline(f,
+"          linker oberer Rand: "+text(rb,4,1)+" cm von oben");putline(f,
+"                            : "+text(ra,4,1)+" cm von links");putline(f,
+" Anzahl der Zeilen pro Seite: "+text(ia));putline(f,
+"Anzahl der Zeichen pro Zeile: "+subtext(text(rc),1,pos(text(rc),".")-1));
+END PROC wertefuerdruckindateischreiben;INT PROC benoetigteregel:regelnummer
+END PROC benoetigteregel;BOOL PROC idaankreuzfelderpruefen:LET 
+meldungalternative=56,zeileninobjektliste=18;LET niltext="";BOOL VAR 
+angekreuzt:=FALSE ;INT VAR lva,lvi;IF NOT richtigangekreuztTHEN 
+standardmeldung(meldungalternative,niltext);return(1);FALSE ELSE TRUE FI .
+richtigangekreuzt:FOR lvaFROM 1UPTO anzahlderbelegtenzeilen-1REP IF 
+standardmaskenfeld(lva*2)<>niltextTHEN IF angekreuztTHEN infeld(lva*2);LEAVE 
+richtigangekreuztWITH FALSE ELSE angekreuzt:=TRUE FI FI PER ;angekreuzt.
+anzahlderbelegtenzeilen:FOR lviFROM 1UPTO zeileninobjektlisteREP IF 
+standardmaskenfeld(lvi*2+1)=niltextTHEN LEAVE anzahlderbelegtenzeilenWITH lvi
+FI PER ;0.END PROC idaankreuzfelderpruefen;END PACKET ispidadefinitiondrucken
+;
+

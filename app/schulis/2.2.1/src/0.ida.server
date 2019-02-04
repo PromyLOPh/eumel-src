@@ -1,0 +1,51 @@
+PACKET idaserverDEFINES idaserver:LET ok=00,#SERVER M essages&E rrors#
+notfound=04,noform="",cformtextname="FORMTEXT.",#SERVER const#cformdataname=
+"FORMDATA.",putdatacode=10,#SERVER ordercodes#puttextcode=11,getdatacodeno=12
+,gettextcodeno=13,getdatacodename=19,gettextcodename=20,delcodeno=14,
+delcodename=16,existscodeno=15,existscodename=17,#initserver=18,#errornak=2,#
+EUMEL S ystemerrors#continuecode=100;#EUMEL S ystemcodes#DATASPACE VAR ds:=
+nilspace;#BOUND FORMULAR VAR form;#BOUND TEXT VAR errortext,formtext;TASK 
+VAR ordertask;INT VAR i,ordercode;ROW 100TEXT VAR formname;TEXT VAR id;FOR i
+FROM 1UPTO 100REP formname[i]:="";PER ;#TEXT PROC formtextname:cformtextname+
+text(getformularindex)ENDPROC formtextname;#TEXT PROC formdataname:
+cformdataname+text(getformularindex)ENDPROC formdataname;TEXT PROC 
+formtextname(TEXT CONST formnr):cformtextname+formnrENDPROC formtextname;
+TEXT PROC formdataname(TEXT CONST formnr):cformdataname+formnrENDPROC 
+formdataname;TEXT PROC searchid:INT VAR count;TEXT VAR returntext;formtext:=
+ds;returntext:=formtext;IF ordercode=delcodenameOR ordercode=existscodename
+OR ordercode=getdatacodenameTHEN searchheaderELSE returntextFI .searchheader:
+FOR countFROM 1UPTO 100REP IF formname[count]=formtextTHEN LEAVE searchid
+WITH text(count);FI ;PER ;noform.ENDPROC searchid;PROC server:SELECT 
+ordercodeOF CASE putdatacode:writeformdataCASE puttextcode:writeformtextCASE 
+getdatacodeno,getdatacodename:readformdataCASE gettextcodeno,gettextcodename:
+readformtextCASE delcodeno,delcodename:deleteformCASE existscodename,
+existscodeno:existsformOTHERWISE :errorstop("Unbekannter  Auftrag")ENDSELECT 
+;eventuellfehlerbehandlung;send(ordertask,ordercode,ds).
+eventuellfehlerbehandlung:IF iserrorTHEN ordercode:=errornak;errortext:=ds;
+errortext:=errormessage;clearerrorFI .writeformdata:putformular(ds);#form:=ds
+;#id:=text(getformularindex);i:=getformularindex;formname[i]:=getformularname
+;forget(formdataname,quiet);copy(ds,formdataname);forget(ds);ds:=nilspace;
+ordercode:=ok.writeformtext:#form:=ds;#id:=text(type(ds));forget(formtextname
+(id),quiet);type(ds,1003);copy(ds,formtextname(id));forget(ds);ordercode:=ok;
+ds:=nilspace.readformdata:id:=searchid;IF id=noformTHEN ordercode:=notfound;
+LEAVE readformdataFI ;forget(ds);IF exists(formdataname(id))THEN ordercode:=
+ok;ds:=old(formdataname(id));ELSE ds:=nilspace;ordercode:=notfoundFI .
+readformtext:id:=searchid;IF id=noformTHEN ordercode:=notfound;LEAVE 
+readformtextFI ;forget(ds);IF exists(formtextname(id))THEN ordercode:=ok;ds:=
+old(formtextname(id));ELSE ordercode:=notfound;ds:=nilspaceFI .ENDPROC server
+;PROC deleteform:id:=searchid;ordercode:=ok;IF id=noformTHEN LEAVE deleteform
+FI ;forget(formtextname(id),quiet);forget(formdataname(id),quiet);forget(ds);
+ds:=nilspace;ENDPROC deleteform;PROC existsform:id:=searchid;IF id=noform
+THEN ordercode:=notfoundELSE IF exists(formtextname(id))CAND exists(
+formdataname(id))THEN ordercode:=okELSE ordercode:=notfoundFI FI ;ENDPROC 
+existsform;PROC idaserver:globalmanager(PROC (DATASPACE VAR ,INT CONST ,INT 
+CONST ,TASK CONST )idaserver)ENDPROC idaserver;PROC idaserver(DATASPACE VAR 
+dsp,INT CONST orderp,phasep,TASK CONST ordertaskp):IF orderp>=continuecode
+AND ordertaskp=supervisorTHEN forget(dsp);spoolcommand(orderp)ELSE clearerror
+;enablestop;forget(ds);ds:=dsp;ordercode:=orderp;ordertask:=ordertaskp;server
+FI ENDPROC idaserver;PROC spoolcommand(INT CONST order):TEXT VAR commandline
+:="";enablestop;break(quiet);continue(order-continuecode);disablestop;REP 
+commanddialogue(TRUE );getcommand("ISP-IDA-MANAGER:",commandline);do(
+commandline)UNTIL NOT onlinePER ;commanddialogue(FALSE );break(quiet);
+setautonomEND PROC spoolcommand;ENDPACKET idaserver;
+

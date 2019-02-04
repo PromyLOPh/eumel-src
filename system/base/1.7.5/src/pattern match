@@ -1,0 +1,768 @@
+PACKET pattern match DEFINES                     (* Author: P.Heyderhoff *) 
+                                                 (* Date:   09.06.1986   *) 
+    -, 
+    OR, 
+    **, 
+    any, 
+    notion, 
+    bound, 
+    match, 
+    matchpos, 
+    matchend, 
+    somefix, 
+    UNLIKE, 
+    LIKE : 
+ 
+(*------- Operation codes of the internal intermeadiate language: --------*) 
+ 
+LET 
+    z        = ""0"", 
+    stopz    = ""1""0"", 
+    closez   = ""2""0"", 
+    closor   = ""2""0""3""0"", 
+    or       = ""3"", 
+    oralpha  = ""3""5"", 
+    open2    = ""4""0""4""0"", 
+    alpha    = ""5"", 
+    alphaz   = ""5""0"", 
+    lenz     = ""6""0"", 
+    nilz     = ""6""0""0""0""7""0"",      (* =    any (0)     *) 
+    starz    = ""7""0"", 
+    star     = ""8""0""2""7""0""1""0"",   (* =    any ** 1    *) 
+    powerz   = ""8""0"", 
+    powerz0  = ""8""0""1"", 
+    notionz  = ""9""0"", 
+    fullz    = ""10""0"", 
+    boundz   = ""11""0""; 
+(*------------------------------------------------------------------------*) 
+ 
+LET undefined = 0,                                   (* fixleft value     *) 
+    forcer    = 0,                                   (* vaHue parameter   *) 
+    delimiter = " !""#$%&'()*+,-./:;<=>?§^_`­";      (* for 'PROC notion' *) 
+ 
+TEXT OP - (TEXT CONST alphabet ): 
+     p:= ""; 
+     INT VAR j; 
+     FOR j FROM 0 UPTO 255 
+     REP IF   pos(alphabet,code(j)) = 0 
+         THEN p CAT code(j) 
+         FI 
+     PER; 
+     p 
+  ENDOP -; 
+ 
+TEXT OP OR (TEXT CONST a, b): 
+     open2 + notnil (a) + closor + notnil (b) + closez 
+  ENDOP OR; 
+ 
+TEXT OP ** (TEXT CONST p, INT CONST x): 
+     powerz + code (1+x) + notnil (p) + stopz 
+  ENDOP **; 
+ 
+TEXT CONST any:= starz; 
+ 
+TEXT PROC any (INT CONST n): 
+     TEXT VAR t:= "  "; 
+     replace (t, 1, ABSn); 
+     lenz + t + starz 
+  ENDPROC any; 
+ 
+TEXT PROC any (TEXT CONST a): alphaz + a + starz ENDPROC any; 
+ 
+TEXT PROC any (INT CONST n, TEXT CONST a): 
+     TEXT VAR t:= "  "; 
+     replace (t, 1, ABSn); 
+     lenz + t + alphaz + a + starz  
+  ENDPROC any; 
+ 
+TEXT PROC notion (TEXT CONST t): notionz + notnil(t) + stopz ENDPROC notion; 
+ 
+TEXT PROC notnil (TEXT CONST t): 
+     IF   t = "" 
+     THEN nilz 
+     ELSE t 
+     FI 
+  ENDPROC notnil; 
+ 
+TEXT CONST bound := boundz; 
+ 
+TEXT PROC full (TEXT CONST t): fullz + t + stopz ENDPROC full; 
+ 
+TEXT PROC match (INT CONST x): 
+     subtext (p, matchpos(x), matchend(x)) 
+  ENDPROC match; 
+ 
+INT PROC matchpos (INT CONST x): mapos (1 + x MOD 256) ENDPROC matchpos; 
+ 
+INT PROC matchend (INT CONST x): maend (1 + x MOD 256) - 1 
+ ENDPROC matchend; 
+ 
+(*----------------- GLOBAL VARIABLES: -----------------------------------*) 
+ 
+ROW  256 INT VAR 
+                 (* Table of match registers. Each entry consists of two *) 
+                 (* pointers, which points to the TEXT object 't'        *) 
+     mapos,      (* points to the beginning of the match                 *) 
+     maend;      (* points to the position after the end of match        *) 
+ 
+INT  VAR ppos, tpos,   (* workpositions in pattern 'p' and text 't'      *) 
+         floatpos,     (* accumulation of all pending floatlengths       *) 
+         failpos,      (* result of 'PROC in alpha'                      *) 
+         plen, tlen,   (* length of pattern 'p' and length of text 't'   *) 
+         skipcount,    (* for track forward skipping                     *) 
+         multi, vari;  (* for handling of nonexclusive alternatives      *) 
+ 
+TEXT VAR p,            (* the pattern to be find  or some result         *) 
+         stack,        (* stack of pending assignments                   *) 
+         alphabet:=""; (* result of 'PROC find alpha', reset to nil      *) 
+                       (* after its usage by 'find any'                  *) 
+ 
+BOOL VAR fix,          (* text position is fixed and not floating        *) 
+         no vari;      (* not variing the order of alternatives          *) 
+ 
+TEXT PROC somefix (TEXT CONST pattern): 
+  
+     (* delivers the first text occuring unconditionally in the pattern *) 
+ 
+     p:= pattern; 
+     INT VAR j:= 1, n:= 0, k, len:= LENGTH p; 
+     REP 
+         SELECT text( subtext (p, j, j+1), 2) ISUB 1 OF 
+         CASE 1,3,7,9,10,11: j INCR 2 
+         CASE 2:             j INCR 2; n DECR 1 (* condition closed *) 
+         CASE 4:             j INCR 2; n INCR 1 (* condition opened *) 
+         CASE 5:             j := pos (p, starz, j+2) + 2 
+         CASE 6:             j INCR 4 
+         CASE 8:             j INCR 3 
+         OTHERWISE   k:= pos(p, z, j+1) - 1; 
+                     IF k <= 0 THEN k:= 1+len FI; 
+                     IF   star found
+                     THEN change (p, starpos, starpos, star);
+                          len:= LENGTH p;
+                          k:= starpos
+                     FI; 
+                     IF n =  0 CAND ( p SUB k ) <> or CAND k > j
+                     THEN LEAVE somefix WITH subtext(p,j,k-1) 
+                     ELSE j:=k 
+                     FI 
+         ENDSELECT 
+     UNTIL j > len 
+     PER; 
+     "" .
+
+  star found:   
+     INT VAR starpos:= pos (p, "*", j);
+     starpos > 0 CAND starpos <= k .
+     
+  ENDPROC somefix; 
+ 
+PROC skip (TEXT CONST p, BOOL CONST upto or): 
+ 
+     (* skips 'ppos' upto the end of the opened nest, n = nesting level *) 
+ 
+     INT VAR n:= 0; 
+     REP 
+         SELECT text (subtext (p, ppos, ppos+1), 2) ISUB 1 OF 
+         CASE 1,2:    IF   n = 0 
+                      THEN LEAVE skip 
+                      FI; 
+                      ppos INCR 2; 
+                      nDECR1 
+         CASE 3:      IF   n = 0 CAND upto or 
+                      THEN LEAVE skip 
+                      FI; 
+                      ppos INCR 2 
+         CASE 7:      ppos INCR 2 
+         CASE 4,9,10,11: ppos INCR 2; 
+                      n INCR 1 
+         CASE 5:      ppos:= pos (p, starz, ppos+2) + 2 
+         CASE 6:      ppos INCR 4 
+         CASE 8:      ppos INCR 3; 
+                      n INCR 1 
+         OTHERWISE    ppos:= pos(p, z, ppos+1) - 1; 
+                      IF   ppos < 0 
+                      THEN ppos:= plen; 
+                           LEAVE skip 
+                      FI 
+         ENDSELECT 
+     PER 
+  ENDPROC skip; 
+ 
+BOOL OP UNLIKE (TEXT CONST t, p): NOT ( t LIKE p ) ENDOP UNLIKE; 
+ 
+BOOL OP LIKE (TEXT CONST t, pattern): 
+     init; 
+     BOOL CONST found:= find (t,1,1, fixresult, floatresult); 
+     save; 
+     found. 
+ 
+  init:    no vari:= TRUE; 
+           vari:= 0; 
+           tlen:= 1 + LENGTH t; 
+           p:= full (pattern); 
+           IF   pos (p, bound) > 0 
+           THEN 
+                IF   subtext (p, 14, 15) = bound 
+                THEN p:= subtext (p, 1, 8) + powerz0 + subtext (p, 16) 
+                FI; 
+                plen:= LENGTH p - 7;  
+                IF   subtext (p, plen, plen+1) = bound  
+                THEN p:= subtext (p, 1, plen - 1) + stopz + stopz 
+                FI; 
+           FI; 
+           plen:= LENGTH p + 1; 
+           INT VAR fixresult, floatresult; 
+           tpos:= 1; 
+           floatpos:= 0; 
+           stack:= ""; 
+           alphabet:= ""; 
+           fix:= TRUE; 
+           skipcount:= 0; 
+           multi:= 0. 
+ 
+  save:    p:= t 
+ 
+  ENDOP LIKE; 
+ 
+(*-------- Realisation of the pattern matching algorithms 'find' --------*) 
+ 
+BOOL PROC find 
+     (TEXT CONST t, INT CONST unit, from, INT VAR fixleft, floatlen): 
+ 
+     initialize; 
+     BOOL CONST found:= pattern unit; 
+     SELECT next command * unit OF 
+            CASE 0,1,2:         found 
+            CASE 3:             next; 
+                                find alternative 
+            OTHERWISE           find concatenation 
+     ENDSELECT . 
+ 
+  find alternative: 
+     IF   found 
+     THEN save left position; 
+          backtrack; 
+          IF   find pattern CAND better 
+          THEN note multiplicity 
+          ELSE back to first one 
+          FI 
+     ELSE backtrack multi 
+     FI. 
+ 
+  better:               permutation XOR more left. 
+ 
+  permutation:          vari MOD 2 = 1. 
+ 
+  save left position:   j:= fixleft. 
+ 
+  more left:            j > fixleft. 
+ 
+  backtrack multi:      multi:= 2 * backmulti + 1; 
+                        vari:= backvari DIV 2; 
+                        find pattern. 
+ 
+  note multiplicity:    multi:= 2 * multi + 1; 
+                        vari:= vari DIV 2; 
+                        TRUE. 
+ 
+  back to first one:    backtrack; 
+                        IF   find first subpattern 
+                        THEN skip (p, FALSE); 
+                             note multiplicity 
+                        ELSE errorstop ("pattern"); 
+                             FALSE 
+                        FI. 
+ 
+  find concatenation: 
+     IF   found 
+     THEN IF ppos=plen COR find pattern COR track forward 
+          COR ( multi > backmulti CAND vari = 0 CAND find variation ) 
+          THEN TRUE 
+          ELSE backtrack; FALSE 
+          FI 
+     ELSE skip (p, TRUE); FALSE 
+     FI. 
+ 
+  track forward:                   (* must be performed before variation *) 
+     j:=0; 
+     last multi:= multi; 
+     last vari:= vari; 
+     WHILE skipcount = 0 
+     REP   IF tlen = tpos 
+           THEN LEAVE track forward WITH FALSE 
+           FI; 
+           backtrack; 
+           j INCR 1; 
+           skipcount:= j 
+     UNTIL find first subpattern CAND find pattern 
+     PER; 
+     j:= skipcount; 
+     skipcount:=0; 
+     j=0. 
+ 
+  find variation: 
+     multi:= last multi; 
+     vari:= last vari; 
+     FOR k FROM 1 UPTO (multi+1) DIV (backmulti+1) - 1 
+     REP backtrack with variation; 
+         IF   find first subpattern CAND find pattern 
+         THEN vari:=0; 
+              LEAVE find variation WITH TRUE 
+         FI 
+     PER; 
+     FALSE. 
+ 
+  backtrack with variation: 
+     backtrack; 
+     vari:= k. 
+ 
+  find pattern: 
+     find (t, 1, ppos+forcer, fixresult, floatresult) CAND keep result. 
+ 
+  find first subpattern: 
+     find (t, 0, from, fixresult, floatresult) CAND keep result . 
+ 
+  initialize: 
+     INT  VAR   j, 
+                k, 
+                fixresult, 
+                floatresult, 
+                last multi, 
+                last vari; 
+     BOOL CONST backfix:= fix; 
+     TEXT CONST backstack:= stack; 
+     floatlen:= 0; 
+     INT  CONST back:= tpos, 
+                backfloat:= floatpos, 
+                backskip:= skipcount, 
+                backmulti:= multi, 
+                backvari:= vari; 
+     fixleft:= fixleft0. 
+ 
+  fixleft0: IF fix THEN back ELSE undefined FI. 
+ 
+  backtrack: 
+     fix:= backfix; 
+     tpos:= back; 
+     fixleft:= fixleft0; 
+     floatlen:= 0; 
+     floatpos:= backfloat; 
+     stack:= backstack; 
+     skipcount:= backskip; 
+     multi:= backmulti; 
+     vari:= backvari. 
+ 
+  keep result: 
+     IF   fixleft = undefined 
+     THEN IF   fixresult = undefined 
+          THEN floatlen INCR floatresult 
+          ELSE fixleft  := fixresult - floatlen; 
+               floatpos DECR floatlen; 
+               floatlen:= 0 
+          FI 
+     FI; 
+     TRUE. 
+ 
+  pattern unit: 
+     init ppos; 
+     SELECT command OF 
+            CASE 1,2:   find end 
+            CASE 3:     find nil 
+            CASE 4:     find choice 
+            CASE 5:     find alphabet 
+            CASE 6:     find fixlength any 
+            CASE 7:     find varlength any 
+            CASE 8:     find and store match 
+            CASE 9:     find notion 
+            CASE 10:    find full 
+            CASE 11:    next; find nil 
+            OTHERWISE   find plain text                     END SELECT. 
+ 
+  init ppos:    ppos:= from + 2. 
+ 
+  command:      text (subtext (p, from, from+1), 2) ISUB 1. 
+ 
+  next command: text (subtext (p, ppos, ppos+1), 2) ISUB 1. 
+ 
+  next:         ppos INCR 2. 
+ 
+  find end:     ppos DECR 2; 
+                fixleft:= tpos; 
+                LEAVE find WITH TRUE; 
+                TRUE. 
+ 
+  find nil:     ppos DECR 2; 
+                fixleft:= tpos; 
+                TRUE. 
+ 
+  find choice:  IF   find pattern 
+                THEN next; TRUE 
+                ELSE next; FALSE 
+                FI. 
+ 
+  find plain text: find text upto next command; 
+                   IF   fix        THEN allow fix position only 
+                   ELIF text found THEN allow variable position 
+                                   ELSE allow backtrack 
+                   FI. 
+ 
+  find text upto next command: 
+     ppos:= pos (p, z, from + 1); 
+     IF   ppos = 0 
+     THEN ppos:= plen 
+     ELSE ppos DECR 1 
+     FI; 
+     IF   star found
+     THEN change (p, starpos, starpos, star);
+          plen:= 1 + LENGTH p;
+          ppos:= starpos
+     FI;     
+     tpos:= pos (t, subtext (p, from, ppos - 1), tpos). 
+ 
+  star found:
+     INT VAR starpos:= pos (p, "*", from);
+     starpos > 0 CAND starpos <= ppos .
+
+  text found: 
+     WHILE skipcount > 0 CAND tpos > 0 
+     REP   skipcount DECR 1; 
+           tpos:= pos (t, subtext(p,from,ppos-1), tpos+1) 
+     PER; 
+     tpos > 0 .
+ 
+  allow fix position only: 
+     IF   tpos = back 
+     THEN tpos INCR (ppos-from); TRUE 
+     ELSE tpos:= back; 
+          from = ppos 
+     FI. 
+ 
+  allow variable position: 
+     IF   alphabet = "" COR in alpha (t, back, tpos)  
+     THEN fix it; 
+          tpos INCR (ppos-from); 
+          TRUE 
+     ELSE tpos:= back; 
+          FALSE 
+     FI. 
+ 
+  allow backtrack: 
+     tpos:= back; 
+     IF   from = ppos 
+     THEN fix it; 
+          TRUE 
+     ELSE FALSE 
+     FI . 
+ 
+  find alphabet: 
+     j:= pos (p, starz, ppos); 
+     alphabet:= subtext (p, ppos, j-1); 
+     ppos := j; 
+     TRUE. 
+ 
+  find fixlength any: 
+     get length value; 
+     find alpha attribut; 
+     IF   alphabet = "" 
+     THEN find any with fix length 
+     ELSE find any in alphabet with fix length 
+     FI. 
+ 
+  get length value: 
+     floatlen:= subtext(p, ppos, ppos+1) ISUB 1;
+     ppos INCR 4. 
+ 
+  find alpha attribut: 
+     IF (p SUB (ppos-2)) = alpha CAND find alphabet 
+     THEN next 
+     FI. 
+ 
+  find any with fix length: 
+     tpos INCR floatlen; 
+     IF   tpos > tlen 
+     THEN tpos:= back; 
+          floatlen:=0; 
+          FALSE 
+     ELSE IF   fix THEN floatlen:= 0 
+          ELIF floatlen = 0 
+          THEN fix it                         (* unlike niltext 6.6. *) 
+          ELSE floatpos INCR floatlen 
+          FI; 
+          TRUE 
+     FI. 
+ 
+  find any in alphabet with fix length: 
+     IF   first character in alpha 
+     THEN IF NOT fix THEN fix it FI; 
+          set fix found 
+     ELSE set fix not found 
+     FI. 
+ 
+  first character in alpha: 
+    (fix COR advance) CAND in alpha (t, tpos, tpos+floatlen). 
+ 
+  advance: 
+     FOR tpos FROM back UPTO tlen 
+     REP IF   pos (alphabet, t SUB tpos) > 0 
+         THEN LEAVE advance WITH TRUE 
+         FI 
+     PER; 
+     FALSE. 
+ 
+  fix it: 
+     fixleft:= back-floatpos; 
+     make fix (back); 
+     fixleft:= tpos. 
+ 
+  set fix found: 
+     tpos INCR floatlen; 
+     floatlen:= 0; 
+     alphabet:= ""; 
+     TRUE. 
+ 
+  set fix not found:    tpos:= back; 
+                        alphabet:= ""; 
+                        floatlen:= 0; 
+                        FALSE. 
+ 
+  find varlength any:   IF   alphabet = "" 
+                        THEN really any 
+                        ELSE find varlength any in alphabet 
+                        FI. 
+ 
+  really any:           IF   fix 
+                        THEN fix:= FALSE; 
+                             fixleft:= tpos 
+                        ELIF floatpos = 0 
+                        THEN fixleft:= tpos                  (* 6.6. *) 
+                        FI; 
+                        TRUE . 
+ 
+  find varlength any in alphabet: 
+                        IF fix THEN fixleft := tpos FI; 
+                        IF   fix CAND pos (alphabet, t SUB tpos) > 0 
+                        COR  NOT fix CAND advance 
+                        THEN IF NOT fix THEN fix it FI; 
+                             set var found 
+                        ELSE set var not found 
+                        FI. 
+ 
+  set var found:        tpos:= end of varlength any; 
+                        alphabet:= ""; 
+                        TRUE. 
+  set var not found:    tpos:= back; 
+                        alphabet:= ""; 
+                        FALSE. 
+  end of varlength any: IF   NOT in alpha(t,tpos,tlen) 
+                        THEN failpos 
+                        ELSE tlen 
+                        FI. 
+ 
+  find and store match: get register name; 
+                        IF  find pattern 
+                        THEN next; 
+                             store; 
+                             TRUE 
+                        ELSE next; 
+                             FALSE 
+                        FI. 
+ 
+  store:                IF   fix 
+                        THEN mapos (reg):= fixleft; 
+                             maend (reg):= tpos 
+                        ELSE stack CAT code(floatlen) + 
+                                       code(floatpos) + code(fixleft) + c 
+                        FI. 
+ 
+  get register name:    TEXT CONST c:= p SUB (ppos); 
+                        INT  VAR reg:= code (c); 
+                        ppos INCR 1. 
+ 
+  find notion:    float notion; 
+                  exhaust notion . 
+ 
+  float notion:   j:= back; 
+                  REP IF   find pattern 
+                      THEN IF   is notion (t, fixleft) 
+                           THEN LEAVE find notion WITH TRUE 
+                           ELIF backfix 
+                           THEN LEAVE float notion 
+                           ELSE go ahead FI 
+                      ELIF j=back 
+                      THEN next; 
+                           LEAVE find notion WITH FALSE 
+                      ELSE LEAVE float notion 
+                      FI 
+                  PER. 
+ 
+  go ahead:       j INCR 1; 
+                  IF simple THEN j:= max (tpos, j) FI; 
+                  notion backtrack. 
+ 
+  simple:         k:= from; 
+                  REP k := pos (p, z, k+2); 
+                      IF   k > ppos-3 
+                      THEN LEAVE simple WITH TRUE 
+                      ELIF pos (oralpha, p SUB k-1) > 0 
+                      THEN LEAVE simple WITH FALSE 
+                      FI 
+                  PER; 
+                  FALSE. 
+ 
+  notion backtrack: tpos:= j; 
+                  fix:= backfix; 
+                  fixleft:= fixleft0; 
+                  floatlen:= 0; 
+                  floatpos:= backfloat + tpos - back; 
+                  stack:= backstack; 
+                  ppos:= from + 2 . 
+ 
+  exhaust notion: IF   notion expansion 
+                  COR  multi > backmulti 
+                  CAND no vari 
+                  CAND notion variation 
+                  THEN TRUE 
+                  ELSE backtrack; FALSE 
+                  FI. 
+ 
+  notion expansion: j:= 0; 
+                  multi:= last multi; 
+                  vari:= last vari; 
+                  WHILE skipcount = 0 
+                  REP skip and try PER; 
+                  j:= skipcount; 
+                  skipcount:= 0; 
+                  j = 0. 
+ 
+  skip and try:   backtrack; 
+                  j INCR 1; 
+                  skipcount:=j; 
+                  ppos:= from + 2; 
+                  IF   find pattern 
+                  THEN IF    is notion (t, fixleft) 
+                       THEN  LEAVE find notion WITH TRUE 
+                       FI 
+                  ELSE next; LEAVE find notion WITH FALSE 
+                  FI . 
+ 
+  notion variation: no vari:= FALSE; 
+                  last multi:= multi; 
+                  last vari:= vari; 
+                  FOR k FROM 1 UPTO (multi+1) DIV (backmulti+1) - 1 
+                  REP backtrack with variation; 
+                      IF   find first subpattern 
+                      THEN no vari:= TRUE; 
+                           LEAVE find notion WITH TRUE 
+                      FI 
+                  PER; 
+                  no vari:= TRUE; 
+                  FALSE. 
+ 
+  find full: 
+    find pattern CAND (end of line COR exhaust line). 
+ 
+  end of line: 
+    next; 
+    IF   fix 
+    THEN tpos = tlen 
+    ELSE tpos:= tlen; 
+         make fix (1); 
+         TRUE 
+    FI. 
+ 
+  exhaust line: 
+    IF   full expansion COR multi > 0 CAND no vari CAND full variation 
+    THEN TRUE ELSE backtrack; 
+         FALSE 
+    FI. 
+ 
+  full expansion: 
+     j:=0; 
+     last multi:= multi; 
+     last vari:= vari; 
+     WHILE skipcount = 0 
+     REP   IF tlen = tpos 
+           THEN LEAVE full expansion WITH FALSE 
+           FI; 
+           backtrack; 
+           j INCR 1; 
+           skipcount:= j; 
+           ppos:=from + 2 
+     UNTIL find pattern CAND tpos=tlen 
+     PER; 
+     j:= skipcount; 
+     skipcount:=0; 
+     j=0. 
+ 
+  full variation: 
+    no vari:= FALSE; 
+    multi:= last multi; 
+    vari:= last vari; 
+    FOR k FROM 1 UPTO multi 
+    REP backtrack with variation; 
+        IF   find first subpattern 
+        THEN no vari:= TRUE; 
+             LEAVE find WITH TRUE 
+        FI 
+    PER; 
+    no vari:= TRUE; 
+    FALSE. 
+ 
+ ENDPROC find; 
+ 
+BOOL PROC is notion (TEXT CONST t, INT CONST fixleft): 
+     ppos INCR 2; 
+     (    NOT  fix 
+          COR  tpos = tlen 
+          COR  pos (delimiter, t SUB tpos)   > 0 
+          COR  pos (delimiter, t SUB tpos-1) > 0 
+          COR  (t SUB tpos)  <= "Z" 
+          CAND (t SUB tpos-1) > "Z"   ) 
+     CAND (    fixleft <= 1 
+          COR  pos (delimiter, t SUB fixleft-1) > 0 
+          COR  pos (delimiter, t SUB fixleft)   > 0 
+          COR  (t SUB fixleft)    > "Z" 
+          CAND (t SUB fixleft-1) <= "Z"   ) 
+ 
+ END PROC is notion; 
+ 
+PROC make fix (INT CONST back): 
+     WHILE stack not empty 
+     REP  INT VAR reg:= code (stack SUB top), 
+                  pos:= code (stack SUB top-1), 
+                  len:= code (stack SUB top-3), 
+                  dis:= code (stack SUB top-2) - floatpos; 
+          maend(reg):= min (tpos + dis, tlen);              (* 6.6. *) 
+          mapos(reg):= pos or fix or float; 
+          stack:= subtext (stack,1,top-4) 
+     PER; 
+     fix:= TRUE; 
+     floatpos:= 0 . 
+ 
+     stack not empty: INT VAR top:= LENGTH stack; 
+                      top > 0. 
+ 
+     pos or fix or float: 
+          IF   pos = undefined 
+          THEN IF len = 0 
+               THEN min (back + dis, tlen) 
+               ELSE maend(reg) - len 
+               FI 
+          ELSE pos 
+          FI. 
+ 
+ ENDPROC make fix; 
+ 
+BOOL PROC in alpha (TEXT CONST t, INT CONST from, to): 
+     FOR failpos FROM from UPTO to - 1 
+     REP IF   pos (alphabet, t SUB failpos) = 0 
+         THEN LEAVE in alpha WITH FALSE 
+         FI 
+     PER; 
+     TRUE 
+  ENDPROC in alpha; 
+ 
+TEXT PROC notion (TEXT CONST t, INT CONST r): notion (t) ** r ENDPROC notion; 
+ 
+ENDPACKET pattern match; 
+

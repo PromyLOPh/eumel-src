@@ -1,0 +1,770 @@
+PACKET apple laser writer printer
+ 
+(**************************************************************************)
+(*                                                Stand   : 24.02.88      *)
+(*  APPLE LaswerWriter (PostScript)               Verison : 4             *)
+(*                                                Autor   : Rudolf Ruland *)
+(**************************************************************************)
+ 
+       DEFINES open,
+               close,
+               execute,
+ 
+               paper size,
+               paper x size,
+               paper y size,
+
+               load positioning procs,
+               load underline procs,
+               load italics procs,
+               load encoding,
+
+               read ps input,
+
+               box commands,
+               insert box command,
+               delete box command,
+
+               print error,
+               :
+ 
+LET
+(*  underline           =  1,
+    bold                =  2,
+    italics             =  4,
+    reverse             =  8,
+*) 
+    underline linetype  =  1,
+ 
+    c document          =  1,
+    c page              =  2,
+ 
+    c write text        =  1,
+    c write cmd         =  2,
+    c carriage return   =  3, 
+    c move              =  4,
+    c draw              =  5,
+    c on                =  6, 
+    c off               =  7,
+    c type              =  8,
+ 
+    ps input name       =  "PostScript.input",
+    ps error            =  999,
+
+    tag type            =  1;
+
+INT VAR paper length, font no, underline no, symbol type;
+REAL VAR x size, y size;
+BOOL VAR is landscape;
+TEXT VAR record, char, command, symbol;
+FILE VAR ps input;
+THESAURUS VAR box cmds := empty thesaurus;
+
+(*********************************************************************)
+ 
+paper size (21.0, 29.7);
+ 
+PROC paper size (REAL CONST x, y) :
+ 
+  x size := x;
+  y size := y;
+ 
+END PROC paper size;
+ 
+PROC paper size : 
+ 
+  line;
+  putline ("Papierbreite  =  " + text (x size, 5, 2) + " cm  =  " + text (x size / 2.54, 5, 2) + " Zoll");
+  putline ("Papierlaenge  =  " + text (y size, 5, 2) + " cm  =  " + text (y size / 2.54, 5, 2) + " Zoll");
+ 
+END PROC paper size;
+ 
+REAL PROC paper x size : x size END PROC paper x size;
+
+REAL PROC paper y size : y size END PROC paper y size;
+
+
+THESAURUS PROC box commands : box cmds END PROC box commands;
+
+PROC insert box command (TEXT CONST new command) :
+
+  command := new command;
+  change all (command, " ", "");
+  insert (box cmds, command)
+
+END PROC insert box command;
+
+PROC delete box command (TEXT CONST old command) :
+
+  INT VAR dummy;
+  command := old command;
+  change all (command, " ", "");
+  delete (box cmds, command, dummy)
+
+END PROC delete box command;
+
+(*********************************************************************)
+ 
+PROC open (INT CONST op code, INT VAR param1, param2) :
+ 
+SELECT op code OF
+  CASE c document : open document 
+  CASE c page     : open page
+END SELECT; 
+ 
+ 
+. x steps : param1
+. y steps : param2
+. 
+  open document :
+    IF pos (material, "landscape") > 0 OR pos (material, "quer") > 0
+       THEN is landscape := TRUE;
+            x steps      := x step conversion ( y size );
+            y steps      := y step conversion ( x size );
+       ELSE is landscape := FALSE;
+            x steps      := x step conversion ( x size );
+            y steps      := y step conversion ( y size );
+    FI;
+    forget (ps input name, quiet);
+    ps input     := sequential file (output, ps input name);
+    paper length := y steps;
+    font no      := 0;
+    underline no := 0;
+    disable stop;
+    out (""4"");
+    read ps input (ps input, 18000, ""4"");
+    clear error;
+    enable stop;
+    out ("initgraphics erasepage statusdict /waittimeout 3000 put ");
+    load positioning procs;
+    load underline procs;
+    load italics procs;
+    load encoding;
+    read ps input (ps input, 0, "");
+ 
+. x start : param1
+. y start : param2
+. 
+  open page :
+    x start := 0;
+    y start := 0;
+    IF   pos (material, "tray") > 0
+         THEN out ("statusdict /manualfeed false put ");
+    ELIF pos (material, "manual") > 0
+         THEN out ("statusdict /manualfeed true put statusdict /manualfeedtimeout 3600 put ");
+    FI;
+    IF material contains a number
+       THEN out ("/#copies "); out (number); out ("def ");
+    FI;
+    IF is landscape
+       THEN out (paper length);
+            out ("ys 0 translate 90 rotate ");
+    FI;
+    read ps input (ps input, 0, "");
+ 
+    . material contains a number :
+        INT VAR number := pos (material, "0", "9", 1);
+        IF number = 0
+           THEN FALSE
+           ELSE number := max (1, int (subtext (material, number, number + 1)));
+                TRUE
+        FI
+ 
+END PROC open; 
+ 
+ 
+PROC close (INT CONST op code, INT CONST param1) :
+ 
+SELECT op code OF
+  CASE c document : close document 
+  CASE c page     : close page
+  OTHERWISE : put (param1)
+END SELECT; 
+ 
+. 
+  close document :
+    disable stop;
+    out (""4"");
+    read ps input (ps input, 18000, ""4"");
+
+ 
+(*. remaining y steps : param1*)
+.
+  close page :
+    outline ("showpage"); 
+    read ps input (ps input, 0, "");
+ 
+END PROC close;
+ 
+ 
+PROC execute (INT CONST op code, TEXT CONST string, INT CONST param1, param2) :
+ 
+SELECT op code OF
+  CASE c write text       :  write text
+  CASE c write cmd        :  write cmd
+  CASE c carriage return  :  carriage return
+  CASE c move             :  move
+  CASE c draw             :  draw
+  CASE c on               :  on
+  CASE c off              :  off
+  CASE c type             :  type
+END SELECT
+
+ 
+. from : param1
+. to   : param2
+.
+  write text :
+    out ("(");
+    out subtext (string, from, to);
+    out (") show ");
+.
+  write cmd :
+    command := subtext (string, from, to);
+    IF is box cmd
+       THEN disable stop;
+            do (command);
+            clear error;
+       ELSE out (command);
+            out (" ");
+    FI;
+ 
+    . is box cmd :
+        scan (command);
+        next symbol (symbol, symbol type);
+        (symbol type = tag type) CAND (box cmds CONTAINS symbol)
+ 
+ 
+(*. x steps to left margin : param1*)
+.
+  carriage return :
+    move to (0, y pos);
+    line;
+    read ps input (ps input, 0, "");
+ 
+
+. x steps : param1
+. y steps : param2
+
+.
+  move :
+    move to (x pos, y pos);
+ 
+. 
+  draw :
+    IF y steps <> 0 COR x steps < 0 COR linetype <> underline linetype
+       THEN stop
+       ELSE IF underline no <> font no THEN out ("lu ") FI;
+            out (x steps); 
+            out ("ul ");
+    FI;
+
+ 
+. modification : param1
+.
+  on :
+    IF on string (modification) <> ""
+       THEN out (on string (modification));
+            out (" ");
+       ELSE stop
+    FI
+ 
+.
+  off :
+    IF off string (modification) <> ""
+       THEN out (off string (modification));
+            out (" ");
+       ELSE stop
+    FI
+ 
+ 
+. font nr : param1
+.
+  type :
+    font no := font nr;
+    out (fontstring (font nr));
+    out (" /af exch def af setfont ");
+ 
+END PROC execute;
+ 
+ 
+PROC move to (INT CONST x, y) :
+
+  out (x);                out ("xs ");
+  out (paper length - y); out ("ys moveto ");
+
+END PROC move to;
+
+
+PROC line                        : out (""13""10"")               END PROC line;
+
+PROC outline (TEXT CONST string) : out (string); out (""13""10"") END PROC outline;
+
+PROC out     (INT  CONST value)  : out (text (value)); out (" ")  END PROC out;
+
+PROC out     (REAL CONST value)  : out (text (value)); out (" ")  END PROC out;
+
+
+PROC load positioning procs :
+
+  out ("/xs {"); out (72.0 / 2.54 * x step conversion (1)); out ("mul} def ");
+  out ("/ys {"); out (72.0 / 2.54 * y step conversion (1)); out ("mul} def ");
+
+END PROC load positioning procs;
+
+
+PROC load underline procs :
+
+  out ("/ul {xs ut setlinewidth 0 up rmoveto dup gsave 0 rlineto stroke grestore up neg rmoveto} def ");
+  out ("/lu {af /FontMatrix get 3 get af /FontInfo get 2 copy /up 3 1 roll /UnderlinePosition get mul 3 mul def /ut 3 1 roll /UnderlineThickness get mul def} def ");
+
+END PROC load underline procs;
+
+
+PROC load italics procs :
+
+  out ("/iton {/m matrix def m 2 12 sin 12 cos div put af m makefont setfont} def ");
+  out ("/itoff {af setfont} def ");
+
+END PROC load italics procs;
+
+
+PROC load encoding :
+
+  out ("/reencsmalldict 12 dict def ");
+  out ("/ReEncodeSmall {reencsmalldict begin ");
+  out ("/newcodesandnames exch def /newfontname exch def /basefontname exch def ");
+  out ("/basefontdict basefontname findfont def /newfont basefontdict maxlength dict def ");
+  out ("basefontdict {exch dup /FID ne {dup /Encoding eq {exch dup length array copy newfont 3 1 roll put} {exch newfont 3 1 roll put} ifelse} {pop pop} ifelse} forall ");
+  out ("newfont /FontName newfontname put newcodesandnames aload pop newcodesandnames length 2 idiv {newfont /Encoding get 3 1 roll put} repeat ");
+  out ("newfontname newfont definefont pop ");
+  out ("end} def ");
+  out ("/eumelencoding[10#128 /Ccedilla 10#129 /udieresis 10#128 /Ccedilla 10#129 /udieresis ");
+  out ("10#130 /eacute 10#131 /acircumflex 10#132 /adieresis 10#133 /agrave 10#134 /aring 10#135 /ccedilla 10#136 /ecircumflex 10#137 /edieresis 10#138 /egrave 10#139 /idieresis ");
+  out ("10#140 /icircumflex 10#141 /igrave 10#142 /Adieresis 10#143 /Aring 10#144 /Eacute 10#145 /ae 10#146 /AE 10#147 /ocircumflex 10#148 /odieresis 10#149 /ograve ");
+  out ("10#150 /ucircumflex 10#151 /ugrave 10#152 /ydieresis 10#153 /Odieresis 10#154 /Udieresis 10#155 /cent 10#156 /sterling 10#157 /yen 10#158 /currency 10#159 /florin ");
+  out ("10#160 /aacute 10#161 /iacute 10#162 /oacute 10#163 /uacute 10#164 /ntilde 10#165 /Ntilde 10#166 /ordfeminine 10#167 /ordmasculine 10#168 /questiondown 10#169 /quotedblleft ");
+  out ("10#170 /quotedblright 10#171 /guilsinglleft 10#172 /guilsinglright 10#173 /exclamdown 10#174 /guillemotleft 10#175 /guillemotright 10#176 /atilde 10#177 /otilde 10#178 /Oslash 10#179 /oslash ");
+  out ("10#180 /oe 10#181 /OE 10#182 /Agrave 10#183 /Atilde 10#184 /Otilde 10#185 /section 10#186 /daggerdbl 10#187 /dagger 10#188 /paragraph 10#189 /space ");
+  out ("10#190 /space 10#191 /space 10#192 /quotedblbase 10#193 /ellipsis 10#194 /perthousand 10#195 /bullet 10#196 /endash 10#197 /emdash 10#198 /space 10#199 /Aacute ");
+  out ("10#200 /Acircumflex 10#201 /Egrave 10#202 /Ecircumflex 10#203 /Edieresis 10#204 /Igrave 10#205 /Iacute 10#206 /Icircumflex 10#207 /Idieresis 10#208 /Ograve 10#209 /Oacute ");
+  out ("10#210 /Ocircumflex 10#211 /Scaron 10#212 /scaron 10#213 /Ugrave 10#214 /Adieresis 10#215 /Odieresis 10#216 /Udieresis 10#217 /adieresis 10#218 /odieresis 10#219 /udieresis ");
+  out ("10#220 /k 10#221 /hyphen 10#222 /numbersign 10#223 /space 10#224 /grave 10#225 /acute 10#226 /circumflex 10#227 /tilde 10#228 /dieresis 10#229 /ring ");
+  out ("10#230 /cedilla 10#231 /caron 10#232 /Lslash 10#233 /Oslash 10#234 /OE 10#235 /ordmasculine 10#236 /Uacute 10#237 /Ucircumflex 10#238 /Ydieresis 10#239 /germandbls ");
+  out ("10#240 /Zcaron 10#241 /zcaron 10#242 /fraction 10#243 /ae ");
+  out ("10#251 /germandbls 10#252 /section] def ");
+  out ("/Helvetica /EHelvetica eumelencoding ReEncodeSmall ");
+  out ("/Helvetica-Bold /EHelvetica-Bold eumelencoding ReEncodeSmall ");
+  out ("/Helvetica-Oblique /EHelvetica-Oblique eumelencoding ReEncodeSmall ");
+  out ("/Helvetica-BoldOblique /EHelvetica-BoldOblique eumelencoding ReEncodeSmall ");
+  out ("/Times-Roman /ETimes-Roman eumelencoding ReEncodeSmall ");
+  out ("/Times-Bold /ETimes-Bold eumelencoding ReEncodeSmall ");
+  out ("/Times-Italic /ETimes-Italic eumelencoding ReEncodeSmall ");
+  out ("/Times-BoldItalic /ETimes-BoldItalic eumelencoding ReEncodeSmall ");
+  out ("/Courier /ECourier eumelencoding ReEncodeSmall ");
+  out ("/Courier-Oblique /ECourier-Oblique eumelencoding ReEncodeSmall ");
+  out ("/Courier-BoldOblique /ECourier-BoldOblique eumelencoding ReEncodeSmall ");
+  out ("/Courier-Bold /ECourier-Bold eumelencoding ReEncodeSmall ");
+  line;
+
+END PROC load encoding;
+
+
+PROC read ps input (FILE VAR input file, INT CONST timeout, TEXT CONST ok) :
+
+  BOOL VAR was cr;
+  record := "";
+  was cr := FALSE;
+  char   := incharety (timeout);
+  REP IF   char = ""10"" CAND was cr
+           THEN put record;
+                was cr := FALSE;
+      ELIF char = ""13"" CAND NOT was cr
+           THEN was cr := TRUE;
+           ELSE IF was cr
+                   THEN record CAT """13""";
+                        was cr := FALSE;
+                FI;
+                IF   char = ""4""
+                     THEN IF record <> "" THEN put record FI;
+                          putline (input file, "--  EOF  --");
+                          line (input file);
+                ELIF char >= " "
+                     THEN record CAT char
+                ELIF char >= ""0""
+                     THEN record CAT """";
+                          record CAT text (code (char));
+                          record CAT """";
+                     ELSE IF record <> "" THEN put record FI;
+                          LEAVE read ps input;
+                FI;
+      FI;
+      IF pos (ok, char) > 0
+         THEN IF record <> "" THEN put record FI;
+              LEAVE read ps input;
+      FI;
+      cat input (record, char);
+      IF char = "" THEN char := incharety (min (5, time out)) FI;
+  PER;
+
+  . put record :
+      putline (input file, record);
+      IF NOT is error CAND pos (record, "%%[ Error:") > 0
+         THEN errorstop (ps error, record) FI;
+      record := "";
+
+END PROC read ps input; 
+
+
+PROC print error (TEXT CONST error message, INT CONST error line) :
+
+  REAL CONST pl := y size * 72.0 / 2.54,
+             ys := 56.69291,
+             xs := 51.02362,
+             h  := 12.0;
+  REAL VAR x := xs, y := ys + h;
+  outline ("/Courier findfont 10 scalefont setfont");
+  move to x and y;
+  out     ("(FEHLER : ");
+  out     (error message);
+  IF error line > 0
+     THEN out (" in Zeile ");
+          out (error line);
+  FI;
+  outline (") show");
+  IF exists (ps input name)
+     THEN ps input := sequential file (input, ps input name);
+          y INCR 3.0 * h;
+          move to x and y;
+          outline ("(PostScript - Input :) show");
+          y INCR h;
+          WHILE NOT eof (ps input)
+          REP getline (ps input, record);
+              y INCR h;
+              move to x and y;
+              out     ("(");
+              out     (record);
+              outline (") show");
+          PER;
+          output (ps input);
+  FI;
+  outline ("showpage");
+  out (""4"");
+  read ps input (ps input, 18000, ""4"");
+
+  . move to x and y :
+      out (x); out (pl - y); out ("moveto ");
+
+END PROC print error;
+
+
+END PACKET apple laser writer printer;
+
+
+PACKET apple laserwriter box commands 
+
+(**************************************************************************)
+(*                                                                        *)
+(*      Kommandos zum Zeichen von Boxen, Linien und Schraffuren           *)
+(*                für den Apple LaserWriter                               *)
+(*                                                                        *)
+(*                                                Autor   : Rudolf Ruland *)
+(*                                                Stand   : 24.02.88      *)
+(**************************************************************************)
+
+       DEFINES line,
+               x line,
+               y line,
+
+               box,
+               box frame,
+               box shade,
+
+               cake,
+               cake frame,
+               cake shade,
+               :
+
+INT VAR x, y, h, w;
+
+WHILE highest entry (box commands) > 0
+  REP delete box command (name (box commands, highest entry (box commands))) PER;
+insert box command ("line");
+insert box command ("xline");
+insert box command ("yline");
+insert box command ("box");
+insert box command ("boxshade");
+insert box command ("boxframe");
+insert box command ("cake");
+insert box command ("cakeshade");
+insert box command ("cakeframe");
+
+
+PROC line (REAL CONST x offset, y offset, width, height, line width) :
+
+  IF line width > 0.0
+     THEN graph on (x offset, y offset, width, height);
+          out (text (line width / 300.0 * 72.0));
+          out (" setlinewidth ");
+          out (text (w));
+          out (" xs ");
+          out (text (-h));
+          out (" ys rlineto stroke ");
+          graph off;
+  FI;
+
+END PROC line;
+
+PROC x line (REAL CONST x offset, y offset, width, line width) :
+
+  line (x offset, y offset, width, 0.0, line width);
+
+END PROC x line;
+
+PROC y line (REAL CONST x offset, y offset, height, line width) :
+
+  line (x offset, y offset, 0.0, height, line width);
+
+END PROC y line;
+
+
+PROC box (REAL CONST x offset, y offset, width, height, line width, pattern):
+
+  box shade (x offset, y offset, width, height, pattern);
+  box frame (x offset, y offset, width, height, line width);
+
+END PROC box;
+
+
+PROC box shade (REAL CONST x offset, y offset, width, height, pattern) :
+
+  graph on (x offset, y offset, width, height);
+  box path;
+  out (text (pattern));
+  out (" setgray fill ");
+  graph off;
+
+END PROC box shade;
+
+
+PROC box frame (REAL CONST x offset, y offset, width, height, line width) :
+
+  IF line width <> 0.0
+     THEN graph on (x offset, y offset, width, height);
+          box path;
+          out (text (line width / 300.0 * 72.0));
+          out (" setlinewidth stroke ");
+          graph off;
+   FI;
+
+END PROC box frame;
+
+
+PROC box path :
+
+  out (text (w));
+  out (" xs 0 rlineto 0 ");
+  out (text (-h));
+  out (" ys rlineto ");
+  out (text (-w));
+  out (" xs 0 rlineto closepath ");
+
+END PROC box path;
+
+
+
+PROC cake (REAL CONST x offset, y offset, radius, start angle, sweep angle, line width, pattern) :
+
+  cake shade (x offset, y offset, radius, start angle, sweep angle, pattern);
+  cake frame (x offset, y offset, radius, start angle, sweep angle, line width);
+
+END PROC cake;
+
+
+PROC cake shade (REAL CONST x offset, y offset, radius, start angle, sweep angle, pattern) :
+
+  graph on (x offset, y offset, radius, 0.0);
+  cake path (start angle, sweep angle);
+  out (text (pattern));
+  out (" setgray fill ");
+  graph off;
+
+END PROC cake shade;
+
+
+PROC cake frame (REAL CONST x offset, y offset, radius, start angle, sweep angle, line width) :
+
+
+  IF line width <> 0.0
+     THEN graph on (x offset, y offset, radius, 0.0);
+          cake path (start angle, sweep angle);
+          out (text (line width / 300.0 * 72.0));
+          out (" setlinewidth stroke ");
+          graph off;
+   FI;
+
+END PROC cake frame;
+
+
+PROC cake path (REAL CONST start angle, sweep angle) :
+
+  out (text (start angle));
+  out (" rotate ");
+  out ("currentpoint ");
+  out (text (w));
+  out (" xs 0 ");
+  out (text (sweep angle));
+  out (" ");
+  IF sweep angle < 360.0
+     THEN out ("2 setlinejoin arc closepath ");
+     ELSE out (text (w));
+          out (" xs 0 rmoveto arc ");
+  FI;
+
+END PROC cake path;
+
+
+PROC graph on (REAL CONST x offset, y offset, width, height) :
+
+  x := x step conversion (x offset);
+  y := y step conversion (y offset);
+  w := x step conversion (width);
+  h := y step conversion (height);
+  out ("gsave ");
+  out (text (x));
+  out (" xs ");
+  out (text (-y));
+  out (" ys rmoveto ");
+
+END PROC graph on;
+
+PROC graph off :
+
+  out ("grestore ");
+
+END PROC graph off;
+
+
+END PACKET apple laserwriter box commands;
+
+
+ 
+#page# 
+(******************************************************************)
+(***                                                            ***)
+(***   Generierung des Printers                                 ***)
+(***                                                            ***)
+(******************************************************************)
+(* 
+LET up = ""3""13""5"";
+*) 
+LET      printer name  = "printer.apple.laserwriter";
+TEXT VAR fonttab name := "fonttab.apple.laserwriter";
+ 
+BOOL CONST multi user := (pcb (9) AND 255) <> 1;
+ 
+INT VAR pr channel;
+TEXT VAR buffer;
+ 
+command dialogue (TRUE);
+IF NOT multi user 
+  THEN errorstop ("Dieser Treiber arbeitet nur mit Multi-Tasking-EUMEL") 
+FI; 
+ask for print channel;
+load font table;
+forget (printer name, quiet);
+IF multi user THEN generate printer spool FI;
+command dialogue (TRUE);
+check on;
+.
+  ask for print channel : 
+    line;
+    put ("gib Druckerkanal:");
+    get (pr channel);
+    do ("serverchannel(" + text (pr channel) + ")" ) ;
+    line;
+.
+  load font table :
+    IF NOT exists (fonttab name)
+       THEN REP line (2); 
+                putline ("Bitte Archiv mit der Fonttabelle """ +
+                          fonttab name + """ einlegen!");
+                line;
+            UNTIL yes ("Archiv eingelegt") PER;
+            reserve archive;
+            fetch (fonttab name, archive);
+            release (archive);
+    FI;
+    font table (fonttab name);
+    IF multi user
+       THEN command dialogue (FALSE);
+            do ("save(""" + font tab name + """,task(""configurator""))")
+    FI;
+    forget (fonttab name, quiet);
+ 
+    . reserve archive :
+        INT VAR p1, p2;
+        archive (" "31" ");
+        disable stop;
+        list (archive);
+        IF is error
+           THEN buffer := errormessage;
+                p1 := pos (buffer, """", 1 ) + 1;
+                p2 := pos (buffer, """", p1) - 1;
+                IF p1 > 0 AND p2 > 0
+                   THEN clear error;
+                        buffer := subtext (buffer, p1, p2);
+                        archive (buffer);
+                FI;
+        FI;
+        enable stop;
+ 
+. generate printer spool :
+    eumel must advertise;
+    cursor (1, 12);
+    putline ("In allen bestehenden Tasks - insbesondere in der Task ""PUBLIC"" - muß");
+    putline ("die Fonttabelle mit dem Kommando");
+    line;
+    putline ("      font table (""" + font tab name + """)");
+    line;
+    putline ("eingestellt werden!!!");
+    line (4);
+    putline ("Generierung beendet, weiter mit 'SV'");
+    generate printer server;
+    do (buffer);
+ 
+. generate printer server :
+    buffer :=  "break (quiet);";
+    buffer CAT "spool manager (PROC printer);";
+    buffer CAT "INT VAR reply; DATASPACE VAR ds; FILE VAR file;";
+    buffer CAT "PROC printer:";
+    buffer CAT "  disable stop;";
+    buffer CAT "  continue (server channel);";
+    buffer CAT "  check error (error message);";
+    buffer CAT "  ds := nilspace;";
+    buffer CAT "  REP forget (ds);";
+    buffer CAT "      execute print;";
+    buffer CAT "      IF is error AND online THEN clear error; print error (error message, 0); clear error FI;";
+    buffer CAT "  PER;";
+    buffer CAT "END PROC printer;";
+    buffer CAT "PROC execute print:";
+    buffer CAT "  LET ack = 0, fetch code = 11, file type = 1003;";
+    buffer CAT "  enable stop;";
+    buffer CAT "  ds := nilspace;";
+    buffer CAT "  call (father, fetch code, ds, reply);";
+    buffer CAT "  IF reply = ack CAND type (ds) = file type";
+    buffer CAT "     THEN file := sequential file (input, ds);";
+    buffer CAT "          print (file,";
+    buffer CAT "            PROC (INT CONST, INT VAR, INT VAR) open,";
+    buffer CAT "            PROC (INT CONST, INT CONST) close,";
+    buffer CAT "            PROC (INT CONST, TEXT CONST, INT CONST, INT CONST) execute);";
+    buffer CAT "  FI;";
+    buffer CAT "END PROC execute print;";
+    buffer CAT "PROC check error(TEXT CONST message):";
+    buffer CAT "  IF is error";
+    buffer CAT "     THEN clear error; rename myself (message);";
+    buffer CAT "          IF is error THEN end(myself) FI;";
+    buffer CAT "          pause (9000); end(myself);";
+    buffer CAT "  FI;";
+    buffer CAT "END PROC check error;";
+

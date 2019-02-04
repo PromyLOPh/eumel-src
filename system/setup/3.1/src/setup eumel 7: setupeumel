@@ -1,0 +1,1238 @@
+(*************************************************************************)
+(*** Hauptprogramm des setup-Eumel:Einstellen der EUMEL - Partitionen  ***)
+(*** und SHard-Installation auf einer Festplatte.                      ***)
+(***                                                                   ***)
+(*** Autor : W. Sauerwein                          Stand   : 07.04.89  ***)
+(***         I. Ley                                Version : 2.3       ***)
+(*** Anpassung an Modul-SHard : Lutz Prechelt, Karlsruhe               ***)
+(***           -"-            : Werner Metterhausen                    ***)
+(***           -"-            : Martin Schönbeck                       ***)
+(*************************************************************************)
+(*** V 3.1   14.04.89  shard wird immer mit 'max sh size' geschriegen  ***)
+(***                   da mit 'ds pages' ggf teile fehlten, wenn innen ***)
+(***                   unbenutzte pages (buffer) waren                 ***)
+(*** V 3.0   10.04.89  support fuer mehrere Laufwerke eingebaut        ***)
+(***                   ausgabe der module vor loeschen etc. entfernt   ***)
+
+PACKET setup eumel DEFINES setup eumel, setup eumel endlos, version,
+show partition table:
+
+LET setup version = "Version 3.1";
+
+TEXT VAR stand :: "Stand : 18.04.89    (mit Modul-SHard Version 4.9)";
+
+PROC version (TEXT CONST vers): stand := vers END PROC version;
+
+PROC version: editget (stand) END PROC version;
+
+LET    max partitions           =   4,
+       max sh size              =  128, (* Anzahl Bloecke *)
+       return                   = ""13"",
+       escape                   = ""27"";
+
+LET hauptmodul namentyp    = "SHard *", 
+    modul namentyp         = "SHardmodul *",
+    sh name                = "SHARD",
+    sh backup              = "SHARD Sicherungskopie";
+
+ROW max partitions INT  VAR   part list;
+ROW max partitions INT  VAR   part type, part active,
+                              part first track, part last track;
+ROW max partitions REAL VAR   part start,
+                              part size;
+
+ INT  VAR   zylinder,
+            startzeile tabelle      ::   1,
+            startzeile menu         ::  12,
+            active partition,
+            partitions,
+            partition, i, j, cx, cy, help;
+ TEXT VAR   retchar,
+            meldung := "";
+ BOOL VAR   testausgabe,
+            mit schreibzugriff := TRUE,
+            meldung eingetroffen := FALSE,
+            endlos :: FALSE,
+            at version;
+THESAURUS VAR minimum modulkollektion := empty thesaurus;
+DATASPACE VAR ds := nilspace;
+
+(************************* setup eumel endlos *****************************)
+                                 
+PROC setup eumel endlos (BOOL CONST b) :
+  endlos := b;
+  IF endlos
+  THEN line;
+       putline ("Bitte geben Sie nun alle die Dateien an, die der Benutzer auf");
+       putline ("keinen Fall löschen darf.  (Taste drücken)");
+       minimum modulkollektion := certain (all, emptythesaurus);
+       line (3);
+       putline ("Der setup eumel kann nun nach dem nächsten Aufruf nicht mehr ");
+       putline ("verlassen werden. ")
+  FI.
+END PROC setup eumel endlos;
+
+(******************** get/put actual partition data ************************)
+
+PROC get actual partition data :
+   get boot block;
+   zylinder := tracks;
+   FOR i FROM 1 UPTO max partitions REP
+      part type        (i) := partition type (i);
+      part first track (i) := first track (i);
+      part last track  (i) := last track (i);
+      part start       (i) := partition start (i);
+      part size        (i) := partition size (i);
+      part active      (i) := partition word 0 (i);
+      IF partition active (i) THEN active partition := i FI
+   PER;
+   get number of installed partitions;
+   generate part list.
+
+get number of installed partitions :
+   partitions := 0;
+   FOR i FROM 1 UPTO max partitions REP
+     IF part type (i) <> 0 THEN partitions INCR 1 FI
+   PER.
+
+generate part list :
+   FOR i FROM 1 UPTO max partitions REP
+      IF part type (i) <> 0 THEN part list (i) := i
+                            ELSE part list (i) := 0
+      FI;
+   PER;
+   schiebe nullen nach hinten;
+   sort part list.
+
+schiebe nullen nach hinten :
+   i := 1; INT VAR k := 0;
+   REP k INCR 1;
+       IF part list (i) = 0 THEN circle
+                            ELSE i INCR 1
+       FI
+   UNTIL k = max partitions - 1 PER.
+
+circle :
+   FOR j FROM i UPTO max partitions - 1 REP
+      part list (j) := part list (j + 1)
+   PER;
+   part list (max partitions) := 0.
+
+sort part list :
+   FOR i FROM 2 UPTO partitions REP
+      FOR j FROM 1 UPTO i - 1 REP
+          IF part first track (part list (i)) < part first track (part list (j))
+             THEN tausche FI
+      PER
+   PER.
+
+tausche :
+   help := part list (i);
+   part list (i) := part list (j);
+   part list (j) := help.
+
+END PROC get actual partition data;
+
+PROC put actual partition data :
+   FOR i FROM 1 UPTO max partitions REP
+      IF partition exists (i) THEN put partition
+                              ELSE clear partition (i)
+      FI;
+   PER;
+   IF mit schreibzugriff THEN put boot block FI.
+  
+put partition :
+   IF is eumel (i) THEN partition type   (i, part type        (i));
+                        first track      (i, part first track (i));
+                        last track       (i, part last track  (i));
+                        partition start  (i, part start       (i));
+                        partition size   (i, part size        (i))
+   FI;
+   partition word 0    (i, part active      (i));
+   IF active partition = i
+      THEN partition active (i, TRUE)
+      ELSE partition active (i, FALSE)
+   FI.
+
+END PROC put actual partition data;
+
+(*************************** setup eumel ********************************)
+
+PROC setup eumel :
+   line; command dialogue (TRUE);
+   at version := yes ("System für AT", TRUE);
+   testausgabe := FALSE; (*yes ("Testversion", FALSE); *)
+   pruefe ob notwendige dateien vorhanden;
+   init modules list;
+   IF  yes ("Leere Floppy für Systemsicherung eingelegt", FALSE)
+   THEN command dialogue (FALSE); save system; command dialogue (TRUE)  FI;
+   IF NOT endlos THEN putline ("Verlassen mit ESC."); pause (40)  FI;
+   terminal setup;
+   logo;
+   generate eumel.
+
+pruefe ob notwendige dateien vorhanden:
+   BOUND INT VAR y;
+   IF mit schreibzugriff THEN y := old (sh name);
+                              y := old ("shget.exe");
+                              y := old ("bootblock");
+                              y := old ("configuration");
+                              y := old ("AT-4.x")
+   FI.
+
+END PROC setup eumel;
+
+PROC generate eumel :
+   disable stop;
+   show partition table;
+   REP update table;
+       main menu;
+       action;
+       IF is error THEN fehler;
+                        put line (error message);
+                        put line ("Bitte betätigen Sie eine Taste !");
+                        clear error;
+                        pause;
+                        IF mit schreibzugriff THEN terminal setup FI
+       FI
+   PER.
+
+action :
+   INT VAR choice;
+   clear error;
+   REP
+      cursor (cx, cy);
+      IF partitions < max partitions
+      THEN choice := get choice (0, max, retchar)
+      ELSE choice := get choice (2, max, 0, retchar)
+      FI;
+      IF escaped CAND NOT endlos THEN LEAVE generate eumel FI;
+   UNTIL retchar = return PER;
+   cl eop (1, startzeile menu - 1);
+   INT VAR unser kanal := channel;
+   SELECT choice OF
+      CASE 0 : programm ende
+      CASE 1 : create partition (TRUE)
+      CASE 2 : create partition (FALSE)
+      CASE 3 : activate partition
+      CASE 4 : delete partition
+      CASE 5 : delete partition table
+      CASE 6 : konfiguration anzeigen
+      CASE 7 : shard zusammenbauen
+      CASE 8 : modulkollektion aendern
+      CASE 9 : change drive
+
+  END SELECT;
+  continue (unser kanal).
+
+max :
+  9.
+
+change drive:
+   cursor (1, startzeile menu);
+   put ("Bitte Laufwerksnummer angeben:");
+   get cursor (cx, cy);
+   put ("   0 - 3");
+   REP cursor (cx, cy);
+     INT VAR drive := get choice (0, 3, retchar);
+     IF sure escaped THEN LEAVE change drive FI;
+   UNTIL NOT escaped PER;
+   setup channel (28-drive);
+   show partition table.
+
+
+programm ende :
+   cursor (1, startzeile menu);
+   IF keine partition aktiv
+      THEN IF trotz warnung beenden THEN eumel beenden FI
+      ELSE IF yes ("Wollen Sie die Partitionierung Ihrer Festplatte beenden", FALSE)
+              THEN eumel beenden
+   FI FI.
+
+keine partition aktiv : active partition = 0.
+
+trotz warnung beenden :
+   put line ("ACHTUNG : Es ist keine Partition aktiv gesetzt !");
+   put line ("          Sie können daher nicht von der Festplatte booten !");
+   line;
+   yes ("Wollen Sie trotzdem die Partitionierung der Festplatte beenden", FALSE).
+
+eumel beenden :
+   cl eop (1, startzeile menu - 1);
+   cursor (1, startzeile menu + 3);
+   shutup; terminal setup;
+   logo;
+   show partition table.
+   
+shard zusammenbauen :
+  cl eop (1, startzeile menu);
+  IF yes ("Wollen Sie Ihren SHard neu konfigurieren", FALSE)
+    THEN shard sichern und vorlage beschaffen;
+
+       IF NOT is error THEN build shard (ds)  FI;
+       IF is error OR NOT exists (sh name)
+
+       THEN forget (sh name, quiet); rename (sh backup, sh name);
+            putline ("Zusammenbau fehlgeschlagen. Alter SHard erhalten.");
+            pause (300);
+       FI;
+       forget (sh backup, quiet); forget (ds);
+       show partition table
+  FI.
+
+shard sichern und vorlage beschaffen :
+  forget (sh backup, quiet);
+  IF exists (shname)
+     THEN copy (sh name, sh backup);
+  FI;
+  forget (ds);
+  line;
+  IF yes (""3"Ist in einer existierenden Eumel-Partition ein SHard installiert,
+"13""10"der als Vorlage dienen soll", FALSE)
+  THEN INT VAR vorlage :: 69;
+       editget (1, startzeile menu + 4, "Partitiontyp: ", vorlage);
+       (* Das sollte man mal noch schöner machen !!! *)
+       read file (ds, start of partition (vorlage) + 1.0, max sh size,
+                  setup channel)
+  ELSE ds := old (sh name)  FI.
+
+
+konfiguration anzeigen :
+  hole anzuzeigenden ds;
+  line;
+  print configuration (ds, NOT yes ("Auf dem Drucker ausgeben", FALSE));
+  show partition table.
+
+hole anzuzeigenden ds:
+  forget (ds);
+  line;
+  IF yes ("Soll ein SHard aus einer Partition angezeigt werden", TRUE)
+  THEN INT VAR anzeige :: 69;
+       editget (1, startzeile menu + 4, "Partitiontyp: ", anzeige);
+       (* Das sollte man mal noch schöner machen !!! *)
+       read file (ds, start of partition (anzeige) + 1.0, max sh size,
+                  setup channel)
+  ELSE ds := old (ONE ((all LIKE hauptmodul namentyp) + "SHARD")) FI.
+
+
+modulkollektion aendern :
+  THESAURUS VAR th;
+  TEXT VAR x :: "SHard";
+  INT VAR i ;
+  page;
+  th := (all LIKE hauptmodul namentyp) + (all LIKE modul namentyp) +
+             (all LIKE sh name) ;
+  (* Diese Ausgabe macht leider den Bildschirmaufbau kaputt *)
+  (* mit dem Erfolg, daß man dann nicht mehr sieht, was man *)
+  (* ankreuzt, deshalb auskommentiert *)
+  (*******
+  putline(" Alle SHards :");
+  line;
+  FOR i FROM 1 UPTO highest entry(th)
+  REP
+     putline(name(th,i))
+  PER;
+  *******)
+  putline("      Modulkollektion ändern");
+  line;
+  IF yes ("Wollen Sie irgendwelche Module löschen", FALSE)
+  THEN th := (all LIKE hauptmodul namentyp) + (all LIKE modul namentyp) +
+             (all LIKE sh name) - minimum modulkollektion;
+       forget (certain (th, emptythesaurus));
+  ELIF yes ("Wollen Sie Module vom Archiv holen", FALSE)
+  THEN put ("Archivname:"); editget (x); line;
+       archive (x);
+       th := ALL archive LIKE modul namentyp;
+       fetch (certain (th, emptythesaurus), archive);
+       release (archive)
+  FI;
+  init modules list;
+  show partition table.
+
+
+END PROC generate eumel;
+
+
+PROC show partition table :
+   IF NOT mit schreibzugriff THEN get actual partition data FI;
+   headline;
+   devide table;
+   columns;
+   underlines;
+   rows;
+   downline.
+
+head line :
+   cl eop (1, startzeile tabelle);
+   put center (startzeile tabelle, "Aktuelle Partitions - Tabelle", TRUE).
+
+devide table :
+   FOR i FROM 1 UPTO 8
+   REP
+      cursor (45, startzeile tabelle + i); out (inverse (""))
+   PER.
+
+columns :
+   cursor ( 1, startzeile tabelle + 2);
+   out ("Nr. System   Typ Zustand Grösse Anfang Ende");
+   cursor (48, startzeile tabelle + 2);
+   out ("Platte    :   Zyl. / KB").
+
+underlines :
+   cursor ( 1, startzeile tabelle + 3);
+   out ("--------------------------------------------");
+   cursor (47, startzeile tabelle + 3);
+   out ("------------------------------").
+
+rows :
+   FOR i FROM 1 UPTO max partitions
+   REP cursor (2, startzeile tabelle + 3 + i);
+       put (text (i) + " :")
+   PER.
+
+downline :
+   put center (startzeile menu - 3, " EUMEL Installationssystem " + setup version
+                     + " (IBM PC/" + rechner typ
+                     + " und kompatible Rechner) ", TRUE);
+   put center (startzeile menu - 2, stand, TRUE).
+
+rechner typ :
+   IF at version THEN "AT"
+                 ELSE "XT"
+   FI.
+
+END PROC show partition table;
+
+PROC main menu :
+   biete auswahl an;
+   IF meldung eingetroffen THEN melde FI;
+   IF testausgabe THEN ausgabe fuer test FI.
+
+ausgabe fuer test :
+   testrahmen;
+   test out.
+
+testrahmen :
+   FOR i FROM startzeile menu - 1 UPTO startzeile menu + 9
+   REP
+      cl eol (45, i);
+      put (inverse (""))
+   PER;
+   cursor (52, startzeile menu);
+   put ("Ecke für Test-Output");
+   cursor (52, startzeile menu).
+
+test out :
+   FOR i FROM 1 UPTO max partitions
+   REP
+      cursor (52, startzeile menu + 1 + i);
+      put (text (i) + ":");
+      put (part type (i)); 
+      put (part first track (i));
+      put (part last track (i));
+      IF active partition = i THEN put ("aktiv")
+                             ELSE put ("inaktiv")
+      FI;
+   PER.
+
+melde :
+   cursor (1, 24);
+   put (inverse ("Meldung :"));
+   put (meldung);
+   meldung eingetroffen := FALSE.
+
+biete auswahl an :
+    cl eop (1, startzeile menu - 1); line;
+    IF partitions < max partitions
+    THEN putline (" EUMEL - Partition einrichten .............. 1")
+    ELSE line;
+         putline (" EUMEL - Partition")
+    FI;
+    cursor (20, startzeile menu + 1);
+    putline                    ("erneuern (Neuer SHard) .. 2");
+    putline ("                   aktivieren .............. 3");
+    putline ("                   löschen ................. 4");
+    putline (" Partitionstabelle löschen ................. 5");
+    putline (" SHard-Konfiguration anzeigen .............. 6");
+    putline (" SHard konfigurieren ....................... 7");
+    putline (" SHardmodule laden oder löschen ............ 8");
+    putline (" Bearbeitetes Laufwerk wechseln ............ 9");
+    putline (" SETUP-EUMEL beenden ....................... 0");
+    putline ("-----------------------------------------------");
+    put     (" Ihre Wahl                                >>");
+    get cursor (cx, cy).
+
+END PROC main menu;
+
+PROC update table :
+   IF mit schreibzugriff THEN get actual partition data FI;
+   FOR i FROM 1 UPTO partitions REP update partition PER;
+   FOR i FROM partitions + 1 UPTO max partitions REP rubout partition PER;
+   zeige plattengroesse;
+   IF active partition = 0 THEN meldung := "ACHTUNG : Es ist keine Partition aktiv gesetzt !";
+                                meldung eingetroffen := TRUE
+   FI.
+
+update partition :
+   partition := part list (i);
+   show partition.
+
+rubout partition :
+   cursor (5, startzeile tabelle + 3 + i);
+   out ("                                       ").
+
+show partition :
+   cursor (5, startzeile tabelle + 3 + i);
+   put (name + type + zustand  + groesse + startspur + endspur).
+
+name : subtext (subtext (part name, 1, 7)
+              + "     ", 1, 8).
+
+type : text (part type (partition), 5) + "  ".
+
+zustand   : IF active partition = partition THEN (" aktiv ")
+                                            ELSE ("       ")
+            FI.
+
+startspur : " " + text (part first track (partition), 5).
+endspur   :       text (part last track   (partition), 6).
+groesse   :       text (part groesse, 5).
+
+zeige plattengroesse :
+   put gesamt;
+   put noch freie;
+   put maximaler zwischenraum.
+
+put maximaler zwischenraum :
+   cursor (48, startzeile tabelle + 6);
+   put ("gr. Lücke : " + text (maximaler zwischenraum, 5) + "  / "
+   + kilobyte(maximaler zwischenraum)).
+
+put gesamt :
+   cursor (48, startzeile tabelle + 4);
+   put ("Gesamt    : " + text (zylinder, 5) + "  / "
+   + kilobyte(zylinder)).
+
+put noch freie :
+   cursor (48, startzeile tabelle + 5);
+   put ("Frei      : " + text (freie zylinder, 5) + "  / "
+   + kilobyte( freie zylinder)).
+
+END PROC update table;
+
+
+TEXT PROC kilobyte (INT CONST zylinderzahl):
+     TEXT VAR kb;
+     kb := text(round(real(zylinderzahl) * real(heads) * real(sectors) * 0.512,0));
+     subtext(kb,1,length(kb)-2)
+
+END PROC kilobyte;
+
+
+PROC create partition (BOOL CONST partition is new) :
+   IF NOT partition is new
+   THEN renew partition
+   ELIF freie part number gefunden CAND noch platz uebrig
+   THEN new partition
+   ELSE kein platz mehr  FI.
+
+kein platz mehr :
+   fehler;
+   put ("Es kann keine neue Partition mehr eingerichtet werden.");
+   pause (300).
+
+noch platz uebrig : freie zylinder > 0.
+
+freie part number gefunden :
+   IF partitions < max partitions THEN suche nummer;
+                                       TRUE
+                                  ELSE FALSE
+   FI.
+
+suche nummer :
+   partition := 0;
+   REP partition INCR 1 UNTIL part type (partition) = 0 PER.
+
+new partition :
+   cl eop (1, startzeile menu);
+   IF yes ("Neue EUMEL - Partition einrichten", FALSE)
+      THEN INT VAR alte aktive partition := active partition;
+           IF NOT partition exists (partition)
+              THEN IF enter partition spezifikations
+                      THEN IF mit schreibzugriff THEN check part and install FI
+                   FI;
+              ELSE keine freie partition
+   FI FI.
+
+renew partition :
+   cl eop (1, startzeile menu);
+   IF yes ("Neuen SHard auf bestehende EUMEL - Partition schreiben", FALSE)
+      THEN enter part number;
+           IF mit schreibzugriff THEN check part and install FI
+   FI.
+
+enter part number :
+   put ("Welche Partition wollen Sie erneuern :");
+   get cursor (cx, cy);
+   put ("   Abbruch mit <ESC>");
+   REP
+      REP cursor (cx, cy);
+          partition := get choice (1, 4, retchar);
+          IF sure escaped THEN LEAVE create partition FI;
+          partition := part list (partition)
+      UNTIL NOT escaped PER;
+      IF NOT (partition exists (partition) AND is eumel (partition))
+      THEN fehler; put ("Keine EUMEL - Partition");
+           pause (300); cl eop (1, 20);
+      FI
+   UNTIL partition exists (partition) AND is eumel (partition) PER.
+
+check part and install:
+   IF partition is new THEN put actual partition data  FI;
+   IF testausgabe THEN put ("Keine Überprüfung schlechter Sektoren, da Testversion !")
+                  ELSE trage schlechte sektoren ein;
+   FI;
+   IF is error AND partition is new
+               THEN active partition := alte aktive partition;
+                    rubout partition;
+                    LEAVE check part and install
+               ELIF NOT is error
+               THEN line;
+                    put ("Shard wird auf die Partition geschrieben..."); line (2);
+                    bringe shard auf platte (part type (partition));
+               ELSE line;
+                    putline ("Fehler aufgetreten. Partition unverändert")
+               FI;
+   put ("Bitte betätigen Sie eine Taste !");
+   loesche eingabepuffer;
+   pause.
+
+trage schlechte sektoren ein:
+   INT VAR anzahl schlechter sektoren;
+   line (2);
+   putline ("Überprüfen der Partition nach schlechten Sektoren.");
+   add bad sector table to shard (part type (partition), old (sh name),
+             NOT partition is new, anzahl schlechter sektoren);
+   line;
+   IF NOT is error THEN put ("Ich habe " + bs zahl + " gefunden.") FI.
+
+bs zahl:
+   IF anzahl schlechter sektoren = 0 
+      THEN "keine schlechten Sektoren"
+   ELIF anzahl schlechter sektoren > 1
+      THEN text (anzahl schlechter sektoren) + " schlechte Sektoren" 
+      ELSE "einen schlechten Sektor"
+   FI.
+
+keine freie partition :
+   fehler;
+   put line ("Sie können nur auf freien Partitionen 'EUMEL' einrichten.");
+   put      ("Die Partition " + text (partition) + " ist bereits mit einem System belegt !");
+   pause (300).
+
+END PROC create partition;
+
+BOOL PROC enter partition spezifikations :
+   cl eol (60, startzeile menu); put ("Abbruch mit <ESC>");
+   cl eol (1, startzeile menu + 2);
+   put ("Typ : EUMEL,");
+   INT VAR old end             := part last track (partition);
+   enter part size;
+   enter part first track;
+   put end track;
+   cl eol (60, startzeile menu);
+   IF NOT eingaben ok THEN LEAVE enter partition spezifikations WITH FALSE FI;
+   cl eol (1, startzeile menu + 4);
+   part first track (partition) := int (start);
+   part last track  (partition) := int (start) + int (size) - 1;
+   part start       (partition) := first usable sector;
+   part size        (partition) := first sector behind partition -
+                                               part start (partition);
+   active partition             := partition;
+   part type        (partition) := kleinste freie eumel nummer;
+   add to part list;
+   TRUE.
+
+eingaben ok :
+   cl eop (1, startzeile menu + 4);
+   yes ("Sind die Partitionsangaben korrekt", FALSE).
+
+enter part size :
+   get cursor (cx, cy);
+   REP
+      REP cursor (cx, cy);
+          put ("Welche Grösse :");
+          TEXT VAR size := groessenvorschlag;
+          loesche eingabepuffer;
+          editget (size, escape, "", retchar);
+          IF sure escaped
+             THEN LEAVE enter partition spezifikations WITH FALSE
+          FI
+      UNTIL NOT escaped PER;
+      IF NOT size ok THEN falsche groesse FI
+   UNTIL size ok  AND not too big PER;
+   cl eol (1, y + 1);
+   cl eol (1, y + 2);
+   cl eol (cx, cy);
+   put ("Grösse : " + size + ";").
+
+size ok :
+        NOT size greater maxint
+   CAND size positiv
+    AND desired size <= maximaler zwischenraum.
+
+not too big:
+  INT VAR x,y;
+  get cursor(x,y);
+  IF real(kilobyte(int(size))) >= 16196.0
+   THEN line;
+        putline("Eine Partition grösser 16 MB ist nur bei einer + Version sinnvoll !");
+        yes("Eingabe korrekt",FALSE)
+   ELSE TRUE
+  FI.
+
+size greater maxint :
+   length (size) >= 5.
+
+size positiv :
+   desired size > 0.
+   
+falsche groesse :
+   fehler;
+   put line ("Es kann keine Partition mit " + size + " Zylindern eingerichtet werden !");
+   IF NOT size greater maxint CAND size positiv
+      THEN put ("Die grösste zusammenhängende Anzahl Zylinder ist "
+              + text (maximaler zwischenraum) + ".")
+      ELSE put ("Bitte eine positive Grösse angeben !")
+   FI.
+
+groessenvorschlag :
+   text (maximaler zwischenraum).
+
+enter part first track :
+   get cursor (cx, cy);
+   REP
+      REP cursor (cx, cy);
+          put ("Start - Zylinder der Partition :");
+          TEXT VAR start := startvorschlag;
+          loesche eingabepuffer;
+          editget (start, escape, "", retchar);
+          IF sure escaped THEN part last track (partition) := old end;
+                               LEAVE enter partition spezifikations WITH FALSE
+          FI
+      UNTIL NOT escaped PER;
+      IF NOT start ok THEN falscher start FI
+   UNTIL start ok PER;
+   cl eol (cx, cy);
+   put ("Start : " + start + ";").
+
+put end track :
+   put ("Ende : " + text (int (start) + int (size) - 1)).
+
+start ok :
+        length (start) < 5
+   CAND enough room
+    AND NOT in existing partition
+    AND NOT out of volume.
+
+out of volume : desired start > zylinder OR desired start < 0.
+
+in existing partition :
+   IF partitions = 0 THEN FALSE
+                     ELSE i := 0;
+                          REP
+                             i INCR 1
+                          UNTIL start of part i > desired start
+                             OR last partition
+                             OR error found PER;
+                          IF error found THEN TRUE ELSE FALSE FI
+   FI.
+
+error found :
+   part index <> i AND
+   (start of part i <= desired start AND end spur i >= desired start).
+
+part index :
+   0.
+
+desired start : int (start).
+
+start of part i : part first track (part list (i)).
+
+last partition : i = partitions.
+
+enough room :
+   desired start + desired size <= begin of next partition.
+
+desired size : int (size).
+
+begin of next partition :
+   IF partitions = 0 THEN zylinder
+                     ELSE i := 0;
+                          REP
+                             i INCR 1;
+                          UNTIL start of part i > desired start
+                             OR last partition PER;
+                          IF start of part i > desired start THEN start of part i
+                                                             ELSE zylinder
+                          FI
+   FI.
+
+falscher start :
+   fehler;
+   put ("Auf Zylinder " + start);
+   put ("kann keine Partition der Grösse " + size);
+   put ("beginnen !").
+
+startvorschlag :
+   text (best start position).
+
+best start position :
+   IF partitions = 0 THEN 0
+                     ELSE best start spur vor und zwischen den partitionen
+   FI.
+
+best start spur vor und zwischen den partitionen :
+   INT VAR best start := 0, min size := zylinder;
+   FOR i FROM 0 UPTO partitions
+   REP
+      IF platz genug zwischen i und i plus 1 AND kleiner min size
+         THEN min size   := platz zwischen i und i plus 1;
+              best start := start des zwischenraums
+      FI
+   PER;
+   best start.
+
+start des zwischenraums :
+   end spur i + 1.
+
+end spur i :
+   IF i = 0 THEN -1
+            ELSE part last track (part list (i))
+   FI.
+
+platz zwischen i und i plus 1 :
+   part first track i plus 1 - (end spur i + 1).
+
+part first track i plus 1 :
+   IF i = partitions THEN zylinder
+                     ELSE part first track (part list (i + 1))
+   FI.
+
+platz genug zwischen i und i plus 1 :
+   platz zwischen i und i plus 1 >= int (size).
+
+kleiner min size : platz zwischen  i und i plus 1 < min size.
+
+first usable sector:
+   IF int (start) = 0
+      THEN 1.0
+      ELSE real (heads * sectors) * real (start)
+   FI.
+
+first sector behind partition:
+   real (heads * sectors) * (real(start) + real (size)).
+
+kleinste freie eumel nummer :
+   IF partitions = 0 THEN 69
+                     ELSE search for part type (69)
+   FI.
+   
+END PROC enter partition spezifikations;
+
+INT PROC search for part type (INT CONST minimum) :
+   IF minimum exists THEN search for part type (minimum + 1)
+                     ELSE minimum
+   FI.
+
+minimum exists :
+   BOOL VAR exists := FALSE;
+   INT VAR i;
+   FOR i FROM 1 UPTO partitions REP
+      IF part type (part list (i)) = minimum THEN exists := TRUE FI
+   PER;
+   exists.
+
+END PROC search for part type;
+
+PROC bringe shard auf platte (INT CONST eumel type):
+   IF mit schreibzugriff THEN
+      enable stop;
+      INT CONST old session :: session;
+      fixpoint;
+      IF session <> old session
+      THEN errorstop ("SHard auf Platte schreiben im RERUN !")  FI;
+      write file ("shget.exe", start der eumel partition, 1, setup channel);
+      write file (sh name, start der eumel partition + 1.0,
+                  max sh size, setup channel)
+   FI.
+
+start der eumel partition:
+   start of partition (eumel type).
+END PROC bringe shard auf platte;
+
+
+PROC add to part list :
+   IF part list leer THEN part list (1) := partition
+   ELIF neuer start vor letzter partition THEN fuege ein
+                                          ELSE haenge an
+   FI;
+   partitions INCR 1.
+
+part list leer : partitions = 0.
+
+neuer start vor letzter partition :
+   part first track (partition) < part first track (part list (partitions)).
+
+haenge an : part list (partitions + 1) := partition.
+
+fuege ein :
+   suche erste partition die spaeter startet;
+   schiebe restliste auf;
+   setze partition ein.
+
+suche erste partition die spaeter startet :
+   i := 0;
+   REP i INCR 1
+   UNTIL part first track (part list (i)) > part first track (partition) PER.
+
+schiebe restliste auf :
+   FOR j FROM partitions DOWNTO i
+   REP
+      part list (j + 1) := part list (j)
+   PER.
+
+setze partition ein :
+   part list (i) := partition.
+
+END PROC add to part list ;
+
+INT PROC maximaler zwischenraum :
+   IF partitions = 0 THEN zylinder
+                     ELSE max (maximaler platz vor und zwischen den partitionen,
+                               platz hinter letzter partition)
+   FI.
+
+maximaler platz vor und zwischen den partitionen :
+   help := platz vor erster partition;
+   FOR i FROM 1 UPTO partitions - 1
+   REP
+      help := max (help, begin of part i plus 1 - end of part i - 1)
+   PER;
+   help.
+
+platz vor erster partition :
+   part first track (part list (1)).
+
+platz hinter letzter partition :
+   zylinder - part last track (part list (partitions)) - 1.
+
+begin of part i plus 1 :
+   part first track (part list (i + 1)).
+
+end of part i :
+   part last track (part list (i)).
+
+END PROC maximaler zwischenraum;
+
+PROC activate partition :
+   enter part number;
+   IF NOT escaped THEN set partition active  FI.
+
+set partition active :
+   IF yes ("Partition mit Typnummer " + text (part type (partition)) + " aktivieren", FALSE)
+   THEN active partition := partition;
+        put actual partition data
+   FI.
+
+enter part number :
+   cursor (60, startzeile menu); put ("Abbruch mit <ESC>");
+   cursor ( 1, startzeile menu);
+   put ("Welche Partition wollen Sie aktivieren :");
+   get cursor (cx, cy);
+   REP
+      REP cursor (cx, cy);
+          partition := get choice (1, 4, retchar);
+          IF sure escaped THEN LEAVE activate partition FI;
+          partition := part list (partition)
+      UNTIL NOT escaped PER;
+      IF NOT partition exists (partition) THEN fehler melden FI
+   UNTIL partition exists (partition) PER;
+   cl eol (60, startzeile menu);
+   cl eop (1, cy + 2).
+
+fehler melden :
+   partition gibt es nicht.
+
+partition gibt es nicht :
+   fehler;
+   put ("Diese Partition gibt es nicht.").
+
+END PROC activate partition;
+
+PROC delete partition :
+   enter part number;
+   IF NOT escaped THEN
+      IF yes ("Partition mit Typnummer " + text (part type (partition)) + " löschen", FALSE)
+      AND ganz sicher
+          THEN rubout partition
+   FI FI.
+
+enter part number :
+   cursor (60, startzeile menu); put ("Abbruch mit <ESC>");
+   cursor ( 1, startzeile menu);
+   put ("Welche Partition wollen Sie löschen :");
+   get cursor (cx, cy);
+   REP
+      REP cursor (cx, cy);
+          partition := get choice (1, 4, retchar);
+          IF sure escaped THEN LEAVE delete partition FI;
+          partition := part list (partition)
+      UNTIL NOT escaped PER;
+   IF NOT (partition exists (partition) AND is eumel (partition)) THEN fehler melden FI
+   UNTIL partition gueltig AND is eumel (partition) PER;
+   cl eol (60, startzeile menu);
+   cl eop (1, cy + 2).
+   
+fehler melden :
+   IF NOT partition exists (partition) THEN partition gibt es nicht
+                                       ELSE keine eumel partition
+   FI.
+
+partition gibt es nicht :
+   fehler;
+   put ("Diese Partition gibt es nicht.").
+
+ganz sicher :
+   line;
+   yes ("Sind Sie sich ganz sicher", FALSE).
+   
+END PROC delete partition;
+
+PROC delete partition table :
+   cursor ( 1, startzeile menu + 1);
+   put ("Es gehen ALLE Daten verloren, die sich auf Ihrer Platte befinden !");
+   line (2);
+   IF yes ("Wollen Sie wirklich die ganze Partitionstabelle löschen", FALSE)
+      THEN line;
+           IF yes ("Sind Sie sich ganz sicher", FALSE)
+              THEN loesche ganze tabelle
+   FI FI.
+
+loesche ganze tabelle :
+   FOR i FROM 1 UPTO max partitions
+   REP part type  (i) := 0;
+       part first track (i) := 0;
+       part last track   (i) := 0;
+       part start (i) := 0.0;
+       part size (i) := 0.0;
+       part list  (i) := 0
+   PER;
+   partitions := 0;
+   active partition := 0;
+   IF mit schreibzugriff THEN clear partition table (-3475) FI.
+
+END PROC delete partition table;
+
+PROC rubout partition :
+   part type  (partition) := 0;
+   part first track (partition) := 0;
+   part last track   (partition) := 0;
+   IF active partition = partition THEN active partition := 0 FI;
+   del from part list;
+   put actual partition data.
+
+del from part list :
+   search for partition in part list;
+   delete it and set highest to 0;
+   partitions DECR 1.
+
+search for partition in part list :
+   i := 0;
+   REP i INCR 1 UNTIL part list (i) = partition PER.
+
+delete it and set highest to 0 :
+   FOR j FROM i UPTO partitions - 1
+   REP
+      part list (j) := part list (j + 1)
+   PER;
+   part list (partitions) := 0.
+
+END PROC rubout partition;
+
+INT PROC get choice (INT CONST von, bis, TEXT VAR retchar):
+  get choice (von, bis, von, retchar)
+END PROC get choice;
+
+INT PROC get choice (INT CONST von, bis, zusatz, TEXT VAR retchar):
+   LET return  = ""13"",
+       escape  = ""27"",
+       left    = ""8"";
+   TEXT VAR buffer; 
+   INT VAR cx, cy;
+   get cursor (cx, cy); out (" " + left);
+   REP
+      REP 
+         cursor (cx, cy); buffer := incharety;
+      UNTIL input ok OR buffer = escape PER; 
+      IF buffer = escape THEN retchar := escape;
+                              LEAVE get choice WITH 0
+      FI;
+      out (buffer); 
+      leseschleife bis left or ret;
+      IF retchar = left   THEN out (left + " ") FI;
+      IF retchar = escape THEN LEAVE get choice WITH 0 FI
+   UNTIL retchar = return OR retchar = escape PER;
+   int (buffer). 
+ 
+input ok : (buffer >= text (von) AND buffer <= text (bis)) OR buffer = text (zusatz).
+
+leseschleife bis left or ret:
+   REP 
+     inchar (retchar) 
+   UNTIL retchar = return OR retchar = left OR retchar = escape PER.
+
+END PROC get choice;
+
+TEXT PROC inverse (TEXT CONST t):
+  ""15"" + t + " " + ""14""
+END PROC inverse;
+
+PROC put center (TEXT CONST t):
+   put center (t, 80)
+END PROC put center;
+
+PROC put center (INT CONST zeile, TEXT CONST t, BOOL CONST inverse):
+   put center (zeile, t, 80, inverse);
+END PROC put center;
+
+PROC put center (INT CONST zeile, TEXT CONST t):
+   put center (zeile, t, 80)
+END PROC put center;
+
+PROC put center (TEXT CONST t, INT CONST gesamtbreite):
+   INT VAR cy;
+   get cursor (cy, cy);
+   put center (cy, t, gesamtbreite)
+END PROC put center;
+
+PROC put center (INT CONST zeile, TEXT CONST t, INT CONST gesamtbreite):
+   put center (zeile, t, gesamtbreite, FALSE);
+END PROC put center;
+
+PROC put center (INT CONST zeile, TEXT CONST t, INT CONST gesamtbreite,
+                   BOOL CONST inverse):
+   IF inverse
+     THEN cursor (1, zeile);
+          out (""15"");
+          gesamtbreite - 2 TIMESOUT " ";
+   FI;
+   cursor ((gesamtbreite - length (t)) DIV 2, zeile);
+   put (t);
+   IF inverse
+     THEN cursor (gesamtbreite - 1, zeile);
+          out (""14"");
+   FI
+END PROC put center;
+
+PROC cl eol: 
+  out (""5"") 
+END PROC cl eol;
+
+PROC cl eop: 
+  out (""4"") 
+END PROC cl eop; 
+ 
+PROC cl eol (INT CONST cx, cy): 
+   cursor (cx, cy); 
+   cl eol 
+END PROC cl eol; 
+ 
+PROC cl eop (INT CONST cx, cy): 
+   cursor (cx, cy); 
+   cl eop 
+END PROC cl eop; 
+
+INT PROC partition groesse (INT CONST part) :
+   part last track (part) - part first track (part) + 1
+END PROC partition groesse;
+
+BOOL PROC is eumel (INT CONST partition) :
+   part type (partition) >= 69 AND part type (partition) <= 72
+END PROC is eumel;
+
+BOOL PROC partition exists (INT CONST partition) :
+   IF partition > 0 AND partition <= max partitions
+      THEN part type (partition) <> 0
+      ELSE FALSE
+   FI
+END PROC partition exists;.
+
+part groesse : partition groesse (partition).
+
+part name :
+   SELECT part type (partition) OF
+     CASE 1, 4           : "DOS"
+     CASE 69, 70, 71, 72 : "EUMEL"
+     OTHERWISE text (part type (partition))
+   END SELECT.
+
+escaped : retchar = escape.
+
+sure escaped :
+   IF escaped THEN cl eop (1, 20); cursor (1, 22);
+                   yes ("Vorgang abbrechen", TRUE)
+              ELSE FALSE
+   FI.
+
+partition gueltig :
+       partition > 0
+   AND partition <= max partitions.
+
+freie zylinder :
+   zylinder - belegte zylinder.
+
+belegte zylinder :
+   help := 0;
+   FOR i FROM 1 UPTO partitions REP
+      help INCR partition groesse (part list (i))
+   PER;
+   help.
+
+keine eumel partition :
+   fehler;
+   put line ("Sie dürfen mit diesem System nur 'EUMEL' - Partitionen manipulieren.");
+   put      ("Die Partition " + text (partition) + " ist nicht vom Typ 'EUMEL' !").
+
+fehler :
+   cl eop (1, 20);
+   put (""7"" + inverse ("FEHLER :")); line (2).
+
+loesche eingabepuffer :
+   REP UNTIL incharety = "" PER. ;
+
+PROC logo :
+  page;
+  put center (3, "S E T U P - E U M E L   "+ setup version);
+  put center (5, "für");
+  put center (7, "M O D U L - S H A R D");
+  put center (13, "======================================================");
+  put center (15, "(für IBM " + typ + " und Kompatible)");
+  put center (20, stand);
+  pause (50);
+  collect heap garbage.
+
+typ :
+  IF at version THEN "AT" ELSE "XT"  FI.
+END PROC logo;
+
+END PACKET setup eumel;
+
+setup eumel
+
+
+
+
+
+
+

@@ -1,0 +1,531 @@
+(* ------------------- VERSION 12 vom 06.08.86 -------------------- *)
+PACKET reporter routines DEFINES generate counts,
+                                 count on,
+                                 count off,
+                                 generate reports,
+                                 eliminate reports,
+                                 assert,
+                                 report on,
+                                 report off,
+                                 report:
+
+(* Programm zur Ablaufverfolgung von ELAN Programmen. Das Programm 
+   verfolgt Prozedur- und Refinementaufrufe ('trace') und erstellt
+   eine Haeufigkeitszaehlung ('count') und beachtet 'assertions'.
+   Autor: Rainer Hahn *)
+
+FILE VAR input file;
+
+INT VAR zeilen nr,
+        type;
+ 
+TEXT VAR zeile,
+         dummy,
+         dummy1,
+         symbol;
+ 
+LET quadro fis = "####",
+    triple fis = "###",
+    double fis = "##",
+    tag  = 1,
+    bold = 2;
+
+DATASPACE VAR ds := nilspace;
+BOUND ROW max STRUCT (INT anzahl, BOOL proc) VAR zaehlwerk;
+
+LET max = 3000;
+
+(******************* gen report-Routinen ******************************) 
+ 
+PROC generate reports:
+  generate reports (last param)
+END PROC generate reports;
+
+PROC generate reports (TEXT CONST name):
+  disable stop; 
+  gen trace statements (name); 
+  IF is error AND error message = "ende"
+    THEN clear error;
+         last param (name)
+  FI;
+  to line (input file, 1);
+  enable stop. 
+END PROC generate reports;
+
+PROC gen trace statements (TEXT CONST name):
+  enable stop;
+  IF exists (name) 
+    THEN input file := sequential file (modify, name)
+    ELSE errorstop ("input file does not exist") 
+  FI;
+  input file modifizieren
+END PROC gen trace statements; 
+ 
+(*************************** Test file modifizieren *****************) 
+ 
+PROC input file modifizieren:
+  zeilen nr := 1;
+  to line (input file, 1);
+  col (input file, 1);
+  REP 
+    lese zeile;
+    IF triple fis symbol
+      THEN wandele in quadro fis
+    FI;
+    IF proc oder op symbol
+      THEN verarbeite operator oder prozedurkopf
+    ELIF refinement symbol
+      THEN verarbeite ggf refinements
+    FI;
+    vorwaerts
+  END REP.
+ 
+triple fis symbol:
+  pos (zeile, triple fis) > 0 AND 
+       (pos (zeile, triple fis) <> pos (zeile, quadro fis)).
+
+wandele in quadro fis:
+  change all (zeile, triple fis, quadro fis);
+  write record (input file, zeile).
+
+proc oder op symbol:
+  pos (zeile, "PROC") > 0 OR pos (zeile, "OP") > 0.
+
+verarbeite operator oder prozedurkopf:
+  scan (zeile);
+  symbol lesen;
+  IF symbol = "PROC" OR symbol = "OP"
+    THEN 
+  ELIF symbol = "END"
+    THEN LEAVE verarbeite operator oder prozedurkopf
+  ELIF type = bold
+    THEN next symbol (symbol, type);
+         IF NOT (symbol = "PROC" OR symbol = "OP")
+           THEN LEAVE verarbeite operator oder prozedurkopf
+         FI
+    ELSE LEAVE verarbeite operator oder prozedurkopf
+  FI;
+  scanne kopf;
+  insertiere trace anweisung.
+
+scanne kopf:
+  dummy := double fis;
+  dummy CAT "report(""";
+  dummy CAT text (line no (input file) + 1);
+  dummy CAT ": ";
+  dummy CAT symbol; (* PROC oder OP *)
+  dummy CAT " ";
+  symbol lesen;
+  dummy CAT symbol;
+  fuege bis namens ende an;
+  dummy CAT " ";
+  ueberlese ggf parameterliste.
+
+fuege bis namens ende an:
+  REP
+    symbol lesen;
+    IF symbol = "(" OR symbol = ":"
+      THEN LEAVE fuege bis namensende an
+    FI;
+    dummy CAT symbol
+  END REP.
+
+ueberlese ggf parameterliste:
+  WHILE symbol <> ":" REP
+    symbol lesen
+  END REP.
+
+insertiere trace anweisung:
+  WHILE pos (zeile, ":") = 0 REP
+    vorwaerts;
+    lese zeile
+  END REP;
+  schreibe zeile mit report statement.
+
+refinement symbol:
+  INT CONST point pos :=  pos (zeile, ".") ;
+  point pos > 0 AND point pos >= length (zeile) - 1.
+
+verarbeite ggf refinements:
+  ueberlies leere zeilen ; 
+  IF ist wirklich refinement
+    THEN insertiere report fuer refinement
+  FI .
+
+ueberlies leere zeilen :
+  REP 
+    vorwaerts;
+    lese zeile
+  UNTIL pos (zeile, ""33"", ""254"", 1) > 0 PER .
+ 
+ist wirklich refinement :
+  scan (zeile) ;
+  next symbol (symbol, type) ;
+  next symbol (symbol) ;
+  symbol = ":" AND type = tag .
+
+insertiere report fuer refinement:
+  dummy := double fis;
+  dummy CAT "report(""     ";
+  dummy CAT text (line no (input file) + 1);
+  dummy CAT ": ";
+  dummy1 := subtext (zeile, 1, pos (zeile, ":") - 1);
+  dummy CAT dummy1;
+  schreibe zeile mit report statement
+END PROC input file modifizieren; 
+ 
+PROC schreibe zeile mit report statement:
+  dummy CAT """);";
+  dummy CAT double fis;
+  IF doppelpunkt steht am ende der zeile
+    THEN vorwaerts;
+         insert record (input file);
+         write record (input file, dummy)
+    ELSE insert char (dummy, ":", 1);
+         change (zeile, ":", dummy);
+         write record (input file, zeile)
+  FI.
+
+doppelpunkt steht am ende der zeile:
+  (zeile SUB length (zeile)) = ":" OR (zeile SUB length (zeile) - 1) = ":".
+END PROC schreibe zeile mit report statement;
+ 
+PROC symbol lesen:
+  next symbol (symbol, type);
+  IF ende der zeile gescannt
+    THEN vorwaerts;
+         lese zeile;
+         continue scan (zeile);
+         next symbol (symbol, type)
+  FI.
+
+ende der zeile gescannt:
+  type >= 7.
+END PROC symbol lesen;
+
+PROC vorwaerts:
+  IF eof (input file) 
+    THEN errorstop ("ende")
+  FI;
+  down (input file);
+  IF eof (input file) 
+    THEN errorstop ("ende")
+  FI
+END PROC vorwaerts;
+
+PROC lese zeile:
+  read record (input file, zeile); 
+  cout (zeilen nr); 
+  zeilen nr INCR 1
+END PROC lese zeile;
+
+(************************ eliminate reports-Routinen ******************)
+
+PROC eliminate reports:
+  eliminate reports (last param)
+END PROC eliminate reports;
+
+PROC eliminate reports (TEXT CONST name): 
+  disable stop; 
+  eliminate statements (name); 
+  IF is error AND error message = "ende"
+    THEN clear error;
+         last param (name)
+  FI;
+  to line (input file, 1);
+  enable stop. 
+END PROC eliminate reports;
+
+PROC eliminate statements (TEXT CONST name): 
+  enable stop;
+  IF exists (name) 
+    THEN input file := sequential file (modify, name)
+    ELSE errorstop ("input file does not exist") 
+  FI;
+  statements entfernen.
+
+statements entfernen:
+  to line (input file, 1);
+  col (input file, 1);
+  zeilen nr := 1;
+  WHILE NOT eof (input file) REP
+    lese zeile;
+    IF pos (zeile, double fis) > 0
+      THEN eliminiere zeichenketten in dieser zeile
+      ELSE vorwaerts
+    FI
+  END REP.
+
+eliminiere zeichenketten in dieser zeile:
+  INT VAR anfang := pos (zeile, double fis);
+  WHILE es ist noch etwas zu eliminieren REP
+    IF es ist ein quadro fis
+      THEN wandele es in ein triple fis
+    ELIF es ist ein triple fis
+      THEN lass diese sequenz stehen
+      ELSE entferne zeichenkette
+    FI
+  END REP;
+  IF zeile ist jetzt leer
+    THEN delete record (input file)
+    ELSE write record (input file, zeile);
+         vorwaerts
+  FI.
+
+es ist noch etwas zu eliminieren:
+  anfang > 0.
+ 
+es ist ein quadro fis:
+  pos (zeile, quadro fis, anfang) = anfang.
+
+wandele es in ein triple fis:
+  delete char (zeile, anfang);
+  anfang := pos (zeile, double fis, anfang + 3).
+
+es ist ein triple fis:
+  pos (zeile, triple fis, anfang) = anfang.
+
+lass diese sequenz stehen:
+  anfang := pos (zeile, triple fis, anfang + 1) + 3.
+
+entferne zeichenkette:
+  INT VAR end := pos (zeile, double fis, anfang+2) ;
+  IF end > 0
+    THEN change (zeile, anfang, end + 1, "");
+         anfang := pos (zeile, double fis, anfang)
+    ELSE anfang := pos (zeile, double fis, anfang+2) 
+  FI .
+
+zeile ist jetzt leer:
+  pos (zeile, ""33"", ""254"", 1) = 0.
+END PROC eliminate statements; 
+
+(********************** Trace-Routinen *******************************) 
+ 
+FILE VAR trace file;
+
+BOOL VAR zaehlwerk initialisiert :: FALSE,
+         trace on,
+         haeufigkeit on;
+
+PROC report (TEXT CONST message):
+  IF exists ("TRACE")
+    THEN 
+    ELSE trace on := TRUE;
+         haeufigkeit on := FALSE;
+  FI;
+  BOOL CONST ist prozedur ::
+     pos (message, "PROC") > 0 OR pos (message, "OP") > 0;
+  trace file := sequential file (modify, "TRACE");
+  IF lines (trace file) <= 0
+    THEN insert record (trace file);
+         write record (trace file, "")
+    ELSE to line (trace file, lines (trace file));
+         read record (trace file, dummy);
+         IF dummy <> ""
+           THEN down (trace file);
+                insert record (trace file);
+                write record (trace file, "")
+         FI
+  FI;
+  IF trace on
+    THEN write record (trace file, message);
+         down (trace file);
+         insert record (trace file);
+         write record (trace file, "")
+  FI;
+  IF haeufigkeit on
+    THEN haeufigkeits zaehlung
+  FI.
+
+haeufigkeits zaehlung:
+  hole zeilen nr;
+  zaehle mit.
+
+hole zeilen nr:
+  INT CONST von pos :: pos (message, ""33"", ""254"", 1);
+  zeilen nr :=
+     int (subtext (message, von pos, pos (message, ":", von pos + 1) - 1)).
+
+zaehle mit:
+  IF last conversion ok AND zeilen nr > 0 AND zeilen nr <= max
+    THEN zaehlwerk [zeilen nr] . anzahl INCR 1;
+         zaehlwerk [zeilen nr] . proc := ist prozedur
+  FI
+END PROC report;
+ 
+PROC report (TEXT CONST message, INT CONST value):
+  report (message, text (value))
+END PROC report;
+
+PROC report (TEXT CONST message, REAL CONST value):
+  report (message, text (value))
+END PROC report;
+ 
+PROC report (TEXT CONST message, TEXT CONST value):
+  dummy1 := message;
+  dummy1 CAT ": ";
+  dummy1 CAT value;
+  report (dummy1)
+END PROC report;
+
+PROC report (TEXT CONST message, BOOL CONST value):
+  dummy1 := message;
+  dummy1 CAT ": ";
+  IF value
+    THEN dummy1 CAT "TRUE"
+    ELSE dummy1 CAT "FALSE"
+  FI;
+  report (dummy1)
+END PROC report;
+
+PROC report on: 
+  trace on := TRUE;
+  dummy1 := "REPORT ---> ON";
+  report (dummy1)
+END PROC report on;
+ 
+PROC report off: 
+  dummy1 := "REPORT ---> OFF";
+  report (dummy1);
+  trace on := FALSE;
+END PROC report off;
+
+PROC assert (BOOL CONST value):
+  assert ("", value)
+END PROC assert;
+
+PROC assert (TEXT CONST message, BOOL CONST value):
+  dummy1 := "ASSERTION:";
+  dummy1 CAT message;
+  dummy1 CAT " ---> ";
+  IF value
+    THEN dummy1 CAT "TRUE"
+    ELSE line;
+         put ("ASSERTION:"); 
+         put (message);
+         put ("---> FALSE");
+         line;
+         IF yes ("weiter")
+           THEN dummy1 CAT "FALSE"
+           ELSE errorstop ("assertion failed")
+         FI
+  FI;
+  report (dummy1)
+END PROC assert;
+
+(************************** haeufigkeits-zaehlung ****************)
+
+PROC count on:
+  report ("COUNT ---> ON");
+  haeufigkeit on := TRUE;
+  initialisiere haeufigkeit.
+
+initialisiere haeufigkeit:
+  INT VAR i;
+  forget (ds);
+  ds := nilspace;
+  zaehlwerk initialisiert := TRUE;
+  zaehlwerk := ds;
+  FOR i FROM 1 UPTO max REP
+    zaehlwerk [i] . anzahl := 0
+  END REP
+END PROC count on;
+
+PROC count off:
+  report ("COUNT ---> OFF");
+  haeufigkeit on := FALSE
+END PROC count off;
+
+PROC generate counts:
+  generate counts (last param)
+END PROC generate counts;
+
+PROC generate counts (TEXT CONST name): 
+  disable stop; 
+  insert counts (name); 
+  last param (name);
+  to line (input file, 1);
+  enable stop. 
+END PROC generate counts;
+
+PROC insert counts (TEXT CONST name):
+  enable stop;
+  IF exists (name)
+    THEN input file := sequential file (modify, name);
+         col (input file, 1)
+    ELSE errorstop ("input file does not exist")
+  FI;
+  IF NOT zaehlwerk initialisiert
+    THEN errorstop ("count nicht eingeschaltet")
+  FI;
+  counts insertieren;
+  dataspace loeschen;
+  statistik ausgeben.
+ 
+counts insertieren:
+  REAL VAR gesamt aufrufe :: 0.0, 
+           proc   aufrufe :: 0.0, 
+           andere aufrufe :: 0.0; 
+  zeilen nr := 1;
+  WHILE zeilen nr <= lines (input file) REP
+    cout (zeilen nr);
+    IF zaehlwerk [zeilen nr] . anzahl > 0
+      THEN anzahl aufrufe in die eingabe zeile einfuegen;
+           aufrufe mitzaehlen
+    FI;
+    zeilen nr INCR 1
+  END REP.
+
+anzahl aufrufe in die eingabe zeile einfuegen: 
+  to line (input file, zeilen nr);
+  read record (input file, zeile);
+  dummy := double fis;
+  dummy CAT text (zaehlwerk [zeilen nr] . anzahl);
+  dummy CAT double fis;
+  change (zeile, 1, 0, dummy);
+  write record (input file, zeile).
+
+aufrufe mitzaehlen: 
+  gesamt aufrufe INCR real (zaehlwerk [zeilen nr] . anzahl); 
+  IF zaehlwerk [zeilen nr] . proc 
+    THEN proc aufrufe INCR real (zaehlwerk [zeilen nr] . anzahl) 
+    ELSE andere aufrufe INCR real (zaehlwerk [zeilen nr] . anzahl) 
+  FI. 
+ 
+dataspace loeschen:
+  zaehlwerk initialisiert := FALSE;
+  forget (ds).
+ 
+statistik ausgeben: 
+  line (2); 
+  put ("Anzahl der Gesamtaufrufe:"); 
+  ggf int put (gesamt aufrufe); 
+  line; 
+  put ("davon:"); 
+  line; 
+  ggf int put (proc aufrufe); put ("Prozeduren oder Operatoren"); 
+  line; 
+  ggf int put (andere aufrufe); put ("Refinements und andere"); 
+  line. 
+END PROC insert counts;
+
+PROC ggf int put (REAL CONST wert):
+  IF wert >= real (maxint)
+    THEN put (wert)
+    ELSE put (int (wert))
+  FI
+END PROC ggf int put;
+END PACKET reporter routines;
+(*
+REP
+  IF exists ("rep fehler")
+    THEN copy ("rep fehler", "zzz")
+    ELSE errorstop ("rep fehler exisitiert nicht")
+  FI;
+  generate reports ("zzz");
+  edit("zzz");
+  forget ("zzz")
+UNTIL no ("nochmal") END REP;
+edit("reporter")*)
+

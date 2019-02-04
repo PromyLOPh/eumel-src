@@ -1,0 +1,221 @@
+INCLUDE "std primitives"; 
+INCLUDE "matrix printer"; 
+ 
+PLOTTER "NEC P6 MD",1,15,1416,1760,20.00,25.00;
+ 
+COLORS "000999";
+ 
+(* Version vom 21.10.87 BJ/26.11.SvA *) 
+ 
+(* Globale Daten fuer NEC P6 *) 
+ 
+LET md p9 graf  = ""27"*"39"",    (* Nec P9 in 24-Nadel 180 Pixel/zoll Modus *) 
+    md p9 feed  = ""28"3",        (* Zeilenabstand in 360 Pixel/Zoll setzen *) 
+    md p9 nlq   = ""27"x"1"",     (* NLQ Modus waehlen *) 
+    md p9 pos   = ""27"\";        (* in 1/180 Zoll-Schritten rel Positionieren *) 
+ 
+LET md p9 x max   = 1416, 
+    md p9 y max   = 1760, 
+    md p9 y lines = 110,         (* y pixel / 16 (Punkte pro INT) *) 
+    md p9 x per ds= 596,         (* Maximale x pixel pro Dataspace ( Darf *) 
+                                 (* Nicht mehr als 256 K sein !!!     *) 
+                                 (* x per ds = 256 * 1024 / p9 y lines / 4 *)
+    md p9 x lines = 3;           (* x pixel / hd p9 x per ds *) 
+ 
+LET MDPYLINE = ROW md p9 x per ds INT, 
+    MDPSMAP  = ROW md p9 y lines MDPYLINE, 
+    MDPMAP   = ROW md p9 x lines BOUND MDPSMAP; 
+ 
+MDPMAP VAR md p9 map; 
+
+ROW md p9 x lines DATASPACE VAR md p9 ds;
+
+INT VAR md p9 x pos, md p9 y pos;
+ 
+(* Globale Daten Ende *) 
+
+PROC prepare: 
+  REP 
+   call (29, "", printer); (* wait for halt *) 
+   IF task(channel(plotter)) = niltask   (* Es koennte der HD worker dran sein *) 
+     THEN continue (channel (plotter))   (* der startet den PRINTER wieder ! *) 
+     ELSE pause(300)                     (* folge : Kanal belegt -> dead *)
+   FI
+ UNTIL channel(myself) = channel(plotter) PER
+END PROC prepare;
+ 
+PROC initplot: 
+  INT VAR md p9 i; 
+  FOR md p9 i FROM 1 UPTO md p9 x lines REP 
+    md p9 ds[md p9 i] := nilspace; 
+    md p9 map[md p9 i] := md p9 ds[md p9 i]
+  PER
+END PROC initplot; 
+ 
+PROC endplot: 
+  md p9 put map;
+  break(quiet);
+  call (26, "", printer);  (* start spool *)
+  enable stop
+END PROC endplot; 
+ 
+PROC md p9 put map: 
+  open graf; 
+  put map; 
+  close graf;
+  forget dataspaces.
+ 
+  open graf: 
+    out(md p9 feed + ""32"");  (* LF auf 16/180 Zoll setzen *)
+    out(md p9 nlq).   (* NLQ Modus waehlen, damit Positionierung in 1/180 *) 
+                      (* Schritten geht (sonst 1/120) *) 
+  close graf: 
+    out(""12"").      (* Form Feed ! Drucker muss auf richtige Seitenlaenge *) 
+                      (* eingestellt sein (EUMEL-DR macht kein FF) *) 
+ 
+  forget dataspaces: 
+    INT VAR i;
+    FOR i FROM 1 UPTO md p9 x lines REP 
+      forget(md p9 ds[i]) 
+    PER. 
+ 
+  put map: 
+    INT VAR j; 
+    FOR j FROM 1 UPTO md p9 y lines REP 
+      put line; 
+    PER. 
+ 
+  put line: 
+    INT VAR actual pos :: 0, (* actual pos : aktuelle x-position 0..x max*)
+            last pos;
+    WHILE actual pos <= md p9 x max REP 
+      put blank cols; 
+      put nonblank cols 
+    PER;
+    line.
+ 
+  put blank cols: 
+    last pos := actual pos; 
+    WHILE actual pos <= md p9 x max CAND actual col is blank REP 
+      actual pos INCR 1 
+    PER; 
+    IF actual pos > last pos AND actual pos <= md p9 x max
+      THEN out blank cols 
+    FI. 
+ 
+  put nonblank cols: 
+    last pos := actual pos; 
+    WHILE actual pos <= md p9 x max CAND NOT actual col is blank REP 
+      actual pos INCR 1 
+    PER; 
+    IF actual pos > last pos
+      THEN out nonblank cols 
+    FI. 
+ 
+  out blank cols: 
+    TEXT VAR t :: "  "; 
+    replace(t, 1, actual pos - last pos); 
+    out (md p9 pos + t).
+ 
+  out nonblank cols: 
+    t := "  "; 
+    replace (t,1, actual pos - last pos); 
+    out(md p9 graf + t); 
+    INT VAR k;
+    FOR k FROM last pos UPTO actual pos - 1 REP
+      INT VAR word :: md p9 map [(k DIV md p9 x per ds) + 1][j] 
+                                [(k MOD md p9 x per ds) + 1], 
+              first byte :: word; 
+      rotate (word, 8);
+      out (code (word));
+      out (code (first byte));
+      out (""0"")
+    PER.
+ 
+  actual col is blank: 
+    md p9  map [(actual pos DIV md p9 x per ds) + 1][j]
+               [(actual pos MOD md p9 x per ds) + 1] = 0 
+ 
+END PROC md p9 put map; 
+ 
+PROC clear: 
+  md p9 clear
+END PROC clear;
+
+PROC md p9 clear: 
+  create initline;
+  initialize all lines.
+
+  create initline: 
+    MDPYLINE VAR initline; 
+    INT VAR i; 
+    FOR i FROM 1 UPTO md p9 x per ds REP 
+      initline[i] := 0 
+    PER. 
+ 
+  initialize all lines: 
+    INT VAR k; 
+    FOR i FROM 1 UPTO md p9 x lines REP
+      FOR k FROM 1 UPTO md p9 y lines REP 
+        md p9 map[i][k] := initline 
+     PER
+   PER
+END PROC md p9 clear; 
+ 
+PROC home: 
+  move to (0,0)
+END PROC home;
+
+PROC moveto (INT CONST x,y): 
+  md p9 x pos := x;
+  md p9 y pos := y
+END PROC moveto;
+ 
+PROC drawto (INT CONST x,y): 
+  printer line (md p9 x pos,md p9 y max - md p9 y pos,
+                x, md p9 y max - y,
+                PROC (INT CONST, INT CONST) md p9 set pixel);
+  md p9 x pos := x;
+  md p9 y pos := y
+END PROC drawto;
+
+PROC setpixel (INT CONST x,y): 
+  md p9 set pixel (x, md p9 y max - x)
+END PROC setpixel;
+
+PROC md p9 set pixel (INT CONST x,y):
+  setbit (md p9 map [(x DIV md p9 x per ds) + 1][(y DIV 16) + 1] 
+                    [(x MOD md p9 x per ds) + 1],15 - (y AND 15))
+END PROC md p9 set pixel;
+
+BOOL PROC md p9 is pixel (INT CONST x,y):
+  bit (md p9 map [(x DIV md p9 x per ds) + 1][(y DIV 16) + 1] 
+                 [(x MOD md p9 x per ds) + 1],15 - (y AND 15))
+END PROC md p9 is pixel;
+
+PROC foreground (INT VAR type): 
+  type := 1
+END PROC foreground;
+
+PROC background (INT VAR type):
+  type := 0
+END PROC background; 
+        
+PROC setpalette: 
+END PROC setpalette;
+
+PROC circle (INT CONST x,y,rad,from,to): 
+  std circle (x,y,rad,from,to) 
+END PROC circle; 
+ 
+PROC box (INT CONST x1,y1,x2,y2,pattern): 
+  std box (x1, y1, x2, y2, pattern)
+END PROC box; 
+
+PROC fill (INT CONST x,y,pattern): 
+  printer fill (x,x,md p9 y max - y,1, 
+                BOOL PROC (INT CONST, INT CONST) md p9 is pixel, 
+                PROC (INT CONST, INT CONST) md p9 set pixel) 
+END PROC fill;
+
+

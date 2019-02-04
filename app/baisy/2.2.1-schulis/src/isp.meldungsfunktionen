@@ -1,0 +1,64 @@
+PACKET ispmeldungsfunktionenDEFINES melde,meldeauffaellig,loeschemeldung,
+meldungstext,initmeldungsfunktionen:LET maxmeldungen=500,
+namedesmeldungsdatenraums="Meldungsdatenraum";BOUND ROW maxmeldungenTEXT VAR 
+dsmeldung;INT VAR geliefert;LET anzahl=25;LET zeinfuegen="#",znormeinfuegen=
+"+",zhelleinfuegen="#",normausgabe=1,hellausgabe=2;BOOL VAR meldungdraussen:=
+FALSE ;PROC initmeldungsfunktionen:TASK VAR savetask;LET savetaskname=
+"anwendung";savetask:=task(savetaskname);IF NOT meldungsdatenraumdaTHEN IF 
+exists(namedesmeldungsdatenraums,savetask)THEN fetch(
+namedesmeldungsdatenraums,savetask)ELSE meldungenindatenraumschreiben;save(
+namedesmeldungsdatenraums,savetask)FI ;FI ;dsmeldung:=old(
+namedesmeldungsdatenraums).meldungsdatenraumda:exists(
+namedesmeldungsdatenraums).END PROC initmeldungsfunktionen;PROC melde(TAG 
+CONST t,INT CONST i):meldung(t,i,"",TRUE ,"",TRUE ,FALSE )END PROC melde;
+PROC melde(TAG CONST t,INT CONST i,TEXT CONST meldvar):meldung(t,i,"",TRUE ,
+meldvar,TRUE ,FALSE )END PROC melde;PROC meldeauffaellig(TAG CONST t,INT 
+CONST i):meldung(t,i,"",TRUE ,"",TRUE ,TRUE )END PROC meldeauffaellig;PROC 
+melde(TAG CONST t,TEXT CONST mtext):meldung(t,0,mtext,FALSE ,"",TRUE ,FALSE )
+END PROC melde;PROC melde(TAG CONST t,TEXT CONST mtext,TEXT CONST meldvar):
+meldung(t,0,mtext,FALSE ,meldvar,TRUE ,FALSE )END PROC melde;PROC 
+meldeauffaellig(TAG CONST t,TEXT CONST mtext):meldung(t,0,mtext,FALSE ,"",
+TRUE ,TRUE )END PROC meldeauffaellig;PROC meldung(TAG CONST t,INT CONST mnr,
+TEXT CONST mt,BOOL CONST was,TEXT CONST mvartext,BOOL CONST zentriert,BOOL 
+CONST hell):IF fieldexists(t,1)THEN TEXT VAR me;IF wasTHEN me:=meldungstext(
+mnr)ELSE me:=mtFI ;IF variablemeldungTHEN vartexteinfuegenFI ;IF hellTHEN 
+erhellen(t,me)FI ;IF zentriertTHEN centerFI ;put(t,me,1);meldungdraussen:=
+TRUE FI .center:INT CONST lmax:=length(t,1);INT CONST lmeld:=length(me);INT 
+CONST dif:=lmax-lmeld;IF lmeld>=lmaxTHEN LEAVE centerFI ;INT CONST bz:=dif
+DIV 2;me:=bz*" "+me+(dif-bz)*" ".variablemeldung:INT VAR einfuegepos:=pos(me,
+zeinfuegen);einfuegepos<>0.vartexteinfuegen:TEXT VAR ersatztext;INT VAR 
+textattr,aktpos:=1,posnorm,poshell;WHILE einfuegepos<>0REP 
+holeersatztextundattributausersatzzeile;ersetzeeinfuegezeichendurchersatztext
+;einfuegepos:=pos(me,zeinfuegen)PER .holeersatztextundattributausersatzzeile:
+posnorm:=pos(mvartext,znormeinfuegen,aktpos);poshell:=pos(mvartext,
+zhelleinfuegen,aktpos);IF posnorm=0THEN helloderendeELSE normoderhellFI .
+helloderende:IF poshell=0THEN ersatztext:="";textattr:=normausgabeELSE 
+holeteiltext(ersatztext,mvartext,aktpos,poshell);textattr:=hellausgabeFI .
+normoderhell:IF poshell=0THEN holeteiltext(ersatztext,mvartext,aktpos,posnorm
+);textattr:=normausgabeELIF normzuerstTHEN holeteiltext(ersatztext,mvartext,
+aktpos,posnorm);textattr:=normausgabeELSE holeteiltext(ersatztext,mvartext,
+aktpos,poshell);textattr:=hellausgabeFI .normzuerst:posnorm<poshell.
+ersetzeeinfuegezeichendurchersatztext:SELECT textattrOF CASE 1:change(me,
+zeinfuegen,ersatztext)CASE 2:erhellen(t,ersatztext);change(me,zeinfuegen,
+ersatztext)ENDSELECT .END PROC meldung;PROC holeteiltext(TEXT VAR akttext,
+TEXT CONST ersatzzeile,INT VAR abarbeitpos,INT CONST textendepos):akttext:=
+subtext(ersatzzeile,abarbeitpos,textendepos-1);abarbeitpos:=textendepos+1;
+END PROC holeteiltext;PROC loeschemeldung(TAG CONST t):IF meldungdraussen
+THEN put(t,"",1);meldungdraussen:=FALSE FI ;END PROC loeschemeldung;PROC 
+erhellen(TAG CONST t,TEXT VAR helltext):TEXT VAR ht:=helltext;helltext:=""+
+subtext(ht,1,meldfeldlaenge-4)+" ".meldfeldlaenge:length(t,1).END PROC 
+erhellen;TEXT PROC meldungstext(INT CONST meldnummer):IF meldnummer<0OR 
+meldnummer>maxmeldungenTHEN ""ELSE dsmeldung(meldnummer)FI END PROC 
+meldungstext;PROC meldungstext(INT CONST meldnr,TEXT VAR meldetext):meldetext
+:=meldungstext(meldnr)END PROC meldungstext;PROC 
+meldungenindatenraumschreiben:INT VAR iinit;forget(namedesmeldungsdatenraums,
+quiet);dsmeldung:=new(namedesmeldungsdatenraums);FOR iinitFROM 1UPTO 
+maxmeldungenREP dsmeldung(iinit):=""PER ;systemdbon;lieserstemeldung;
+dsmeldung(meldungsnr):=mtext;geliefert:=anzahl;WHILE 
+meldungindatenraumaufzunehmenAND geliefert=anzahlREP geliefert:=anzahl;
+multisucc(dnrmeld,geliefert);FOR iinitFROM 1UPTO geliefertREP stackentry(
+iinit);dsmeldung(meldungsnr):=mtext;PER ;PER ;systemdboff.meldungsnr:intwert(
+fnrmeldungsname).mtext:wert(fnrmeldungstext).lieserstemeldung:first(dnrmeld).
+meldungindatenraumaufzunehmen:dbstatus=ok.END PROC 
+meldungenindatenraumschreiben;END PACKET ispmeldungsfunktionen;
+

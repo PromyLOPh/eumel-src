@@ -1,0 +1,141 @@
+PACKET sicherungsmonitorDEFINES ladenstarten,sichernstarten,formatieren,
+endeformatieren,initialisieren,disketteueberpruefen,floppylisten,
+floppylistingzeigen,endefloppylisting,meldungquittieren,
+dbverzeichniserstellen,dbverzeichniszeigen,endedbverzeichnis,archiveanmelden,
+archiveabmelden,bestimmendersicherungstask,sicherungsloop,beendenarchivieren:
+LET initcode=25,listcode=26,checkcode=27,formatcode=40,logonarchivecode=45,
+logoffarchivecode=46,dbvomserver=47,dbzumserver=48,dbaufdisk=49,dbvondisk=50,
+dddrucken=51,endemeldung=0,errornak=2,nak=1,keinedaten=59,floppyzuranzeige=
+180,formatkorrekt=181,initkorrekt=182,sichernkorrekt=183,ladenkorrekt=184,
+opkorrekt=185,unbekanntercode=186,inkonsicherung=187,floppyzurpruefung=199;
+LET yescode=10,outcode=11,showcode=12;LET meldungsfeld=1;LET 
+ankreuzauffloppyladen=6,ankreuzauffloppysichern=7,floppynamefeld=8,
+ankreuzschulis=2,ankreuzbaisy=3,ankreuzida=4,ankreuzstatistik=5,
+fragekennzeichnung=" ?";LET manager2="baisy",manager1="schulis",manager3=
+"ida",manager4="statistik";LET meldpattern1="Archiv",meldpattern2="e",
+meldpattern3="Diskette",patternlaenge=6;LET sicherung=" sicherung";INT VAR 
+quittung,stufe:=1,letzterauftragscode;TEXT VAR dbinhalt:="";TASK VAR 
+dbsicherungstask;DATASPACE VAR ds;BOUND TEXT VAR message;INT VAR 
+meldungsfeldlaenge,eingabestatus;TEXT VAR dbsicherung:="",anmeldetask:="";
+BOOL VAR endequittungda:=FALSE ,error:=FALSE ;LET logbucheintragsichern=
+"Anw. 10.1.1 Sicherung von ",logbucheintragladen="Anw. 10.1.2 Laden von ";
+PROC eingabepruefen:standardpruefe(5,ankreuzschulis,ankreuzstatistik,0,"",
+eingabestatus);IF eingabestatus=0THEN standardpruefe(5,ankreuzauffloppyladen,
+ankreuzauffloppysichern,0,"",eingabestatus);IF eingabestatus=0THEN 
+parametersetzenFI ;FI .END PROC eingabepruefen;PROC eingabepruefeneinfach:
+standardpruefe(5,ankreuzschulis,ankreuzstatistik,0,"",eingabestatus);IF 
+eingabestatus=0THEN parametersetzenFI .END PROC eingabepruefeneinfach;PROC 
+parametersetzen:IF standardmaskenfeld(ankreuzschulis)<>""THEN dbsicherung:=
+manager1;dbinhalt:="EUMELbase.schulis-DB-Verzeichnis"ELIF standardmaskenfeld(
+ankreuzbaisy)<>""THEN dbsicherung:=manager2;dbinhalt:=
+"EUMELbase.baisy-DB-Verzeichnis"ELIF standardmaskenfeld(ankreuzida)<>""THEN 
+dbsicherung:=manager3;dbinhalt:="EUMELbase.schulis-DB-Verzeichnis"ELSE #25.09
+.90#dbsicherung:=manager4;dbinhalt:="EUMELbase.schulis-DB-Verzeichnis"FI ;
+dbsicherungCAT sicherung;infeld(floppynamefeld);meldungsfeldlaenge:=
+standardfeldlaenge(meldungsfeld).END PROC parametersetzen;PROC 
+beendenarchivieren:archiveabmelden;enter(2)ENDPROC beendenarchivieren;PROC 
+ladenstarten:IF stufe=2THEN sicherungsloopELSE stufe1behandlungFI .
+stufe1behandlung:eingabepruefen;IF eingabestatus<>0THEN infeld(eingabestatus)
+;return(1)ELSE IF auffloppyTHEN archiveanmelden;IF anmeldetask=""THEN return(
+1);LEAVE ladenstartenELSE stufe:=2;logeintrag(logbucheintragladen+
+logbuchbehandeltedaten);archiveoperation(dbvondisk,dbsicherung);IF 
+endequittungdaOR errorTHEN return(1)FI FI ELSE logeintrag(logbucheintragladen
++logbuchbehandeltedaten);archiveoperation(dbzumserver,dbsicherung);return(1)
+FI FI .auffloppy:standardmaskenfeld(ankreuzauffloppyladen)<>"".END PROC 
+ladenstarten;PROC sichernstarten:IF stufe=2THEN sicherungsloopELSE 
+stufe1behandlungFI ;.stufe1behandlung:eingabepruefen;IF eingabestatus<>0THEN 
+infeld(eingabestatus);return(1)ELSE IF auffloppyTHEN archiveanmelden;IF 
+anmeldetask=""THEN return(1);LEAVE sichernstartenELSE stufe:=2;
+archiveoperation(dbaufdisk,dbsicherung);IF endequittungdaOR errorTHEN return(
+1)FI FI ELSE logeintrag(logbucheintragsichern+logbuchbehandeltedaten);
+archiveoperation(dbvomserver,dbsicherung);return(1)FI FI .END PROC 
+sichernstarten;TEXT PROC logbuchbehandeltedaten:IF standardmaskenfeld(
+ankreuzschulis)<>""THEN "Anwendungsdaten"ELIF standardmaskenfeld(ankreuzbaisy
+)<>""THEN "Systemdaten"ELIF standardmaskenfeld(ankreuzida)<>""THEN 
+"Anwenderspezifischen Druckausgaben"ELSE "Amtliche Statistik"FI END PROC 
+logbuchbehandeltedaten;BOOL PROC auffloppy:standardmaskenfeld(
+ankreuzauffloppysichern)<>""ENDPROC auffloppy;PROC formatieren:
+archiveanmelden;IF anmeldetask<>""THEN archiveoperation(formatcode,
+dbsicherung)FI ;infeld(2);return(2)END PROC formatieren;PROC endeformatieren:
+archiveabmelden;enter(2)ENDPROC endeformatieren;PROC initialisieren:
+archiveanmelden;IF anmeldetask<>""THEN archiveoperation(initcode,dbsicherung)
+FI ;infeld(2);return(2)END PROC initialisieren;PROC disketteueberpruefen:
+eingabepruefeneinfach;IF eingabestatus<>0THEN infeld(eingabestatus);return(1)
+ELSE standardmeldung(floppyzurpruefung,"");archiveanmelden;IF anmeldetask<>""
+THEN archiveoperation(checkcode,dbsicherung)FI ;infeld(2);return(1)FI END 
+PROC disketteueberpruefen;PROC floppylisten:eingabepruefeneinfach;IF 
+eingabestatus<>0THEN infeld(eingabestatus);return(1)ELSE standardmeldung(
+floppyzuranzeige,"");archiveanmelden;IF anmeldetask<>""THEN archiveoperation(
+listcode,dbsicherung);IF errorTHEN return(1)FI ELSE return(1)FI FI END PROC 
+floppylisten;PROC dbverzeichniserstellen:eingabepruefeneinfach;IF 
+eingabestatus<>0THEN infeld(eingabestatus);return(1)ELIF standardmaskenfeld(
+ankreuzstatistik)<>""THEN standardmeldung(keinedaten,"");return(1)ELSE 
+archiveoperation(dddrucken,dbsicherung);FI END PROC dbverzeichniserstellen;
+PROC melde(TEXT CONST mt):TEXT CONST mtext:=""+subtext(mt,1,
+meldungsfeldlaenge-5)+" ";INT VAR textl:=length(mtext);INT VAR seitenlaenge
+:=meldungsfeldlaenge-textl;seitenlaenge:=seitenlaengeDIV 2;TEXT CONST fueller
+:=seitenlaenge*" ";TEXT VAR meldung:=fueller+mtext+fueller;
+evtlteiltextersetzen;meldungIN meldungsfeld.evtlteiltextersetzen:INT VAR 
+archpos:=pos(meldung,meldpattern1);IF archpos>0THEN IF NOT (pos(meldung,
+meldpattern3)>0)THEN TEXT VAR ergaenztemeldung:=subtext(meldung,1,archpos-1)+
+meldpattern3;INT VAR patternpos2:=archpos+patternlaenge;IF (meldungSUB 
+patternpos2)=meldpattern2THEN ergaenztemeldungCAT subtext(meldung,patternpos2
++1)ELSE ergaenztemeldungCAT subtext(meldung,patternpos2)FI ;meldung:=
+ergaenztemeldungFI FI .END PROC melde;TEXT PROC frage(TEXT CONST mess):#
+subtext(#mess#,textbeginn)#+fragekennzeichnungEND PROC frage;PROC 
+archiveoperation(INT CONST auftragscode,TEXT CONST sicherungstask):TASK VAR 
+sendingtask;letzterauftragscode:=auftragscode;dbsicherungstask:=/
+sicherungstask;forget(ds);ds:=nilspace;endequittungda:=FALSE ;error:=FALSE ;
+call(dbsicherungstask,auftragscode,ds,quittung);loop.loop:REP SELECT quittung
+OF CASE yescode:questionCASE showcode:showenCASE outcode:meldenCASE 
+endemeldung:beendenCASE errornak:fehlermeldenOTHERWISE :unknowncodeENDSELECT 
+;UNTIL endequittungdaPER .question:message:=ds;melde(frage(message));LEAVE 
+archiveoperation.showen:IF auftragscode=listcodeTHEN floppyELSE dbFI .floppy:
+forget(dbsicherung,quiet);copy(ds,dbsicherung);floppylistingzeigen;LEAVE 
+archiveoperation.db:forget(dbinhalt,quiet);copy(ds,dbinhalt);
+dbverzeichniszeigen;LEAVE archiveoperation.melden:message:=ds;standardmeldung
+(message,"");wartenaufnaechstesendung.wartenaufnaechstesendung:REP forget(ds)
+;wait(ds,quittung,sendingtask);IF NOT (sendingtask=dbsicherungstask)THEN 
+sendnakELSE LEAVE wartenaufnaechstesendungFI PER .beenden:IF 
+ungleichanmeldenundabmeldenTHEN standardmeldung(meldnr,"");archiveabmelden;
+FI ;stufe:=1;endequittungda:=TRUE .meldnr:SELECT auftragscodeOF CASE 
+formatcode:formatkorrektCASE initcode:initkorrektCASE dbvomserver,dbaufdisk:
+sichernkorrektCASE dbzumserver,dbvondisk:ladenkorrektOTHERWISE :opkorrekt
+ENDSELECT .ungleichanmeldenundabmelden:auftragscode<>logonarchivecodeCAND 
+auftragscode<>logoffarchivecode.fehlermelden:message:=ds;standardmeldung(
+message,"");IF ungleichanmeldenundabmeldenTHEN archiveabmeldenFI ;stufe:=1;
+error:=TRUE ;#return(1);#LEAVE archiveoperation.unknowncode:standardmeldung(
+unbekanntercode,": "+text(quittung)+"#");stufe:=1;#return(1);#LEAVE loop.
+sendnak:send(sendingtask,nak,ds).ENDPROC archiveoperation;PROC 
+floppylistingzeigen:editiere(dbsicherung)ENDPROC floppylistingzeigen;PROC 
+dbverzeichniszeigen:editiere(dbinhalt,FALSE )ENDPROC dbverzeichniszeigen;
+PROC endedbverzeichnis:killundenter(2)ENDPROC endedbverzeichnis;PROC 
+endefloppylisting:archiveabmelden;killundenter(2)ENDPROC endefloppylisting;
+PROC archiveanmelden:eingabepruefeneinfach;IF eingabestatus<>0THEN infeld(
+eingabestatus);return(1)ELSE archiveoperation(logonarchivecode,dbsicherung);
+IF #quittung=endemeldung#endequittungdaCAND NOT errorTHEN anmeldetask:=
+dbsicherungELSE anmeldetask:=""FI FI ENDPROC archiveanmelden;PROC 
+archiveabmelden:IF anmeldetask<>""THEN archiveoperation(logoffarchivecode,
+anmeldetask);anmeldetask:=""FI ENDPROC archiveabmelden;PROC meldungquittieren
+(BOOL CONST b):BOUND BOOL VAR boolds;forget(ds);ds:=nilspace;boolds:=ds;
+boolds:=b;send(/dbsicherung,yescode,ds);forget(ds);IF bTHEN enter(1)ELSE 
+standardmeldung(inkonsicherung,"");archiveabmelden;#enter(2)#return(2)FI 
+ENDPROC meldungquittieren;PROC bestimmendersicherungstask:
+eingabepruefeneinfach;IF eingabestatus<>0THEN infeld(eingabestatus);return(1)
+FI ENDPROC bestimmendersicherungstask;PROC sicherungsloop:TASK VAR 
+sendingtask;endequittungda:=FALSE ;REP wartenaufnaechstesendung;SELECT 
+quittungOF CASE yescode:questionCASE outcode:meldenCASE endemeldung:beenden
+CASE errornak:fehlermeldenOTHERWISE :unknowncodeENDSELECT ;PER .question:
+message:=ds;melde(frage(message));LEAVE sicherungsloop.melden:message:=ds;
+standardmeldung(message,"");#wartenaufnaechstesendung#.
+wartenaufnaechstesendung:REP forget(ds);wait(ds,quittung,sendingtask);IF NOT 
+(sendingtask=dbsicherungstask)THEN sendnakELSE LEAVE wartenaufnaechstesendung
+FI PER .beenden:standardmeldung(meldnr,"");archiveabmelden;stufe:=1;return(1)
+;endequittungda:=TRUE ;LEAVE sicherungsloop.meldnr:SELECT letzterauftragscode
+OF CASE dbvomserver,dbaufdisk:sichernkorrektCASE dbzumserver,dbvondisk:
+ladenkorrektOTHERWISE :opkorrektENDSELECT .fehlermelden:message:=ds;
+standardmeldung(message,"");archiveabmelden;error:=TRUE ;stufe:=1;return(1);
+LEAVE sicherungsloop.unknowncode:standardmeldung(unbekanntercode,"");stufe:=1
+;return(1);LEAVE sicherungsloop.sendnak:send(sendingtask,nak,ds).ENDPROC 
+sicherungsloop;END PACKET sicherungsmonitor
+

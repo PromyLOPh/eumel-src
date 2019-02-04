@@ -1,0 +1,201 @@
+PACKET erfaufsichtszeitenDEFINES aufsichtszeitenveraendern,
+aufsichtszeitenspeichern,aufsichtszeitenzeileentfernen,
+aufsichtszeitenzeileeinfuegen,aufsichtszeitenuebernehmen,
+aufsichtszeitenkopieren:LET niltext="",titelanfang="Aufsichtszeiten für das "
+,titelmitte=". Halbjahr ",trennerfuerschuljahr="/",null=0,eins=1;LET 
+fnrfueruebernehmen=2,fnrfuergeplbearb=3,fnrabtagfuergepl=4,fnrfueraktbearb=5,
+fnrabtagfuerakt=6,fnrcursorruhepos=7,allewochentagsbezeichnungen=
+"MODIMIDOFRSAMoDiMiDoFrSamodimidofrsa",maske="ms aufsichtszeiten",
+fnrwochentag=2,fnrerstebezeichnung=3,felderprozeile=5,offsetstundevor=1,
+offsetstundenach=2,offsetbeginnuhr=3,offsetendeuhr=4,fnrerstesfeldletztezeile
+=73,fnrletztesfeld=77,erstestundeamtag=1,stundenprowochentag=12,
+stundenamsamstag=6,stelledestages=100,datensaetzepromaske=15;LET 
+textschuljahr="Schuljahr",textschulhalbjahr="Schulhalbjahr";LET 
+meldungfeldleerlassen=390,meldungzeilezutief=391,meldungmindeinestunde=392,
+meldungspeicherung=50,meldungfalschezeitangabe=54,meldungeingabesinnlos=56,
+meldungplausi=57,meldungdatenfehlen=68,meldungspeicherfehler=73,
+meldungfrageuebernehmen=300,meldunguebernehmen=301,meldungzeitangabezulang=
+341,meldungfalschezeitfolge=342,meldungfalschetagesbez=385,
+meldungstdnachfolgend=386;TEXT VAR schuljahr:=niltext,halbjahr:=niltext;BOOL 
+VAR datenvorhanden;INT VAR tagnr;LET nummerfürmo=1,kürzelfürmo="Mo",
+nummerfürdi=2,kürzelfürdi="Di",nummerfürmi=3,kürzelfürmi="Mi",nummerfürdo=4,
+kürzelfürdo="Do",nummerfürfr=5,kürzelfürfr="Fr",nummerfürsa=6,kürzelfürsa=
+"Sa";ROW datensaetzepromaskeTEXT VAR alteaufsichtszeiten;INT VAR aktindex;
+PROC aufsichtszeitenzeileeinfuegen:INT VAR i,cursorfeld:=infeld;IF cursorfeld
+>=fnrerstesfeldletztezeileTHEN standardmeldung(meldungzeilezutief,niltext);
+ELSE cursorfeld:=cursorfeld-((cursorfeld-fnrerstebezeichnung)MOD 
+felderprozeile)+felderprozeile;FOR iFROM fnrletztesfeldDOWNTO cursorfeld+
+felderprozeileREP standardmaskenfeld(standardmaskenfeld(i-felderprozeile),i)
+PER ;FOR iFROM cursorfeldUPTO cursorfeld+offsetendeuhrREP standardmaskenfeld(
+niltext,i)PER ;FI ;return(1);END PROC aufsichtszeitenzeileeinfuegen;PROC 
+aufsichtszeitenzeileentfernen:INT VAR i,cursorfeld:=infeld;cursorfeld:=
+cursorfeld-((cursorfeld-fnrerstebezeichnung)MOD felderprozeile);FOR iFROM 
+cursorfeldUPTO cursorfeld+offsetendeuhrREP standardmaskenfeld(niltext,i)PER ;
+infeld(cursorfeld);return(1);END PROC aufsichtszeitenzeileentfernen;PROC 
+aufsichtszeitenveraendern:INT VAR aktfnr;pruefeplausidereingangsmaske;
+setzeschulhalbjahrindenmaskekopf;holealledatendestages;infeld(fnrwochentag);
+standardfelderausgeben;infeld(fnrerstebezeichnung);standardnproc.
+pruefeplausidereingangsmaske:IF standardmaskenfeld(fnrfueruebernehmen)<>
+niltextOR NOT (standardmaskenfeld(fnrfuergeplbearb)<>niltextXOR 
+standardmaskenfeld(fnrfueraktbearb)<>niltext)THEN standardmeldung(
+meldungeingabesinnlos,niltext);IF standardmaskenfeld(fnrfueruebernehmen)=
+niltextTHEN infeld(fnrfuergeplbearb)ELSE infeld(fnrfueruebernehmen)FI ;return
+(1);LEAVE aufsichtszeitenveraendernFI ;IF standardmaskenfeld(fnrfuergeplbearb
+)=niltextTHEN aktfnr:=fnrabtagfuergeplELSE aktfnr:=fnrabtagfueraktFI ;IF 
+standardmaskenfeld(aktfnr)<>niltextTHEN standardmeldung(meldungfeldleerlassen
+,niltext);infeld(aktfnr);return(1);LEAVE aufsichtszeitenveraendernFI ;IF 
+standardmaskenfeld(fnrfuergeplbearb)=niltextTHEN aktfnr:=fnrabtagfueraktELSE 
+aktfnr:=fnrabtagfuergeplFI ;IF standardmaskenfeld(aktfnr)=niltextTHEN tagnr:=
+nummerfürmo;ELSE tagnr:=pos(allewochentagsbezeichnungen,standardmaskenfeld(
+aktfnr));IF tagnr=0THEN standardmeldung(meldungfalschetagesbez,niltext);
+infeld(aktfnr);return(1);LEAVE aufsichtszeitenveraendernFI ;tagnr:=(tagnrMOD 
+12)DIV 2+1;FI .setzeschulhalbjahrindenmaskekopf:schuljahr:=schulkenndatum(
+textschuljahr);halbjahr:=schulkenndatum(textschulhalbjahr);IF 
+standardmaskenfeld(fnrfuergeplbearb)<>niltextTHEN geplanteshjundsjberechnen(
+halbjahr,schuljahr)FI ;standardstartproc(maske);
+standardkopfmaskeaktualisieren(titelanfang+halbjahr+titelmitte+text(schuljahr
+,2)+trennerfuerschuljahr+subtext(schuljahr,3)).END PROC 
+aufsichtszeitenveraendern;PROC aufsichtszeitenspeichern(BOOL CONST speichern)
+:INT VAR fehlerstatus:=null,aktfnr,aznr,beginn,ende,letztestd,i;IF speichern
+THEN pruefeplausibilitaet;IF fehlerstatus<>nullTHEN infeld(fehlerstatus);
+return(1);LEAVE aufsichtszeitenspeichernFI ;speicherungdurchfuehren;FI ;IF 
+tagnr<nummerfürsaTHEN tagnrINCR 1;holealledatendestages;infeld(fnrwochentag);
+standardfelderausgeben;infeld(fnrerstebezeichnung);return(1)ELSE enter(2)FI .
+pruefeplausibilitaet:standardmeldung(meldungplausi,niltext);aktfnr:=
+fnrerstebezeichnung-1;FOR iFROM 1UPTO datensaetzepromaskeREP aktfnrINCR 1;IF 
+(standardmaskenfeld(aktfnr)<>niltextCOR standardmaskenfeld(aktfnr+
+offsetbeginnuhr)<>niltextCOR standardmaskenfeld(aktfnr+offsetendeuhr)<>
+niltext)CAND standardmaskenfeld(aktfnr+offsetstundevor)=niltextCAND 
+standardmaskenfeld(aktfnr+offsetstundenach)=niltextTHEN standardmeldung(
+meldungmindeinestunde,niltext);fehlerstatus:=aktfnr+offsetstundevor;LEAVE 
+pruefeplausibilitaetFI ;IF tagnr=nummerfürsaTHEN letztestd:=stundenamsamstag
+ELSE letztestd:=stundenprowochentagFI ;aktfnrINCR 1;IF standardmaskenfeld(
+aktfnr)<>niltextTHEN standardpruefe(2,aktfnr,null,null,niltext,fehlerstatus);
+IF fehlerstatus<>0THEN LEAVE pruefeplausibilitaetFI ;standardpruefe(3,aktfnr,
+erstestundeamtag,letztestd,niltext,fehlerstatus);IF fehlerstatus<>0THEN 
+LEAVE pruefeplausibilitaetFI ;FI ;beginn:=int(standardmaskenfeld(aktfnr));
+aktfnrINCR 1;IF standardmaskenfeld(aktfnr)<>niltextTHEN standardpruefe(2,
+aktfnr,null,null,niltext,fehlerstatus);IF fehlerstatus<>0THEN LEAVE 
+pruefeplausibilitaetFI ;standardpruefe(3,aktfnr,erstestundeamtag,letztestd,
+niltext,fehlerstatus);IF fehlerstatus<>0THEN LEAVE pruefeplausibilitaetFI ;
+FI ;ende:=int(standardmaskenfeld(aktfnr));IF beginn>0AND ende>0AND ende<>
+beginn+1THEN standardmeldung(meldungstdnachfolgend,niltext);fehlerstatus:=
+aktfnr-1;LEAVE pruefeplausibilitaetFI ;aktfnrINCR 1;beginn:=int(
+standardmaskenfeld(aktfnr));IF falschezeitangabe(beginn,aktfnr,fehlerstatus)
+THEN LEAVE pruefeplausibilitaetFI ;aktfnrINCR 1;ende:=int(standardmaskenfeld(
+aktfnr));IF falschezeitangabe(ende,aktfnr,fehlerstatus)THEN LEAVE 
+pruefeplausibilitaetFI ;IF beginn>endeAND ende>0THEN standardmeldung(
+meldungfalschezeitfolge,niltext);fehlerstatus:=aktfnr-1;LEAVE 
+pruefeplausibilitaetFI PER .speicherungdurchfuehren:standardmeldung(
+meldungspeicherung,niltext);aktfnr:=fnrerstebezeichnung;aznr:=1;
+suchenächstenichtleerezeile;WHILE aktfnr<=fnrerstesfeldletztezeileREP infeld(
+aktfnr);fülleprimärindexfelder;search(dnraufsichtszeiten,true);
+füllerestlichedbfelder;IF dbstatus<>nullTHEN insert(dnraufsichtszeiten)ELSE 
+update(dnraufsichtszeiten)FI ;speicherfehlerabfangen;aktfnrINCR 
+felderprozeile;aznrINCR 1;suchenächstenichtleerezeile;PER ;dbstatus(0);WHILE 
+dbstatus=0CAND aznr<=datensaetzepromaskeREP fülleprimärindexfelder;delete(
+dnraufsichtszeiten);aznrINCR 1;PER .suchenächstenichtleerezeile:WHILE aktfnr
+<=fnrerstesfeldletztezeileCAND zeileistleerREP aktfnrINCR felderprozeilePER .
+zeileistleer:standardmaskenfeld(aktfnr)+standardmaskenfeld(aktfnr+
+offsetbeginnuhr)+standardmaskenfeld(aktfnr+offsetendeuhr)+standardmaskenfeld(
+aktfnr+offsetstundevor)+standardmaskenfeld(aktfnr+offsetstundenach)=niltext.
+fülleprimärindexfelder:putwert(fnrazsj,schuljahr);putwert(fnrazhj,halbjahr);
+putintwert(fnrazaufsichtszeit,tagnr*stelledestages+aznr);.
+füllerestlichedbfelder:putwert(fnrazbezeichnung,standardmaskenfeld(aktfnr));
+IF standardmaskenfeld(aktfnr+offsetstundevor)=niltextTHEN putintwert(
+fnraztagstdvor,null)ELSE putintwert(fnraztagstdvor,(tagnr-1)*
+stundenprowochentag+int(standardmaskenfeld(aktfnr+offsetstundevor)))FI ;IF 
+standardmaskenfeld(aktfnr+offsetstundenach)=niltextTHEN putintwert(
+fnraztagstdnach,null)ELSE putintwert(fnraztagstdnach,(tagnr-1)*
+stundenprowochentag+int(standardmaskenfeld(aktfnr+offsetstundenach)))FI ;
+putwert(fnrazbeginnuhr,standardmaskenfeld(aktfnr+offsetbeginnuhr));putwert(
+fnrazendeuhr,standardmaskenfeld(aktfnr+offsetendeuhr)).speicherfehlerabfangen
+:IF dbstatus<>nullTHEN standardmeldung(meldungspeicherfehler,niltext);return(
+1);LEAVE aufsichtszeitenspeichernFI .END PROC aufsichtszeitenspeichern;PROC 
+aufsichtszeitenkopieren:INT VAR i,altetagnr;aktindex:=null;altetagnr:=tagnr;
+tagnr:=nummerfürmo;inittupel(dnraufsichtszeiten);statleseschleife(
+dnraufsichtszeiten,schuljahr,halbjahr,fnrazsj,fnrazhj,PROC fuellenurmaske);
+FOR iFROM aktindex*felderprozeile+fnrerstebezeichnungUPTO fnrletztesfeldREP 
+standardmaskenfeld(niltext,i)PER ;tagnr:=altetagnr;infeld(fnrerstebezeichnung
+);return(1);END PROC aufsichtszeitenkopieren;PROC aufsichtszeitenuebernehmen(
+BOOL CONST hauptaktion):TEXT VAR geplhj,geplsj;INT VAR i,j,altetagnr;IF NOT 
+hauptaktionTHEN prüfeobeingangsmaskerichtigangekreuzt;schuljahr:=
+schulkenndatum(textschuljahr);halbjahr:=schulkenndatum(textschulhalbjahr);
+tagnr:=nummerfürmo;fuelledenpuffermitdenaufsichtszeiten;IF datenvorhanden
+THEN standardmeldung(meldungfrageuebernehmen,niltext);feldschutz(
+fnrfueruebernehmen);feldschutz(fnrfuergeplbearb);feldschutz(fnrabtagfuergepl)
+;feldschutz(fnrfueraktbearb);feldschutz(fnrabtagfuerakt);feldfrei(
+fnrcursorruhepos);infeld(fnrcursorruhepos);standardnproc;ELSE standardmeldung
+(meldungdatenfehlen,niltext);infeld(fnrfueruebernehmen);return(1)FI ELSE 
+standardmeldung(meldunguebernehmen,niltext);geplhj:=halbjahr;geplsj:=
+schuljahr;geplanteshjundsjberechnen(geplhj,geplsj);WHILE datenvorhandenREP 
+löschealletagebiszumvorliegenden;speicheredenvorliegendentag;tagnrINCR 1;
+fuelledenpuffermitdenaufsichtszeiten;PER ;löscheallerestlichentage;enter(2)
+FI .prüfeobeingangsmaskerichtigangekreuzt:IF standardmaskenfeld(
+fnrfueruebernehmen)=niltextOR standardmaskenfeld(fnrfuergeplbearb)<>niltext
+OR standardmaskenfeld(fnrfueraktbearb)<>niltextTHEN standardmeldung(
+meldungeingabesinnlos,niltext);infeld(fnrfueruebernehmen);return(1);LEAVE 
+aufsichtszeitenuebernehmenFI ;IF standardmaskenfeld(fnrabtagfuergepl)<>
+niltextTHEN standardmeldung(meldungfeldleerlassen,niltext);infeld(
+fnrabtagfuergepl);return(1);LEAVE aufsichtszeitenuebernehmenFI ;IF 
+standardmaskenfeld(fnrabtagfuerakt)<>niltextTHEN standardmeldung(
+meldungfeldleerlassen,niltext);infeld(fnrabtagfuerakt);return(1);LEAVE 
+aufsichtszeitenuebernehmenFI ;.fuelledenpuffermitdenaufsichtszeiten:aktindex
+:=null;datenvorhanden:=FALSE ;altetagnr:=tagnr;inittupel(dnraufsichtszeiten);
+statleseschleife(dnraufsichtszeiten,schuljahr,halbjahr,fnrazsj,fnrazhj,PROC 
+fuellenurpuffer);.löschealletagebiszumvorliegenden:FOR iFROM altetagnrUPTO 
+tagnr-1REP löschedateneinestagesPER .löschedateneinestages:j:=1;dbstatus(0);
+WHILE dbstatus=0CAND j<=datensaetzepromaskeREP putwert(fnrazsj,geplsj);
+putwert(fnrazhj,geplhj);putintwert(fnrazaufsichtszeit,i*stelledestages+j);
+delete(dnraufsichtszeiten);jINCR 1;PER .speicheredenvorliegendentag:i:=1;
+WHILE i<=aktindexREP fülleprimärindexfelder;search(dnraufsichtszeiten,true);
+füllerestlichedbfelder;IF dbstatus<>nullTHEN insert(dnraufsichtszeiten)ELSE 
+update(dnraufsichtszeiten)FI ;speicherfehlerabfangen;iINCR 1;PER ;WHILE 
+dbstatus=0CAND i<=datensaetzepromaskeREP fülleprimärindexfelder;delete(
+dnraufsichtszeiten);iINCR 1;PER .fülleprimärindexfelder:putwert(fnrazsj,
+geplsj);putwert(fnrazhj,geplhj);putintwert(fnrazaufsichtszeit,tagnr*
+stelledestages+i);.füllerestlichedbfelder:restoretupel(dnraufsichtszeiten,
+alteaufsichtszeiten(i));putwert(fnrazsj,geplsj);putwert(fnrazhj,geplhj);.
+speicherfehlerabfangen:IF dbstatus<>nullTHEN standardmeldung(
+meldungspeicherfehler,niltext);infeld(fnrfueruebernehmen);return(2);LEAVE 
+aufsichtszeitenuebernehmenFI .löscheallerestlichentage:FOR iFROM altetagnr
+UPTO nummerfürsaREP löschedateneinestagesPER .END PROC 
+aufsichtszeitenuebernehmen;PROC holealledatendestages:TEXT VAR tag;INT VAR i;
+setzewochentagindiemaske;holegewünschtentagindiemaske.
+setzewochentagindiemaske:SELECT tagnrOF CASE nummerfürmo:tag:=kürzelfürmo
+CASE nummerfürdi:tag:=kürzelfürdiCASE nummerfürmi:tag:=kürzelfürmiCASE 
+nummerfürdo:tag:=kürzelfürdoCASE nummerfürfr:tag:=kürzelfürfrCASE nummerfürsa
+:tag:=kürzelfürsaEND SELECT ;standardmaskenfeld(tag,fnrwochentag).
+holegewünschtentagindiemaske:aktindex:=null;inittupel(dnraufsichtszeiten);
+statleseschleife(dnraufsichtszeiten,schuljahr,halbjahr,fnrazsj,fnrazhj,PROC 
+fuellenurmaske);FOR iFROM aktindex*felderprozeile+fnrerstebezeichnungUPTO 
+fnrletztesfeldREP standardmaskenfeld(niltext,i)PER ;.END PROC 
+holealledatendestages;PROC fuellenurmaske(BOOL VAR b):INT VAR feldnr,stunde;
+IF wert(fnrazsj)>schuljahrCOR wert(fnrazhj)>halbjahrCOR intwert(
+fnrazaufsichtszeit)>tagnr*stelledestages+datensaetzepromaskeCOR dbstatus<>0
+THEN b:=TRUE ELSE IF intwert(fnrazaufsichtszeit)>tagnr*stelledestagesTHEN 
+aktindexINCR eins;feldnr:=fnrerstebezeichnung+(aktindex-1)*felderprozeile;
+standardmaskenfeld(wert(fnrazbezeichnung),feldnr);feldnrINCR 1;stunde:=
+intwert(fnraztagstdvor);IF stunde>0THEN stunde:=(stunde-1)MOD 
+stundenprowochentag+1;standardmaskenfeld(text(stunde),feldnr);ELSE 
+standardmaskenfeld(niltext,feldnr);FI ;feldnrINCR 1;stunde:=intwert(
+fnraztagstdnach);IF stunde>0THEN stunde:=(stunde-1)MOD stundenprowochentag+1;
+standardmaskenfeld(text(stunde),feldnr);ELSE standardmaskenfeld(niltext,
+feldnr);FI ;feldnrINCR 1;standardmaskenfeld(wert(fnrazbeginnuhr),feldnr);
+feldnrINCR 1;standardmaskenfeld(wert(fnrazendeuhr),feldnr);FI FI END PROC 
+fuellenurmaske;PROC fuellenurpuffer(BOOL VAR b):IF wert(fnrazsj)>schuljahr
+COR wert(fnrazhj)>halbjahrCOR (datenvorhandenCAND intwert(fnrazaufsichtszeit)
+>tagnr*stelledestages+datensaetzepromaske)COR dbstatus<>0THEN b:=TRUE ELSE 
+IF intwert(fnrazaufsichtszeit)>tagnr*stelledestagesTHEN IF NOT datenvorhanden
+THEN datenvorhanden:=TRUE ;tagnr:=intwert(fnrazaufsichtszeit)DIV 
+stelledestagesFI ;aktindexINCR eins;savetupel(dnraufsichtszeiten,
+alteaufsichtszeiten(aktindex));FI FI END PROC fuellenurpuffer;BOOL PROC 
+falschezeitangabe(INT CONST zeit,fnr,INT VAR status):IF standardmaskenfeld(
+fnr)=niltextTHEN LEAVE falschezeitangabeWITH FALSE FI ;IF length(
+standardmaskenfeld(fnr))>4THEN standardmeldung(meldungzeitangabezulang,
+niltext);status:=fnr;LEAVE falschezeitangabeWITH TRUE FI ;standardpruefe(2,
+fnr,null,null,niltext,status);IF status<>nullTHEN LEAVE falschezeitangabe
+WITH TRUE FI ;IF zeit<nullOR zeitMOD 100>59OR zeitDIV 100>24THEN 
+standardmeldung(meldungfalschezeitangabe,niltext);status:=fnr;TRUE ELSE 
+FALSE FI END PROC falschezeitangabe;END PACKET erfaufsichtszeiten;
+

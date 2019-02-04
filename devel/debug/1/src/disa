@@ -1,0 +1,454 @@
+PACKET dis DEFINES disasm, disa, proc head,   (* Autor: G.Szalay *)
+                   set proc heads:            (* Stand: 87-04-23 *)
+
+LET INSTR = STRUCT (TEXT mnem, INT length, class),
+    clear to eop = ""4"", stdds = 0, no of lines = 4, beep = ""7"";
+INT VAR first word, opcode, cur x, cur y;
+INT CONST right 2 := -2;
+
+ROW 31 INSTR CONST primary list :: ROW 31 INSTR:
+ ( INSTR: ("LN      -    ",1,10),
+   INSTR: ("LN1     -    ",1,10),
+   INSTR: ("MOV     i-   ",2,0),
+   INSTR: ("INC1    I    ",1,0),
+   INSTR: ("DEC1    I    ",1,0),
+   INSTR: ("INC     Ii   ",2,0),
+   INSTR: ("DEC     Ii   ",2,0),
+   INSTR: ("ADD     iiI  ",3,0),
+   INSTR: ("SUB     iiI  ",3,0),
+   INSTR: ("CLEAR   I    ",1,0),
+   INSTR: ("TEST    i    ",1,1),
+   INSTR: ("EQU     ii   ",2,1),
+   INSTR: ("LSEQ    ii   ",2,1),
+   INSTR: ("FMOV    r-   ",2,0),
+   INSTR: ("FADD    rrR  ",3,0),
+   INSTR: ("FSUB    rrR  ",3,0),
+   INSTR: ("FMUL    rrR  ",3,0),
+   INSTR: ("FDIV    rrR  ",3,0),
+   INSTR: ("FLSEQ   rr   ",2,1),
+   INSTR: ("TMOV    t-   ",2,0),
+   INSTR: ("TEQU    tt   ",2,1),
+   INSTR: ("ULSEQ   ii   ",2,1),
+   INSTR: ("DSACC   dE   ",2,0),
+   INSTR: ("REF     a-   ",2,0),
+   INSTR: ("SUBS    vviaE",5,0),
+   INSTR: ("SEL     avE  ",3,0),
+   INSTR: ("PPV     -i   ",2,9),
+   INSTR: ("PP      a    ",1,9),
+   INSTR: ("B       -    ",1,2),
+   INSTR: ("B1      -    ",1,2),
+   INSTR: ("CALL    -    ",1,4) );
+
+ROW 6 INSTR CONST special list :: ROW 6 INSTR:
+ ( INSTR: ("EQUIM   vi   ",2,1),
+   INSTR: ("MOVX    vh-  ",3,0),
+   INSTR: ("GETW    ihI  ",3,0),
+   INSTR: ("MOVI    vI   ",2,0),
+   INSTR: ("PUTW    vhi  ",3,0),
+   INSTR: ("PENTER  v    ",1,8) );
+
+ROW 157 INSTR CONST secondary list :: ROW 157 INSTR:
+ ( INSTR: ("RTN          ",1,7),
+   INSTR: ("RTNT         ",1,7),
+   INSTR: ("RTNF         ",1,7),
+   INSTR: ("RESTART      ",1,0),
+   INSTR: ("STOP         ",1,11),
+   (* INSTR: ("*057F*       ",0,0), *)
+      INSTR: ("LBAS    H    ",2,0),
+   INSTR: ("KE           ",1,12),
+   (* INSTR: ("*077F*       ",0,0), *)
+      INSTR: ("DSGETW  dhhH ",5,0),
+   INSTR: ("BCRD    iI   ",3,0),
+   INSTR: ("CRD     II   ",3,0),
+   INSTR: ("ECWR    Iii  ",4,0),
+   INSTR: ("CWR     IIi  ",4,0),
+   INSTR: ("CTT     iE   ",3,0),
+   INSTR: ("GETC    tII  ",4,1),
+   INSTR: ("FNONBL  ItI  ",4,1),
+   INSTR: ("DREM256 Ii   ",3,0),
+   INSTR: ("AMUL256 Ii   ",3,0),
+   (* INSTR: ("*117F*       ",0,0), *)
+      INSTR: ("DSPUTW  dhhh ",5,0),
+   INSTR: ("ISDIG   i    ",2,1),
+   INSTR: ("ISLD    i    ",2,1),
+   INSTR: ("ISLC    i    ",2,1),
+   INSTR: ("ISUC    i    ",2,1),
+   INSTR: ("GADDR   -iI  ",4,0),
+   INSTR: ("GCADDR  iiI  ",4,1),
+   INSTR: ("ISSHA   a    ",2,1),
+   INSTR: ("SYSG         ",1,0),
+   INSTR: ("GETTAB       ",1,0),
+   INSTR: ("PUTTAB       ",1,0),
+   INSTR: ("ERTAB        ",1,0),
+   INSTR: ("EXEC    -    ",2,5),
+   INSTR: ("PPROC   -    ",2,9),
+   INSTR: ("PCALL   -    ",2,6),
+   INSTR: ("BRCOMP  iv   ",3,3),
+   INSTR: ("MOVXX   vh-  ",4,0),
+   INSTR: ("ALIAS   vdD  ",4,0),
+   INSTR: ("MOVII   vI   ",3,0),
+   INSTR: ("FEQU    rr   ",3,1),
+   INSTR: ("TLSEQ   tt   ",3,1),
+   INSTR: ("FNEG    rR   ",3,0),
+   INSTR: ("NEG     iI   ",3,0),
+   INSTR: ("IMULT   iiI  ",4,0),
+   INSTR: ("MUL     iiI  ",4,0),
+   INSTR: ("DIV     iiI  ",4,0),
+   INSTR: ("MOD     iiI  ",4,0),
+   INSTR: ("ITSUB   tiI  ",4,0),
+   INSTR: ("ITRPL   Tii  ",4,0),
+   INSTR: ("DECOD   tI   ",3,0),
+   INSTR: ("ENCOD   iT   ",3,0),
+   INSTR: ("SUBT1   tiT  ",4,0),
+   INSTR: ("SUBTFT  tiiT ",5,0),
+   INSTR: ("SUBTF   tiT  ",4,0),
+   INSTR: ("REPLAC  Tit  ",4,0),
+   INSTR: ("CAT     Tt   ",3,0),
+   INSTR: ("TLEN    tI   ",3,0),
+   INSTR: ("POS     ttI  ",4,0),
+   INSTR: ("POSF    ttiI ",5,0),
+   INSTR: ("POSFT   ttiiI",6,0),
+   INSTR: ("STRAN   -iitiiI",8,0),
+   INSTR: ("POSIF   tiiiI",6,0),
+   INSTR: ("*3B7F*       ",0,0),
+   INSTR: ("OUT     t    ",2,0),
+   INSTR: ("COUT    i    ",2,0),
+   INSTR: ("OUTF    ti   ",3,0),
+   INSTR: ("OUTFT   tii  ",4,0),
+   INSTR: ("INCHAR  T    ",2,0),
+   INSTR: ("INCETY  T    ",2,0),
+   INSTR: ("PAUSE   i    ",2,0),
+   INSTR: ("GCPOS   II   ",3,0),
+   INSTR: ("CATINP  TT   ",3,0),
+   INSTR: ("NILDS   D    ",2,0),
+   INSTR: ("DSCOPY  Dd   ",3,0),
+   INSTR: ("DSFORG  d    ",2,0),
+   INSTR: ("DSWTYP  di   ",3,0),
+   INSTR: ("DSRTYP  dI   ",3,0),
+   INSTR: ("DSHPSIZ dI   ",3,0),
+   INSTR: ("ESTOP        ",1,11),
+   INSTR: ("DSTOP        ",1,11),
+   INSTR: ("SETERR  i    ",2,0),
+   INSTR: ("ISERR        ",1,1),
+   INSTR: ("CLRERR       ",1,13),
+   INSTR: ("RPCB    iI   ",3,0),
+   INSTR: ("INFOPW  ttI  ",4,0),
+   INSTR: ("TWCPU   pr   ",3,0),
+   INSTR: ("ROTATE  Hi   ",3,0),
+   INSTR: ("IOCNTL  iiiI ",5,0),
+   INSTR: ("BLKOUT  diiiI",6,0),
+   INSTR: ("BLKIN   diiiI",6,0),
+   INSTR: ("BLKNXT  diI  ",4,0),
+   INSTR: ("DSSTOR  dpI  ",4,0),
+   INSTR: ("STORAGE II   ",3,0),
+   INSTR: ("SYSOP   i    ",2,0),
+   INSTR: ("ARITS        ",1,0),
+   INSTR: ("ARITU        ",1,0),
+   INSTR: ("HPSIZE  I    ",2,0),
+   INSTR: ("GARB         ",1,0),
+   INSTR: ("TCREATE ppia ",5,0),
+   INSTR: ("FSLD    iRI  ",4,0),
+   INSTR: ("GEXP    rI   ",3,0),
+   INSTR: ("SEXP    iR   ",3,0),
+   INSTR: ("FLOOR   rR   ",3,0),
+   INSTR: ("RTSUB   tiR  ",4,0),
+   INSTR: ("RTRPL   Tir  ",4,0),
+   INSTR: ("CLOCK   iR   ",3,0),
+   INSTR: ("SETNOW  r    ",2,0),
+   INSTR: ("TRPCB   piI  ",4,0),
+   INSTR: ("TWPCB   pii  ",4,0),
+   INSTR: ("TCPU    pR   ",3,0),
+   INSTR: ("TSTAT   pI   ",3,0),
+   INSTR: ("ACT     p    ",2,0),
+   INSTR: ("DEACT   p    ",2,0),
+   INSTR: ("THALT   p    ",2,0),
+   INSTR: ("TBEGIN  pa   ",3,0),
+   INSTR: ("TEND    p    ",2,0),
+   INSTR: ("SEND    pidI ",5,0),
+   INSTR: ("WAIT    DIP  ",4,0),
+   INSTR: ("SWCALL  piDI ",5,0),
+   INSTR: ("CDBINT  hI   ",3,0),
+   INSTR: ("CDBTXT  hT   ",3,0),
+   INSTR: ("PNACT   P    ",2,0),
+   INSTR: ("PW      hhi  ",4,0),
+   INSTR: ("GW      hhI  ",4,0),
+   INSTR: ("BITXOR  hhH  ",4,0),
+   INSTR: ("SNDWT   piDI ",5,0),
+   INSTR: ("TEXIST  p    ",2,1),
+   INSTR: ("BITAND  hhH  ",4,0),
+   INSTR: ("BITOR   hhH  ",4,0),
+   INSTR: ("SESSION I    ",2,0),
+   INSTR: ("SNDFROM ppiDI",6,0),
+   INSTR: ("DEFCOLL i    ",2,0),
+   INSTR: ("IDENT   iI   ",3,0),
+   INSTR: ("*827F*       ",0,0),
+   INSTR: ("*837F*       ",0,0),
+   INSTR: ("*847F*       ",0,0),
+   INSTR: ("*857F*       ",0,0),
+   INSTR: ("*867F*       ",0,0),
+   INSTR: ("*877F*       ",0,0),
+   INSTR: ("*887F*       ",0,0),
+   INSTR: ("*897F*       ",0,0),
+   INSTR: ("*8a7F*       ",0,0),
+   INSTR: ("*8b7F*       ",0,0),
+   INSTR: ("*8c7F*       ",0,0),
+   INSTR: ("*8d7F*       ",0,0),
+   INSTR: ("*8e7F*       ",0,0),
+   INSTR: ("*8f7F*       ",0,0),
+   INSTR: ("*907F*       ",0,0),
+   INSTR: ("*917F*       ",0,0),
+   INSTR: ("*927F*       ",0,0),
+   INSTR: ("*937F*       ",0,0),
+   INSTR: ("*947F*       ",0,0),
+   INSTR: ("*957F*       ",0,0),
+   INSTR: ("*967F*       ",0,0),
+   INSTR: ("*977F*       ",0,0),
+   INSTR: ("*987F*       ",0,0),
+   INSTR: ("*997F*       ",0,0),
+   INSTR: ("DSGETW  dhhH ",5,0),
+   INSTR: ("DSPUTW  dhhh ",5,0),
+   INSTR: ("LBAS    H    ",2,0) );
+
+
+PROC disa (INT CONST icount h, icount l,
+             TEXT VAR mnemonic, oplist,
+             INT VAR instr length, instr class) :
+  fetch first instr word;
+  fetch opcode;
+  IF   primary THEN process primary
+  ELIF secondary THEN process secondary
+  ELIF longprim THEN process longprim
+  ELSE process special
+  FI;
+  oplist := subtext (mnemonic, 9);
+  mnemonic := subtext (mnemonic, 1, 8).
+
+fetch first instr word:
+  first word := dsgetw (stdds, icount h, icount l).
+
+fetch opcode:
+  opcode := first word;
+  rotate (opcode,8);
+  opcode := opcode AND 255.
+
+primary: (opcode AND 124) <> 124.
+
+secondary: opcode = 127.
+
+longprim: opcode = 255.
+
+process primary:
+  opcode := opcode AND 124;
+  rotate (opcode, right 2);
+  mnemonic := primary list (opcode+1) . mnem;
+  instr length := primary list (opcode+1) . length;
+  instr class := primary list (opcode+1) . class.
+
+process secondary:
+  opcode := first word AND 255;
+  IF opcode <= 156
+  THEN mnemonic := secondary list (opcode+1) . mnem;
+       instr length := secondary list (opcode+1) . length;
+       instr class := secondary list (opcode+1) . class
+  ELSE mnemonic := "wrongopc";
+       instr length := 0; instr class := -1
+  FI.
+
+process longprim:
+  opcode := first word AND 255;
+  IF (opcode AND 124) = opcode
+  THEN rotate (opcode, -2);
+       mnemonic := primary list (opcode+1) . mnem;
+       instr length := primary list (opcode+1) . length + 1;
+       instr class := primary list (opcode+1) . class
+  ELSE mnemonic := "wrongopc";
+       instr length := 0; instr class := -1
+  FI.
+
+process special:
+  IF opcode < 128
+  THEN opcode := (opcode AND 3) + 1
+  ELSE opcode := (opcode AND 3) + 4
+  FI;
+  mnemonic := special list (opcode) .mnem;
+  instr length := special list (opcode) .length;
+  instr class := special list (opcode) . class.
+
+END PROC disa;
+
+(*********************************************************************)
+
+LET max modno = 3071;
+INT VAR word1, modno;
+TEXT VAR buf, mod decr;
+BOOL VAR proc heads file exists := FALSE;
+INITFLAG VAR initflag := FALSE;
+BOUND ROW max modno TEXT VAR proc heads;
+
+PROC set proc heads (TEXT CONST proc heads filename):
+  proc heads file exists := FALSE;
+  IF proc heads filename <> "" AND exists (proc heads filename)
+  THEN proc heads := old (proc heads filename);
+       put (proc heads (max modno)); (*to test type*)
+       proc heads file exists := TRUE
+  FI
+END PROC set proc heads;
+
+TEXT PROC proc head (INT CONST module no):
+  IF NOT initialized (initflag)
+  THEN provide proc heads file
+  FI;
+  INT VAR modno := module no;
+  IF modno >= 10000 THEN modno DECR 10000 FI;
+  IF proc heads file exists AND modno <= max modno
+  THEN IF modno = 0
+       THEN "(* mod no 0 *)"
+       ELSE buf := proc heads (modno);
+            IF subtext (buf, 1, 2) = "+>"
+            THEN mod decr := subtext (buf, 3);
+                 buf := "(* " CT mod decr CT " +> "
+                    CT proc head (modno - integ (mod decr)) CT " *)"
+            FI;
+            buf
+       FI
+  ELSE ""
+  FI.
+
+provide proc heads file:
+  IF NOT exists ("procheads")
+  THEN disable stop;
+       command dialogue (FALSE);
+       fetch ("procheads");
+       IF is error
+       THEN putline ("(*** proc heads file missing ***)");
+            out (beep); clear error
+       ELSE set proc heads ("procheads")
+       FI;
+       command dialogue (TRUE)
+  FI
+ENDPROC proc head;
+
+(***********************************************************************)
+
+INT VAR ic h:=2, ic l:=0, ilen, iclass, i, cmd, maxlines:=12, lines;
+INT CONST mask 8000 := dec ("8000"),
+          mask 7fff := dec ("7fff"),
+          mask 0400 := dec ("0400"),
+          bf mask1  := dec ("0040"),
+       opcode mask0 := dec ("83ff");
+BOOL VAR step mode := TRUE, quit;
+TEXT VAR iname, ioplist, char, input;
+
+PROC disasm :
+  out (""13"");
+  disasm (ic h, ic l)
+
+ENDPROC disasm;
+
+PROC disasm (INT CONST startaddr hi, startaddr lo):
+  ic h := startaddr hi;
+  ic l := startaddr lo;
+  lines := 0;
+  quit := FALSE;
+  REP
+    IF NOT (ic h = 3 OR ic h = 2)
+    THEN out ("*** icount out of code area ***"); line; out (beep);
+         step mode := TRUE
+    ELSE disa (ic h, ic l, iname, ioplist, ilen, iclass);
+         put icount mnemonic and instr words;
+         put proc head for call;
+         line; lines INCR 1;
+         IF iclass = 1 THEN put cond branch instr FI;
+    FI;
+    process command if necessary
+  UNTIL quit PER.
+
+put icount mnemonic and instr words:
+  put icount;
+  out (iname);
+  out (" ");
+  IF ilen > 0
+  THEN IF iclass = 4 THEN word1 := dsgetw (stdds, ic h, ic l) FI;
+       FOR i FROM 1 UPTO ilen REP
+         out (hex (dsget2b (stdds, ic h, ic l))); out (" ");
+         incl (ic h, ic l, 1)
+       PER
+  ELSE out (hex (dsget2b (stdds, ic h, ic l))); out (""7"");
+       incl (ic h, ic l, 1);
+       step mode := TRUE
+  FI.
+
+put cond branch instr:
+  put icount;
+  word1 := dsget2b (stdds, ic h, ic l);
+  IF (word1 AND bf mask1) <> 0
+  THEN out ("BF       ")
+  ELSE out ("BT       ")
+  FI;
+  putline (hex (word1));
+  lines INCR 1;
+  incl (ic h, ic l, 1).
+
+put icount:
+  out (txt (ic h));
+  out (hex (ic l));
+  out (": ").
+
+put proc head for call:
+  IF iclass = 4
+  THEN eval module no;
+       out ("  ");
+       out (proc head (mod no))
+  FI.
+
+eval module no:
+  mod no := word1 AND opcode mask0;
+  IF (mod no AND mask 8000) <> 0
+  THEN mod no := mod no AND mask 7fff OR mask 0400
+  FI.
+
+process command if necessary:
+  IF step mode OR incharety <> "" OR lines >= maxlines
+  THEN process command;
+       lines := 0
+  FI.
+
+process command :
+  REP putline (""15"DISASM: step, more, address, lines, info, or quit"14"");
+      inchar (char);
+      cmd := pos ("smaliq",char);
+      IF cmd > 0
+      THEN SELECT cmd OF
+             CASE 1: step mode := TRUE; point to previous line
+             CASE 2: step mode := FALSE; point to previous line
+             CASE 3: set new ic
+             CASE 4: set new linecount
+             CASE 5: info (stdds, ic h, ic l, no of lines)
+             CASE 6: quit := TRUE
+           ENDSELECT
+      FI
+  UNTIL char <> "i" PER.
+
+point to previous line:
+  get cursor (cur x, cur y); cursor (1, cur y - 1); out (clear to eop).
+
+set new line count:
+  out ("lines="); gethex (buf); maxlines := dec (buf).
+
+set new ic :
+  REP
+    put ("type new ic (20000...3ffff)");
+    gethex (input);
+    input := "0000" CT input;
+    ic l := dec (subtext (input, LENGTH input-3));
+    ic h := dec (subtext (input, LENGTH input-7, LENGTH input-4));
+    IF ic h = 2 OR ic h = 3 THEN LEAVE set new ic FI;
+    out (beep); putline ("*** icount out of code area ***")
+  PER.
+
+ENDPROC disasm;
+
+(* disasm *)      (*for test only*).
+
+END PACKET dis;
+

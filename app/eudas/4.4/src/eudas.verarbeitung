@@ -1,0 +1,731 @@
+PACKET verarbeitung
+
+(*************************************************************************)
+(*                                                                       *)
+(*     Automatische Verarbeitung von EUDAS-Dateien                       *)
+(*                                                                       *)
+(*     Version 05                                                        *)
+(*                                                                       *)
+(*     Autor: Thomas Berlage                                             *)
+(*     Stand: 17.04.87                                                   *)
+(*                                                                       *)
+(*************************************************************************)
+
+  DEFINES
+
+  kopiere,
+  std kopiermuster,
+  verarbeite,
+  trage,
+  eindeutige felder,
+  pruefe,
+  wertemenge,
+  feldmaske,
+  trage satz,
+  hole satz,
+  K,
+  V,
+  f,
+  wert,
+  zahltext,
+  textdarstellung :
+
+
+SATZ VAR
+  zielfeldnamen,
+  kopierfeldnamen,
+  kopiersatz;
+
+INT VAR kopierindex;
+
+BOOL VAR erstes mal;
+
+LET
+  niltext = "",
+  INTVEC = TEXT;
+
+INTVEC VAR kopiervektor;
+
+TEXT VAR zwei bytes := "  ";
+
+
+OP CAT (INTVEC VAR intvec, INT CONST zahl) :
+
+  replace (zwei bytes, 1, zahl);
+  intvec CAT zwei bytes
+
+END OP CAT;
+
+PROC std kopiermuster (TEXT CONST dateiname, FILE VAR kopiermuster) :
+
+  teste ob datei vorhanden;
+  INT VAR zielfelder;
+  dateien oeffnen;
+  feldnamen bestimmen;
+  INT VAR feldnr;
+  FOR feldnr FROM 1 UPTO zielfelder REP
+    feldnamen auslesen;
+    IF feld vorhanden THEN
+      direkt kopieren
+    ELSE
+      leer kopieren
+    END IF
+  END REP .
+
+dateien oeffnen :
+  output (kopiermuster);
+  EUDAT VAR eudas datei;
+  IF exists (dateiname) THEN
+    oeffne (eudas datei, dateiname)
+  END IF .
+
+feldnamen bestimmen :
+  IF exists (dateiname) CAND felderzahl (eudas datei) > 0 THEN
+    feldnamen lesen (eudas datei, zielfeldnamen);
+    zielfelder := felderzahl (eudas datei)
+  ELSE
+    quellfeldnamen kopieren;
+    zielfelder := anzahl felder
+  END IF .
+
+quellfeldnamen kopieren :
+  TEXT VAR feldname;
+  satz initialisieren (zielfeldnamen);
+  FOR feldnr FROM 1 UPTO anzahl felder REP
+    feldnamen lesen (feldnr, feldname);
+    feld aendern (zielfeldnamen, feldnr, feldname)
+  END REP .
+
+feld vorhanden :
+  feldnummer (feldname) > 0 .
+
+feldnamen auslesen :
+  feld lesen (zielfeldnamen, feldnr, feldname);
+  put (kopiermuster, textdarstellung (feldname)) .
+
+direkt kopieren :
+  write (kopiermuster, "K f(");
+  write (kopiermuster, textdarstellung (feldname));
+  putline (kopiermuster, ");") .
+
+leer kopieren :
+  putline (kopiermuster, "K """";") .
+
+END PROC std kopiermuster;
+
+PROC kopiere (TEXT CONST dateiname, FILE VAR kopiermuster) :
+
+  programmfunktion (kopieraufruf, kopiermuster) .
+
+kopieraufruf :
+  "kopiere (" + textdarstellung (dateiname) + ", " .
+
+END PROC kopiere;
+
+PROC programmfunktion (TEXT CONST aufruf, FILE VAR muster) :
+
+  programmdatei einrichten;
+  write (programm, aufruf);
+  putline (programm, "PROC programmfunktion);");
+  putline (programm, "PROC programmfunktion:");
+  muster kopieren;
+  putline (programm, "END PROC programmfunktion");
+  programm ausfuehren;
+  forget (programm datei, quiet) .
+
+programmdatei einrichten :
+  TEXT VAR programmdatei;
+  INT VAR i := 0;
+  REP
+    i INCR 1;
+    programmdatei := text (i)
+  UNTIL NOT exists (programmdatei) END REP;
+  disable stop;
+  FILE VAR programm := sequential file (output, programm datei);
+  headline (programm, erzeugtes programm) .
+
+muster kopieren :
+  TEXT VAR zeile;
+  input (muster);
+  WHILE NOT eof (muster) REP
+    getline (muster, zeile);
+    putline (programm, zeile)
+  END REP .
+
+programm ausfuehren :
+  TEXT CONST alter last param := std;
+  run (programmdatei);
+  last param (alter last param) .
+
+END PROC programm funktion;
+
+PROC kopiere (TEXT CONST dateiname, PROC kopierfunktion) :
+
+  enable stop;
+  INT VAR modus;
+  auf ersten satz (modus);
+  IF dateiende THEN
+    auf satz (1);
+    LEAVE kopiere
+  ELSE
+    zieldatei einrichten
+  END IF;
+
+  WHILE NOT dateiende REP
+    satz initialisieren (kopiersatz);
+    kopierindex := 1;
+    kopierfunktion;
+    evtl feldnamen einrichten;
+    satz einfuegen (eudas datei, kopiersatz);
+    weiter (eudas datei);
+    weiter (modus)
+  END REP;
+  auf satz (1) .
+
+zieldatei einrichten :
+  erstes mal := TRUE;
+  EUDAT VAR eudas datei;
+  oeffne (eudas datei, dateiname);
+  auf satz (eudas datei, saetze (eudas datei) + 1);
+  feldnamen lesen (eudas datei, kopierfeldnamen);
+  kopiervektor := niltext .
+
+evtl feldnamen einrichten :
+  IF erstes mal THEN
+    feldnamen aendern (eudas datei, kopierfeldnamen);
+    erstes mal := FALSE
+  END IF
+
+END PROC kopiere;
+
+OP K (TEXT CONST feldname, ausdruck) :
+
+  IF erstes mal THEN
+    kopiervektor erstellen;
+  END IF;
+  feld aendern (kopiersatz, kopiervektor ISUB kopierindex, ausdruck);
+  kopierindex INCR 1 .
+
+kopiervektor erstellen :
+  INT VAR aktueller index := feldindex (kopierfeldnamen, feldname);
+  IF aktueller index = 0 THEN
+    aktueller index := felderzahl (kopierfeldnamen) + 1;
+    feld aendern (kopierfeldnamen, aktueller index, feldname);
+  END IF;
+  kopiervektor CAT aktueller index .
+
+END OP K;
+
+PROC verarbeite (FILE VAR verarbeitungsmuster) :
+
+  programmfunktion ("verarbeite (", verarbeitungsmuster)
+
+END PROC verarbeite;
+
+PROC verarbeite (PROC verarbeitungsfunktion) :
+
+  enable stop;
+  INT VAR modus;
+  auf ersten satz (modus);
+
+  WHILE NOT dateiende REP
+    verarbeitungsfunktion;
+    weiter (modus)
+  END REP;
+  auf satz (1)
+
+END PROC verarbeite;
+
+OP V (TEXT CONST feldname, ausdruck) :
+
+  INT CONST nr := feldnummer (feldname);
+  IF nr = 0 THEN
+    unbekannt (feldname)
+  ELSE
+    feld aendern (nr, ausdruck)
+  END IF
+
+END OP V;
+
+PROC auf ersten satz (INT VAR modus) :
+
+  teste ob datei vorhanden;
+  auf satz (1);
+  IF markierte saetze > 0 THEN
+    modus := 3;
+    IF NOT satz markiert THEN weiter (modus) END IF
+  ELSE
+    modus := 2;
+    IF NOT satz ausgewaehlt THEN weiter (modus) END IF
+  END IF
+
+END PROC auf ersten satz;
+
+PROC teste ob datei vorhanden :
+
+  IF anzahl dateien = 0 THEN
+    errorstop (keine datei geoeffnet)
+  END IF .
+
+END PROC teste ob datei vorhanden;
+
+
+(******************************** Zugriffe *******************************)
+
+TEXT VAR
+  feldpuffer,
+  werttext;
+
+LET quote = """";
+
+
+TEXT PROC f (TEXT CONST feldname) :
+
+  INT CONST nr := feldnummer (feldname);
+  IF nr = 0 THEN
+    unbekannt (feldname);
+    feldpuffer := niltext
+  ELSE
+    feld lesen (nr, feldpuffer)
+  END IF;
+  feldpuffer
+
+END PROC f;
+
+REAL PROC wert (TEXT CONST feldname) :
+
+  INT CONST nr := feldnummer (feldname);
+  IF nr = 0 THEN
+    unbekannt (feldname);
+    0.0
+  ELSE
+    feld lesen (nr, feldpuffer);
+    REAL VAR ergebnis;
+    wert berechnen (feldpuffer, ergebnis);
+    ergebnis
+  END IF
+
+END PROC wert;
+
+REAL PROC wert (TEXT CONST feldname, INT CONST kommastellen) :
+
+  round (wert (feldname), kommastellen)
+
+END PROC wert;
+
+TEXT PROC zahltext (REAL CONST feldwert, INT CONST kommastellen) :
+
+  REAL CONST w := round (abs (feldwert), kommastellen);
+  INT VAR stellen := exponent der zahl + kommastellen + 2;
+  IF feldwert < 0.0 THEN
+    werttext := "-"
+  ELSE
+    werttext := niltext
+  END IF;
+  IF w < 1.0 AND w <> 0.0 THEN
+    werttext CAT "0";
+    stellen DECR 1
+  ENDIF;
+  werttext CAT text (w, stellen, kommastellen);
+  IF kommastellen > 0 THEN
+    change (werttext, ".", dezimalkomma)
+  ELSE
+    change (werttext, ".", niltext)
+  END IF;
+  werttext .
+
+exponent der zahl :
+  max (0, decimal exponent (w)) .
+
+END PROC zahltext;
+
+TEXT PROC zahltext (TEXT CONST feldname, INT CONST kommastellen) :
+
+  zahltext (wert (feldname), kommastellen)
+
+END PROC zahltext;
+
+TEXT PROC textdarstellung (TEXT CONST anzeigetext) :
+
+  feldpuffer := anzeigetext;
+  change all (feldpuffer, quote, quote + quote);
+  steuerzeichen umwandeln;
+  insert char (feldpuffer, quote, 1);
+  feldpuffer CAT quote;
+  feldpuffer .
+
+steuerzeichen umwandeln :
+  INT VAR stelle := 1;
+  WHILE steuerzeichen vorhanden REP
+    change (feldpuffer, stelle, stelle, steuertext)
+  END REP .
+
+steuerzeichen vorhanden :
+  stelle := pos (feldpuffer, ""0"", ""31"", stelle);
+  stelle > 0 .
+
+steuertext :
+  quote + text (code (feldpuffer SUB stelle)) + quote .
+
+END PROC textdarstellung;
+
+PROC unbekannt (TEXT CONST feldname) :
+
+  errorstop (t das feld + textdarstellung (feldname) + 
+             nicht definiert)
+
+END PROC unbekannt;
+
+
+(****************************** Tragen ***********************************)
+
+SATZ VAR tragsatz;
+
+EUDAT VAR zieldatei;
+
+LET
+  erzeugtes programm =  #501#
+    "erzeugtes Programm",
+  keine datei geoeffnet =  #502#
+    "keine Datei geoeffnet",
+  kein satz vorhanden =  #503#
+    "Kein Satz zum Tragen vorhanden",
+  falsche felderzahl =  #504#
+    "Zieldatei hat falsche Felderzahl",
+  existiert nicht =  #505#
+    " existiert nicht",
+  verletzt die pruefbedingung =  #506#
+    " verletzt die Pruefbedingung.",
+  bereits vorhanden =  #507#
+    " ist in der Zieldatei bereits vorhanden.",
+  nicht definiert =  #508#
+    " ist nicht definiert.",
+  nicht in wertemenge =  #509#
+    " ist nicht in der Wertemenge.",
+  passt nicht zu maske =  #510#
+    " stimmt nicht mit der Maske ueberein.",
+  t satz =  #511#
+    "Satz ",
+  t das feld =  #512#
+    "Das Feld ";
+
+INT VAR
+  anzahl eindeutiger felder;
+
+FILE VAR protokoll;
+
+BOOL VAR
+  testen := FALSE,
+  test erfolgreich,
+  uebereinstimmung;
+
+TEXT VAR testprogramm;
+
+
+PROC trage (TEXT CONST dateiname, FILE VAR protokoll file, BOOL CONST test) :
+
+  disable stop;
+  testen := test;
+  IF testen THEN
+    protokoll := protokoll file;
+    output (protokoll)
+  END IF;
+  trage intern (dateiname);
+  testen := FALSE
+
+END PROC trage;
+
+PROC trage intern (TEXT CONST dateiname) :
+
+  enable stop;
+  INT VAR modus;
+  auf ersten satz (modus);
+  tragen vorbereiten (dateiname);
+
+  INT VAR satzzaehler := 0;
+  REP
+    IF NOT ausgewaehlt THEN
+      weiter (modus)
+    ELSE
+      cout (satznummer + satzzaehler)
+    END IF;
+    IF dateiende THEN auf satz (1); LEAVE trage intern END IF;
+    satz testen und tragen
+  END REP .
+
+ausgewaehlt :
+  IF modus = 3 THEN satz markiert ELSE satz ausgewaehlt END IF .
+
+satz testen und tragen :
+  test erfolgreich := TRUE;
+  IF testen THEN
+    notizen lesen (zieldatei, 1, testprogramm);
+    do (testprogramm)
+  END IF;
+  IF test erfolgreich THEN
+    trage einzelsatz;
+    IF test erfolgreich THEN
+      satz loeschen;
+      satzzaehler INCR 1
+    END IF
+  END IF;
+  IF NOT test erfolgreich THEN
+    weiter (modus)
+  END IF .
+
+END PROC trage intern;
+
+PROC tragen vorbereiten (TEXT CONST dateiname) :
+
+  IF dateiende THEN
+    errorstop (kein satz vorhanden)
+  END IF;
+  oeffne (zieldatei, dateiname);
+  anzahl eindeutiger felder := 0;
+  IF felderzahl (zieldatei) = 0 THEN
+    zieldatei einrichten
+  ELIF felderzahl (zieldatei) <> anzahl felder THEN
+    errorstop (falsche felderzahl)
+  END IF;
+  auf satz (zieldatei, saetze (zieldatei) + 1) .
+
+zieldatei einrichten :
+  satz initialisieren (tragsatz, anzahl felder);
+  INT VAR feldnr;
+  FOR feldnr FROM 1 UPTO anzahl felder REP
+    feldnamen lesen (feldnr, feldpuffer);
+    feld aendern (tragsatz, feldnr, feldpuffer)
+  END REP;
+  feldnamen aendern (zieldatei, tragsatz) .
+
+END PROC tragen vorbereiten;
+
+PROC trage einzelsatz :
+
+  IF anzahl eindeutiger felder > 0 CAND schon vorhanden THEN
+    protokolliere  ("", bereits vorhanden)
+  ELSE
+    tragsatz aufbauen;
+    satz einfuegen (zieldatei, tragsatz);
+    weiter (zieldatei)
+  END IF .
+
+tragsatz aufbauen :
+  satz initialisieren (tragsatz, anzahl felder);
+  INT VAR feldnr;
+  FOR feldnr FROM 1 UPTO anzahl felder REP
+    feld lesen (feldnr, feldpuffer);
+    feld aendern (tragsatz, feldnr, feldpuffer)
+  END REP .
+
+schon vorhanden :
+  TEXT VAR muster;
+  INT CONST alte satznummer := satznr (zieldatei);
+  feld lesen (1, muster);
+  uebereinstimmung := FALSE;
+  auf satz (zieldatei, muster);
+  WHILE NOT dateiende (zieldatei) REP
+    teste auf uebereinstimmung;
+    weiter (zieldatei, muster)
+  UNTIL uebereinstimmung END REP;
+  auf satz (zieldatei, alte satznummer);
+  uebereinstimmung .
+
+teste auf uebereinstimmung :
+  INT VAR i;
+  uebereinstimmung := TRUE;
+  FOR i FROM 2 UPTO anzahl eindeutiger felder REP
+    feld lesen (zieldatei, i, feldpuffer);
+    feld bearbeiten (i,
+      PROC (TEXT CONST, INT CONST, INT CONST) felduebereinstimmung);
+    IF NOT uebereinstimmung THEN 
+      LEAVE teste auf uebereinstimmung
+    END IF
+  END REP .
+
+END PROC trage einzelsatz;
+
+PROC felduebereinstimmung (TEXT CONST satz, INT CONST von, bis) :
+
+  IF laengen ungleich COR
+       (length (feldpuffer) > 0 CAND text ungleich) THEN
+    uebereinstimmung := FALSE
+  END IF .
+
+laengen ungleich :
+  (bis - von + 1) <> length (feldpuffer) .
+
+text ungleich :
+  pos (satz, feldpuffer, von, bis + 1) <> von .
+
+END PROC felduebereinstimmung;
+
+PROC protokolliere (TEXT CONST feld, meldung) :
+
+  IF testen THEN
+    in protokoll
+  ELSE
+    errorstop (meldung)
+  END IF .
+
+in protokoll :
+  put (protokoll, t satz); put (protokoll, satznummer);
+  IF feld <> "" THEN
+    write (protokoll, t das feld);
+    write (protokoll, textdarstellung (feld))
+  END IF;
+  putline (protokoll, meldung);
+  test erfolgreich := FALSE .
+
+END PROC protokolliere;
+
+PROC eindeutige felder (INT CONST anzahl) :
+
+  anzahl eindeutiger felder := anzahl
+
+END PROC eindeutige felder;
+
+PROC pruefe (TEXT CONST feld, BOOL CONST bedingung) :
+
+  IF NOT bedingung THEN
+    protokolliere (feld, verletzt die pruefbedingung)
+  END IF
+
+END PROC pruefe;
+
+PROC wertemenge (TEXT CONST feld, menge) :
+
+  INT CONST nr := feldnummer (feld);
+  IF nr = 0 THEN
+    protokolliere (feld, nicht definiert)
+  ELSE
+    pruefe ob enthalten
+  END IF .
+
+pruefe ob enthalten :
+  INT VAR stelle := 0;
+  LET komma = ",";
+  feld lesen (nr, feldpuffer);
+  IF ist letztes element THEN
+    LEAVE pruefe ob enthalten
+  END IF;
+  feldpuffer CAT komma;
+  REP
+    stelle := pos (menge, feldpuffer, stelle + 1);
+    IF stelle = 1 OR
+       stelle > 1 CAND (menge SUB stelle - 1) = komma THEN
+         LEAVE pruefe ob enthalten
+    END IF
+  UNTIL stelle = 0 END REP;
+  protokolliere (feld, nicht in wertemenge) .
+
+ist letztes element :
+  INT CONST letzter anfang := length (menge) - length (feldpuffer);
+  (menge SUB letzter anfang) = komma AND
+    pos (menge, feldpuffer, letzter anfang + 1) > 0 .
+
+END PROC wertemenge;
+
+PROC feldmaske (TEXT CONST feld, maske) :
+
+  INT CONST nr := feldnummer (feld);
+  IF nr = 0 THEN
+    protokolliere (feld, nicht definiert)
+  ELSE
+    feld lesen (nr, feldpuffer);
+    mit maske vergleichen
+  END IF .
+
+mit maske vergleichen :
+  INT VAR stelle;
+  TEXT CONST ende := code (length (maske) + 1);
+  TEXT VAR moegliche positionen := ""1"";
+  FOR stelle FROM 1 UPTO length (feldpuffer) REP
+    TEXT CONST zeichen := feldpuffer SUB stelle;
+    zeichen vergleichen
+  UNTIL moegliche positionen = "" END REP;
+  IF nicht erfolgreich THEN
+    protokolliere (feld, passt nicht zu maske)
+  END IF .
+
+zeichen vergleichen :
+  INT VAR moeglich := 1;
+  WHILE moeglich <= length (moegliche positionen) REP
+    INT CONST position := code (moegliche positionen SUB moeglich);
+    IF (maske SUB position) = "*" THEN
+      stern behandeln
+    ELIF vergleich trifft zu THEN
+      replace (moegliche positionen, moeglich, code (position + 1));
+      moeglich INCR 1
+    ELSE
+      delete char (moegliche positionen, moeglich)
+    END IF
+  END REP .
+
+stern behandeln :
+  IF position = length (maske) THEN
+    LEAVE feldmaske
+  END IF;
+  moeglich INCR 1;
+  IF pos (moegliche positionen, code (position + 1)) = 0 THEN
+    insert char (moegliche positionen, code (position + 1), moeglich)
+  END IF .
+
+vergleich trifft zu :
+  SELECT pos ("9XAa", maske SUB position) OF
+  CASE 1 : pos ("0123456789", zeichen) > 0
+  CASE 2 : TRUE
+  CASE 3 : pos ("ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÜ", zeichen) > 0
+  CASE 4 : pos ("abcdefghijklmnopqrstuvwxyzäöüß", zeichen) > 0
+  OTHERWISE (maske SUB position) = zeichen
+  END SELECT .
+
+nicht erfolgreich :
+  (moegliche positionen = "" COR pos (moegliche positionen, ende) = 0)
+  AND nicht gerade stern am ende .
+
+nicht gerade stern am ende :
+  (maske SUB length (maske)) <> "*" OR 
+    pos (moegliche positionen, code (length (maske))) = 0 .
+
+END PROC feldmaske;
+
+PROC trage satz (TEXT CONST dateiname) :
+
+   tragen vorbereiten (dateiname);
+   INT CONST alter satz := satznr (zieldatei);
+   trage einzelsatz;
+   satz loeschen;
+   auf satz (zieldatei, alter satz)
+
+END PROC trage satz;
+
+PROC hole satz (TEXT CONST dateiname) :
+
+  teste ob datei vorhanden;
+  IF NOT exists (dateiname) THEN
+    errorstop (textdarstellung (dateiname) + existiert nicht)
+  END IF;
+  oeffne (zieldatei, dateiname);
+  IF felderzahl (zieldatei) <> anzahl felder THEN
+    errorstop (falsche felderzahl)
+  ELIF saetze (zieldatei) = 0 THEN
+    errorstop (kein satz vorhanden)
+  END IF;
+  auf satz (zieldatei, saetze (zieldatei));
+  satz lesen (zieldatei, tragsatz);
+  tragsatz einfuegen;
+  satz loeschen (zieldatei) .
+
+tragsatz einfuegen :
+  satz einfuegen;
+  INT VAR feldnr;
+  FOR feldnr FROM 1 UPTO felderzahl (tragsatz) REP
+    feld lesen (tragsatz, feldnr, feldpuffer);
+    feld aendern (feldnr, feldpuffer)
+  END REP .
+
+END PROC hole satz;
+
+END PACKET verarbeitung;
+

@@ -1,0 +1,767 @@
+PACKET lisp heap maintenance                        (* Autor: J.Durchholz *) 
+                                                    (* Datum: 09.05.1984  *) 
+    DEFINES                                         (* Version 1.7.2      *) 
+                                                    (* Testhilfe          *) 
+  create lisp system,                  (* hey, 02.3.83 : 121,334,542,732 *) 
+  dump oblist: 
+ 
+ 
+PROC create lisp system (FILE VAR f, DATASPACE CONST new heap): 
+  initialize lisp system (new heap); 
+  input (f); 
+  WHILE NOT eof (f) REP 
+    TEXT VAR name; 
+    get (f, name); 
+    SYM CONST s :: new atom (name); 
+    get (f, name); 
+    SYM CONST property name :: new atom (name); 
+    IF NOT null (property name) THEN 
+      SYM VAR property; 
+      get (f, property); 
+      add property (s, property name, property) 
+    FI 
+  PER 
+END PROC create lisp system; 
+ 
+ 
+PROC dump oblist (FILE VAR f): 
+  begin oblist dump; 
+  REP 
+    SYM CONST actual atom :: next atom; 
+    put line (f, name (actual atom)); 
+    dump property list 
+  UNTIL null (actual atom) PER. 
+ 
+dump property list: 
+  begin property list dump (actual atom); 
+  REP 
+    SYM VAR id, value; 
+    next property (id, value); 
+    write (f, "  "); 
+    write (f, name (id)); 
+    write (f, " "); 
+    write (f, name (value)); 
+    line (f) 
+  UNTIL null (id) AND null (value) PER. 
+ 
+END PROC dump oblist; 
+ 
+ 
+PROC dump oblist: 
+  begin oblist dump; 
+  REP 
+    SYM CONST actual atom :: next atom; 
+    put line (name (actual atom)); 
+    dump property list 
+  UNTIL null (actual atom) PER. 
+ 
+dump property list: 
+  begin property list dump (actual atom); 
+  REP 
+    SYM VAR id, value; 
+    next property (id, value); 
+    out ("  "); 
+    out (name (id)); 
+    out (" "); 
+    put line (name (value)); 
+  UNTIL null (id) AND null (value) PER. 
+ 
+END PROC dump oblist; 
+ 
+ 
+END PACKET lisp heap maintenance; 
+ 
+ 
+ 
+PACKET lisp interpreter                             (* Autor: J.Durchholz *) 
+                                                    (* Datum: 27.12.1982  *) 
+    DEFINES                                         (* Version 3.1.7      *) 
+  evalquote,
+  apply, 
+  eval, 
+  try: 
+ 
+ 
+(* SYM-objects used by the interpreter. They all point to constant structure
+ within the heap. As their address may change during garbage collection,
+ it must be possible to correct the references to them made by the
+ SYM-objects. That is the reason why they are declared VAR instead of CONST*)
+SYM VAR lambda constant, 
+        label constant, 
+        quote constant, 
+        function constant, 
+        indefinite constant, 
+        apval constant, 
+        true constant, 
+        false constant; 
+ 
+SYM VAR errors; 
+BOOL VAR trace :: FALSE; 
+ 
+PROC initialize constants: 
+  lambda constant := new atom ("LAMBDA"); 
+  label constant := new atom ("LABEL"); 
+  quote constant := new atom ("QUOTE"); 
+  function constant := new atom ("FUNCTION"); 
+  indefinite constant := new atom ("INDEFINITE"); 
+  apval constant := new atom ("APVAL"); 
+  true constant := new atom ("T"); 
+  false constant := new atom ("F"); 
+  errors := new atom ("ERRORS") 
+END PROC initialize constants; 
+ 
+ 
+SYM PROC evalquote (SYM CONST expr):     (*hey*)
+  enable stop; 
+  initialize constants; 
+  x apply ( head (expr), quote (tail (expr)), nil )
+END PROC evalquote;
+ 
+ 
+SYM PROC quote (SYM CONST x):
+  IF eq (x,nil) THEN nil
+  ELSE set head (x, new head); set tail (x, quote (tail(x))); x
+  FI .
+new head:
+  cons (quote constant, cons (head(x), nil) )
+END PROC quote;
+ 
+ 
+SYM PROC apply (SYM CONST function, argument list, alist): 
+  enable stop; 
+  initialize constants; 
+  x apply (function, argument list, alist) 
+END PROC apply; 
+ 
+ 
+SYM PROC x apply (SYM CONST function, argument list, alist): 
+  IF trace THEN line;
+    put ("a p p l y :"); put (function); line;
+    put ("arguments :"); put (argument list); line;
+  FI;
+  SYM VAR new alist; 
+  initialize for alist insertion; 
+  reduce actual fn to lambda expression; 
+  insert parameter evaluated argument pairs in reversed order in new alist; 
+  function body evaluation. 
+ 
+reduce actual fn to lambda expression: 
+  SYM VAR actual fn :: function; 
+  REP 
+    IF is named atom (actual fn) THEN 
+      get function from property list of actual fn 
+                                           or from functional alist entry 
+    ELIF atom (actual fn) THEN 
+      error stop ("Eine Funktion darf kein unbenanntes Atom sein") 
+    ELSE 
+      IF eq (head (actual fn), lambda constant) THEN 
+        LEAVE reduce actual fn to lambda expression 
+      ELIF eq (head (actual fn), label constant) THEN 
+        get function from label expression and update alist 
+      ELSE 
+        error stop ("Funktion ist weder Atom noch LAMBDA-/LABEL-Ausdruck") 
+      FI 
+    FI 
+  PER. 
+ 
+get function from property list of actual fn or from functional alist entry: 
+  IF property exists (actual fn, function constant) THEN 
+    get function from property list of actual fn 
+  ELSE 
+    get function from functional alist entry 
+  FI. 
+ 
+get function from property list of actual fn: 
+  actual fn := property (actual fn, function constant). 
+ 
+get function from functional alist entry: 
+  SYM VAR actual alist entry; 
+  begin alist retrieval; 
+  REP 
+    IF end of alist THEN 
+      error stop ("Die Funktion " + name (actual fn) + 
+                  " ist nicht definiert") 
+    FI; 
+    search for next functional alist entry; 
+  UNTIL eq (head (actual functional alist entry), actual fn) PER; 
+  actual fn := tail (actual functional alist entry). 
+ 
+get function from label expression and update alist: 
+  actual fn := tail (actual fn); 
+  IF atom (actual fn) COR 
+     (NOT atom (head (actual fn)) OR atom (tail (actual fn))) COR 
+     NOT null (tail (tail (actual fn)))                           THEN 
+    error stop ("Ungueltiger LABEL-Ausdruck") 
+  FI; 
+  SYM VAR new alist entry; 
+  prepare new functional alist entry; 
+  set head (new alist entry, head (actual fn)); 
+  actual fn := head (tail (actual fn)); 
+  set tail (new alist entry, actual fn). 
+ 
+insert parameter evaluated argument pairs in reversed order in new alist: 
+  actual fn := tail (actual fn); 
+  IF atom (actual fn) THEN 
+    error stop ("Ungueltiger LAMBDA-Ausdruck") 
+  FI; 
+  SYM VAR parameter list rest :: head (actual fn), 
+          argument list rest :: argument list; 
+  actual fn := tail (actual fn); 
+  WHILE NOT null (parameter list rest) REP 
+    add next parameter argument pair to alist 
+  PER; 
+  check wether no arguments are left over. 
+ 
+add next parameter argument pair to alist: 
+  IF atom (parameter list rest) THEN 
+    error stop ("Parameterliste endet falsch") 
+  FI; 
+  SYM VAR param pointer :: head (parameter list rest); 
+  parameter list rest := tail (parameter list rest); 
+  IF is named atom (param pointer) AND NOT null (param pointer) THEN 
+    add parameter evaluated argument pair to alist; 
+    advance argument list rest 
+  ELIF atom (param pointer) THEN 
+    error stop ("Unbenannte Atome und NIL koennen nicht Parameter sein") 
+  ELSE 
+    IF eq (head (param pointer), indefinite constant) THEN 
+      check wether is last param; 
+      advance param pointer; 
+      IF eq (head (param pointer), quote constant) THEN 
+        advance param pointer; 
+        move param pointer to parameter; 
+        add parameter indefinite quoted argument pair to alist 
+      ELSE 
+        move param pointer to parameter; 
+        add parameter indefinite evaluated argument pair to alist 
+      FI; 
+      argument list rest := nil 
+    ELIF eq (head (param pointer), quote constant) THEN 
+      advance param pointer; 
+      move param pointer to parameter; 
+      add parameter quoted argument pair to alist; 
+      advance argument list rest 
+    ELIF eq (head (param pointer), function constant) THEN 
+      advance param pointer; 
+      move param pointer to parameter; 
+      add parameter functional argument pair to alist; 
+      advance argument list rest 
+    ELSE 
+      error stop ("Ungueltiger Parameter") 
+    FI 
+  FI. 
+ 
+advance param pointer: 
+  param pointer := tail (param pointer); 
+  IF atom (param pointer) THEN 
+    error stop ("Ungueltiger Parameter") 
+  FI. 
+ 
+move param pointer to parameter: 
+  IF NOT null (tail (param pointer)) THEN 
+    error stop ("Ungueltiger Parameter") 
+  FI; 
+  param pointer := head (param pointer); 
+  IF NOT atom (param pointer) OR null (param pointer) THEN 
+    error stop ("Unbenannte Atome und NIL koennen nicht Parameter sein") 
+  FI. 
+ 
+advance argument list rest: 
+  argument list rest := tail (argument list rest). 
+ 
+add parameter evaluated argument pair to alist: 
+  prepare new alist entry; 
+  set head (new alist entry, param pointer); 
+  set tail (new alist entry, x eval (actual argument, alist)). 
+ 
+check wether is last param: 
+  IF NOT null (parameter list rest) THEN 
+    error stop ("Ein INDEFINITE-Parameter muss der letzte sein") 
+  FI. 
+ 
+add parameter indefinite quoted argument pair to alist: 
+  prepare new alist entry; 
+  set head (new alist entry, param pointer); 
+  set tail (new alist entry, argument list rest); 
+  WHILE NOT atom (argument list rest) REP 
+    argument list rest := tail (argument list rest) 
+  PER; 
+  IF NOT null (argument list rest) THEN 
+    error stop ("Argumentliste endet falsch") 
+  FI. 
+ 
+add parameter indefinite evaluated argument pair to alist: 
+  prepare new alist entry; 
+  set head (new alist entry, param pointer); 
+  last evaluated argument := new alist entry; 
+  WHILE NOT atom (argument list rest) REP 
+    set tail (last evaluated argument, 
+              cons (x eval (head (argument list rest), alist), nil)); 
+    last evaluated argument := tail (last evaluated argument); 
+    advance argument list rest 
+  PER; 
+  IF NOT null (argument list rest) THEN 
+    error stop ("Argumentliste endet falsch") 
+  FI. 
+ 
+last evaluated argument: 
+  param pointer. 
+(* The value of param pointer is not used further, so the *) 
+(* variable can be "reused" in this manner. *) 
+ 
+add parameter quoted argument pair to alist: 
+  prepare new alist entry; 
+  set head (new alist entry, param pointer); 
+  set tail (new alist entry, actual argument). 
+ 
+add parameter functional argument pair to alist: 
+  prepare new functional alist entry; 
+  set head (new alist entry, param pointer); 
+  set tail (new alist entry, actual argument). 
+ 
+actual argument: 
+  IF atom (argument list rest) THEN 
+    IF null (argument list rest) THEN 
+      error stop ("Zuwenig Argumente") 
+    ELSE 
+      error stop ("Argumentliste endet falsch") 
+    FI 
+  FI; 
+  head (argument list rest). 
+ 
+check wether no arguments are left over: 
+  IF NOT null (argument list rest) THEN 
+    error stop ("Zuviele Argumente") 
+  FI. 
+ 
+function body evaluation: 
+  IF is int pair (actual fn) THEN 
+    predefined function evaluation 
+  ELIF atom (actual fn) COR NOT null (tail (actual fn)) THEN 
+    error stop ("Ungueltiger LAMBDA-Ausdruck"); nil 
+  ELSE 
+    x eval (head (actual fn), new alist) 
+  FI. 
+ 
+predefined function evaluation: 
+  SELECT int 1 (actual fn) OF 
+    CASE 0: call eval cond 
+    CASE 1: call begin oblist dump 
+    CASE 2: call next atom 
+    CASE 3: call add property 
+    CASE 4: call alter property 
+    CASE 5: call delete property 
+    CASE 6: call property exists 
+    CASE 7: call property 
+    CASE 8: call add flag 
+    CASE 9: call flag 
+    CASE 10: call delete flag 
+    CASE 11: call begin property list dump 
+    CASE 12: call next property 
+    CASE 13: call apply 
+    CASE 14: call eval 
+    CASE 15: call try 
+    CASE 16: give association list 
+    CASE 17: call error stop 
+    CASE 18: call head 
+    CASE 19: call set head 
+    CASE 20: call tail 
+    CASE 21: call set tail 
+    CASE 22: call cons 
+    CASE 23: call eq 
+    CASE 24: call get sym 
+    CASE 25: call put sym 
+    CASE 26: call null 
+    CASE 27: call is atom 
+    CASE 28: call is named atom 
+    CASE 29: call get named atom 
+    CASE 30: call put named atom 
+    CASE 31: call is text 
+    CASE 32: call get text 
+    CASE 33: call put text 
+    CASE 34: call is character 
+    CASE 35: call get character 
+    CASE 36: call put character 
+    CASE 37: call is int 
+    CASE 38: call get int 
+    CASE 39: call put int 
+    CASE 40: call sum 
+    CASE 41: call difference 
+    CASE 42: call product 
+    CASE 43: call quotient 
+    CASE 44: call remainder
+    CASE 45: call equal 
+    CASE 46: call trace
+    CASE 47: call define
+    CASE 48: call set
+    OTHERWISE error stop("Es gibt (noch) keine LISP-Funktion mit der Nummer" 
+                          + text (int 1 (actual fn)) ); nil 
+  END SELECT. 
+ 
+call eval cond: 
+  x eval condition (arg 1, alist). 
+ 
+call begin oblist dump: 
+  begin oblist dump; nil. 
+ 
+call next atom: 
+  next atom. 
+ 
+call add property: 
+  add property (arg 3, arg 2, arg 1); arg 1. 
+ 
+call alter property: 
+  alter property (arg 3, arg 2, arg 1); arg 1. 
+ 
+call delete property: 
+  delete property (arg 2, arg 1); nil. 
+ 
+call property exists: 
+  IF property exists(arg 2,arg 1) THEN true constant ELSE false constant FI. 
+ 
+call property: 
+  property (arg 2, arg 1). 
+ 
+call add flag: 
+  add flag (arg 2, arg 1); nil. 
+ 
+call flag: 
+  IF flag (arg 2, arg 1) THEN true constant ELSE false constant FI. 
+ 
+call delete flag: 
+  delete flag (arg 2, arg 1); nil. 
+ 
+call begin property list dump: 
+  begin property list dump (arg 1); nil. 
+ 
+call next property: 
+  SYM VAR s1, s2; next property (s1, s2); cons (s1, s2). 
+ 
+call apply: 
+  x apply (arg 3, arg 2, arg 1). 
+ 
+call eval: 
+  x eval (arg 2, arg 1). 
+ 
+call try: 
+  x try (arg 4, arg 3, arg 2, arg 1). 
+ 
+give association list: 
+  alist. 
+ 
+call error stop: 
+  error stop (text (arg 1)); nil. 
+ 
+call head: 
+  head (arg 1). 
+ 
+call set head: 
+  set head (arg 2, arg 1); arg 2. 
+ 
+call tail: 
+  tail (arg 1). 
+ 
+call set tail: 
+  set tail (arg 2, arg 1); arg 2. 
+ 
+call cons: 
+  cons (arg 2, arg 1). 
+ 
+call eq: 
+  IF eq (arg 2, arg 1) THEN true constant ELSE false constant FI. 
+ 
+call get sym: 
+  get (s1); s1. 
+ 
+call put sym: 
+  put (arg 1); arg 1. 
+ 
+call null: 
+  IF null (arg 1) THEN true constant ELSE false constant FI. 
+ 
+call is atom: 
+  IF atom (arg 1) THEN true constant ELSE false constant FI. 
+ 
+call is named atom: 
+  IF is named atom (arg 1) THEN true constant ELSE false constant FI. 
+ 
+call get named atom: 
+  TEXT VAR t; get (t); new atom (t). 
+ 
+call put named atom: 
+  put (name (arg 1)); arg 1. 
+ 
+call is text: 
+  IF is text (arg 1) THEN true constant ELSE false constant FI. 
+ 
+call get text: 
+  get (t); sym (t). 
+ 
+call put text: 
+  put (text (arg 1)); arg 1. 
+ 
+call is character: 
+  IF is character (arg 1) THEN true constant ELSE false constant FI. 
+ 
+call get character: 
+  inchar (t); sym character (code (t)). 
+ 
+call put character: 
+  out (code (character (arg 1))); arg 1. 
+ 
+call is int: 
+  IF is int pair (arg 1) THEN true constant ELSE false constant FI. 
+ 
+call get int: 
+  INT VAR i; get (i); sym (i, -1). 
+ 
+call put int: 
+  put (int 1 (arg 1)); arg 1. 
+ 
+call sum: 
+  sum (arg 1). 
+ 
+call difference: 
+  difference (arg 2, arg 1). 
+ 
+call product: 
+  product (arg 1). 
+ 
+call quotient: 
+  quotient (arg 2, arg 1). 
+ 
+call remainder:
+  remainder(arg 2, arg 1). 
+ 
+call equal:
+  IF equal (arg 2, arg 1) THEN true constant ELSE false constant FI.
+ 
+call trace:
+  trace := NOT trace;
+  IF trace THEN true constant ELSE false constant FI . 
+ 
+call define:     (*hey*) 
+  define (arg 1) . 
+ 
+call set:         (*hey*) 
+  add property (new atom ( name (arg 2)), apval constant, arg 1); arg 1 . 
+ 
+arg 1: 
+  tail (head (new alist)). 
+ 
+arg 2: 
+  tail (head (tail (new alist))). 
+ 
+arg 3: 
+  tail (head (tail (tail (new alist)))). 
+ 
+arg 4: 
+  tail (head (tail (tail (tail (new alist))))). 
+ 
+END PROC x apply; 
+ 
+SYM PROC define (SYM CONST x):   (*hey*) 
+  IF   eq (x, nil) THEN nil 
+  ELSE add property (new atom (name (head (head (x)))), 
+                     function constant, tail (head (x)) ); 
+       cons (head (head (x)), define (tail (x)) ) 
+  FI . 
+END PROC define; 
+ 
+SYM VAR old alist :: nil;
+ 
+SYM PROC eval (SYM CONST expression, alist): 
+  enable stop; 
+  initialize constants; 
+  x eval (expression, alist) 
+END PROC eval; 
+ 
+ 
+SYM PROC x eval (SYM CONST expression, alist):   (*hey*)
+  IF trace THEN line;
+    put ("e v a l   :"); put (expression); line;
+    IF NOT equal (alist, old alist) THEN
+    put ("bindings  :"); old alist := alist; put (alist); line FI
+  FI;
+  IF atom (expression) THEN 
+    IF is named atom (expression) THEN 
+      value from property list of expression or from alist entry 
+    ELSE 
+      expression 
+    FI 
+  ELSE 
+    x apply (head (expression), tail (expression), alist) 
+  FI. 
+ 
+value from property list of expression or from alist entry: 
+  IF property exists (expression, apval constant) THEN 
+    value from property list of expression 
+  ELSE 
+    value from alist entry 
+  FI. 
+ 
+value from property list of expression: 
+  property (expression, apval constant). 
+ 
+value from alist entry: 
+  SYM VAR actual alist entry; 
+  begin alist retrieval; 
+  REP 
+    IF end of alist THEN 
+      error stop ("Das Atom " + name (expression) + " hat keinen Wert") 
+    FI; 
+    search for next alist entry 
+  UNTIL eq (head (actual alist entry), expression) PER; 
+  tail (actual alist entry). 
+ 
+END PROC x eval; 
+ 
+ 
+SYM PROC try (SYM CONST expression list, alist, 
+                        error output, break possible): 
+  enable stop; 
+  initialize constants; 
+  x try (expression list, alist, error output, break possible) 
+END PROC try; 
+ 
+ 
+SYM PROC x try (SYM CONST expression list, alist, 
+                          error output, break possible): 
+  BOOL CONST output :: bool (error output), 
+             halt enabled :: bool (break possible); 
+  SYM VAR expr list rest :: expression list; 
+  REP 
+    IF null (expr list rest) THEN 
+      LEAVE x try WITH nil 
+    ELIF atom (expr list rest) THEN 
+      error stop ("Ausdrucksliste fuer 'try' endet falsch") 
+    ELSE 
+      try evaluation of actual expression 
+    FI; 
+    expr list rest := tail (expr list rest) 
+  PER; 
+  nil. 
+ 
+try evaluation of actual expression: 
+  disable stop; 
+  SYM VAR result :: x eval (head (expr list rest), alist); 
+  IF is error THEN 
+    IF error message = "halt from terminal" AND halt enabled THEN 
+      enable stop 
+    ELIF output THEN 
+      put error 
+    FI; 
+    add property (errors, apval constant, sym (error message)); 
+    clear error 
+  ELSE 
+    LEAVE x try WITH result 
+  FI; 
+  enable stop. 
+ 
+END PROC x try; 
+ 
+ 
+SYM PROC x eval condition (SYM CONST pair list, alist): 
+  enable stop; 
+  SYM VAR cond pair list rest :: pair list; 
+  REP 
+    IF atom (cond pair list rest) THEN 
+      error stop ("Keine 'T'-Bedingung in bedingtem Ausdruck gefunden") 
+    FI; 
+    check wether is correct pair; 
+    IF true condition found THEN 
+      LEAVE x eval condition WITH x eval (head (tail (actual pair)), alist) 
+    FI; 
+    cond pair list rest := tail (cond pair list rest) 
+  PER; 
+  nil. 
+ 
+check wether is correct pair: 
+  IF atom (actual pair) COR 
+     atom (tail (actual pair)) COR 
+     NOT null (tail (tail (actual pair))) THEN 
+    error stop ("Ungueltiges Paar im bedingten Ausdruck") 
+  FI. 
+ 
+true condition found: 
+  bool (x eval (head (actual pair), alist)). 
+ 
+actual pair: 
+  head (cond pair list rest). 
+ 
+END PROC x eval condition; 
+ 
+ 
+BOOL PROC bool (SYM CONST sym): 
+  IF eq (sym, true constant) THEN 
+    TRUE 
+  ELIF eq (sym, false constant) THEN 
+    FALSE 
+  ELSE 
+    error stop ("'T' oder 'F' erwartet"); TRUE 
+  FI 
+END PROC bool; 
+ 
+ 
+(******* a-list handling refinements used in 'x apply' and 'x eval' *******) 
+ 
+(* declared within 'x apply' and 'x eval': 'actual alist entry'           *) 
+ 
+. 
+ 
+initialize for alist insertion: 
+  new alist := alist. 
+ 
+begin alist retrieval: 
+  SYM VAR actual alist pos :: alist. 
+ 
+search for next alist entry: 
+  WHILE NOT end of alist REP 
+    IF atom (actual alist pos) THEN 
+      error stop ("Bindeliste endet falsch") 
+    FI; 
+    actual alist entry := head (actual alist pos); 
+    actual alist pos := tail (actual alist pos); 
+  UNTIL is non functional alist entry PER. 
+ 
+is non functional alist entry: 
+  NOT is functional alist entry. 
+ 
+search for next functional alist entry: 
+  WHILE NOT end of alist REP 
+    IF atom (actual alist pos) THEN 
+      error stop ("Bindeliste endet falsch") 
+    FI; 
+    actual alist entry := head (actual alist pos); 
+    actual alist pos := tail (actual alist pos); 
+  UNTIL is functional alist entry PER; 
+  actual alist entry := tail (actual alist entry). 
+ 
+is functional alist entry: 
+  check wether is alist entry; 
+  null (head (actual alist entry)). 
+ 
+check wether is alist entry: 
+  IF atom (actual alist entry) THEN 
+    error stop ("Bindelisteneintrag ist kein Paar") 
+  FI. 
+ 
+end of alist: 
+  null (actual alist pos). 
+ 
+actual functional alist entry: 
+  actual alist entry. 
+ 
+prepare new alist entry: 
+  new alist := cons (cons (nil, nil), new alist); 
+  new alist entry := head (new alist). 
+ 
+prepare new functional alist entry: 
+  new alist := cons (cons (nil, cons (nil, nil)), new alist); 
+  new alist entry := tail (head (new alist)). 
+ 
+ 
+END PACKET lisp interpreter; 
+ 
+ 
+

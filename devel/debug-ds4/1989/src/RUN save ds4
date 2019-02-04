@@ -1,0 +1,223 @@
+(* COPYRIGHT: digitron GmbH, Bielefeld 1989 *) 
+ 
+(* 
+EUMEL0: 
+modul: 2047 start: 3 0 code: 3 0 1 -257 32604 32588 32573 3 32666 1 
+3 4 0 32667 2 3 4 0 3076 11268 5 28678 32573 6 32666 1 6 7 0 32667 2 6 7 0 
+3079 11271 8 28694 32573 9 32666 1 9 10 0 32667 2 9 10 0 3082 11274 11 28710 
+32573 12 32666 1 12 13 0 32667 2 12 13 0 3085 11277 14 28726 32573 15 32592 
+15 0 32667 2 17 15 0 3087 11279 16 28740 32587 32512 endc pbase: -256 0 0 0 
+0 1792 -256 1 0 0 3 256 0 5 0 -32768 0 32 7 endp 
+*) 
+PACKET ds accesses DEFINES 
+  do, 
+  ds nr, 
+  forget all but not, 
+  set modul start ic, 
+  read ds, 
+  write ds, 
+: 
+INT CONST stdds := 4 + index(myself) * 256;  
+INT PROC read ds (INT CONST drid, add hi, add lo): 
+  EXTERNAL 154 
+END PROC read ds; 
+INT PROC read ds (DATASPACE CONST drid, INT CONST add hi, add lo): 
+  EXTERNAL 154 
+END PROC read ds; 
+PROC write ds (INT CONST drid, add hi, add lo, data): 
+  EXTERNAL 155 
+END PROC write ds; 
+PROC write ds (DATASPACE CONST drid, INT CONST add hi, add lo, data): 
+  EXTERNAL 155 
+END PROC write ds; 
+PROC forget (INT CONST ds): 
+  EXTERNAL 71 
+END PROC forget; 
+OP := (INT VAR left, DATASPACE CONST right): 
+   EXTERNAL 260 
+END OP :=; 
+PROC elan (INT CONST mode, DATASPACE CONST source, TEXT CONST line, 
+           INT VAR modul nr, BOOL CONST ins, lst, rt check, ser): 
+  EXTERNAL 256 
+END PROC elan; 
+PROC do (INT CONST modul nr): 
+  INT VAR modul no:= modul nr; 
+  DATASPACE VAR source; 
+  elan (4, source, "", modul no, FALSE, FALSE, FALSE, FALSE); 
+END PROC do; 
+INT PROC ds nr (TEXT CONST name): 
+  INT VAR nr := old (name); nr 
+END PROC ds nr; 
+PROC forget all but not (INT CONST ds): 
+  INT VAR i, a; 
+  FOR i FROM 5 UPTO 255 REP 
+    a := i + 256 * index (myself); 
+    IF i <> ds MOD 256 THEN 
+      cout (i); forget (a); 
+    FI; 
+  PER 
+END PROC forget all but not; 
+PROC set modul start ic (INT CONST modul nr, ic hi, ic lo): 
+  IF ic hi < 2 OR ic hi > 3 THEN error stop ("Falscher Instruction Counter") FI; 
+  IF (modul nr >= 1280 AND ic hi = 3) OR (modul nr <= 1280 AND ic hi = 2) THEN 
+    write ds (stdds, 0, modul nr + 512, ic lo); 
+  ELSE 
+    error stop ("Falsche Modulnummer: " + text (modul nr)); 
+  FI; 
+END PROC set modul start ic; 
+END PACKET ds accesses; 
+PACKET lader DEFINES 
+  lade, 
+: 
+INT CONST stdds := 4 + index (myself) * 256; 
+PROC get ic (FILE VAR f, INT VAR ic hi, ic lo): 
+  find text (f,"start:"); 
+  get int (f,ic hi); get int (f,ic lo); 
+  IF ic hi <> 3 THEN error stop ("Falscher Start IC") FI; 
+END PROC get ic; 
+PROC get pbase (FILE VAR f, INT VAR ps): 
+  find text (f, "pbase:"); 
+  get int (f, ps); 
+  IF ps MOD 256 <> 0 THEN error stop ("Falsche Packet Basis") FI; 
+END PROC get pbase; 
+PROC get modul (FILE VAR f, INT VAR modul nr): 
+  find text (f, "modul:"); 
+  get int (f, modul nr); 
+END PROC get modul; 
+PROC load code (FILE VAR f): 
+  INT VAR add hi, add lo, code wert; 
+  TEXT VAR code ende; 
+  check end code (f); 
+  get code add (f, add hi, add lo); 
+  REP 
+    get code (f, code wert, code ende); 
+    IF code ende = "end" THEN LEAVE load code FI; 
+    write ds (stdds, add hi, add lo, code wert); 
+    add lo INCR 1; 
+  PER 
+END PROC load code; 
+PROC load pbase (FILE VAR f): 
+  INT VAR  pbase add, pbase wert; 
+  TEXT VAR pbase ende; 
+  check end pbase (f); 
+  get pbase (f, pbase add); 
+  REP 
+    get pbase (f, pbase wert, pbase ende); 
+    IF pbase ende = "end" THEN LEAVE load pbase FI; 
+    write ds (stdds, 0, pbase add, pbase wert); 
+    pbase add INCR 1; 
+  PER 
+END PROC load pbase; 
+INT PROC read pbase var (FILE VAR f, INT CONST index): 
+  INT VAR pbase add; 
+  get pbase (f, pbase add); 
+  read ds (stdds, 0, pbase add+index) 
+END PROC read pbase var; 
+PROC write pbase var (FILE VAR f, INT CONST index, var): 
+  INT VAR pbase add; 
+  get pbase (f, pbase add); 
+  write ds (stdds, 0, pbase add+index, var); 
+END PROC write pbase var; 
+PROC get code add (FILE VAR f, INT VAR add hi, add lo): 
+  find text (f, "code:"); 
+  get int (f, add hi); get int (f, add lo); 
+  IF add hi <> 3 THEN error stop ("Falsche Code-Adresse") FI; 
+END PROC get code add; 
+PROC get int (FILE VAR f, INT VAR value): 
+  IF eof (f) THEN error stop ("Daten fehlen") FI; 
+  TEXT VAR daten; 
+  get (f, daten); 
+  IF daten = "-32768" THEN 
+    value := -maxint-1; 
+  ELSE 
+    value := int (daten); 
+  ENDIF; 
+END PROC get int; 
+PROC get code (FILE VAR f, INT VAR value, TEXT VAR ende ): 
+  IF eof(f) THEN error stop ("'End Code'-Kennung fehlt") FI; 
+  TEXT VAR daten ; 
+  get (f, daten); 
+  IF daten = "endc" THEN 
+    ende := "end" 
+  ELSE 
+    IF daten = "-32768" THEN 
+      value := -maxint-1; 
+    ELSE 
+      value := int (daten); 
+    ENDIF; 
+    ende := "no end" 
+  FI; 
+END PROC get code; 
+PROC check end code (FILE VAR f): 
+  find text (f, "endc"); 
+END PROC check end code; 
+PROC get pbase (FILE VAR f,INT VAR value, TEXT VAR ende): 
+  IF eof (f) THEN error stop ("'End Pbase'-Kennung fehlt") FI; 
+  TEXT VAR daten ; 
+  get (f, daten); 
+  IF daten = "endp" THEN 
+    ende := "end" 
+  ELSE 
+    IF daten = "-32768" THEN 
+      value := -maxint-1; 
+    ELSE 
+      value := int (daten); 
+    ENDIF; 
+    ende := "no end" 
+  FI; 
+END PROC get pbase; 
+PROC check end pbase (FILE VAR f): 
+  find text (f, "endp"); 
+END PROC check end pbase; 
+PROC find text (FILE VAR f, TEXT CONST suchtext): 
+  TEXT VAR t; 
+  go start (f); 
+  WHILE NOT eof (f) REP 
+    get (f, t); 
+    IF t = suchtext THEN LEAVE find text FI; 
+  PER; 
+  error stop (suchtext + " fehlt") 
+END PROC find text; 
+PROC go start (FILE VAR f): 
+  TEXT VAR t; 
+  reset (f); 
+  WHILE NOT eof (f) REP 
+    get (f, t); 
+    IF t = "EUMEL0:" THEN LEAVE go start FI 
+  PER; 
+  error stop ("EUMEL0-Code nicht gefunden"); 
+END PROC go start; 
+PROC run code (INT VAR ic hi, ic lo, modul nr): 
+  set modul start ic (modul nr, ic hi, ic lo); 
+  do (modul nr); 
+END PROC run code; 
+PROC lade (TEXT CONST datei name): 
+  INT VAR ic hi, ic lo, modul nr; 
+  line; 
+  IF NOT yes ("Wollen sie den Standarddatenraum kopieren") THEN LEAVE lade FI; 
+  FILE VAR f := sequentialfile (input, dateiname); 
+  get ic (f, ic hi, ic lo); 
+  get modul (f, modul nr); 
+  load code (f); 
+  load pbase (f); 
+  load pbase var (f); 
+  run code (ic hi, ic lo, modul nr); 
+END PROC lade; 
+PROC load pbase var (FILE VAR f): 
+  INT VAR dss, dst; TEXT VAR name := "STD DS4"; 
+  line; 
+  put ("Wohin soll der Standarddatenraum kopiert werden:"); 
+  editget (name); 
+  line; 
+  IF NOT exists (name) THEN create (name); FI; 
+  dss := 4 + 256 * index (myself); 
+  dst := ds nr (name); 
+  write pbase var (f, 1, dss); 
+  write pbase var (f, 2, dst); 
+END PROC load pbase var; 
+PROC lade: 
+  lade ("RUN save ds4"); 
+END PROC lade; 
+END PACKET lader; 
+lade; 
+

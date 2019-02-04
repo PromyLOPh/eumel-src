@@ -1,0 +1,1077 @@
+(* ------------------- VERSION 10 vom 01.08.86 -------------------- *)
+PACKET referencer errors DEFINES report referencer error:
+
+(* Programm zur Fehlerbehandlung des referencers.
+   Autor: Rainer Hahn *)
+
+TEXT VAR fehlerdummy,
+         message;
+
+PROC report referencer error (INT CONST error nr,
+                           INT CONST line nr,
+                           TEXT CONST addition):
+
+  einfache fehlermeldung aufbauen;
+  diese auf terminal ausgeben;
+  fehlermeldung in fehlerdatei ausgeben.
+
+einfache fehlermeldung aufbauen:
+  message := "WARNUNG in Zeile ";
+  message CAT text (line nr);
+  message CAT " : ";
+  message CAT simple message.
+
+diese auf terminal ausgeben: 
+  line ; 
+  putline (message).
+ 
+fehlermeldung in fehlerdatei ausgeben: 
+  note (message); 
+  note line ;
+  fehlerdummy := "   >>> ";
+  fehlerdummy CAT zusatz;
+  note (fehlerdummy);
+  note line.
+ 
+simple message: 
+  SELECT error nr OF 
+  CASE 1: "Text Denoter ueber mehr als eine Zeile"
+  CASE 2: "Nicht beendeter Text Denoter bei Programmende" 
+  CASE 3: "Kommentar ueber mehr als eine Zeile" 
+  CASE 4: "Nicht beendeter Kommentar bei Programmende" 
+  CASE 5: "Ueberdeckung"
+  CASE 6, 9: "Refinement mehrmals eingesetzt" 
+  CASE 7, 10: "Refinement wird nicht aufgerufen"
+  CASE 8: "Objekt wird nicht angesprochen"
+  OTHERWISE "" 
+  ENDSELECT. 
+ 
+zusatz: 
+  SELECT error nr OF 
+  CASE 1, 2, 3, 4: "Ueber " + addition + " Zeilen"
+  CASE 5: addition
+  CASE 6, 7, 8: addition
+  CASE 9, 10: addition + " in mindestens einer Prozedur"
+  OTHERWISE "interner Fehler: HRZ Bielefeld benachrichtigen!" 
+  END SELECT.
+END PROC report referencer error 
+END PACKET referencer errors; 
+(************************************************************************)
+ 
+PACKET name table handling
+              DEFINES NAMETABLE,
+                      empty name table,
+                      put name, 
+                      get name,
+                      dump table:
+ 
+(* Programm zur Speicherung von Namen.
+   Autor: Rainer Hahn *)
+
+LET hash table length           = 1024, 
+    hash table length minus one = 1023,
+    start of name table         = 255,
+    name table length           = 2000;
+ 
+TYPE NAMETABLE = STRUCT (INT number of entries, 
+                         ROW hash table length INT hash table,
+                         ROW name table length INT next, 
+                         ROW name table length TEXT name table); 
+ 
+TEXT VAR dummy, f;
+ 
+PROC put name (NAMETABLE VAR n, TEXT CONST name, INT VAR pointer):
+  INT VAR errechneter index; 
+  hash (name, errechneter index); 
+  IF noch kein eintrag 
+    THEN gaenzlich neuer eintrag 
+    ELSE name in vorhandener kette 
+  FI. 
+ 
+noch kein eintrag: 
+  n . hash table [errechneter index] = 0. 
+ 
+gaenzlich neuer eintrag: 
+  n . hash table [errechneter index] := n . number of entries; 
+  neuer eintrag (n, name, pointer).
+ 
+name in vorhandener kette:
+  INT VAR dieser eintrag :: n. hash table [errechneter index]; 
+  REP 
+    IF name ist vorhanden
+      THEN pointer := dieser eintrag;
+           LEAVE put name 
+    ELIF kette zu ende
+      THEN neuer eintrag an vorhandene kette anketten; 
+           neuer eintrag (n, name, pointer);
+           LEAVE put name
+      ELSE naechster eintrag in der kette
+    FI 
+  END REP.
+ 
+name ist vorhanden: 
+  n . name table [dieser eintrag] = name.
+ 
+kette zu ende: 
+  n . next [dieser eintrag] = 0.
+ 
+neuer eintrag an vorhandene kette anketten: 
+  n . next [dieser eintrag] := n . number of entries. 
+ 
+naechster eintrag in der kette:
+  dieser eintrag := n . next [dieser eintrag].
+END PROC put name; 
+ 
+PROC neuer eintrag (NAMETABLE VAR n, TEXT CONST name, INT VAR pointer):
+  n . name table [n . number of entries] := name; 
+  n . next [n . number of entries] := 0; 
+  pointer := n . number of entries;
+  n . number of entries INCR 1; 
+  IF n . number of entries > name table length 
+    THEN errorstop ("volle Namenstabelle")
+  FI 
+END PROC neuer eintrag;
+ 
+PROC hash (TEXT CONST name, INT VAR index) :
+  INT VAR i;
+  index := code (name SUB 1);
+  FOR i FROM 2 UPTO length (name) REP
+    addmult cyclic
+  ENDREP.
+ 
+addmult cyclic :
+  index INCR index ;
+  IF index > hash table length minus one
+    THEN wrap around
+  FI;
+  index := (index + code (name SUB i)) MOD hash table length.
+ 
+wrap around :
+  index DECR hash table length minus one
+ENDPROC hash ;
+ 
+PROC get name (NAMETABLE CONST n, INT CONST index, TEXT VAR t): 
+  IF index < n . number of entries AND index >= start of name table
+    THEN t := n . name table [index] 
+    ELSE errorstop ("Interner Fehler 1") 
+  FI 
+END PROC get name; 
+ 
+PROC empty name table (NAMETABLE VAR n): 
+INT VAR i;
+  n . number of entries := start of name table; 
+  FOR i FROM 1 UPTO hash table length REP 
+    n . hash table [i] := 0 
+  END REP 
+END PROC empty name table;
+ 
+PROC dump table (NAMETABLE CONST n): 
+  line ;
+  put ("Bitte Name der Datei, in die die Namenstabelle gehen soll:");
+  getline (f);
+  line ;
+  file assoziieren; 
+  dump namens ketten; 
+  zusammenfassung.
+ 
+file assoziieren: 
+  FILE VAR file :: sequential file (output, f). 
+ 
+dump namens ketten:
+  INT VAR i,
+          anz hash eintraege :: 0, 
+          kette 3 eintraege  :: 0;
+  FOR i FROM 1 UPTO hash table length REP 
+    IF n . hash table [i] <> 0 
+      THEN anz hash eintraege INCR 1;
+           INT VAR naechster eintrag :: n . hash table [i];
+           dump hash eintrag;
+           ketten eintraege
+    FI 
+  END REP. 
+ 
+dump hash eintrag: 
+  dummy := text (i); 
+  WHILE length (dummy) < 4 REP dummy CAT " " END REP;
+  dummy CAT ": ".
+ 
+ketten eintraege:
+  INT VAR anz eintraege pro kette :: 0;
+  WHILE naechster eintrag > 0 REP 
+    anz eintraege pro kette INCR 1;
+    dummy CAT " ";
+    dummy CAT text (naechster eintrag);
+    dummy CAT " -> ";
+    dummy CAT n . name table [naechster eintrag]; 
+    naechster eintrag := n . next [naechster eintrag];
+  END REP;
+  IF anz eintraege pro kette > 2 
+    THEN kette 3 eintraege INCR 1 
+  FI;
+  putline (file, dummy). 
+ 
+zusammenfassung: 
+  statistik ueberschrift;
+  anzahl hash eintraege; 
+  anzahl namens eintraege;
+  verkettungsfaktor; 
+  anzahl laengerer ketten.
+ 
+statistik ueberschrift: 
+  line (file, 2);
+  dummy := " ---------- "; 
+  dummy CAT "S T A T I S T I K:";
+  dummy CAT " ---------- ";
+  putline (file, dummy);
+  line (file, 2).
+ 
+anzahl hash eintraege:
+  dummy := "Anzahl Hash-Eintraege (max. "; 
+  dummy CAT text (hash table length); 
+  dummy CAT "): "; 
+  dummy CAT text (anz hash eintraege); 
+  putline (file, dummy).
+ 
+anzahl namens eintraege: 
+  dummy := "Anzahl Namen (max. "; 
+  dummy CAT text (name table length - start of name table + 1); 
+  dummy CAT "): "; 
+  dummy CAT text (n . number of entries - start of name table);
+  putline (file, dummy).
+ 
+verkettungsfaktor: 
+  dummy := "Verkettungsfaktor (Anzahl Namen / Anzahl Ketten): "; 
+  dummy CAT text (real (n . number of entries - start of name table) /
+         real (anz hash eintraege));
+  putline (file, dummy).
+ 
+anzahl laengerer ketten:
+  dummy := "Anzahl Ketten > 2 Eintraege: "; 
+  dummy CAT text (kette 3 eintraege); 
+  putline (file, dummy).
+END PROC dump table; 
+END PACKET name table handling; 
+(***************************************************************************)
+ 
+PACKET scanner DEFINES init scanning, 
+                       init name table with,
+                       dump name table,
+                       get name,
+                       end scanning,
+                       line number,
+                       symbol: 
+
+(* Programm zum scannen von ELAN-Programmen.
+   Autor: Rainer Hahn *)
+
+FILE VAR eingabe; 
+ 
+DATASPACE VAR ds alt := nilspace,
+              ds neu := nilspace;
+ 
+BOUND NAMETABLE VAR tabelle;
+ 
+TEXT VAR zeile, 
+         zeichen, 
+         dummy;
+ 
+LET end of program = ""30"",
+    eop            = 1, 
+    identifier     = 2, 
+    keyword        = 3, 
+    delimiter      = 4,
+    punkt          = 46,
+    doppelpunkt    = 58, 
+    init symbol    = 30, 
+    assign symbol  = 31;
+
+INT VAR zeilen nr,
+        zeichen pos;
+ 
+PROC init name table with (TEXT CONST worte):
+INT VAR index;
+  forget (ds alt);
+  ds alt := nilspace;
+  tabelle := dsalt;
+  empty name table (CONCR (tabelle));
+  INT VAR anf :: 1, 
+          ende :: pos (worte, ",", 1); 
+  WHILE ende > 0 REP 
+    dummy := subtext (worte, anf, ende - 1); 
+    put name (CONCR (tabelle), dummy, index); 
+    anf := ende + 1; 
+    ende := pos (worte, ",", ende + 1)
+  END REP; 
+  dummy := subtext (worte, anf); 
+  put name (CONCR (tabelle), dummy, index) 
+END PROC init name table with; 
+
+PROC init scanning (TEXT CONST f): 
+  IF exists (f) 
+    THEN namenstabelle holen;
+         erste zeile lesen 
+    ELSE errorstop ("Datei existiert nicht") 
+  FI. 
+ 
+namenstabelle holen: 
+  forget (ds neu);
+  ds neu := ds alt; 
+  tabelle := ds neu. 
+ 
+erste zeile lesen: 
+  eingabe := sequential file (input, f);
+  IF eof (eingabe) 
+    THEN errorstop ("Datei ist leer")
+    ELSE zeile := "";
+         zeilen nr := 0; 
+         zeile lesen; 
+         naechstes non blank zeichen
+  FI 
+END PROC init scanning; 
+
+PROC dump name table: 
+  dump table (CONCR (tabelle)) 
+END PROC dump name table; 
+ 
+PROC end scanning (TEXT CONST f): 
+  IF anything noted
+    THEN eingabe := sequential file (modify, f);
+         note edit (eingabe) 
+  FI
+END PROC end scanning; 
+ 
+PROC get name (INT CONST index, TEXT VAR t): 
+  get name (CONCR (tabelle), index, t) 
+END PROC get name; 
+ 
+PROC zeile lesen: 
+  getline (eingabe, zeile); 
+  zeilen nr INCR 1; 
+  cout (zeilen nr);
+  zeichen pos := 0
+END PROC zeile lesen; 
+ 
+PROC naechstes non blank zeichen: 
+  REP
+    zeichen pos := pos (zeile, ""33"", ""254"", zeichen pos + 1); 
+    IF zeichen pos <> 0 
+      THEN zeichen := (zeile SUB zeichen pos);
+           LEAVE naechstes non blank zeichen
+    ELIF eof (eingabe) 
+      THEN zeichen := end of program;
+           LEAVE naechstes non blank zeichen
+      ELSE zeile lesen
+    FI
+  END REP.
+END PROC naechstes non blank zeichen; 
+ 
+PROC naechstes zeichen: 
+  IF zeichen pos > length (zeile) 
+    THEN IF eof (eingabe) 
+           THEN zeichen := end of program;
+                LEAVE naechstes zeichen
+           ELSE zeile lesen 
+         FI 
+  FI; 
+  zeichenpos INCR 1; 
+  zeichen := zeile SUB zeichenpos
+END PROC naechstes zeichen; 
+ 
+INT PROC line number:
+  IF zeichenpos = pos (zeile, ""33"", ""254"", 1)
+    THEN zeilen nr - 1 
+    ELSE zeilen nr 
+  FI
+END PROC line number; 
+ 
+PROC symbol (INT VAR symb, type): 
+  REP 
+    suche naechstes checker symbol 
+  END REP. 
+ 
+suche naechstes checker symbol: 
+  SELECT code (zeichen) OF
+  CASE 30: (* end of programn *)
+    symb := eop; 
+    type := eop; 
+    LEAVE symbol
+  CASE 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110,
+       111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122:
+    (* small letters *)
+    identifier aufsammeln; 
+    put name (CONCR (tabelle), dummy, symb); 
+    type := identifier;
+    LEAVE symbol
+  CASE 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81,
+       82, 83, 84, 85, 86, 87, 88, 89, 90: (* large letters *)
+    schluesselwort aufsammeln; 
+    put name (CONCR (tabelle), dummy, symb); 
+    type := keyword; 
+    LEAVE symbol
+  CASE 34: (* " *)
+    skip text denoter 
+  CASE 40: (* ( *) 
+    IF (zeile SUB zeichen pos + 1) = "*" 
+      THEN skip comment 
+      ELSE symb := code (zeichen);
+           type := delimiter;
+           naechstes non blank zeichen;
+           LEAVE symbol;
+    FI 
+  CASE 58: (* : *) 
+    IF (zeile SUB zeichenpos + 1) = "=" 
+      THEN symb := assign symbol;
+           zeichenpos INCR 1
+    ELIF (zeile SUB zeichenpos + 1) = ":" 
+      THEN symb := init symbol; 
+           zeichenpos INCR 1 
+      ELSE symb := doppelpunkt 
+    FI; 
+    type := delimiter; 
+    naechstes non blank zeichen;
+    LEAVE symbol
+  CASE 48, 49, 50, 51, 52, 53, 54, 55, 56, 57: (* 0 - 9 *)
+    int denoter skippen;
+    IF zeichen = "."
+      THEN naechstes non blank zeichen;
+           IF digit
+             THEN real denoter skippen
+             ELSE symb := punkt; 
+                  type := delimiter;
+                  LEAVE symbol
+           FI
+    FI
+  CASE 41, 44, 46, 59, 61: (* ) , . ; =  *) 
+    symb := code (zeichen); 
+    type := delimiter; 
+    naechstes non blank zeichen; 
+    LEAVE symbol
+  OTHERWISE naechstes non blank zeichen
+  END SELECT.
+END PROC symbol; 
+ 
+PROC real denoter skippen:
+  int denoter skippen;
+  IF zeichen = "e" 
+    THEN naechstes non blank zeichen;
+         int denoter skippen
+  FI
+END PROC real denoter skippen;
+
+PROC int denoter skippen:
+  naechstes non blank zeichen;
+  WHILE zeichen >= "0" AND zeichen <= "9" REP
+    naechstes non blank zeichen
+  ENDREP;
+  zeichenpos DECR 1;
+  naechstes non blank zeichen
+END PROC int denoter skippen;
+
+PROC identifier aufsammeln:
+  dummy := zeichen; 
+  REP 
+    naechstes non blank zeichen; 
+    IF small letter or digit 
+      THEN dummy CAT zeichen 
+      ELSE LEAVE identifier aufsammeln 
+    FI 
+  END REP 
+END PROC identifier aufsammeln; 
+ 
+PROC schluesselwort aufsammeln:
+  dummy := "";
+  sammle schluesselwort; 
+  IF dummy = "END" 
+    THEN noch einmal 
+  FI.
+ 
+sammle schluesselwort: 
+  WHILE large letter REP 
+    dummy CAT zeichen;
+    naechstes zeichen
+  END REP; 
+  IF zeichen = " "
+    THEN naechstes non blank zeichen
+  FI.
+ 
+noch einmal: 
+  sammle schluesselwort
+END PROC schluesselwort aufsammeln; 
+ 
+PROC skip text denoter: 
+  INT VAR anz zeilen :: 0; 
+  zeichen pos := pos (zeile, """", zeichenpos + 1);
+  WHILE zeichen pos = 0 REP 
+    naechste zeile einlesen;
+    zeichen pos := pos (zeile, """");
+  END REP;
+  ende text denoter.
+ 
+ende text denoter: 
+  IF anz zeilen > 1 
+    THEN report referencer error (1, zeilen nr, text (anz zeilen))
+  FI; 
+  naechstes non blank zeichen. 
+ 
+naechste zeile einlesen: 
+  IF eof (eingabe) 
+    THEN report referencer error (2, zeilen nr, text (anz zeilen));
+         zeichen := end of program; 
+         LEAVE skip text denoter 
+    ELSE zeile lesen;
+         anz zeilen INCR 1 
+  FI.
+END PROC skip text denoter; 
+
+PROC skip comment:
+  INT VAR anz zeilen :: 0;
+  zeichen pos := pos (zeile, "*)", zeichenpos + 2);
+  WHILE zeichen pos = 0 REP 
+    naechste zeile einlesen; 
+    zeichen pos := pos (zeile, "*)"); 
+  END REP;
+  ende comment.
+ 
+ende comment:
+  IF anz zeilen > 1 
+    THEN report referencer error (3, zeilen nr, text (anz zeilen))
+  FI; 
+  zeichen pos INCR 2;
+  naechstes non blank zeichen. 
+ 
+naechste zeile einlesen: 
+  IF eof (eingabe) 
+    THEN report referencer error (4, zeilen nr, text (anz zeilen));
+         zeichen := end of program; 
+         LEAVE skip comment
+    ELSE zeile lesen;
+         anz zeilen INCR 1 
+  FI.
+END PROC skip comment;
+
+BOOL PROC small letter or digit: 
+  (zeichen >= "0" AND zeichen <= "9") OR (zeichen >= "a" AND zeichen <= "z") 
+END PROC small letter or digit; 
+ 
+BOOL PROC small letter: 
+  zeichen >= "a" AND zeichen <= "z"
+END PROC small letter;
+
+BOOL PROC large letter:
+  zeichen >= "A" AND zeichen <= "Z"
+END PROC large letter;
+
+BOOL PROC digit:
+  zeichen >= "0" AND zeichen <= "9"
+END PROC digit;
+END PACKET scanner;
+(*************************************************************************)
+PACKET referencer2 DEFINES referencer:
+
+(* Programm fuer den 'referencer'
+   Autor: Rainer Hahn *)
+
+INT VAR symb,
+        typ,
+        max index;
+
+TEXT VAR dummy,
+         dummy2,
+         name;
+
+DATASPACE VAR ds;
+
+BOUND ROW max TEXT VAR liste;
+
+FILE VAR f;
+
+BOOL VAR initialisiert :: FALSE,
+         symbol bereits geholt,
+         globale deklarationen;
+
+LET max             = 1751,
+    global text     = "<--G",
+    local text      = "<--L",
+    refinement text = "<--R",
+    procedure text  = "<--P",
+    eop           = 1, 
+    identifier    = 2, 
+    keyword       = 3, 
+    init symbol   = 30, 
+    assign symbol = 31,
+    klammer auf   = 40, 
+    klammer zu    = 41,
+    komma         = 44,
+    punkt         = 46,
+    doppelpunkt   = 58, 
+    semikolon     = 59, 
+    proc symbol       = 255, 
+    end proc symbol   = 256,
+    packet symbol     = 257, 
+    end packet symbol = 258,
+    type symbol       = 259, 
+    var symbol        = 260,
+    const symbol      = 261,
+    let symbol        = 262,
+    leave symbol      = 263,
+    op symbol         = 264,
+    endop symbol      = 265,
+    endif symbol      = 266,
+    fi symbol         = 266;
+ 
+PROC referencer: 
+  referencer (last param) 
+END PROC referencer; 
+ 
+PROC referencer (TEXT CONST check file): 
+  referencer (check file, check file + ".r") 
+END PROC referencer; 
+ 
+PROC referencer (TEXT CONST check file, dump file):
+  IF exists (check file)
+    THEN dump file ggf loeschen
+    ELSE errorstop ("Eingabe-Datei nicht vorhanden")
+  FI;
+  disable stop;
+    start referencing (check file, dump file);
+    forget (ds);
+  enable stop.
+ 
+dump file ggf loeschen:
+  IF exists (dump file)
+    THEN forget (dump file, quiet)
+  FI.
+END PROC referencer;
+ 
+PROC start referencing (TEXT CONST check file, dump file):
+  enable stop;
+  ueberschrift;
+  initialisierung;
+  verkuerzte syntax analyse;
+  line ;
+  in dump file kopieren (dump file);
+  line ;
+  end scanning (check file).
+ 
+ueberschrift:
+  page;
+  put ("REFERENCER:");
+  put (check file);
+  put ("->");
+  putline (dump file).
+ 
+initialisierung:
+  IF NOT initialisiert
+    THEN init name table with
+("PROC,ENDPROC,PACKET,ENDPACKET,TYPE,VAR,CONST,LET,LEAVE,OP,ENDOP,ENDIF,FI"); 
+         initialisiert := TRUE
+  FI; 
+  ds := nilspace;
+  liste := ds;
+  max index := end op symbol;
+  dummy := checkfile.
+ 
+verkuerzte syntax analyse: 
+  globale deklarationen := TRUE;
+  line ;
+  init scanning (dummy);
+  symbol bereits geholt := FALSE;
+  REP 
+    IF symbol bereits geholt 
+      THEN symbol bereits geholt := FALSE 
+      ELSE symbol (symb, typ)
+    FI;
+    IF typ = keyword 
+      THEN nach schluesselwort verarbeiten
+    ELIF symb = punkt
+      THEN ggf refinement aufnehmen
+    ELIF typ = identifier 
+      THEN identifier aufnehmen und ggf aktuelle parameter liste
+    FI
+  UNTIL typ = eop ENDREP. 
+ 
+identifier aufnehmen und ggf aktuelle parameter liste:
+  in die liste (symb, "");
+  symbol (symb, typ); 
+  IF symb = klammer auf 
+    THEN aktuelle parameter aufnehmen 
+    ELSE symbol bereits geholt := TRUE 
+  FI. 
+
+nach schluesselwort verarbeiten:
+  SELECT symb OF 
+  CASE let symbol:
+    let deklarationen aufsammeln
+  CASE packet symbol:
+    namen des interface aufsammeln
+  CASE end packet symbol:
+    skip naechstes symbol 
+  CASE var symbol, const symbol:
+    datenobjekt deklaration aufnehmen
+  CASE proc symbol:
+    globale deklarationen := FALSE; 
+    prozedur name und ggf parameter aufsammeln
+  CASE end proc symbol:
+    globale deklarationen := TRUE;
+    skip naechstes symbol
+  CASE op symbol: 
+    globale deklarationen := FALSE; 
+    operatornamen skippen und ggf parameter aufsammeln 
+  CASE end op symbol: 
+    globale deklarationen := TRUE; 
+    skip until (semikolon) 
+  CASE type symbol: 
+    namen der typ definition aufsammeln
+  CASE leave symbol: 
+    skip naechstes symbol
+  OTHERWISE: 
+  ENDSELECT. 
+ 
+skip naechstes symbol: 
+  symbol (symb, typ). 
+END PROC start referencing;
+
+PROC aktuelle parameter aufnehmen: 
+  REP 
+    symbol (symb, typ); 
+    IF typ = identifier 
+      THEN in die liste (symb, "") 
+    FI 
+  UNTIL symb = klammer zu END REP. 
+END PROC aktuelle parameter aufnehmen; 
+ 
+PROC ggf refinement aufnehmen:
+  symbol (symb, typ); 
+  symbol bereits geholt := TRUE;
+  WHILE typ = identifier REP 
+    doppelpunkt oder selektor
+  END REP.
+ 
+doppelpunkt oder selektor:
+  INT CONST letzter id :: symb; 
+  symbol (symb, typ);
+  IF symb = doppelpunkt
+    THEN in die liste (letzter id, refinement text);
+         LEAVE ggf refinement aufnehmen
+    ELSE in die liste (letzter id, "");
+         IF symb = punkt 
+           THEN symbol (symb, typ) 
+           ELSE LEAVE ggf refinement aufnehmen
+         FI
+  FI
+END PROC ggf refinement aufnehmen; 
+ 
+PROC namen des interface aufsammeln: 
+  packet name ueberspringen;
+  namen der schnittstelle aufsammeln. 
+ 
+packet name ueberspringen: 
+  symbol (symb, typ).
+ 
+namen der schnittstelle aufsammeln:
+  REP 
+    symbol (symb, typ);
+    IF typ = identifier 
+      THEN in die liste (symb, "")
+    FI
+  UNTIL symb = doppelpunkt END REP.
+END PROC namen des interface aufsammeln; 
+ 
+PROC let deklarationen aufsammeln:
+  REP
+    symbol (symb, typ);
+    IF typ = identifier 
+      THEN let name aufnehmen
+    ELIF typ = keyword 
+      THEN bis zum komma oder semikolon
+    FI;
+  UNTIL symb = semikolon END REP.
+
+let name aufnehmen: 
+  IF globale deklarationen
+    THEN in die liste (symb, global text)
+    ELSE in die liste (symb, "")
+  FI;
+  REP
+    symbol (symb, typ);
+    IF typ = identifier
+      THEN in die liste (symb, "")
+    FI
+  UNTIL symb = komma OR symb = semikolon END REP. 
+END PROC let deklarationen aufsammeln;
+
+PROC namen der typ definition aufsammeln: 
+  REP 
+    symbol (symb, typ); 
+    bis zum komma oder semikolon
+  UNTIL symb = semikolon END REP 
+END PROC namen der typ definition aufsammeln;
+
+PROC bis zum komma oder semikolon: 
+  INT VAR anz klammern :: 0; 
+  REP 
+    symbol (symb, typ); (* fields aufnehmen weggelassen *)
+    IF symb = klammer auf 
+      THEN anz klammern INCR 1 
+    ELIF symb = klammer zu
+      THEN anz klammern DECR 1
+    FI
+  UNTIL (symb = komma AND anz klammern = 0) OR symb = semikolon ENDREP.
+END PROC bis zum komma oder semikolon; 
+ 
+PROC datenobjekt deklaration aufnehmen:
+  symbol (symb, typ); 
+  REP 
+    IF globale deklarationen
+      THEN in die liste (symb, global text) 
+      ELSE in die liste (symb, local text) 
+    FI; 
+    skip ggf initialisierung;
+    IF symb = komma 
+      THEN symbol (symb, typ) 
+    FI
+  UNTIL symb = semikolon OR symb = punkt END REP.
+
+skip ggf initialisierung: 
+  symbol (symb, typ); 
+  IF symb = init symbol OR symb = assign symbol
+    THEN initialisierung skippen
+  FI.
+ 
+initialisierung skippen: 
+  INT VAR anz klammern :: 0;
+  REP 
+    INT CONST vorheriges symbol :: symb,
+              vorheriger typ    :: typ;
+    symbol (symb, typ); 
+    IF symb = klammer auf 
+      THEN anz klammern INCR 1;
+           IF vorheriger typ = identifier 
+             THEN in die liste (vorheriges symbol, "") 
+           FI
+    ELIF symb = klammer zu 
+      THEN anz klammern DECR 1; 
+           IF vorheriger typ = identifier 
+             THEN in die liste (vorheriges symbol, "") 
+           FI
+    ELIF vorheriger typ = identifier AND symb = doppelpunkt
+      THEN in die liste (vorheriges symbol, refinement text); 
+           LEAVE datenobjekt deklaration aufnehmen
+    ELIF vorheriger typ = identifier 
+      THEN in die liste (vorheriges symbol, "")
+    FI
+  UNTIL (symb = komma AND anz klammern = 0)
+         OR symb = semikolon OR symb = end proc symbol OR 
+         symb = end op symbol OR symb = endif symbol OR symb = fi symbol
+  END REP.
+END PROC datenobjekt deklaration aufnehmen; 
+ 
+PROC prozedur name und ggf parameter aufsammeln: 
+  prozedurname aufsammeln;
+  symbol (symb, typ); 
+  IF symb <> doppelpunkt
+    THEN formale parameter aufsammeln
+  FI. 
+ 
+prozedurname aufsammeln:
+  symbol (symb, typ); 
+  in die liste (symb, procedure text).
+END PROC prozedurname und ggf parameter aufsammeln; 
+ 
+PROC operatornamen skippen und ggf parameter aufsammeln: 
+  symbol (symb, typ);
+  IF symb <> doppelpunkt
+    THEN formale parameter aufsammeln 
+  FI 
+END PROC operatornamen skippen und ggf parameter aufsammeln;
+ 
+PROC formale parameter aufsammeln: 
+  REP 
+    symbol (symb, typ); 
+    IF typ = identifier 
+      THEN in die liste (symb, local text); 
+    FI 
+  UNTIL symb = doppelpunkt END REP 
+END PROC formale parameter aufsammeln; 
+ 
+PROC skip until (INT CONST zeichencode): 
+  skip until (zeichencode, 0) 
+END PROC skip until; 
+ 
+PROC skip until (INT CONST z1, z2):
+  REP 
+    symbol (symb, typ) 
+  UNTIL symb = z1 OR symb = z2 END REP
+END PROC skip until; 
+ 
+PROC in die liste (INT CONST index, TEXT CONST zusatz): 
+  IF index > max index 
+    THEN listenelemente initialisieren; 
+  FI;
+  IF aktueller eintrag = "" 
+    THEN namens eintrag 
+  FI;
+  aktueller eintrag CAT " ";
+  aktueller eintrag CAT text (line number);
+  aktueller eintrag CAT zusatz.
+ 
+aktueller eintrag: 
+  liste [index]. 
+ 
+listenelemente initialisieren: 
+  INT VAR i; 
+  FOR i FROM max index + 1 UPTO index REP 
+     liste [i] := ""
+  END REP; 
+  max index := index.
+ 
+namens eintrag:
+  get name (index, aktueller eintrag);
+  WHILE length (aktueller eintrag) < 15 REP 
+    aktueller eintrag CAT " "
+  END REP; 
+  aktueller eintrag CAT ":".
+END PROC in die liste; 
+ 
+TEXT VAR zeile;
+
+PROC in dump file kopieren (TEXT CONST dump file): 
+  putline ("Ausgabedatei erstellen"); 
+  f := sequential file (output, dump file); 
+  INT VAR i; 
+  kopieren und ggf fehlermeldung;
+  modify (f);
+  ggf sortieren;
+  zeile ggf aufspalten;
+  modify (f);
+  to line (f, 1).
+
+kopieren und ggf fehlermeldung:
+  FOR i FROM fi symbol UPTO max index REP 
+    cout (i);
+    zeile := liste [i];
+    IF zeile <> "" 
+      THEN ausgabe der referenz und ggf fehlermeldung
+    FI 
+  ENDREP.
+ 
+ausgabe der referenz und ggf fehlermeldung:
+  putline (f, zeile);
+  ggf referencer fehlermeldung.
+ 
+ggf sortieren:
+  IF yes (dump file + " sortieren")
+    THEN sort (dump file);
+  FI.
+
+zeile ggf aufspalten: 
+  i := 0;
+  to line (f, 1);
+  WHILE NOT eof (f) REP
+    i INCR 1;
+    cout (i);
+    read record (f, zeile);
+    ggf aufspalten
+  END REP.
+
+ggf aufspalten:
+INT VAR anf :: 1, ende :: pos (zeile, " ", 72); 
+  IF ende > 0
+    THEN dummy := subtext (zeile, 1, ende - 1);
+         write record (f, dummy);
+         spalte bis restzeile auf;
+         dummy CAT subtext (zeile, anf); 
+         write record (f, dummy);
+  FI;
+  down (f).
+
+spalte bis restzeile auf:
+   REP 
+     dummy :=  "                 ";
+     anf := ende + 1;
+     ende := pos (zeile, " ", ende + 55);
+     down (f);
+     insert record (f);
+     IF ende <= 0
+       THEN LEAVE spalte bis restzeile auf
+     FI;
+     dummy CAT subtext (zeile, anf, ende - 1); 
+     write record (f, dummy); 
+  END REP.
+END PROC in dump file kopieren; 
+ 
+PROC ggf referencer fehlermeldung:
+  name := subtext (zeile, 1, min( pos(zeile, " "), pos(zeile, ":")) - 1);
+  dummy := subtext (zeile, pos (zeile, ": ") + 2); 
+  ueberdeckungs ueberpruefung; 
+  not used ueberpruefung; 
+  IF pos (dummy, "R") > 0
+    THEN refinement mehr als zweimal verwendet
+  FI.
+ 
+ueberdeckungs ueberpruefung: 
+  IF pos (dummy, global text) > 0 AND pos (dummy, local text) > 0 
+    THEN dummy2 := "und Zeile "; 
+         dummy2 CAT text (nr (pos (dummy, local text))); 
+         dummy2 CAT ": "; 
+         dummy2 CAT name;
+         report referencer error
+            (5, nr (pos (dummy, global text)), dummy2) 
+  FI. 
+ 
+not used ueberpruefung: 
+  IF pos (dummy, " ") = 0 AND
+     (pos (dummy, global text) > 0 OR pos (dummy, local text) > 0 OR
+      pos (dummy, refinement text) > 0)
+    THEN not used fehlermeldung
+  FI. 
+ 
+not used fehlermeldung: 
+  report referencer error
+  (8, nr (length (dummy) - length (local text) + 1), name).
+ 
+refinement mehr als zweimal verwendet: 
+  INT VAR refinement deklarationen :: 0, 
+          refinement aufrufe       :: 0, 
+          anf                      :: 1;
+  WHILE pos (dummy,"R", anf) > 0 REP
+    refinement deklarationen INCR 1; 
+    anf := pos (dummy, "R", anf) + 1 
+  END REP; 
+  anf := 1; 
+  WHILE pos (dummy, " ", anf) > 0 REP
+    refinement aufrufe INCR 1; 
+    anf := pos (dummy, " ", anf) + 1 
+  END REP; 
+  IF refinement deklarationen = 1 
+    THEN IF refinement aufrufe > 1 
+           THEN report referencer error
+                     (6, nr (pos (dummy, refinement text)), name) 
+         ELIF refinement aufrufe = 0 
+           THEN report referencer error
+                     (7, nr (pos (dummy, refinement text)), name) 
+         FI
+  ELIF refinement deklarationen > 1 
+    THEN IF 2 * refinement deklarationen - 1 > refinement aufrufe
+           THEN report referencer error (9, 0, name)
+         ELIF 2 * refinement deklarationen - 1 < refinement aufrufe
+           THEN report referencer error (10, 0, name)
+         FI
+  FI.
+END PROC ggf referencer fehlermeldung;
+
+INT PROC nr (INT CONST ende):
+  INT VAR von :: ende - 1;
+  WHILE von > 0 AND ((dummy SUB von) >= "0" AND (dummy SUB von) <= "9") REP
+    von DECR 1
+  END REP;
+  int (subtext (dummy, von + 1, ende - 1))
+END PROC nr;
+END PACKET referencer2;
+
+(*
+REP
+  referencer ("ref fehler");
+  edit       ("ref fehler.r");
+UNTIL no ("nochmal") END REP*)
+

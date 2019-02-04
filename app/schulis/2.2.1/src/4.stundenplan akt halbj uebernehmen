@@ -1,0 +1,141 @@
+PACKET stundenplanakthalbjuebernehmenDEFINES stundenplanuebernehmenpruefen,
+stundenplanuebernehmen:LET feldjgst1=2,feldjgst2=3,maxanzfehler=500,laengelv=
+8,schuljahr="Schuljahr",halbjahr="Schulhalbjahr",schulname="Schulname",
+schulort="Schulort",kennungraum="R",kennungparaphe="P",kennunglv="L",allejgst
+="00050607080910111213",leererraum="    ",ausgabeparam="#",erstestd=1,
+letztestd=66,dateiname="Protokoll zur Stundenplan-Übernahme",zwdatei=
+"Zwischenspeicherung",lvungueltig="Lehrveranstaltung nicht geplant",
+raumungueltig1="Raumbezeichnung ",raumungueltig2=" ungültig",ohneraum=
+" (Übernahme ohne Raum)",schnittschueler="Zeitüberschneidung Schüler durch ",
+schnittlehrer="Zeitüberschneidung Lehrer durch",schnittraum=
+"Zeitüberschneidung Raum ",leerzeile=" ",ueberschrift1=
+"Stundenplan für Jgst. ",ueberschrift2=" übernehmen von ",ueberschrift3=
+" nach ",meldungwirklichuebern=300,meldungfalschejgst=305,meldungabbruch=400,
+meldungbearbwird=352,meldungplausi=57,meldungwarten=69,meldungkeinesugruppen=
+334,meldungzuvielesugruppen=356,meldungkeinelv=326,meldungserverfehler=376,
+meldungbasisinkon=378,meldungjgst13=402,meldungzuvielelv=358;TEXT VAR aktsj,
+akthj,geplsj,geplhj,jgst1,jgst2,allelvderzeit,alleraeumederzeit,eintrag,
+aktzubearbjgst,geplzubearbjgst;INT VAR i,j,fstat,jg1,jg2,jgstpos,anzbearbjgst
+,zz:=0;BOOL VAR geplstundenplanneu:=FALSE ,jgstumzusetzen:=FALSE ,
+erstereintrag:=TRUE ;FILE VAR datei,z;PROC stundenplanreorganisiertverlassen:
+stundenplanreorganisierenundsichern(fstat);IF fstat<>0THEN return(2);
+meldungausgeben(fstat)FI END PROC stundenplanreorganisiertverlassen;PROC 
+stundenplanuebernehmenpruefen:standardmeldung(meldungwarten," ");
+holestartdaten;jgst1:=standardmaskenfeld(feldjgst1);jgst2:=standardmaskenfeld
+(feldjgst2);pruefeingaben;gibmeldunguebernahmeaus;standardnproc.
+holestartdaten:aktsj:=schulkenndatum(schuljahr);akthj:=schulkenndatum(
+halbjahr);geplsj:=aktsj;geplhj:=akthj;geplanteshjundsjberechnen(geplhj,geplsj
+).pruefeingaben:standardmeldung(meldungplausi,"");IF jgstrichtig(jgst1,jg1,1)
+THEN IF NOT jgstrichtig(jgst2,jg2,2)THEN infeld(feldjgst2);
+fehlermeldungfalschejgstFI ELSE infeld(feldjgst1);fehlermeldungfalschejgstFI 
+;IF jgst1=jgst2THEN aktzubearbjgst:=jgst1;ELSE aktzubearbjgst:=subtext(
+allejgst,pos(allejgst,jgst1),pos(allejgst,jgst2)+1)FI ;anzbearbjgst:=length(
+aktzubearbjgst)DIV 2;IF geplhj="2"THEN geplzubearbjgst:=aktzubearbjgstELIF 
+jgst1="13"THEN infeld(feldjgst1);fehlermeldungfalscherwertELIF jgst2="13"
+THEN infeld(feldjgst2);fehlermeldungfalscherwertELSE jgstumzusetzen:=TRUE ;
+berechnegeplzubearbjgstFI .fehlermeldungfalschejgst:standardmeldung(
+meldungfalschejgst,"");return(1);LEAVE stundenplanuebernehmenpruefen.
+fehlermeldungfalscherwert:standardmeldung(meldungjgst13,"");return(1);LEAVE 
+stundenplanuebernehmenpruefen.gibmeldunguebernahmeaus:standardmeldung(
+meldungwirklichuebern,"").END PROC stundenplanuebernehmenpruefen;PROC 
+berechnegeplzubearbjgst:TEXT VAR jg;jgstpos:=1;geplzubearbjgst:="";FOR iFROM 
+1UPTO anzbearbjgstREP jg:=subtext(aktzubearbjgst,jgstpos,jgstpos+1);IF jg=
+"00"THEN geplzubearbjgstCAT "00"ELSE geplzubearbjgstCAT jgstaufber(text(int(
+jg)+1))FI ;jgstposINCR 2PER END PROC berechnegeplzubearbjgst;BOOL PROC 
+jgstrichtig(TEXT VAR jgst,INT VAR jg,INT CONST pruefung):IF jgst<>""THEN jg:=
+int(jgst);IF jg=0CAND lastconversionokTHEN jgst:="00";TRUE ELIF 
+lastconversionokTHEN IF jg>4CAND jg<14THEN jgst:=jgstaufber(jgst);TRUE ELSE 
+FALSE FI ELSE FALSE FI ELIF pruefung=1THEN jgst:="05";jg:=5;TRUE ELIF 
+pruefung=2THEN jgst:=jgst1;jg:=jg1;TRUE ELSE FALSE FI .END PROC jgstrichtig;
+PROC stundenplanuebernehmen(BOOL CONST uebernahme):TEXT VAR ueberschrift:="";
+IF uebernahmeTHEN standardmeldung(meldungbearbwird,"Stundenplan "+akthj+". "+
+text(aktsj,2)+"/"+subtext(aktsj,3)+ausgabeparam);stundenplanhalbjahrsetzen(
+akthj,aktsj);stundenplanbasisundstundenplanholen(fstat);IF fstat<>0CAND fstat
+<>8THEN meldungausgeben(fstat);return(2);LEAVE stundenplanuebernehmenFI ;
+forget(dateiname,quiet);datei:=sequentialfile(output,dateiname);ueberschrift
+:=ueberschrift1+jgst1;IF jgst1<>jgst2THEN ueberschriftCAT " bis "+jgst2FI ;
+ueberschriftCAT ueberschrift2;ueberschriftCAT akthj+". ";ueberschriftCAT text
+(aktsj,2)+"/";ueberschriftCAT subtext(aktsj,3);ueberschriftCAT ueberschrift3;
+ueberschriftCAT geplhj+". ";ueberschriftCAT text(geplsj,2)+"/";ueberschrift
+CAT subtext(geplsj,3);putline(datei,schulkenndatum(schulname));putline(datei,
+text(schulkenndatum(schulort),65)+date);putline(datei,leerzeile);putline(
+datei,ueberschrift);putline(datei,length(ueberschrift)*"-");holalleeintraege;
+fstat:=0;loeschealleeintraege;IF fstat<>0CAND fstat<>8THEN meldungausgeben(
+fstat);return(2);LEAVE stundenplanuebernehmenFI ;uebertragalleeintraege;
+stundenplanreorganisiertverlassen;IF zz>maxanzfehlerTHEN standardmeldung(
+meldungabbruch,text(zz)+ausgabeparam)ELIF zz=0THEN 
+eintragkeineuebernahmefehlerFI ;IF fstat=0THEN zeigedatei(dateiname,"vr");FI 
+ELSE return(2)FI .eintragkeineuebernahmefehler:putline(datei,leerzeile);
+putline(datei,"Bei der Übernahme traten keine Fehler auf!").END PROC 
+stundenplanuebernehmen;PROC loeschealleeintraege:INT VAR jgstpos:=1;
+geplstundenplanneu:=FALSE ;stundenplanhalbjahrsetzen(geplhj,geplsj);
+standardmeldung(meldungbearbwird,"Stundenplan "+geplhj+". "+text(geplsj,2)+
+"/"+subtext(geplsj,3)+ausgabeparam);stundenplanbasisundstundenplanholen(fstat
+);IF fstat<>0CAND fstat<>8THEN stundenplanbasisundstundenplanerstellen(fstat)
+;IF fstat<>0THEN LEAVE loeschealleeintraegeELSE geplstundenplanneu:=TRUE ;
+stundenplanbasissichern(fstat);stundenplansichern(fstat);IF fstat<>0THEN 
+meldungausgeben(fstat);return(2);LEAVE loeschealleeintraegeFI FI FI ;IF 
+geplstundenplanneuTHEN LEAVE loeschealleeintraegeFI ;FOR iFROM erstestdUPTO 
+letztestdREP standardmeldung(meldungbearbwird,tagstunde(i,FALSE )+
+" (Einträge löschen)"+ausgabeparam);allelvderzeit:=datenderzeit(i,kennunglv);
+jgstpos:=1;FOR jFROM 1UPTO anzbearbjgstREP loeschelv(subtext(geplzubearbjgst,
+jgstpos,jgstpos+1));jgstposINCR 2PER PER .END PROC loeschealleeintraege;PROC 
+loeschelv(TEXT CONST jgst):INT VAR suchab:=1,aktpos;BOOL VAR spok:=TRUE ;
+WHILE pos(allelvderzeit,jgst,suchab)>0REP aktpos:=pos(allelvderzeit,jgst,
+suchab);IF aktposMOD laengelv=1THEN planeintragloeschen(i,subtext(
+allelvderzeit,aktpos,aktpos+7),spok)FI ;suchab:=aktpos+7PER .END PROC 
+loeschelv;PROC holalleeintraege:forget(zwdatei,quiet);z:=sequentialfile(
+output,zwdatei);FOR iFROM erstestdUPTO letztestdREP standardmeldung(
+meldungbearbwird,tagstunde(i,FALSE )+" (Einträge holen)"+ausgabeparam);
+allelvderzeit:=datenderzeit(i,kennunglv);alleraeumederzeit:=datenderzeit(i,
+kennungraum);jgstpos:=1;eintrag:="";FOR jFROM 1UPTO anzbearbjgstREP holelv(
+subtext(aktzubearbjgst,jgstpos,jgstpos+1));jgstposINCR 2PER ;putline(z,
+eintrag)PER .END PROC holalleeintraege;PROC holelv(TEXT CONST jgst):INT VAR 
+suchab:=1,aktpos,ii;TEXT VAR lveintrag;WHILE pos(allelvderzeit,jgst,suchab)>0
+REP aktpos:=pos(allelvderzeit,jgst,suchab);IF aktposMOD laengelv=1THEN ii:=(
+aktpos+1)DIV 2;IF jgstumzusetzenTHEN lveintrag:=lv;IF text(lveintrag,2)<>"00"
+THEN eintragCAT jgstaufber(text(int(text(lveintrag,2))+1));eintragCAT subtext
+(lveintrag,3);ELSE eintragCAT lvFI ;eintragCAT raumELSE eintragCAT lv+raumFI 
+FI ;suchab:=aktpos+7PER .lv:subtext(allelvderzeit,aktpos,aktpos+7).raum:
+subtext(alleraeumederzeit,ii,ii+3).END PROC holelv;PROC 
+uebertragalleeintraege:zz:=0;modify(z);toline(z,1);col(z,1);FOR iFROM 
+erstestdUPTO letztestdREP standardmeldung(meldungbearbwird,tagstunde(i,FALSE 
+)+" (Einträge übernehmen)"+ausgabeparam);readrecord(z,eintrag);IF eintrag<>""
+THEN erstereintrag:=TRUE ;schreibeintraegeFI ;down(z);IF zz>maxanzfehlerTHEN 
+putline(datei,leerzeile);putline(datei,
+"Abbruch, da bei der Übernahme zuviele Fehler auftraten!");LEAVE 
+uebertragalleeintraegeFI PER END PROC uebertragalleeintraege;PROC 
+schreibeintraege:TEXT VAR lv,raum,t1,t2;INT VAR lvpos:=1;BOOL VAR ohnefehler;
+WHILE lvpos<length(eintrag)REP ohnefehler:=TRUE ;lv:=subtext(eintrag,lvpos,
+lvpos+7);raum:=subtext(eintrag,lvpos+8,lvpos+11);pruefungundeintrag;lvpos
+INCR 12PER .pruefungundeintrag:prueflv;pruefschnittschueler;
+pruefschnittlehrer;pruefraumundschnitt;IF ohnefehlerTHEN planeintragvornehmen
+(i,lv,raum,ohnefehler)FI .prueflv:IF NOT bezeichnungzulaessig(kennunglv,lv)
+THEN IF erstereintragTHEN putline(datei,leerzeile);erstereintrag:=FALSE FI ;
+putline(datei,jgfake(lv)+": "+tagstunde(i,TRUE )+". : "+lvungueltig);zzINCR 1
+;LEAVE pruefungundeintragFI .pruefschnittschueler:IF schuelerunterrichtTHEN 
+IF erstereintragTHEN putline(datei,leerzeile);erstereintrag:=FALSE FI ;
+putline(datei,jgfake(lv)+": "+tagstunde(i,TRUE )+". : "+schnittschueler+
+jgfake(t1));zzINCR 1;ohnefehler:=FALSE FI .schuelerunterricht:
+schuelergruppenschnittbeizeit(i,kennunglv,lv,"",t1,t2).pruefschnittlehrer:t1
+:=datenzurlv(kennungparaphe,lv);IF lehrerunterrichtTHEN IF erstereintragTHEN 
+putline(datei,leerzeile);erstereintrag:=FALSE FI ;putline(datei,jgfake(lv)+
+": "+tagstunde(i,TRUE )+". : "+schnittlehrer+jgfake(t2));zzINCR 1;ohnefehler
+:=FALSE FI .lehrerunterricht:t2:=geplantelvfuer(i,kennungparaphe,t1);t2<>lv
+CAND t2<>"".pruefraumundschnitt:IF raum<>leererraumTHEN IF NOT 
+bezeichnungzulaessig(kennungraum,raum)THEN IF erstereintragTHEN putline(datei
+,leerzeile);erstereintrag:=FALSE FI ;putline(datei,jgfake(lv)+": "+tagstunde(
+i,TRUE )+". : "+raumungueltig1+raum+raumungueltig2+ohneraum);zzINCR 1;raum:=
+leererraumELIF raumunterrichtTHEN IF erstereintragTHEN putline(datei,
+leerzeile);erstereintrag:=FALSE FI ;putline(datei,jgfake(lv)+": "+tagstunde(i
+,TRUE )+". : "+schnittraum+raum+ohneraum);zzINCR 1;raum:=leererraumFI FI .
+raumunterricht:t1:=geplantelvfuer(i,kennungraum,raum);t1<>lvCAND t1<>"".END 
+PROC schreibeintraege;TEXT PROC jgfake(TEXT CONST lv):text(lv,2)+" "+subtext(
+lv,3,4)+" "+subtext(lv,5)END PROC jgfake;PROC meldungausgeben(INT VAR fstat):
+IF fstat=2THEN standardmeldung(meldungserverfehler,"");ELIF fstat=4THEN 
+standardmeldung(meldungkeinesugruppen,"");ELIF fstat=5THEN standardmeldung(
+meldungzuvielesugruppen,"")ELIF fstat=6THEN standardmeldung(meldungkeinelv,""
+)ELIF fstat=7THEN standardmeldung(meldungzuvielelv,"")ELIF fstat=9THEN 
+standardmeldung(meldungbasisinkon,"");ELSE LEAVE meldungausgebenFI END PROC 
+meldungausgeben;END PACKET stundenplanakthalbjuebernehmen;
+

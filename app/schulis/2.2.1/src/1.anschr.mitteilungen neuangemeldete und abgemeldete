@@ -1,0 +1,262 @@
+PACKET anschrmitteilungenneuangemeldeteundabgemeldeteDEFINES 
+mitteilungeingang,mitteilungende,mitteilungneuangstarten,
+mitteilungabmeldungstarten,sonderwertemitteilungabmeldung,
+sonderwertemitteilungneuangmithjd,sonderwertemitteilungneuangmitdiffd,
+dummystop:LET laufenderbestand="ls";LET bestandfuerabgang="c02 abgang",
+bestandfuerabschluss="c02 abschluss";LET swaktuelleshalbjahr=509,
+sweintrittsdatum=512,swabgangsdatum=512,swschuelername=513,swgeburtsdatum=514
+,swabgangsgrund=515,swstrhausnr=516,swerreichterabschluss=516,swplzort=517,
+swtelephonnr=518,swaktjgst=519,swklassenlehrer=520,#swbafoeg=521,dr05.03.88#
+swkursanfang=530,swfelderunterschrnoteentlbuecher=591,swmatrixfeld=590;INT 
+VAR swkurse,eingabestatus;TEXT VAR aktuellejgst,tutorlehrer,abglangtext,
+abslangtext;TEXT VAR aktuelleshalbjahr:="",aktuellesschuljahr:="",
+schuljahranfang:="",schuljahrende:="";LET textschulhalbjahr="Schulhalbjahr",
+textschuljahr="Schuljahr",textschuljahranfang="Anfang Schulhalbjahr",
+textschuljahrende="Ende Schulhalbjahr";BOOL VAR hjdvorhanden,abmeldung:=
+FALSE ,schuelergefunden;LET jgst09="09",jgst10="10";LET maske="ms mitteilung"
+;LET namefeldnr=2,rufnamefeldnr=3,geburtsdatumfeldnr=4,bildschirmfeldnr=5,
+druckerfeldnr=6;LET father=1;LET wartemeldnr=69,existiertnichtmeldnr=126,
+falschesdatum=192,datumfehler=157,fehlermeldnr=56;TEXT VAR familienname,
+rufname,geburtsdatum;BOOL VAR zeigen;BOOL VAR erstemitteilung:=TRUE ;LET 
+vordruckmithjd="vordruck mitteilung ueber eine anmeldung mit hjd",
+vordruckmitdiffd="vordruck mitteilung ueber eine anmeldung mit diffd",
+vordruckabmeldung="vordruck mitteilung ueber eine abmeldung";LET 
+maxanzahlbelegtekurse=15,anzahlkurskomponenten=4;ROW maxanzahlbelegtekurse
+ROW anzahlkurskomponentenTEXT VAR kursdaten;LET lerngruppenindex=1,
+fachlangtextindex=2,lehrerindex=3,fachschluesselindex=4;LET 
+indexdiffdatenbeschreibung=1,indexdiffdatenschluessel=2;INT VAR 
+anzahlderfaecher:=1,anzahlderbelegtenkurse:=0,anzahlderdiffdaten:=0;INT VAR 
+zaehler,zaehler1,zaehler2;TEXT VAR fachkuerzel;LET weiblich="w",maennlich="m"
+,anredeweibl="Fr.",anredemaennl="Hr.",erstehalbj="1",auszufuellendesfeld=
+"___________________________",trennsymbol=" ",punkt=".",niltext="",nildatum=
+"01.01.00",textwahlpflichtfach="Wahlpflichtf. ";TEXT CONST 
+auszufuellendefelderunterschrnoteentlbuecher:="__________ ____ ________";
+TEXT CONST auszufuellendesfeldlehrer:="____________________________________ "
+;TEXT CONST matrixfeld:="_______ "+auszufuellendesfeldlehrer+
+auszufuellendefelderunterschrnoteentlbuecher;LET maxanzahlderfaecher=100;ROW 
+maxanzahlderfaecherROW 2TEXT VAR faecherkartei;LET karteifachschluesselindex=
+1,karteifachlangtext=2;LET anzstacktupel=25;PROC initialisierekursdaten:FOR 
+zaehler1FROM 1UPTO maxanzahlbelegtekurseREP FOR zaehler2FROM 1UPTO 
+anzahlkurskomponentenREP kursdaten(zaehler1)(zaehler2):=niltextPER PER END 
+PROC initialisierekursdaten;PROC holekursdaten:INT VAR i;
+anzahlderbelegtenkurse:=length(wert(fnrhjdfach))DIV 2;FOR iFROM 1UPTO 
+anzahlderbelegtenkurseREP fachkuerzel:=subtext(wert(fnrhjdfach),i*2-1,i*2);
+kursdaten(i)(fachschluesselindex):=compress(fachkuerzel);kursdaten(i)(
+lerngruppenindex):=fachkuerzel+trennsymbol+subtext(wert(fnrhjdlerngrpkenn),i*
+4-3,i*4);PER ;END PROC holekursdaten;PROC suchelangtextzufachschluessel(INT 
+VAR anzahlderschluessel):INT VAR i;FOR iFROM 1UPTO anzahlderschluesselREP 
+zaehler:=0;REP zaehlerINCR 1UNTIL zaehler>anzahlderfaecherCOR faecherkartei(
+zaehler)(karteifachschluesselindex)=kursdaten(i)(fachschluesselindex)PER ;IF 
+faecherkartei(zaehler)(karteifachschluesselindex)=kursdaten(i)(
+fachschluesselindex)THEN kursdaten(i)(fachlangtextindex):=faecherkartei(
+zaehler)(karteifachlangtext);FI PER ;END PROC suchelangtextzufachschluessel;
+PROC zuordnunglerngruppelehrer:INT VAR i;anzahlderbelegtenkurse:=length(wert(
+fnrhjdfach))DIV 2;FOR iFROM 1UPTO anzahlderbelegtenkurseREP kursdaten(i)(
+lehrerindex):=lehrerzukurs(subtext(wert(fnrhjdfach),i*2-1,i*2),i)PER ;END 
+PROC zuordnunglerngruppelehrer;TEXT PROC lehrerzukurs(TEXT CONST fachkuerzel,
+INT CONST wievielte):INT VAR i:=wievielte;suchelerngruppe;IF dbstatus=okTHEN 
+suchelehrerELSE auszufuellendesfeldlehrerFI .suchelerngruppe:putwert(fnrlvsj,
+wert(fnrhjdsj));putwert(fnrlvhj,wert(fnrhjdhj));putwert(fnrlvfachkennung,
+fachkuerzel+compress(subtext(wert(fnrhjdlerngrpkenn),i*4-3,i*4)));putwert(
+fnrlvjgst,wert(fnrhjdjgst));search(dnrlehrveranstaltungen,TRUE ).suchelehrer:
+putwert(dnrlehrer+1,wert(fnrlvparaphe));search(dnrlehrer,TRUE );IF dbstatus<>
+okTHEN auszufuellendesfeldlehrerELSE kompletteanredeFI .kompletteanrede:text(
+anrede+lehrertitel+lehrerzusatz+trennsymbol+wert(fnrlfamname),length(
+auszufuellendesfeldlehrer)).anrede:IF wert(fnrlgeschlecht)=weiblichTHEN 
+anredeweiblELIF wert(fnrlgeschlecht)=maennlichTHEN anredemaennlELSE niltext
+FI .lehrertitel:IF wert(fnrlamtsbeztitel)=niltextTHEN niltextELSE trennsymbol
++wert(fnrlamtsbeztitel)FI .lehrerzusatz:IF wert(fnrlzusatz)=niltextTHEN 
+niltextELSE trennsymbol+wert(fnrlzusatz)FI .ENDPROC lehrerzukurs;PROC 
+sonderwertfueradressaten:adressat((wert(fnrsurufnames)SUB 1)+punkt+
+trennsymbol+wert(fnrsufamnames))END PROC sonderwertfueradressaten;PROC 
+sonderwerteallgschuelerdaten:IF wert(fnrsunamenszusatzs)<>niltextTHEN 
+setzesonderwert(swschuelername,wert(fnrsurufnames)+trennsymbol+wert(
+fnrsunamenszusatzs)+trennsymbol+wert(fnrsufamnames))ELSE setzesonderwert(
+swschuelername,wert(fnrsurufnames)+trennsymbol+wert(fnrsufamnames))FI ;
+setzesonderwert(swgeburtsdatum,wert(fnrsugebdatums));END PROC 
+sonderwerteallgschuelerdaten;PROC 
+sonderwerteschuelerdatenfueranmeldebestaetigung:sonderwerteallgschuelerdaten;
+setzesonderwert(swstrhausnr,wert(fnrsustrnrs));setzesonderwert(swplzort,wert(
+fnrsuplzorts));setzesonderwert(swtelephonnr,wert(fnrsutelnrs));END PROC 
+sonderwerteschuelerdatenfueranmeldebestaetigung;PROC sonderwertfueraktjgst:
+aktuellejgst:=wert(fnrsusgrpjgst)+wert(fnrsusgrpjgst+1);setzesonderwert(
+swaktjgst,aktuellejgst);END PROC sonderwertfueraktjgst;PROC 
+sonderwertfuerklassenlehrer:sucheklassenlehrer;IF dbstatus=okTHEN IF wert(
+fnrlgeschlecht)=weiblichTHEN tutorlehrer:=anredeweibl+trennsymbolELIF wert(
+fnrlgeschlecht)=maennlichTHEN tutorlehrer:=anredemaennl+trennsymbolELSE 
+tutorlehrer:=niltextFI ;IF wert(fnrlzusatz)<>niltextTHEN tutorlehrer:=
+tutorlehrer+wert(fnrlzusatz)+trennsymbolFI ;setzesonderwert(swklassenlehrer,
+text(tutorlehrer+wert(fnrlfamname),37));FI .sucheklassenlehrer:
+sucheschuelergruppe;suchelehrer.sucheschuelergruppe:putwert(fnrsgrpsj,
+aktuellesschuljahr);putwert(fnrsgrphj,aktuelleshalbjahr);putwert(fnrsgrpjgst,
+wert(fnrsusgrpjgst));putwert(fnrsgrpkennung,wert(fnrsusgrpzugtut));search(
+dnraktschuelergruppen,TRUE ).suchelehrer:inittupel(dnrlehrer);IF dbstatus=ok
+THEN putwert(fnrlparaphe,wert(fnrsgrplehrer));search(dnrlehrer,TRUE )FI .END 
+PROC sonderwertfuerklassenlehrer;PROC bildefaecherbestand:
+initialisierefaecherkartei;vorbereitung;leseschleife.
+initialisierefaecherkartei:FOR zaehler1FROM 1UPTO maxanzahlderfaecherREP FOR 
+zaehler2FROM 1UPTO karteifachlangtextREP faecherkartei(zaehler1)(zaehler2):=
+niltextPER PER .vorbereitung:BOOL VAR wenigergelesen:=FALSE ;INT VAR anztupel
+;inittupel(dnrfaecher);anztupel:=anzstacktupel;anzahlderfaecher:=0;
+multisearchforward(dnrfaecher,anztupel);evtweniger.leseschleife:WHILE 
+anztupel>0CAND anzahlderfaecher<=maxanzahlderfaecherREP anzahlderfaecherINCR 
+1;anztupelDECR 1;multisucc;faecherkartei(anzahlderfaecher)(1):=wert(
+dnrfaecher+1);faecherkartei(anzahlderfaecher)(2):=wert(dnrfaecher+2);IF 
+anztupel=0CAND NOT wenigergelesenTHEN anztupel:=anzstacktupel;multisucc(
+dnrfaecher,anztupel);evtwenigerFI PER .evtweniger:IF anztupel<anzstacktupel
+THEN wenigergelesen:=TRUE FI .END PROC bildefaecherbestand;PROC 
+mitteilungeingang:standardvproc(maske);IF erstemitteilungTHEN 
+bildefaecherbestand;erstemitteilung:=FALSE FI ;END PROC mitteilungeingang;
+PROC mitteilungende:erstemitteilung:=TRUE ;enter(2)END PROC mitteilungende;
+BOOL PROC sonderwertemitteilungneuangmithjd:initialisierekursdaten;
+initialisieresonderwerte;sonderwertfueradressaten;
+sonderwertfuereintrittsdatum;sonderwerteschuelerdatenfueranmeldebestaetigung;
+sonderwertfueraktjgst;bestimmekurse;sonderwertfuerklassenlehrer;
+sonderwertefuerkurse;TRUE .sonderwertfuereintrittsdatum:setzesonderwert(
+sweintrittsdatum,wert(fnrsueintrittsdats)).bestimmekurse:holekursdaten;
+suchelangtextzufachschluessel(anzahlderbelegtenkurse);
+zuordnunglerngruppelehrer;.sonderwertefuerkurse:swkurse:=swkursanfang;FOR 
+zaehler1FROM 1UPTO anzahlderbelegtenkurseREP setzesonderwert(swkurse,
+kursdaten(zaehler1)(lerngruppenindex));swkurseINCR 1;setzesonderwert(swkurse,
+kursdaten(zaehler1)(fachlangtextindex));swkurseINCR 1;setzesonderwert(swkurse
+,kursdaten(zaehler1)(lehrerindex));swkurseINCR 1;PER .END PROC 
+sonderwertemitteilungneuangmithjd;BOOL PROC 
+sonderwertemitteilungneuangmitdiffd:initialisierekursdaten;
+initialisieresonderwerte;sonderwertfueradressaten;
+sonderwertfuereintrittsdatum;sonderwerteschuelerdatenfueranmeldebestaetigung;
+sonderwertfueraktjgst;bestimmediffdaten;sonderwertfuerklassenlehrer;
+sonderwertefuerdiffdaten;TRUE .sonderwertfuereintrittsdatum:setzesonderwert(
+sweintrittsdatum,wert(fnrsueintrittsdats)).bestimmediffdaten:
+anzahlderdiffdaten:=0;ermittlediefremdsprachen;
+ueberpruefeobreligionsteilnahme;ueberpruefeobkunstodermusik;IF wert(
+fnrsusgrpjgst)=jgst09THEN ermittlewp09FI ;IF wert(fnrsusgrpjgst)=jgst10THEN 
+ermittlewp10FI ;ermittleags.ermittlediefremdsprachen:INT VAR 
+anzahlderbelegtenfremdsprachen:=1;INT VAR wievieltesprache:=0;REP fachkuerzel
+:=wert(fnrdd1fremdfach+wievieltesprache);IF fachkuerzel<>niltextTHEN 
+anzahlderdiffdatenINCR 1;kursdaten(anzahlderdiffdaten)(
+indexdiffdatenbeschreibung):=text(anzahlderbelegtenfremdsprachen)+
+". Fremdsprache:";anzahlderbelegtenfremdsprachenINCR 1;kursdaten(
+anzahlderdiffdaten)(indexdiffdatenschluessel):=fachkuerzel;FI ;
+wievieltespracheINCR 3UNTIL (fnrdd1fremdfach+wievieltesprache)>fnrdd4fremde
+PER .ueberpruefeobreligionsteilnahme:IF wert(fnrddreliunter)<>niltextCAND (
+wert(fnrddreliunter+1)=nildatum)OR (wert(fnrddreliunter+1)<>nildatumAND wert(
+fnrddreliunter+2)<>nildatum)THEN anzahlderdiffdatenINCR 1;kursdaten(
+anzahlderdiffdaten)(indexdiffdatenbeschreibung):="Religion:";kursdaten(
+anzahlderdiffdaten)(indexdiffdatenschluessel):=wert(fnrddreliunter)FI .
+ueberpruefeobkunstodermusik:IF wert(fnrddkunstmusik)<>niltextTHEN 
+anzahlderdiffdatenINCR 1;kursdaten(anzahlderdiffdaten)(
+indexdiffdatenbeschreibung):="Kunst/Musik:";kursdaten(anzahlderdiffdaten)(
+indexdiffdatenschluessel):=wert(fnrddkunstmusik)FI .ermittlewp09:TEXT VAR txt
+;IF erstehalbjahrTHEN txt:=textwahlpflichtfach+"09.1:";wps(fnrddfach091a,
+anzahlderdiffdaten,txt);wps(fnrddfach091b,anzahlderdiffdaten,txt)ELSE txt:=
+textwahlpflichtfach+"09.2:";wps(fnrddfach092a,anzahlderdiffdaten,txt);wps(
+fnrddfach092b,anzahlderdiffdaten,txt)FI .ermittlewp10:IF erstehalbjahrTHEN 
+txt:=textwahlpflichtfach+"10.1:";wps(fnrddfach101a,anzahlderdiffdaten,txt);
+wps(fnrddfach101b,anzahlderdiffdaten,txt);ELSE txt:=textwahlpflichtfach+
+"10.2:";wps(fnrddfach102a,anzahlderdiffdaten,txt);wps(fnrddfach102b,
+anzahlderdiffdaten,txt)FI .erstehalbjahr:erstehalbj=sonderwert(
+swaktuelleshalbjahr).ermittleags:INT VAR wievielteag:=0;REP fachkuerzel:=wert
+(fnrddagthema1+wievielteag);IF fachkuerzel<>niltextTHEN anzahlderdiffdaten
+INCR 1;kursdaten(anzahlderdiffdaten)(indexdiffdatenbeschreibung):="AG:";
+kursdaten(anzahlderdiffdaten)(indexdiffdatenschluessel):=fachkuerzel;FI ;
+wievielteagINCR 3#2#UNTIL (fnrddagthema1+wievielteag)>fnrddagthema3PER .
+sonderwertefuerdiffdaten:swkurse:=swkursanfang;FOR zaehler1FROM 1UPTO 
+anzahlderdiffdatenREP FOR zaehler2FROM 1UPTO indexdiffdatenschluesselREP 
+setzesonderwert(swkurse,kursdaten(zaehler1)(zaehler2));swkurseINCR 1PER PER .
+END PROC sonderwertemitteilungneuangmitdiffd;PROC wps(INT CONST fnr,INT VAR 
+anzahlderdiffdaten,TEXT CONST txt):IF wert(fnr)<>niltextTHEN 
+anzahlderdiffdatenINCR 1;kursdaten(anzahlderdiffdaten)(
+indexdiffdatenbeschreibung):=txt;kursdaten(anzahlderdiffdaten)(
+indexdiffdatenschluessel):=wert(fnr)FI ENDPROC wps;BOOL PROC 
+sonderwertemitteilungabmeldung:initialisierekursdaten;
+initialisieresonderwerte;sonderwertezumaufbaueinermatrix;
+sonderwertfueradressaten;sonderwerteallgschuelerdaten;
+abgangsdatumundabgangsgrund;sonderwertfueraktjgst;
+sonderwertefuerkursebeimabgang;sonderwertfuerklassenlehrer;
+sonderwertfuerabgangsgrundundabschluss;TRUE .abgangsdatumundabgangsgrund:
+TEXT VAR abgdatum:=wert(fnrsuabgdats);IF abgdatum=nildatumTHEN abgdatum:=""
+FI ;setzesonderwert(swabgangsdatum,abgdatum);TEXT VAR abgkuerzel:=wert(
+fnrsuabggrund);TEXT VAR abskuerzel:=wert(fnrsuabschluss);.
+sonderwertfuerabgangsgrundundabschluss:IF langtextgefunden(
+bestandfuerabschluss,abskuerzel,abslangtext)THEN setzesonderwert(
+swerreichterabschluss,abslangtext)ELSE setzesonderwert(swerreichterabschluss,
+auszufuellendesfeld)FI ;IF langtextgefunden(bestandfuerabgang,abgkuerzel,
+abglangtext)THEN setzesonderwert(swabgangsgrund,abglangtext)ELSE 
+setzesonderwert(swabgangsgrund,auszufuellendesfeld)FI .
+sonderwertefuerkursebeimabgang:IF hjdvorhandenTHEN holekursdaten;
+zuordnunglerngruppelehrer;swkurse:=swkursanfangELSE anzahlderbelegtenkurse:=0
+FI ;FOR zaehler1FROM 1UPTO anzahlderbelegtenkurseREP setzesonderwert(swkurse,
+plusanhang(kursdaten(zaehler1)(fachschluesselindex),subtext(wert(
+fnrhjdlerngrpkenn),zaehler1*4-3,zaehler1*4)));swkurseINCR 1;setzesonderwert(
+swkurse,kursdaten(zaehler1)(lehrerindex));swkurseINCR 1PER .
+sonderwertezumaufbaueinermatrix:setzesonderwert(
+swfelderunterschrnoteentlbuecher,auszufuellendefelderunterschrnoteentlbuecher
+);setzesonderwert(swmatrixfeld,matrixfeld).END PROC 
+sonderwertemitteilungabmeldung;TEXT PROC plusanhang(TEXT CONST t,t2):text(t,3
+)+text(t2,5)ENDPROC plusanhang;BOOL PROC langtextgefunden(TEXT CONST bestand,
+kuerzel,TEXT VAR lang):systemdboff;putwert(fnrschlsachgebiet,bestand);putwert
+(fnrschlschluessel,kuerzel);search(dnrschluessel,TRUE );lang:=wert(
+fnrschllangtext);dbstatus=okENDPROC langtextgefunden;PROC lesemaskenwerte:
+familienname:=standardmaskenfeld(namefeldnr);rufname:=standardmaskenfeld(
+rufnamefeldnr);geburtsdatum:=standardmaskenfeld(geburtsdatumfeldnr);zeigen:=
+standardmaskenfeld(bildschirmfeldnr)<>niltextEND PROC lesemaskenwerte;PROC 
+ermittledievorliegendendaten:standardmeldung(wartemeldnr,niltext);IF 
+aktuelleshalbjahr=""THEN aktuelleshalbjahr:=schulkenndatum(textschulhalbjahr)
+;aktuellesschuljahr:=schulkenndatum(textschuljahr);FI ;
+uebernimmschluesselwerte;search(ixsustatfamrufgeb,FALSE );schuelergefunden:=(
+dbstatus=ok)CAND (wert(fnrsufamnames)=familienname)CAND (wert(fnrsurufnames)=
+rufnameCOR rufname="")CAND (wert(fnrsugebdatums)=datumskonversion(
+geburtsdatum)COR geburtsdatum="");IF schuelergefundenCAND abmeldungCAND 
+falschesabmelddatumTHEN schuelergefunden:=FALSE ;meldefalschesdatum;
+zurueckzumdialogELSE weiterverarbeitungFI .falschesabmelddatum:IF 
+schuljahranfang=""THEN schuljahranfang:=schulkenndatum(textschuljahranfang);
+schuljahrende:=schulkenndatum(textschuljahrende)FI ;NOT ((date(wert(
+fnrsuabgdats))>=date(schuljahranfang))CAND (date(wert(fnrsuabgdats))<=date(
+schuljahrende))).weiterverarbeitung:IF schuelergefundenTHEN 
+halbjahresdatenholen;ueberpruefeobkursdatenvorliegen;IF NOT hjdvorhandenTHEN 
+diffdatenholenFI ELSE meldeschuelerexistiertnicht;zurueckzumdialogFI .
+halbjahresdatenholen:inittupel(dnrhalbjahresdaten);TEXT VAR tidhjddaten:=wert
+(fnrsutidakthjd);readtid(dnrhalbjahresdaten,tidhjddaten).diffdatenholen:
+inittupel(dnrdiffdaten);TEXT VAR tiddiffdaten:=wert(fnrsutiddiffdaten);
+readtid(dnrdiffdaten,tiddiffdaten).meldeschuelerexistiertnicht:
+standardmeldung(existiertnichtmeldnr,niltext).meldefalschesdatum:
+standardmeldung(falschesdatum,niltext).ueberpruefeobkursdatenvorliegen:
+hjdvorhanden:=dbstatus=okCAND wert(fnrhjdfach)<>"".zurueckzumdialog:return(
+father).END PROC ermittledievorliegendendaten;PROC uebernimmschluesselwerte:
+putwert(fnrsustatuss,laufenderbestand);putwert(fnrsufamnames,familienname);
+putwert(fnrsurufnames,rufname);putwert(fnrsugebdatums,datumskonversion(
+geburtsdatum))ENDPROC uebernimmschluesselwerte;PROC mitteilungneuangstarten:
+reinitparsing;lesemaskenwerte;IF NOT (wahldruckeroderbildschirmok)THEN 
+meldedenfehler;zurueckzumdialogELSE IF (schluesselmitdatum)AND (NOT (datumok)
+)THEN meldefehlerbeidatum;zurueckzumdialogELSE IF (schluesselmitdatumXOR 
+schluesselohnedatumok)THEN neuangemeldeteweiterELSE meldedenfehler;
+zurueckzumdialogFI ;FI ;FI .neuangemeldeteweiter:abmeldung:=FALSE ;
+ermittledievorliegendendaten;IF schuelergefundenTHEN 
+initialisieredruckerfuermitteilung;IF hjdvorhandenTHEN anschreibenstart(
+ixsustatfamrufgeb,vordruckmithjd,zeigen,TRUE ,BOOL PROC 
+sonderwertemitteilungneuangmithjd,BOOL PROC dummystop)ELSE anschreibenstart(
+ixsustatfamrufgeb,vordruckmitdiffd,zeigen,TRUE ,BOOL PROC 
+sonderwertemitteilungneuangmitdiffd,BOOL PROC dummystop)FI ;FI ;.END PROC 
+mitteilungneuangstarten;PROC meldedenfehler:standardmeldung(fehlermeldnr,
+niltext)END PROC meldedenfehler;PROC zurueckzumdialog:return(father)END PROC 
+zurueckzumdialog;BOOL PROC wahldruckeroderbildschirmok:standardmaskenfeld(
+bildschirmfeldnr)<>niltextXOR standardmaskenfeld(druckerfeldnr)<>niltextEND 
+PROC wahldruckeroderbildschirmok;BOOL PROC schluesselmitdatum:familienname<>
+niltextAND rufname<>niltextAND geburtsdatum<>niltextEND PROC 
+schluesselmitdatum;BOOL PROC schluesselohnedatumok:familienname<>niltextAND 
+geburtsdatum=niltextEND PROC schluesselohnedatumok;BOOL PROC datumok:
+standardpruefe(6,6,0,0,niltext,eingabestatus);IF NOT (eingabestatus=0)THEN 
+FALSE ELSE TRUE FI END PROC datumok;PROC meldefehlerbeidatum:standardmeldung(
+datumfehler,niltext)END PROC meldefehlerbeidatum;PROC 
+mitteilungabmeldungstarten:reinitparsing;lesemaskenwerte;IF NOT (
+wahldruckeroderbildschirmok)THEN meldedenfehler;zurueckzumdialogELSE IF (
+schluesselmitdatum)AND (NOT (datumok))THEN meldefehlerbeidatum;
+zurueckzumdialogELSE IF (schluesselmitdatumXOR schluesselohnedatumok)THEN 
+abgemeldeteweiterELSE meldedenfehler;zurueckzumdialogFI ;FI ;FI .
+abgemeldeteweiter:abmeldung:=TRUE ;ermittledievorliegendendaten;IF 
+schuelergefundenTHEN initialisieredruckerfuermitteilung;anschreibenstart(
+ixsustatfamrufgeb,vordruckabmeldung,zeigen,TRUE ,BOOL PROC 
+sonderwertemitteilungabmeldung,BOOL PROC dummystop)FI .END PROC 
+mitteilungabmeldungstarten;BOOL PROC dummystop:TRUE ENDPROC dummystop;END 
+PACKET anschrmitteilungenneuangemeldeteundabgemeldete;
+

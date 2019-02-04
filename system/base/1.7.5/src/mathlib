@@ -1,0 +1,268 @@
+(* ------------------- VERSION 2     06.03.86 ------------------- *)
+PACKET mathlib DEFINES sqrt, **, exp, ln, log2, log10, e, pi,
+                       sin, cos, tan, sind, cosd, tand,
+                       arctan, arctand, random, initializerandom :
+ 
+LET  pii   =  3.141592653589793238462,
+     pi2   =  1.570796326794896619231,
+     pi3   =  1.047197551196597746154,
+     pi6   =  0.523598775598298873077,
+     pi4   =  1.273239544735162686151,
+     ln2   =  0.693147180559945309417,
+     lg2   =  0.301029995663981195213,
+     ln10  =  2.302585092994045684018,
+     lge   =  0.434294481903251827651,
+     ei    =  2.718281828459045235360,
+     pi180 = 57.295779513082320876798,
+     sqrt3 =  1.732050807568877293527,
+     sqr3  =  0.577350269189625764509,
+     sqr3p2=  3.732050807568877293527,
+     sqr3m2=  0.267949192431122706473,
+     sqr2  =  0.707106781186547524400;
+
+REAL VAR rdg::0.4711; 
+ 
+REAL PROC pi:   pii     END PROC pi; 
+REAL PROC e :   ei      END PROC e; 
+ 
+REAL PROC  ln  ( REAL CONST x ): 
+     log2(x) * ln2
+END PROC ln; 
+ 
+REAL PROC log10( REAL CONST x ): 
+     log2(x) * lg2 
+END PROC log10; 
+
+REAL PROC log2 ( REAL CONST z ): 
+ REAL VAR t, summe::0.0, x::z;
+ IF   x=1.0  THEN 0.0
+ ELIF x>0.0  THEN normal
+             ELSE errorstop("log2: " + text (x,20)); 0.0   FI. 
+
+normal: 
+  IF   x >= 0.5   THEN  normalise downwards 
+                  ELSE  normalise upwards      FI; 
+  IF   x < sqr2   THEN  summe := summe - 0.75; t := trans8
+                  ELSE  summe := summe - 0.25; t := trans2  FI;
+  summe + reihenentwicklung. 
+ 
+ normalise downwards: 
+  WHILE  x >= 8.0 REP    x := 0.0625 * x;  summe:=summe+4.0  PER; 
+  WHILE  x >= 1.0 REP    x :=    0.5 * x;  summe:=summe+1.0  PER. 
+ 
+ normalise upwards: 
+  WHILE x<=0.0625 REP    x :=   16.0 * x;  summe:=summe-4.0  PER; 
+  WHILE x<= 0.5   REP    x :=    2.0 * x;  summe:=summe-1.0  PER. 
+ 
+ trans8: (x - 0.5946035575013605)/(x + 0.5946035575013605). 
+ trans2: (x - 0.8408964152537145)/(x + 0.8408964152537145).
+ 
+ reihenentwicklung:  x := t * t;         t * 0.06405572387119384648 * 
+  ((((((3.465*x+4.095)*x+5.005)*x+6.435)*x+9.009)*x+15.015)*x+45.045)
+END PROC log2;
+ 
+REAL PROC sqrt ( REAL CONST z ): 
+  REAL VAR y0, y1, x::z; 
+  INT  VAR p :: decimal exponent(x) DIV 2; 
+  IF   p <= -64  THEN 0.0
+  ELIF x < 0.0  THEN errorstop("sqrt: " + text (x,20)); 0.0
+                ELSE nontrivial    FI. 
+ 
+ nontrivial: 
+  set exp (decimal exponent (x) -p-p, x);
+  IF x<10.0 THEN x := 5.3176703 - 40.760905/( 8.408065 + x )
+            ELSE x := 16.81595  - 1288.973 /( 84.08065 + x )  FI; 
+  y0 := x;
+  set exp (decimal exponent (x) + p, y0);
+  y1 := 0.5 * ( y0 + z/y0 ); 
+  y0 := 0.5 * ( y1 + z/y1 ); 
+  y1 := 0.5 * ( y0 + z/y0 ); 
+        0.5 * ( y1 + z/y1 ) 
+END PROC sqrt; 
+ 
+REAL PROC exp ( REAL CONST z ): 
+ REAL VAR x::z, a::1.0;  BOOL VAR negativ :: x<0.0;
+ IF   negativ        THEN x := -x  FI;
+ IF   x>292.42830676 
+   THEN IF NOT negativ THEN errorstop ("REAL-Ueberlauf") FI ; 0.0
+ ELIF x<=0.0001 
+   THEN ( 0.5*z + 1.0 ) * z + 1.0
+   ELSE approx 
+ FI.
+ 
+ approx: 
+ IF x > ln10 
+ THEN x := lge*x; 
+      a := 1.0;
+      set exp (int(x), a);
+      x := frac(x)*ln10
+ FI;
+ IF x >= 2.0   THEN a := 7.389056098930650227230*a; x := x-2.0   FI;
+ IF x >= 1.0   THEN a := 2.718281828459045235360*a; x := x-1.0   FI;
+ IF x >= 0.5   THEN a := 1.648721270700128146848*a; x := x-0.5   FI;
+ IF x >= 0.25  THEN a := 1.284025416687741484073*a; x := x-0.25  FI;
+ IF x >= 0.125 THEN a := 1.133148453066826316829*a; x := x-0.125 FI;
+ IF x >= 0.0625THEN a := 1.064494458917859429563*a; x := x-0.0625FI;
+ a:=a/50.4*(((((((0.01*x+0.07)*x+0.42)*x+2.1)*x+8.4)*x+25.2)*x+50.4)*x+50.4);
+ IF negativ THEN 1.0/a ELSE a FI .
+
+ENDPROC exp ;
+
+REAL PROC tan (REAL CONST x): 
+  IF x < 0.0 THEN - tg( -x * pi4)
+             ELSE   tg(  x * pi4)  FI
+END PROC tan; 
+ 
+REAL PROC tand (REAL CONST x): 
+  IF x < 0.0 THEN - tg( -x / 45.0)
+             ELSE   tg(  x / 45.0) FI
+END PROC tand; 
+ 
+REAL PROC tg (REAL CONST x ): 
+  REAL VAR q::floor(x), s::x-q; INT VAR n;
+  q := q - floor(0.25*q) * 4.0 ; 
+  IF q < 2.0
+  THEN IF q < 1.0
+       THEN n:=0;
+       ELSE n:=1; s := 1.0 - s FI
+  ELSE IF q < 3.0
+       THEN n:=2;
+       ELSE n:=3; s := 1.0 - s FI
+  FI;
+  q := s * s;
+  q := (((((((((-5.116186989653120e-11*q-5.608325022830701e-10)*q- 
+  9.526170109403018e-9)*q-1.517906721393745e-7)*q-2.430939946375515e-6)*q- 
+  3.901461426385464e-5)*q-6.324811612385572e-4)*q-1.076606829172646e-2)*q- 
+  0.2617993877991508)*q+pi4); 
+
+  SELECT n OF
+  CASE 0 : s/q
+  CASE 1 : q/s
+  CASE 2 : -q/s
+  OTHERWISE : -s/q ENDSELECT  .
+
+END PROC tg;
+
+REAL PROC sin ( REAL CONST x ): 
+  REAL VAR y, r, q;
+  IF x < 0.0 THEN y := -x; q := 4.0 ELSE y := x; q := 0.0 FI;
+  y := y * pi4;
+  r := floor(y);
+  sincos( q+r , y-r )
+END PROC sin; 
+ 
+REAL PROC sind ( REAL CONST x ): 
+  REAL VAR y, r, q; 
+  IF x < 0.0 THEN y := -x; q := 4.0 ELSE y := x; q := 0.0 FI;
+  y := y / 45.0;
+  r := floor(y);
+  sincos( q+r , y-r )
+END PROC sind; 
+ 
+REAL PROC cos ( REAL CONST x ): 
+  REAL VAR y, q; 
+  IF x < 0.0 THEN y := -x ELSE y := x FI;
+  y := y * pi4;
+  q := floor(y); 
+  sincos( q+2.0, y-q )
+END PROC cos; 
+ 
+REAL PROC cosd ( REAL CONST x ): 
+  REAL VAR y, q; 
+  IF x < 0.0 THEN y := -x ELSE y := x FI;
+  y := y / 45.0;
+  q := floor(y);
+  sincos( q+2.0, y-q )
+END PROC cosd; 
+ 
+REAL PROC sincos ( REAL CONST q, y ): 
+ REAL VAR r :: q - floor( 0.125*q + 0.1 ) * 8.0;
+ IF r >= 4.0 THEN IF r >= 6.0 THEN IF r >= 7.0 THEN - sin approx(1.0-y)
+                                               ELSE - cos approx(y)  FI
+                              ELSE IF r >= 5.0 THEN - cos approx(1.0-y)
+                                               ELSE - sin approx(y)  FI FI
+             ELSE IF r >= 2.0 THEN IF r >= 3.0 THEN   sin approx(1.0-y)
+                                               ELSE   cos approx(y)  FI
+                              ELSE IF r >= 1.0 THEN   cos approx(1.0-y)
+                                               ELSE   sin approx(y)  FI FI FI
+END PROC sincos; 
+ 
+REAL PROC sin approx ( REAL CONST x ): 
+ REAL VAR z::x*x; 
+ x*((((((0.6877101540593035e-11*z-0.1757149296873372e-8)*z+0.3133616216672568
+ e-6)*z-0.3657620415845891e-4)*z+0.2490394570188737e-2)*z-0.807455121882e-1)*
+ z+0.7853981633974483)
+END PROC sin approx; 
+ 
+REAL PROC cos approx ( REAL CONST x ): 
+ REAL VAR z::x*x; 
+ ((((((-0.3857761864560276e-12*z+0.115004970178141e-9)*z-0.246113638267419e-7
+ )*z+0.3590860445885748e-5)*z-0.3259918869266875e-3)*z+0.1585434424381541e-1)
+ *z-0.3084251375340425)*z+1.0
+END PROC cos approx; 
+ 
+REAL PROC arctan ( REAL CONST y ): 
+ REAL VAR f, z, x; BOOL VAR neg :: y < 0.0;
+ IF   neg   THEN x := -y ELSE x := y FI;
+ IF   x>1.0 THEN f := a ELSE f := -b; neg := NOT neg FI;
+ z := x * x;
+ x := x/(((((((0.0107090276046822*z-0.01647757182108040)*z 
+      +0.02177846332482151)*z-0.03019339673273880)*z+0.04656083561183398)*z 
+      -0.0888888888888888)*z+0.3333333333333333)*z+1.0);
+ IF   neg   THEN  x - f  ELSE  f - x  FI.
+
+ a:IF x>sqr3p2 THEN x := 1.0/x; pi2 ELSE x := 4.0/(sqrt3+x+x+x)-sqr3; pi3 FI.
+ b:IF x<sqr3m2 THEN   0.0           ELSE x := sqrt3 - 4.0/(sqrt3+x);  pi6 FI
+END PROC arctan; 
+ 
+REAL PROC arctand ( REAL CONST x ): 
+  arctan(x) * pi180
+END PROC arctand; 
+ 
+REAL OP ** ( REAL CONST b, e ): 
+ IF b=0.0 
+   THEN IF e=0.0 THEN 1.0 ELSE 0.0 FI
+ ELIF b < 0.0 
+   THEN errorstop("("+text(b,20)+") ** "+text(e)); (-b) ** e
+ ELSE   exp( e * log2( b ) * ln2 )
+ FI
+END OP **;
+ 
+REAL OP ** ( REAL CONST a, INT CONST b ) : 
+
+  REAL VAR p := 1.0 ,
+           r := a ;
+  INT VAR  n := ABS b ,
+           m ; 
+  IF (a = 0.0 OR a = -0.0) 
+    THEN IF b = 0
+           THEN 1.0
+           ELSE 0.0
+         FI
+    ELSE WHILE n>0 REP
+           m := n DIV 2 ;
+           IF m + m = n
+             THEN n := m ;
+                  r := r*r 
+             ELSE n DECR 1 ;
+                  p := p*r
+           FI
+         END REP ; 
+         IF b>0
+           THEN p
+           ELSE 1.0 / p
+         FI
+  FI .
+
+END OP ** ; 
+ 
+REAL PROC random: 
+  rdg:=rdg+pii;rdg:=rdg*rdg;rdg:=rdg*rdg;rdg:=rdg*rdg;rdg:=frac(rdg);rdg
+END PROC random; 
+ 
+PROC initializerandom ( REAL CONST z ): 
+  rdg := frac(z) 
+END PROC initializerandom; 
+ 
+END PACKET mathlib; 
+

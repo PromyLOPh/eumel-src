@@ -1,0 +1,173 @@
+PACKET likwschuelerwahlsek2DEFINES kurswahlauszaehlenspezielleteile:LET 
+AUSGFELD =ROW ausgfeldlaengeTEXT ,AUSGKOPF =ROW ausgkopflaengeTEXT ,
+AUSGKOPFDRUCK =ROW ausgkopflaengeTEXT ;AUSGFELD VAR ausgfeld;AUSGKOPF VAR 
+ausgkopf;AUSGKOPFDRUCK VAR ausgkopfdruck;#K onstantenzurM askenbearbeitung#
+LET maskeschuelerwahl="ms schuelerwahl auszaehlen sek2 eingang",fnr2fuerjgst=
+2,fnr3fuerhj=3,fnr4jgstls=4,fnr5jgstneu=5,fnr6kurswahl=6,fnr7bs=7,fnr8dr=8,
+ausgfeldlaenge=1,anzahlobjekteprobildschirm=13,ueberschriftenzeilen=2,#
+imstand.D ruckkopf#ausgkopflaenge=2,spaltentrenner=" :",spaltenbreite1=7,
+spaltenbreite2=6,spaltenbreite3bis13=3,bsanfpos=2,klausurbestand=
+"c02 abitur klausur";TEXT CONST kopfueb1teil1:="Wahlergebnis für Jgst. ",
+kopfueb1teil2:=" im Schuljahr ",kopfueb2teil1:="Schüler der jetzigen Jgst. ",
+kopfueb2teil2:=" und der ",kopfueb2teil3:="Neuangemeldeten zur Jgst. ",
+unterstreichung:="--------+-------+"+11*"----+",tabueb1:="Angebot  gewählt ";
+TEXT VAR tabueb2,kwsek2auszaehlenueb:="Wahlergebnis auszählen",klausurkuerzel
+,textueb1:="",textueb2:="";INT VAR bildanfang,druckzeilenzahl,status,
+dbstatusmerker,aktuellerindex,feldnr;LET mnrjgstfalsch=404,mnrjgstfehlt=172,
+mnrhjfalsch=405,mnrkeinekwdatenda=406,mnrkeinekuerzelda=408,
+mnrbearbeitetwerden=352,mnrbittewarten=69;INT VAR mnrallgemein;LET niltext=""
+,punkt=".",querstrich="/",blank=" ",vierblank="    ",null=0,maxkuerzel=11,
+zwoelf=12;ROW zwoelfINT VAR gesamtundeinzelsummen;INT VAR anzkuerzel,x;LET 
+neuangemeldete="N",allederjgst="",ohneneuang="O";BOOL VAR bildschirmausgabe,
+kurswahlen,nurls,lsundneue,nurneue;TEXT VAR dbsj,dbhj,dbjgst,fuerkwsj,
+fuerjgst:="",fuerhj:="",jgstls:="",jgstneu:="",fach,art,kennung,klkuerzel;
+BOOL PROC multistop:IF kurswahlenTHEN dbstatus=0AND dbjgst=wert(fnrlvjgst)
+AND dbsj=wert(fnrlvsj)AND dbhj=wert(fnrlvhj)ELSE dbstatus=0AND dbjgst=wert(
+fnrfangjgst)AND dbsj=wert(fnrfangsj)AND dbhj=wert(fnrfanghj)FI END PROC 
+multistop;BOOL PROC multistopsim:BOOL VAR b;setzebestandende(FALSE );b:=
+multistop;IF NOT multistopTHEN setzebestandende(TRUE )FI ;bEND PROC 
+multistopsim;PROC kurswahlauszaehlenspezielleteile(INT CONST nr):SELECT nrOF 
+CASE 1:kwsek2auszaehlendialogvorbereitenCASE 2:
+kwsek2auszaehleneingabenrichtigCASE 3:kwsek2auszaehlenlistenvorbereitenCASE 4
+:kwsek2auszaehlendruckvorbereitenCASE 5:kwsek2auszaehlenseitedruckenCASE 6:
+kwsek2auszaehlenbildschirmvorbereitenCASE 7:kwsek2auszaehlenseitezeigen
+ENDSELECT .END PROC kurswahlauszaehlenspezielleteile;PROC 
+kwsek2auszaehlendialogvorbereiten:kwsek2auszaehlenueb:=text(vergleichsknoten)
+;setzeanfangswerte(maskeschuelerwahl,bsanfpos)END PROC 
+kwsek2auszaehlendialogvorbereiten;PROC kwsek2auszaehleneingabenrichtig:nurls
+:=FALSE ;lsundneue:=FALSE ;nurneue:=FALSE ;standardmeldung(mnrbittewarten,
+niltext);standardpruefe(5,fnr7bs,fnr8dr,null,niltext,status);IF status<>0
+THEN infeld(status);setzeeingabetest(FALSE )ELSE fuerjgst:=standardmaskenfeld
+(fnr2fuerjgst);fuerhj:=standardmaskenfeld(fnr3fuerhj);jgstls:=
+standardmaskenfeld(fnr4jgstls);jgstneu:=standardmaskenfeld(fnr5jgstneu);IF 
+NOT eingabenzujgstundhjkorrektTHEN standardmeldung(mnrallgemein,niltext);
+setzeeingabetest(FALSE )ELSE kurswahlen:=standardmaskenfeld(fnr6kurswahl)<>
+niltext;bildschirmausgabe:=standardmaskenfeld(fnr8dr)=niltext;IF NOT (
+datenraumfürgewaehltessjda)THEN standardmeldung(mnrkeinekwdatenda,niltext);
+setzeeingabetest(FALSE )ELSE IF keineklausurkuerzelvorhandenTHEN 
+standardmeldung(mnrkeinekuerzelda,niltext);setzeeingabetest(FALSE )ELSE 
+setzeeingabetest(TRUE );setzeausgabedrucker(NOT bildschirmausgabe)FI ;FI ;FI 
+;FI ;.keineklausurkuerzelvorhanden:BOOL VAR nix:=TRUE ;klausurkuerzel:=
+niltext;inittupel(dnrschluessel);putwert(fnrschlsachgebiet,klausurbestand);
+search(dnrschluessel,FALSE );anzkuerzel:=0;IF dbstatus<>0COR wert(
+fnrschlsachgebiet)<>klausurbestandTHEN LEAVE keineklausurkuerzelvorhanden
+WITH nixELSE FOR xFROM 1UPTO maxkuerzelREP IF wert(fnrschlsachgebiet)=
+klausurbestandTHEN klausurkuerzelCAT wert(fnrschlschluessel);anzkuerzelINCR 1
+;succ(dnrschluessel)FI ;PER ;FI ;nix:=anzkuerzel=0;nix.
+eingabenzujgstundhjkorrekt:dbhj:=schulkenndatum("Schulhalbjahr");dbsj:=
+schulkenndatum("Schuljahr");INT VAR jgst;standardpruefe(2,fnr2fuerjgst,null,
+null,niltext,status);IF status<>0THEN mnrallgemein:=mnrjgstfalsch;infeld(
+fnr2fuerjgst);LEAVE eingabenzujgstundhjkorrektWITH FALSE FI ;jgst:=int(
+fuerjgst);IF jgst<11COR jgst>13THEN mnrallgemein:=mnrjgstfalsch;infeld(
+fnr2fuerjgst);LEAVE eingabenzujgstundhjkorrektWITH FALSE FI ;IF fuerhj<>"1"
+AND fuerhj<>"2"THEN mnrallgemein:=mnrhjfalsch;infeld(fnr3fuerhj);LEAVE 
+eingabenzujgstundhjkorrektWITH FALSE FI ;IF jgstls=niltextAND jgstneu=niltext
+THEN mnrallgemein:=mnrjgstfehlt;infeld(fnr4jgstls);LEAVE 
+eingabenzujgstundhjkorrektWITH FALSE FI ;jgst:=int(jgstls);IF jgstls<>niltext
+THEN standardpruefe(2,fnr4jgstls,null,null,niltext,status);IF status<>0COR (
+jgst<10COR jgst>13)THEN mnrallgemein:=mnrjgstfalsch;infeld(fnr4jgstls);LEAVE 
+eingabenzujgstundhjkorrektWITH FALSE FI ;FI ;jgst:=int(jgstneu);IF jgstneu<>
+niltextTHEN standardpruefe(2,fnr5jgstneu,null,null,niltext,status);IF status
+<>0COR (jgst<11COR jgst>13)THEN mnrallgemein:=mnrhjfalsch;infeld(fnr5jgstneu)
+;LEAVE eingabenzujgstundhjkorrektWITH FALSE FI ;FI ;IF jgstls<>niltextAND 
+jgstneu<>niltextTHEN IF int(jgstls)+1=int(jgstneu)AND jgstneu<=fuerjgstTHEN 
+lsundneue:=TRUE ELSE mnrallgemein:=mnrjgstfalsch;infeld(fnr4jgstls);LEAVE 
+eingabenzujgstundhjkorrektWITH FALSE FI ;ELIF jgstls=niltextTHEN IF jgstneu>
+fuerjgstTHEN mnrallgemein:=mnrjgstfalsch;infeld(fnr4jgstls);LEAVE 
+eingabenzujgstundhjkorrektWITH FALSE ELSE nurneue:=TRUE FI ;ELSE IF jgstls>
+fuerjgstTHEN mnrallgemein:=mnrjgstfalsch;infeld(fnr2fuerjgst);LEAVE 
+eingabenzujgstundhjkorrektWITH FALSE ELIF (jgstls="10"AND dbhj="1")COR (
+jgstls=fuerjgstAND fuerhj<dbhj)THEN mnrallgemein:=mnrhjfalsch;infeld(
+fnr3fuerhj);LEAVE eingabenzujgstundhjkorrektWITH FALSE ELSE nurls:=TRUE ;FI ;
+FI ;mnrallgemein:=1;TRUE .datenraumfürgewaehltessjda:BOOL VAR ok:=FALSE ;INT 
+VAR fehler;IF nurneueTHEN jgstls:=text(int(jgstneu)-1);kurswahlinitialisieren
+(jgstls,fuerjgst,fuerhj,neuangemeldete,fuerkwsj);kurswahlbasisholen(fehler);
+ok:=fehler=0;ELIF lsundneueTHEN kurswahlinitialisieren(jgstls,fuerjgst,fuerhj
+,allederjgst,fuerkwsj);kurswahlbasisholen(fehler);ok:=fehler=0;ELSE 
+kurswahlinitialisieren(jgstls,fuerjgst,fuerhj,ohneneuang,fuerkwsj);
+kurswahlbasisholen(fehler);ok:=fehler=0;FI ;okEND PROC 
+kwsek2auszaehleneingabenrichtig;PROC kwsek2auszaehlenlistenvorbereiten:BOOL 
+VAR b;initspalten;setzespaltentrenner(spaltentrenner);textueb1:=kopfueb1teil1
+;textueb1CAT fuerjgst;textueb1CAT punkt;textueb1CAT fuerhj;textueb1CAT 
+kopfueb1teil2;textueb1CAT subtext(fuerkwsj,1,2)+querstrich;textueb1CAT 
+subtext(fuerkwsj,3,4);IF kurswahlenTHEN tabueb2:="Kurs     gesamt";ELSE 
+tabueb2:="Fach     gesamt";FI ;FOR xFROM 1UPTO anzkuerzelREP tabueb2CAT 
+vierblank;tabueb2CAT subtext(klausurkuerzel,x,x);PER ;IF (nurlsAND fuerhj=
+dbhjAND fuerjgst=jgstls)THEN dbjgst:=jgstlsELSE IF nurlsCOR lsundneueTHEN IF 
+dbhj="2"THEN dbjgst:=text(int(jgstls)+1)ELSE dbjgst:=jgstlsFI ;ELSE IF dbhj=
+"2"THEN dbjgst:=jgstneuELSE dbjgst:=text(int(jgstneu)-1)FI ;FI ;
+geplanteshjundsjberechnen(dbhj,dbsj);FI ;IF nurneueTHEN textueb2:=
+kopfueb2teil3;textueb2CAT jgstneu;ELSE textueb2:=kopfueb2teil1;textueb2CAT 
+jgstls;IF lsundneueTHEN textueb2CAT kopfueb2teil2;textueb2CAT kopfueb2teil3;
+textueb2CAT jgstneu;FI ;FI ;IF kurswahlenTHEN aktuellerindex:=
+dnrlehrveranstaltungen;inittupel(aktuellerindex);feldnr:=fnrlvfachkennung;
+putwert(fnrlvsj,dbsj);putwert(fnrlvhj,dbhj);putwert(fnrlvjgst,dbjgst);
+setzescanendewert("�");ELSE aktuellerindex:=dnrfaecherangebot;inittupel(
+aktuellerindex);feldnr:=fnrfanglfdnr;putwert(fnrfangsj,dbsj);putwert(
+fnrfanghj,dbhj);putwert(fnrfangjgst,dbjgst);setzescanendewert("255");FI ;
+setzeidentiwert("");initobli(anzahlobjekteprobildschirm);objektlistestarten(
+aktuellerindex,dbsj,feldnr,TRUE ,b);setzebestandende(NOT multistopCOR b);END 
+PROC kwsek2auszaehlenlistenvorbereiten;PROC 
+kwsek2auszaehlenbildschirmvorbereiten:LET fnrausganf=2;
+standardkopfmaskeaktualisieren(kwsek2auszaehlenueb);bildanfang:=fnrausganf;
+setzebildanfangsposition(bildanfang);initspalten;setzespaltenbreite(
+bildbreite);spaltenweise(textueb1);ausgfeld(1):=zeile;ausgfeld(1)IN 
+ausgabepos;erhoeheausgabeposumeins;spaltenweise(textueb2);ausgfeld(1):=zeile;
+ausgfeld(1)IN ausgabepos;erhoeheausgabeposumeins;erhoeheausgabeposumeins;
+spaltenweise(tabueb1);ausgfeld(1):=zeile;ausgfeld(1)IN ausgabepos;
+erhoeheausgabeposumeins;spaltenweise(tabueb2);ausgfeld(1):=zeile;ausgfeld(1)
+IN ausgabepos;erhoeheausgabeposumeins;spaltenweise(unterstreichung);ausgfeld(
+1):=zeile;ausgfeld(1)IN ausgabepos;erhoeheausgabeposumeins;
+setzebildanfangsposition(8);initspalten;spaltendefinierenEND PROC 
+kwsek2auszaehlenbildschirmvorbereiten;PROC kwsek2auszaehlenseitezeigen:
+blaettern(PROC (INT CONST )kwwahldatensek2zeigen,aktion,TRUE ,TRUE ,BOOL 
+PROC multistop)END PROC kwsek2auszaehlenseitezeigen;PROC 
+kwwahldatensek2zeigen(INT CONST x):kwwahldatensek2holen;
+kwwahldatensek2aufbereiten;kwwahldatensek2aufbildschirm;END PROC 
+kwwahldatensek2zeigen;PROC kwwahldatensek2aufbildschirm:INT VAR i;FOR iFROM 1
+UPTO ausgfeldlaengeREP ausgfeld(i):=zeile;ausgfeld(i)IN ausgabepos;
+erhoeheausgabeposumeins;PER ;END PROC kwwahldatensek2aufbildschirm;PROC 
+kwsek2auszaehlendruckvorbereiten:setzebestandende(FALSE );druckvorbereiten;
+variablenfuerdrucksetzen;IF kurswahlenTHEN inittupel(dnrlehrveranstaltungen);
+putwert(fnrlvsj,dbsj);putwert(fnrlvhj,dbhj);putwert(fnrlvjgst,dbjgst);
+setzescanendewert("�");ELSE inittupel(dnrfaecherangebot);putwert(fnrfangsj,
+dbsj);putwert(fnrfanghj,dbhj);putwert(fnrfangjgst,dbjgst);setzescanendewert(
+"255");FI ;initdruckkopf(textueb1,textueb2);initausgabekopfdruck;
+lesenvorbereitendruck(PROC (INT CONST ,BOOL PROC ,INT VAR )scanforward,BOOL 
+PROC multistopsim);.variablenfuerdrucksetzen:druckzeilenzahl:=drucklaenge(
+ueberschriftenzeilen)-ausgkopflaenge.END PROC 
+kwsek2auszaehlendruckvorbereiten;PROC initausgabekopfdruck:ausgkopfdruck(1):=
+tabueb1;ausgkopfdruck(2):=tabueb2;END PROC initausgabekopfdruck;PROC 
+kwsek2auszaehlenseitedrucken:kwwahldatensek2ueberschriftdrucken;initspalten;
+spaltendefinieren;seitedrucken(PROC (INT VAR )kwwahldatensek2drucken,
+druckzeilenzahl,ausgfeldlaenge,BOOL PROC multistopsim);seitenwechsel.END 
+PROC kwsek2auszaehlenseitedrucken;PROC kwwahldatensek2ueberschriftdrucken:
+INT VAR i;druckkopfschreiben;FOR iFROM 1UPTO ausgkopflaengeREP 
+druckzeileschreiben(ausgkopfdruck(i))PER ;druckzeileschreiben(unterstreichung
+);END PROC kwwahldatensek2ueberschriftdrucken;PROC kwwahldatensek2drucken(
+INT VAR zeilenzaehler):LET markiert="#";kwwahldatensek2holen;standardmeldung(
+mnrbearbeitetwerden,fach+markiert);kwwahldatensek2aufbereiten;ausgfeld(1):=
+zeile;zeilenzaehlerINCR ausgfeldlaenge;kwwahldatensek2indruckdatei;END PROC 
+kwwahldatensek2drucken;PROC kwwahldatensek2indruckdatei:INT VAR i;FOR iFROM 1
+UPTO ausgfeldlaengeREP druckzeileschreiben(ausgfeld(1))PER END PROC 
+kwwahldatensek2indruckdatei;PROC spaltendefinieren:INT VAR x;initspalten;
+setzespaltentrenner(spaltentrenner);setzespaltenbreite(spaltenbreite1);
+setzespaltenbreite(spaltenbreite2);FOR xFROM 1UPTO maxkuerzelREP 
+setzespaltenbreite(spaltenbreite3bis13)PER ;END PROC spaltendefinieren;PROC 
+kwwahldatensek2holen:TEXT VAR hilfstext;dbstatusmerker:=dbstatus;IF 
+kurswahlenTHEN hilfstext:=wert(fnrlvfachkennung);fach:=subtext(hilfstext,1,2)
+;kennung:=subtext(hilfstext,3,6);gesamtundeinzelsummen(1):=
+anzahlschuelermitwahl(fach,kennung,niltext,niltext);FOR xFROM 2UPTO 
+anzkuerzel+1REP klkuerzel:=subtext(klausurkuerzel,x-1,x-1);
+gesamtundeinzelsummen(x):=anzahlschuelermitwahl(fach,kennung,niltext,
+klkuerzel);PER ;ELSE fach:=text(wert(fnrfangfach),2);art:=wert(fnrfangart);
+gesamtundeinzelsummen(1):=anzahlschuelermitwahl(fach,niltext,art,niltext);
+FOR xFROM 2UPTO anzkuerzel+1REP klkuerzel:=subtext(klausurkuerzel,x-1,x-1);
+gesamtundeinzelsummen(x):=anzahlschuelermitwahl(fach,niltext,art,klkuerzel);
+PER ;FI ;dbstatus(dbstatusmerker);END PROC kwwahldatensek2holen;PROC 
+kwwahldatensek2aufbereiten:INT VAR x;IF kurswahlenTHEN spaltenweise(fach+
+blank+kennung);ELSE spaltenweise(fach+blank+art);FI ;FOR xFROM 1UPTO 
+anzkuerzel+1REP spaltenweise(text(gesamtundeinzelsummen(x),3));PER ;FOR x
+FROM 1UPTO maxkuerzel-anzkuerzelREP spaltenweise(niltext)PER ;END PROC 
+kwwahldatensek2aufbereiten;END PACKET likwschuelerwahlsek2;
+

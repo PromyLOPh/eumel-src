@@ -1,0 +1,693 @@
+PACKET dir DEFINES                            (* Copyright (c) 1986, 87 *)
+                                              (* Frank Klapper          *)
+  open dir,                                   (* 02.03.88               *)
+  insert dir entry,
+  delete dir entry,
+  init dir ds,
+  file info,
+  format dir,
+
+  dir list,
+  file   exists,
+  subdir exists,
+  all files,
+  all subdirs:
+ 
+LET max dir entrys = 1000;
+
+(*-------------------------------------------------------------------------*)
+
+INITFLAG VAR dir block ds used := FALSE;
+DATASPACE VAR dir block ds;
+BOUND STRUCT (ALIGN dummy, ROW 64 REAL daten) VAR dir block;
+REAL VAR last read dir block no;
+
+PROC init dir block io:
+  last read dir block no := -1.0;
+  IF NOT initialized (dir block ds used)
+    THEN dir block ds := nilspace;
+         dir block := dir block ds
+  FI.
+
+END PROC init dir block io;
+
+PROC read dir block (REAL CONST block nr):
+  IF last read dir block no <> block nr
+    THEN last read dir block no := -1.0;
+         read disk block and close work if error (dir block ds, 2, block nr);
+         last read dir block no := block nr
+  FI.
+
+END PROC read dir block;
+
+PROC write dir block (REAL CONST block nr):
+  write disk block and close work if error (dir block ds, 2, block nr);
+  last read dir block no := block nr.
+
+END PROC write dir block;
+
+PROC write dir block:
+  IF last read dir block no < 0.0
+    THEN error stop ("Lesefehler")
+  FI;
+  write dir block (last read dir block no)
+
+END PROC write dir block;
+
+PROC get dir entry (TEXT VAR entry buffer, INT CONST block entry no):
+  (* 0 <= block entry no <= 15 *)
+  entry buffer := 32 * ".";
+  INT CONST replace offset := 4 * block entry no;
+  replace (entry buffer, 1, dir block.daten [replace offset + 1]);
+  replace (entry buffer, 2, dir block.daten [replace offset + 2]);
+  replace (entry buffer, 3, dir block.daten [replace offset + 3]);
+  replace (entry buffer, 4, dir block.daten [replace offset + 4]).
+
+END PROC get dir entry;
+
+PROC put dir entry (TEXT CONST entry buffer, INT CONST block entry no):
+  (* 0 <= block entry no <= 15 *)
+  INT CONST offset := 4 * block entry no;
+  dir block.daten [offset + 1] := entry buffer RSUB 1;
+  dir block.daten [offset + 2] := entry buffer RSUB 2;
+  dir block.daten [offset + 3] := entry buffer RSUB 3;
+  dir block.daten [offset + 4] := entry buffer RSUB 4.
+
+END PROC put dir entry;
+
+(*-------------------------------------------------------------------------*)
+
+LET DIRPOS = REAL;                  (* 16.0 * msdos block nr + entry no *)
+                                    (* 0 <= entry no <= 15              *)
+
+DIRPOS PROC dirpos (REAL CONST block nr, INT CONST entry nr):
+  block nr * 16.0 + real (entry nr).
+
+END PROC dir pos;
+
+REAL PROC block no (DIRPOS CONST p):
+  floor (p / 16.0)
+
+END PROC block no;
+
+INT PROC entry no (DIRPOS CONST p):
+  int (p MOD 16.0)
+
+END PROC entry no;
+
+PROC incr (DIRPOS VAR p):
+  p INCR 1.0.
+
+END PROC incr;
+
+(*-------------------------------------------------------------------------*)
+
+LET FREELIST = STRUCT (ROW max dir entrys DIRPOS stack,
+                       INT stacktop,
+                       DIRPOS begin of free area,
+                              end of dir,
+                       REAL dir root);                  (* erste Clusterno, 0 für Main Dir *)
+ 
+PROC init free list (FREELIST VAR flist, REAL CONST root):
+  flist.stacktop           := 0;
+  flist.begin of free area := dir pos (9.0e99, 0);
+  flist.end of dir         := dir pos (-1.0, 0);
+  flist.dir root           := root.
+
+END PROC init free list;
+ 
+PROC store (FREELIST VAR flist, DIRPOS CONST free pos):
+  flist.stacktop INCR 1;
+  flist.stack [flist.stack top] := free pos.
+
+END PROC store;
+
+PROC store begin of free area (FREELIST VAR flist, DIRPOS CONST begin):
+  flist.begin of free area := begin
+
+END PROC store begin of free area;
+
+PROC store end of dir (FREELIST VAR flist, DIRPOS CONST end):
+  flist.end of dir := end
+
+END PROC store end of dir;
+
+DIRPOS PROC free dirpos (FREELIST VAR flist):
+  enable stop;
+  DIRPOS VAR result;
+  IF flist.stacktop > 0
+    THEN pop
+    ELIF NOT free area empty
+    THEN first of free area
+    ELIF expansion alloweded
+    THEN allocate new dir cluster;
+         result := free dirpos (flist)
+    ELSE error stop ("Directory voll")
+  FI;
+  result.
+
+pop:
+  result := flist.stack [flist.stacktop];
+  flist.stacktop DECR 1.
+
+free area empty:
+  flist.begin of free area > flist.end of dir.
+
+first of free area:
+  result := flist.begin of free area;
+  incr (flist.begin of free area).
+
+expansion alloweded:
+  flist.dir root >= 2.0.
+
+allocate new dir cluster:
+  REAL CONST new dir cluster :: available fat entry;
+  REAL VAR last entry no;
+  search last entry no of fat chain;
+  fat entry (new dir cluster, last fat chain entry);
+  fat entry (last entry no, new dir cluster);
+  write fat;
+  store begin of free area (flist, dir pos (first new block, 0));
+  store end   of dir       (flist, dir pos (last  new block, 15));
+  init new dir cluster.
+
+search last entry no of fat chain:
+  last entry no := flist.dir root;
+  WHILE NOT is last fat chain entry (fat entry (last entry no)) REP
+    last entry no := fat entry (last entry no)
+  PER.
+
+first new block:
+  begin of cluster (new dir cluster).
+
+last new block:
+  begin of cluster (new dir cluster) + real (sectors per cluster - 1).
+
+init new dir cluster:
+  TEXT CONST empty dir entry :: 32 * ""0"";
+  INT VAR i;
+  FOR i FROM 0 UPTO 15 REP
+    put dir entry (empty dir entry, i)
+  PER;
+  disable stop;
+  REAL VAR block no := first new block;
+  WHILE block no <= last new block REP
+    write dir block (block no)
+  PER.
+
+END PROC free dirpos; 
+
+(*-------------------------------------------------------------------------*)
+
+LET FILEENTRY = STRUCT (TEXT date and time,
+                        REAL size,
+                             first cluster, 
+                        DIRPOS dirpos),
+
+    FILELIST = STRUCT (THESAURUS thes,
+                       ROW max dir entrys FILEENTRY entry);
+
+PROC init file list (FILELIST VAR flist):
+  flist.thes := empty thesaurus.
+
+END PROC init file list;
+
+PROC store file entry (FILELIST VAR flist, TEXT CONST entry text, DIRPOS CONST position):
+  INT VAR entry index;
+  insert (flist.thes, file name, entry index);
+  store file entry (flist.entry [entry index], entry text, position).
+ 
+file name:
+  TEXT CONST name pre  :: compress (subtext (entry text, 1, 8)),
+             name post :: compress (subtext (entry text, 9, 11));
+  IF name post <> ""
+    THEN name pre + "." + name post
+    ELSE name pre
+  FI.
+
+END PROC store file entry;
+
+PROC store file entry (FILEENTRY VAR fentry, TEXT CONST entry text, DIRPOS CONST position):
+  fentry.first cluster := real (entry text ISUB 14);
+  fentry.date and time := dos date + "  " + dos time;
+  fentry.size          := dint (entry text ISUB 15, entry text ISUB 16);
+  fentry.dirpos        := position.
+
+dos date:
+  day + "." + month + "." + year. 
+ 
+day: 
+  text2 (code (entry text SUB 25) MOD 32).
+ 
+month:
+  text2 (code (entry text SUB 25) DIV 32 + 8 * (code (entry text SUB 26) MOD 2)).
+ 
+year:
+  text (80 + code (entry text SUB 26) DIV 2, 2).
+
+dos time:
+  hour + ":" + minute. 
+ 
+hour: 
+  text2 (code (entry text SUB 24) DIV 8).
+ 
+minute: 
+  text2 (code (entry text SUB 23) DIV 32 + 8 * (code (entry text SUB 24) MOD 8)).
+ 
+END PROC store file entry;
+
+TEXT PROC text2 (INT CONST intvalue):
+  IF intvalue < 10
+    THEN "0" + text (intvalue)
+    ELSE text (int value)
+  FI.
+
+END PROC text2;
+
+DIRPOS PROC file entry pos (FILELIST CONST flist, TEXT CONST file name):
+  INT CONST link index :: link (flist.thes, file name);
+  IF link index = 0
+    THEN error stop ("Die Datei """ + file name + """ gibt es nicht")
+  FI;
+  flist.entry [link index].dir pos.
+
+END PROC file entry pos;
+
+PROC delete (FILELIST VAR flist, TEXT CONST file name):
+  INT VAR dummy;
+  delete (flist.thes, file name, dummy).
+
+END PROC delete;
+
+PROC file info (FILELIST CONST flist, TEXT CONST file name, REAL VAR first cluster no, storage):
+  INT CONST link index :: link (flist.thes, file name);
+  IF link index = 0
+    THEN error stop ("Die Datei """ + file name + """ gibt es nicht")
+  FI;
+  first cluster no := flist.entry [link index].first cluster;
+  storage          := flist.entry [link index].size
+
+END PROC file info;
+
+BOOL PROC contains (FILELIST VAR flist, TEXT CONST file name):
+  flist.thes CONTAINS file name
+
+END PROC contains;
+
+PROC list (FILE VAR f, FILELIST CONST flist):
+  INT VAR index := 0;
+  TEXT VAR name;
+  get (flist.thes, name, index);
+  WHILE index > 0 REP
+    list file;
+    get (flist.thes, name, index)
+  PER.
+
+list file:
+  write (f, centered name);
+  write (f, "  ");
+  write (f, text (flist.entry [index].size, 11, 0));
+  write (f, " Bytes belegt      ");
+  write (f, flist.entry [index].date and time); 
+(*COND TEST*)
+  write (f, "  +++  "); 
+  write (f, text (flist.entry [index].first cluster)); 
+(*ENDCOND*)
+  line (f).
+
+centered name:
+  INT VAR point pos := pos (name, ".");
+  IF point pos > 0
+    THEN name pre + "." + name post
+    ELSE text (name, 12)
+  FI.
+
+name pre:
+  text (subtext (name, 1, point pos - 1), 8).
+
+name post:
+  text (subtext (name, point pos + 1, point pos + 4), 3).
+ 
+END PROC list;
+
+(*-------------------------------------------------------------------------*)
+ 
+LET DIRENTRY = REAL,
+
+    DIRLIST = STRUCT (THESAURUS thes,
+                      ROW max dir entrys DIRENTRY entry);
+
+PROC init dir list (DIRLIST VAR dlist):
+  dlist.thes := empty thesaurus.
+
+END PROC init dir list;
+
+PROC store subdir entry (DIRLIST VAR dlist, TEXT CONST entry text):
+  INT VAR entry index;
+  insert (dlist.thes, subdir name, entry index);
+  dlist.entry [entry index] := real (entry text ISUB 14).
+
+subdir name:
+  TEXT CONST name pre  :: compress (subtext (entry text, 1, 8)),
+             name post :: compress (subtext (entry text, 9, 11));
+  IF name post <> ""
+    THEN name pre + "." + name post
+    ELSE name pre
+  FI.
+
+END PROC store subdir entry;
+
+REAL PROC first cluster of subdir (DIRLIST CONST dlist, TEXT CONST name):
+  INT CONST link index := link (dlist.thes, name);
+  IF link index = 0
+    THEN error stop ("Das Unterverzeichnis """ + name + """ gibt es nicht")
+  FI;
+  dlist.entry [link index].
+
+END PROC first cluster of subdir;
+
+BOOL PROC contains (DIRLIST CONST dlist, TEXT CONST subdir name):
+  dlist.thes CONTAINS subdir name
+
+END PROC contains;
+
+PROC list (FILE VAR f, DIRLIST CONST dlist):
+  INT VAR index := 0;
+  TEXT VAR name;
+  get (dlist.thes, name, index);
+  WHILE index > 0 REP
+    list dir;
+    get (dlist.thes, name, index)
+  PER.
+
+list dir:
+  write (f, centered name);
+  write (f, "   <DIR>");
+(*COND TEST*)
+  write (f, "  +++  ");                                 
+  write (f, text (dlist.entry [index]));  
+(*ENDCOND*)
+  line (f).
+
+centered name:
+  INT VAR point pos := pos (name, ".");
+  IF point pos > 0
+    THEN name pre + "." + name post
+    ELSE text (name, 12)
+  FI.
+
+name pre:
+  text (subtext (name, 1, point pos - 1), 8).
+
+name post:
+  text (subtext (name, point pos + 1, point pos + 4), 3).
+ 
+END PROC list;
+
+(*-------------------------------------------------------------------------*)
+
+LET DIR = BOUND STRUCT (FILELIST filelist,
+                        DIRLIST dirlist, 
+                        FREELIST freelist,
+                        TEXT path);
+ 
+DIR VAR dir;
+DATASPACE VAR dir ds;
+INITFLAG VAR dir ds used := FALSE;
+
+PROC open dir (TEXT CONST path string):
+  init dir block io;
+  init dir ds;
+  dir.path := path string;
+  load main dir;
+  TEXT VAR rest path := path string;
+  WHILE rest path <> "" REP
+    TEXT CONST sub dir name := next sub dir name (rest path);
+    load sub dir
+  PER.
+
+load main dir:
+  init file list (dir.filelist);
+  init dir  list (dir.dirlist);
+  init free list (dir.free list, 0.0);
+  store end of dir (dir.freelist, dirpos (last main dir sector, 15));
+  BOOL VAR was last dir sector := FALSE;
+  REAL VAR block no := first main dir sector;
+  INT VAR i;
+  FOR i FROM 1 UPTO dir sectors REP
+      load dir block (block no, was last dir sector);
+      block no INCR 1.0
+      UNTIL was last dir sector
+  PER. 
+
+first main dir sector:
+  real (begin of dir).
+
+last main dir sector:
+  real (begin of dir + dir sectors - 1).
+
+load sub dir:
+  REAL VAR cluster no := first cluster of sub dir (dir.dirlist, sub dir name);
+  was last dir sector := FALSE;
+  init file list (dir.filelist);
+  init dir  list (dir.dirlist);
+  init free list (dir.free list, cluster no);
+  WHILE NOT is last fat chain entry (cluster no) REP
+    load sub dir entrys of cluster;
+    cluster no := fat entry (cluster no)
+    UNTIL was last dir sector
+  PER.
+
+load sub dir entrys of cluster:
+  store end of dir (dir.freelist, dirpos (last block no of cluster, 15));
+  block no := begin of cluster (cluster no);
+  FOR i FROM 1 UPTO sectors per cluster REP
+    load dir block (block no, was last dir sector);
+    block no INCR 1.0
+    UNTIL was last dir sector
+  PER.
+
+last block no of cluster:
+  begin of cluster (cluster no) + real (sectors per cluster - 1).
+
+END PROC open dir;
+
+PROC load dir block (REAL CONST block no, BOOL VAR was last block): 
+  was last block := FALSE;
+  read dir block (block no);
+  INT VAR entry no;
+  TEXT VAR entry;
+  FOR entry no FROM 0 UPTO 15 REP 
+    get dir entry (entry, entry no);
+    process entry
+    UNTIL was last block
+  PER.
+
+process entry:
+  SELECT pos (""0"."229"", entry SUB 1) OF
+    CASE 1: end of dir search
+    CASE 2: (* root des aktuellen directorys oder des übergeordneten, also nichts tun *)
+    CASE 3: free entry
+    OTHERWISE volume label or file entry or subdir entry
+  END SELECT.
+
+end of dir search:
+  was last block := TRUE;
+  store begin of free area (dir.freelist, dir pos (block no, entry no)).
+
+free entry:
+  store (dir.freelist, dir pos (block no, entry no)).
+
+volume label or file entry or subdir entry:
+  INT CONST byte 11 :: code (entry SUB 12);
+  IF (byte 11 AND 8) > 0
+    THEN (* volume label *)
+  ELIF (byte 11 AND 16) > 0
+    THEN sub dir entry
+    ELSE file entry
+  FI.
+
+sub dir entry:
+  store subdir entry (dir.dir list, entry).
+
+file entry:
+  store file entry (dir.file list, entry, dir pos (block no, entry no)).
+
+END PROC load dir block; 
+ 
+TEXT PROC next subdir name (TEXT VAR path string):
+  TEXT VAR subdir name;
+  IF (path string SUB 1) <> "\"
+    THEN error stop ("ungültige Pfadbezeichnung")
+  FI;
+  INT CONST backslash pos :: pos (path string, "\", 2);
+  IF backslash pos = 0
+    THEN subdir name := subtext (path string, 2);
+         path string := ""
+    ELSE subdir name := subtext (path string, 2, backslash pos - 1);
+         path string := subtext (path string, backslash pos)
+  FI;
+  dos name (subdir name, read modus).
+
+END PROC next subdir name;
+
+PROC init dir ds:
+  IF initialized (dir ds used)
+    THEN forget (dir ds)
+  FI;
+  dir ds := nilspace;
+  dir := dir ds.
+
+END PROC init dir ds;
+
+PROC insert dir entry (TEXT CONST name, REAL CONST start cluster, storage):
+  DIRPOS CONST ins pos :: free dirpos (dir.free list);
+  TEXT CONST entry string :: entry name + ""32"" + (10 * ""0"") + dos time +
+                             dos date + entry start cluster + entry storage;
+  write entry on disk;
+  write entry in dir ds.
+
+entry name:
+  INT CONST point pos := pos (name, ".");
+  IF point pos > 0
+    THEN subtext (name, 1, point pos - 1) + (9 - point pos) * " " +
+         subtext (name, point pos + 1) + (3 - LENGTH name + point pos) * " "
+    ELSE name + (11 - LENGTH name) * " "
+  FI.
+ 
+dos time:
+  TEXT CONST akt time :: time of day (clock (1));
+  code ((minute MOD 8) * 32) + code (8 * hour + minute DIV 8).
+
+hour:
+  int (subtext (akt time, 1, 2)).
+
+minute:
+  int (subtext (akt time, 4, 5)).
+
+dos date:
+  TEXT CONST akt date :: date (clock (1));
+  code (32 * (month MOD 8) + day) + code ((year - 80) * 2 + month DIV 8).
+
+day: 
+  int (subtext (akt date, 1, 2)).
+
+month:
+  int (subtext (akt date, 4, 5)).
+
+year:
+  int (subtext (akt date, 7, 8)).
+
+entry start cluster:
+  TEXT VAR buffer2 := "12";
+  replace (buffer2, 1, low word (start cluster));
+  buffer2.
+
+entry storage:
+  TEXT VAR buffer4 := "1234";
+  replace (buffer4, 1, low  word (storage));
+  replace (buffer4, 2, high word (storage));
+  buffer4.
+
+write entry on disk:
+  read dir block (block no (ins pos));
+  put dir entry (entry string, entry no (ins pos));
+  write dir block.
+
+write entry in dir ds:
+  store file entry (dir.file list, entry string, ins pos).
+
+END PROC insert dir entry;
+
+PROC delete dir entry (TEXT CONST name):
+  TEXT VAR entry;
+  DIRPOS CONST del pos :: file entry pos (dir.filelist, name);
+  read dir block (block no (del pos));
+  get dir entry (entry, entry no (del pos));
+  put dir entry (""229"" + subtext (entry, 2, 32), entry no (del pos));
+  write dir block;
+  delete (dir.filelist, name);
+  store (dir.freelist, del pos).
+
+END PROC delete dir entry;
+
+PROC format dir:
+  init dir block io;
+  init dir ds;
+  build empty dir block;
+  REAL VAR block no := real (begin of dir);
+  disable stop;
+  FOR i FROM 1 UPTO dir sectors REP
+    write dir block (block no);
+    block no INCR 1.0
+  PER;
+  enable stop;
+  dir.path := "";
+  init file list (dir.file list);
+  init dir  list (dir.dir  list);
+  init free list (dir.free list, 0.0);
+  store begin of free area (dir.free list, dir pos (real (begin of dir), 0));
+  store end of dir (dir.free list, dir pos (last main dir sector, 15)).
+
+build empty dir block:
+  INT VAR i;
+  FOR i FROM 0 UPTO 15 REP
+    put dir entry (32 * ""0"",  i)
+  PER.
+
+last main dir sector:
+  real (begin of dir + dir sectors - 1).
+
+END PROC format dir;
+ 
+PROC file info (TEXT CONST file name, REAL VAR start cluster, size):
+  file info (dir.file list, file name, start cluster, size)
+
+END PROC file info;
+
+THESAURUS PROC all files:
+  THESAURUS VAR t := dir.filelist.thes;
+  t
+
+END PROC all files;
+
+THESAURUS PROC all subdirs:
+  dir.dirlist.thes
+
+END PROC all subdirs;
+
+BOOL PROC file exists (TEXT CONST file name):
+  contains (dir.filelist, file name)
+
+END PROC file exists;
+
+BOOL PROC subdir exists (TEXT CONST subdir name):
+  contains (dir.dirlist, subdir name)
+
+END PROC subdir exists;
+
+PROC dir list (DATASPACE VAR ds):
+  open list file;
+  head line (list file, list file head);
+  list (list file, dir.file list);
+  list (list file, dir.dir list).
+
+open list file:
+  forget (ds);
+  ds := nilspace;
+  FILE VAR list file := sequential file (output, ds);
+  putline (list file, "").
+ 
+list file head:
+  "DOS" + path string.
+
+path string:
+  IF dir.path <> ""
+    THEN "     PATH: " + dir.path
+    ELSE ""
+  FI.
+
+END PROC dir list;
+
+END PACKET dir;
+

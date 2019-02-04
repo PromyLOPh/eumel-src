@@ -1,0 +1,373 @@
+(* ------------------- VERSION 2     24.02.86 ------------------- *)
+PACKET local manager                         (* Autor: J.Liedtke  *) 
+ 
+  DEFINES 
+          create,        (* neue lokale Datei einrichten *) 
+          new,           (* 'create' und Datei liefern   *) 
+          old,           (* bestehende Datei liefern     *) 
+          forget,        (* lokale Datei loeschen        *) 
+          exists,        (* existiert Datei (lokal) ?    *) 
+          status,        (* setzt und liefert Status     *)
+          rename,        (* Umbenennung                  *) 
+          copy ,         (* Datenraum in Datei kopieren  *) 
+          enter password,(* Passwort einfuehren          *)
+          write password ,
+          read password ,
+          write permission ,
+          read permission ,
+          begin list ,
+          get list entry ,
+          all :
+
+ 
+ 
+LET size = 200 ,
+    nil  = 0 ;
+
+INT VAR index ; 
+ 
+TEXT VAR system write password := "" ,
+         system read password := "" ,
+         actual password ;
+
+INITFLAG VAR this packet := FALSE ;
+
+DATASPACE VAR password space ;
+
+BOUND ROW size STRUCT (TEXT write, read) VAR passwords ;
+ 
+ 
+THESAURUS VAR dir := empty thesaurus ;
+
+ROW size STRUCT (DATASPACE ds,
+                 BOOL protected,
+                 TEXT status) VAR crowd ;
+ 
+
+PROC initialize if necessary :
+
+  IF NOT initialized (this packet)
+    THEN system write password := "" ;
+         system read password := "" ;
+         dir := empty thesaurus ;
+         password space := nilspace ;
+         passwords := password space 
+  FI
+
+ENDPROC initialize if necessary ;
+
+ 
+ 
+PROC create (TEXT CONST name) : 
+ 
+IF exists (name )
+  THEN error (name, "existiert bereits") ; 
+       index := nil 
+  ELSE insert and initialize entry 
+FI . 
+ 
+insert and initialize entry : 
+  disable stop ;
+  insert (dir, name, index) ; 
+  IF index <> nil 
+    THEN crowd (index).ds := nilspace ;
+         IF is error
+           THEN delete (dir, name, index) ;
+                LEAVE create 
+         FI ;
+         status (name, "") ;
+         crowd (index).protected := FALSE
+  ELIF NOT is error
+    THEN errorstop ("zu viele Dateien")
+  FI . 
+ 
+ENDPROC create ; 
+ 
+DATASPACE PROC new (TEXT CONST name) : 
+ 
+  create (name) ; 
+  IF index <> nil 
+    THEN crowd (index).ds 
+    ELSE nilspace 
+  FI 
+ 
+ENDPROC new ; 
+ 
+DATASPACE PROC old (TEXT CONST name) : 
+ 
+  initialize if necessary ;
+  index := link (dir, name) ;
+  IF index = 0
+    THEN error (name, "gibt es nicht") ;
+         nilspace
+    ELSE space
+  FI .
+
+space : crowd (index).ds .
+ 
+ENDPROC old ; 
+ 
+DATASPACE PROC old (TEXT CONST name, INT CONST expected type) :
+
+  initialize if necessary ;
+  index := link (dir, name) ;
+  IF index = 0
+    THEN error (name, "gibt es nicht") ;
+         nilspace
+  ELIF type (space) <> expected type
+    THEN errorstop ("Datenraum hat falschen Typ") ;
+         nilspace
+    ELSE space
+  FI .
+
+space : crowd (index).ds .
+
+ENDPROC old ;
+
+BOOL PROC exists (TEXT CONST name) : 
+ 
+  initialize if necessary ;
+  dir CONTAINS name 
+ 
+ENDPROC exists ; 
+ 
+PROC forget (TEXT CONST name ) : 
+ 
+  initialize if necessary ;
+  say ("""") ;
+  say (name) ;
+  IF   NOT exists (name)   THEN say (""" existiert nicht") 
+  ELIF yes (""" loeschen") THEN forget (name, quiet)
+  FI .
+ 
+ENDPROC forget ;
+
+PROC forget (TEXT CONST name, QUIET CONST q) :
+  
+  initialize if necessary ;
+  disable stop ;
+  delete (dir, name, index) ; 
+  IF index <> nil 
+    THEN forget ( crowd (index).ds ) ;
+         crowd (index).status := ""
+  FI .
+ 
+ENDPROC forget ; 
+ 
+PROC forget :
+ 
+  BOOL VAR status := command dialogue ;
+  command dialogue (TRUE) ;
+  forget (last param) ;
+  command dialogue (status)
+ 
+ENDPROC forget ;
+ 
+PROC status (TEXT CONST name, status text) :
+ 
+  initialize if necessary ;
+  INT VAR index := link (dir, name) ; 
+  IF index > 0 
+    THEN crowd (index).status := date + " " + text (status text, 4)
+  FI 
+ 
+ENDPROC status ; 
+ 
+TEXT PROC status (TEXT CONST name) :
+ 
+  initialize if necessary ;
+  INT VAR index := link (dir, name) ;
+  IF index > 0
+    THEN crowd (index).status
+    ELSE ""
+  FI
+ 
+ENDPROC status ;
+ 
+PROC status (INT CONST pos, TEXT CONST status pattern) :
+ 
+  initialize if necessary ;
+  INT VAR index := 0 ;
+  WHILE index < highest entry (dir) REP
+    index INCR 1 ;
+    replace (actual status, pos , status pattern)
+  PER .
+ 
+actual status : crowd (index).status .
+ 
+ENDPROC status ;
+ 
+PROC copy (DATASPACE CONST source, TEXT CONST dest name) : 
+ 
+  IF exists (dest name)
+    THEN error (dest name, "existiert bereits") 
+    ELSE copy file
+  FI .
+ 
+copy file :
+  disable stop ;
+  create ( dest name ) ;
+  INT VAR index := link (dir, dest name) ;
+  IF index > nil
+    THEN forget (crowd (index).ds) ;
+         crowd (index).ds := source 
+  FI 
+ 
+ENDPROC copy ; 
+ 
+PROC copy (TEXT CONST source name, dest name) :
+ 
+  copy (old (source name), dest name)
+ 
+ENDPROC copy ;
+ 
+PROC rename (TEXT CONST old name, new name) : 
+ 
+  IF exists (new name)
+    THEN error (new name, "existiert bereits")
+  ELIF exists (old name)
+    THEN rename (dir, old name, new name) ;
+         last param (new name)
+  ELSE   error (old name, "gibt es nicht")
+  FI .
+ 
+ENDPROC rename ;
+ 
+ 
+PROC begin list :
+ 
+  initialize if necessary ;
+  index := 0
+ 
+ENDPROC begin list ;
+ 
+PROC get list entry (TEXT VAR entry, status text) :
+ 
+  get (dir, entry, index) ;
+  IF found 
+    THEN status text := crowd (index).status ;
+    ELSE status text := "" ;
+  FI .
+ 
+found : index > 0 .
+ 
+ENDPROC get list entry ;
+ 
+ 
+TEXT PROC write password :
+ 
+  system write password
+ 
+ENDPROC write password ;
+ 
+TEXT PROC read password :
+ 
+  system read password
+ 
+ENDPROC read password ;
+ 
+
+PROC enter password (TEXT CONST password) :
+ 
+  initialize if necessary ;
+  say (""3""5"") ;
+  INT CONST slash pos := pos (password, "/") ;
+  IF slash pos = 0
+    THEN system write password := password ;
+         system read password  := password
+    ELSE system write password := subtext (password, 1, slash pos-1) ;
+         system read password  := subtext (password, slash pos+1)
+  FI .
+ 
+ENDPROC enter password ;
+ 
+PROC enter password (TEXT CONST file name, write pass, read pass) :
+ 
+  INT CONST index := link (dir, file name) ;
+  IF index > 0
+    THEN set protect password
+  FI .
+
+set protect password :
+  IF write pass = "" AND read pass = ""
+    THEN crowd (index).protected := FALSE
+    ELSE crowd (index).protected := TRUE ;
+         passwords (index).write := write pass ;
+         passwords (index).read  := read pass
+  FI .
+ 
+ENDPROC enter password ;
+ 
+INT PROC password index (TEXT CONST file name) :
+
+  initialize if necessary ;
+  INT CONST index := link (dir, file name) ;
+  IF index > 0 CAND crowd (index).protected
+    THEN index
+    ELSE 0
+  FI
+
+ENDPROC password index ;
+
+BOOL PROC read permission (TEXT CONST name, supply password) :
+ 
+  (****************************************************************) 
+  (*  for reasons of data security the password check algorithm   *)
+  (*  must not copy parts of the file password into variables     *)
+  (*  located in the standard dataspace!                          *)
+  (****************************************************************)
+
+  access file password ;
+  file has no password COR (supply password <> "-" AND read password match) .
+
+read password match :
+  file password.read = supply password OR file password.read = "" .
+
+access file password :
+  INT CONST pw index := password index (name) .
+
+file password :  passwords (pw index) .
+
+file has no password :  pw index = 0 .
+
+ENDPROC read permission ;
+ 
+BOOL PROC write permission (TEXT CONST name, supply password) :
+ 
+  (****************************************************************) 
+  (*  for reasons of data security the password check algorithm   *)
+  (*  must not copy parts of the file password into variables     *)
+  (*  located in the standard dataspace!                          *)
+  (****************************************************************)
+
+  access file password ;
+  file has no password COR (supply password <> "-" AND write password match).
+
+write password match :
+  file password.write = supply password OR file password.write = "" .
+
+access file password :
+  INT CONST pw index := password index (name) .
+
+file password :  passwords (pw index) .
+
+file has no password :  pw index = 0 .
+
+ENDPROC write permission ;
+ 
+THESAURUS PROC all :
+
+  initialize if necessary ;
+  THESAURUS VAR result := dir ; (*ueberfluessig ab naechstem Compiler *)
+  result
+
+ENDPROC all ;
+
+PROC error (TEXT CONST file name, error text) :
+
+  errorstop ("""" + file name + """ " + error text)
+
+ENDPROC error ;
+
+ENDPACKET local manager ;
+

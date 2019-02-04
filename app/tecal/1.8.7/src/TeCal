@@ -1,0 +1,856 @@
+(**********************************************************************)
+(*                                                                    *)
+(*                      TeCal - Text Calculator                       *)
+(*                                                                    *)
+(*  Autor    : Andreas Schmeink                        06.09.1984     *)
+(*  Korrektur: Hilmar v.d. Bussche                     17.09.1984     *)
+(*                                                     20.09.1984     *)
+(*  Adaption : Uwe Behrend, Andreas Schmeink           03.08.1987     *)
+(**********************************************************************)
+ 
+PACKET pick DEFINES pick up number, left range, right range,
+                    replace number, last pick up ok :
+ 
+(********************************************************************)
+(*                                                                  *)
+(*  Zahlen erkennen und schreiben für TeCal              12.09.84   *)
+(*                                                                  *)
+(********************************************************************)
+ 
+LET ziffern = "0123456789", pseudoblankcode = 223;
+ 
+ROW 10 REAL VAR ziffer plus eins
+            := ROW 10 REAL : (0.0,1.0,2.0,3.0,4.0,5.0,6.0,7.0,8.0,9.0);
+REAL VAR number;
+BOOL VAR ziffer gefunden;
+INT VAR anfang, ende, zeichencode, vorkommastellen, p, dezimalzeichen;
+TEXT VAR worktext;
+ 
+BOOL PROC last pick up ok:
+   ziffer gefunden
+END PROC last pick up ok;
+ 
+REAL PROC code to digit (INT CONST code) :
+   ziffer plus eins (code-47)
+END PROC code to digit; 
+ 
+INT PROC left range :
+   anfang
+END PROC left range;
+ 
+INT PROC right range :
+   ende
+END PROC right range;
+ 
+REAL PROC pick up number (TEXT CONST source, INT CONST where) :
+ 
+   suche ende der zahl; 
+   lies zahl ein;
+   number.
+ 
+suche ende der zahl :
+   fange bei gegebener position an;
+   IF vorzeichen THEN
+      nach rechts ruecken
+   FI; 
+   WHILE erlaubtes zeichen REP 
+      nach rechts ruecken 
+   PER;
+   ende merken.
+ 
+fange bei gegebener position an:
+   ziffer gefunden := FALSE;
+   p := where;
+   betrachte aktuelles zeichen.
+ 
+nach rechts ruecken:
+   p INCR 1;
+   betrachte aktuelles zeichen.
+ 
+nach links ruecken:
+   p DECR 1;
+   betrachte aktuelles zeichen.
+ 
+ende merken :
+   ende := p - 1.
+ 
+lies zahl ein :
+   fange hinter der zahl an;
+   sammle ziffern auf;
+   pruefe vorzeichen;
+   werte exponent aus.
+ 
+sammle ziffern auf :
+   REP
+      nach links ruecken;
+      IF ziffer THEN
+         ziffer behandeln
+      ELIF punkt OR komma THEN
+         IF wirkt als dezimalzeichen THEN
+             dezimalzeichen behandeln
+         ELSE ignorieren
+         FI
+      ELIF pseudoblank vor ziffer THEN
+         ignorieren
+      ELSE
+         LEAVE sammle ziffern auf
+      FI;
+   PER.
+ 
+pruefe vorzeichen :
+   IF minus THEN
+      anfang := p;
+      number := number * -1.0
+   ELIF plus THEN
+      anfang := p
+   ELSE
+      anfang := p+1
+   FI.
+ 
+werte exponent aus :
+   set exp (vorkommastellen+decimal exponent(number), number).
+ 
+fange hinter der zahl an :
+   vorkommastellen := 0;
+   dezimalzeichen := 0;
+   number := 0.0;
+   p := ende + 1.
+ 
+betrachte aktuelles zeichen: 
+   zeichencode := code (source SUB p).
+ 
+ziffer behandeln :
+   ziffer gefunden := TRUE;
+   number := (number + code to digit (zeichencode))/10.0;
+   vorkommastellen INCR 1.
+ 
+dezimalzeichen behandeln :
+   dezimalzeichen := zeichencode;
+   vorkommastellen := 0.
+ 
+wirkt als dezimalzeichen :
+   dezimalzeichen = 0 OR dezimalzeichen = zeichencode.
+ 
+erlaubtes zeichen :
+   ziffer OR punkt OR komma OR pseudoblank vor ziffer.
+ 
+pseudoblank vor ziffer :
+   zeichencode = pseudoblankcode AND pos (ziffern, source SUB (p+1) ) > 0.
+ 
+vorzeichen : plus OR minus.
+ 
+ziffer : zeichencode >= 48 AND zeichencode <= 57. 
+ 
+plus : zeichencode = 43.
+ 
+minus : zeichencode = 45.
+ 
+punkt : zeichencode = 46.
+ 
+komma : zeichencode = 44.
+ 
+ignorieren :.
+ 
+END PROC pick up number;
+ 
+PROC replace number (TEXT VAR source, REAL CONST value, INT CONST where,
+                                                        nachkommastellen) :
+ 
+   alte grenzen feststellen;
+   wenn noetig auf format der neuen zahl erweitern;
+   zahl in text umwandeln;
+   zahl ersetzen. 
+ 
+alte grenzen feststellen :
+   REAL VAR dummy; 
+   dummy := pick up number (source, where).
+ 
+wenn noetig auf format der neuen zahl erweitern :
+   INT VAR schreibanfang := min (anfang, neuer anfang),
+           schreibende := max (ende, neues ende).
+ 
+neuer anfang : where - vorkommazeichen + 1.
+ 
+vorkommazeichen : max (2,(decimal exponent (value) + 2)).
+ 
+neues ende : where + nachkommastellen + 1.
+ 
+zahl in text umwandeln :
+  worktext := text (value,stellen,nachkommastellen);
+  IF decimal exponent (value) < 0 THEN
+     change (worktext," .","0."); change (worktext," -.","-0.");
+  FI;
+  IF nachkommastellen = 0 THEN 
+     replace (worktext, LENGTH worktext, " ")
+  FI;
+  WHILE LENGTH worktext < schreibende-schreibanfang+1 REP
+     worktext CAT " "
+  PER.
+ 
+zahl ersetzen : 
+  WHILE LENGTH source < schreibende REP
+     source CAT " "
+  PER;
+  replace (source, schreibanfang, worktext) .
+ 
+stellen : where-schreibanfang+2+nachkommastellen. 
+ 
+END PROC replace number;
+ 
+END PACKET pick;
+ 
+PACKET rechner DEFINES clear, push, result, do,
+                       superklammer auf, superklammer zu,
+                       empty, operand expected, dump:
+ 
+(********************************************************************)
+(*                                                                  *)
+(*  Rechenwerk fuer TeCal                                13.09.84   *)
+(*                                                                  *)
+(********************************************************************)
+ 
+LET  plus = 1, minus = 2, mal = 3, durch = 4, hoch = 5,
+     monad minus = 6, klammer auf = 7, klammer zu = 8, gleich = 9; 
+ 
+LET klammerpriostufe = 10, superklammerpriostufe = 500;
+ 
+LET tiefe = 30; 
+ 
+REAL VAR dummy;
+BOOL VAR war operand; 
+ 
+INT VAR operandentop, operatorentop, klammerprio, superklammerprio; 
+ 
+ROW tiefe INT VAR operatorenstack;
+ROW tiefe REAL VAR operandenstack; 
+ 
+PROC superklammer auf :
+   IF war operand THEN
+      pop (dummy)
+   FI;
+   superklammerprio INCR superklammerpriostufe;
+   klammerprio INCR superklammerpriostufe
+END PROC superklammer auf;
+ 
+PROC superklammer zu :
+   IF superklammerprio > 0 THEN
+      push (gleich);
+      superklammerprio DECR superklammerpriostufe;
+      klammerprio DECR superklammerpriostufe
+   FI;
+END PROC superklammer zu;
+ 
+INT PROC prio (INT CONST op):
+   klammer prio + elementar prio.
+ 
+elementar prio :
+   SELECT op OF 
+   CASE plus,minus : 2
+   CASE mal,durch  : 3
+   CASE hoch       : 4
+   CASE monadminus : 6
+   CASE klammerzu  : 0
+   CASE gleich     : -klammerprio+superklammerprio
+   OTHERWISE errorstop ("prio("+text(op)+")"); 0
+   END SELECT
+END PROC prio;
+ 
+PROC clear :
+   operandentop := 0;
+   operatorentop := 0; 
+   war operand := FALSE;
+   klammerprio := 0;
+   superklammerprio := 0;
+END PROC clear;
+ 
+PROC push (INT CONST op) :
+   enable stop;
+   IF war operand THEN
+      dyadischer operator oder gleich oder klammer zu 
+   ELIF op = minus COR op = monad minus THEN
+      push monadisches minus
+   ELIF op = plus THEN
+      (* ignoriere monad plus *)
+   ELIF op = klammer auf THEN
+      IF stack zu voll THEN
+         errorstop ("Zuviele offene Klammern")
+      FI;
+      klammerprio INCR klammerpriostufe
+   ELSE
+      errorstop ("Zahl erwartet, letzten Operator ignoriert")
+   FI.
+ 
+dyadischer operator oder gleich oder klammer zu :
+   IF op = monad minus COR op = klammer auf THEN
+      (* errorstop ("Operator (+,-,*,/) vor Klammer auf fehlt")*)
+      ignore last operand;
+      push (op);
+      LEAVE push
+   ELSE
+      WHILE prio (op) <= stack top prio REPEAT
+         auswerten
+      PER;
+      push operator
+   FI.
+ 
+stack top prio : 
+   IF operatorentop = 0 THEN -1
+   ELSE operator DIV 10
+   FI.
+ 
+stack zu voll :
+   operandentop >= tiefe - 4.
+ 
+auswerten :
+   REAL VAR op2;
+   SELECT operator MOD 10 OF
+   CASE monad minus : operand := - operand
+   CASE plus : pop (op2); operand INCR op2
+   CASE minus: pop (op2); operand DECR op2
+   CASE mal  : pop (op2); operand := operand * op2
+   CASE durch: pop (op2); operand := operand / op2 
+   CASE hoch : pop (op2); operand := operand ** op2 
+   OTHERWISE
+(**) errorstop ("Im Opstack ("+text(operatorentop)+") gefunden : "+text(operator))
+   END SELECT;
+   war operand := TRUE;
+   operatorentop DECR 1.
+ 
+push operator :
+   IF op = klammerzu THEN
+      IF klammerprio > superklammerprio THEN
+         klammerprio DECR klammerpriostufe (* ELSE ignoriere ")" zuviel *)
+      FI
+   ELIF op = gleich THEN
+      klammerprio := superklammerprio; 
+   ELSE
+      operatorentop INCR 1;
+      operator := prio (op) * 10 + op;
+      war operand := FALSE
+   FI.
+ 
+push monadisches minus :
+   operatorentop INCR 1;
+   operator := prio (monad minus) * 10 + monad minus.
+ 
+ignore last operand :
+   pop (dummy).
+ 
+END PROC push;
+ 
+PROC push (REAL CONST op) :
+   IF war operand THEN
+      operand := op; (* Operand wird ueberschrieben *)
+   ELSE
+      operandentop INCR 1;
+      operand := op;
+      war operand := TRUE
+   FI
+END PROC push;
+ 
+PROC pop (REAL VAR r) :
+   IF operandentop = 0 THEN
+      errorstop ("Operand fehlt")
+   ELSE r := operand;
+      operandentop DECR 1
+   FI;
+   war operand := FALSE
+END PROC pop;
+ 
+REAL PROC result :
+   IF operanden top > 0 THEN operand ELSE 0.0 FI
+END PROC result;
+ 
+BOOL PROC empty :
+   operandentop < 1
+END PROC empty;
+ 
+BOOL PROC operand expected :
+   NOT war operand
+END PROC operand expected;
+ 
+PROC do (REAL PROC (REAL CONST) f):
+   IF NOT war operand THEN
+      push (f(result))
+   ELSE
+      operand := f(operand)
+   FI
+END PROC do;
+ 
+PROC dump :
+  INT VAR x,y;
+  get cursor (x,y);
+  cursor (1,1);
+   INT VAR i;
+   put(operatorentop);put ("OPERATOREN");
+   FOR i FROM 1 UPTO operatorentop REP
+       put (text (operatorenstack(i),8));
+   PER;out (""5""); line; 
+   put (operandentop);put ("OPERANDEN ");
+   FOR i FROM 1 UPTO operandentop REP
+       put (text (operandenstack(i),8,2));
+   PER;out (""5""); line;
+   put ("Klammern:");put(klammerprio);
+   put ("Superklammern:");put(superklammerprio);
+   IF war operand THEN put ("war operand") ELSE put ("war operator") FI;line;
+   cursor (x,y);
+END PROC dump;
+ 
+.
+operand : operandenstack (operandentop).
+operator: operatorenstack(operatorentop).
+ 
+END PACKET rechner;
+ 
+PACKET tecalfunctions DEFINES merke, prozentsatz, kommastellen,
+                              prozent, evaluate, tecal :
+ 
+(********************************************************************)
+(*                                                                  *)
+(*  TeCal - Funktionen                                   15.09.84   *)
+(*                                                                  *)
+(********************************************************************)
+ 
+LET operatorenliste = "+-*/^ ()=", gib ausdruck = ""15" gib wert : ";
+ 
+REAL VAR speicher := 0.0, percent := 14.0, displayed value := -1.0;
+INT VAR nachkommastellen := 2;
+ 
+INT VAR zeiger,dachpos;   (* fuer evaluate *)
+TEXT VAR char;            (* fuer evaluate *)
+ 
+TEXT VAR status line, anzeigetext;
+INT VAR anzeigestart, anzeigelaenge, memorystart, prozentstart;
+init status line;
+ 
+PROC evaluate (TEXT CONST formel):
+   evaluate (formel,1)
+END PROC evaluate;
+ 
+PROC evaluate (TEXT CONST formel, INT CONST ab wo):
+   enable stop;
+   zum formelanfang; 
+   REP
+      zum naechsten relevanten zeichen;
+      IF formelende THEN LEAVE evaluate
+      FI;
+      symbol verarbeiten
+   UNTIL gleich zeichen verarbeitet PER.
+ 
+zum formelanfang :
+   dachpos := pos (formel,"^");
+   zeiger:= ab wo - 1.
+ 
+zum naechsten relevanten zeichen :
+   REP
+      zum naechsten wahrscheinlich relevanten zeichen
+   UNTIL formelende COR wirklich relevant PER.
+ 
+zum naechsten wahrscheinlich relevanten zeichen:
+   zeiger := pos (formel,"%","=",zeiger+1);
+   IF dachpos <> 0 CAND zeiger > dachpos THEN
+      zeiger := dachpos;
+      dachpos := pos (formel,"^",dachpos+1)
+   FI.
+ 
+formelende :
+   zeiger = 0.
+ 
+wirklich relevant :
+   char := formel SUB zeiger;
+   pos ("',.:;<", char) = 0.
+ 
+symbol verarbeiten :
+   IF ziffer THEN
+      push (abs(pick up number(formel,zeiger)));
+      zeiger := right range
+   ELSE
+      INT VAR op := pos (operatorenliste,char);
+      IF op > 0 THEN
+         push (op)
+      ELIF char = "%" THEN
+         do (REAL PROC (REAL CONST) prozent)
+      ELSE errorstop ("TeCal FEHLER : symbol verarbeiten")
+      FI
+   FI.
+ 
+gleichzeichen verarbeitet : char = "=".
+ 
+ziffer : pos ("0123456789",char) > 0.
+ 
+END PROC evaluate;
+ 
+PROC merke (REAL CONST wert) :
+ speicher := wert;
+ set anzeigetext (speicher);
+ replace (statusline,memorystart,anzeigetext);
+ show status line
+END PROC merke;
+ 
+PROC merke (INT CONST wert) :
+ merke (real (wert));
+END PROC merke;
+ 
+PROC prozentsatz (REAL CONST wert) :
+ percent := wert;
+ replace (statusline,prozentstart,text(percent,6,2));
+ show status line;
+END PROC prozentsatz;
+ 
+PROC prozentsatz (INT CONST wert) :
+ prozentsatz (real (wert));
+END PROC prozentsatz;
+ 
+PROC kommastellen (INT CONST anz stellen) :
+ nachkommastellen := max  (  0,  min (anz stellen, 16)) ;
+ set anzeigetext (0.0);
+ replace (statusline,anzeigestart,anzeigetext);
+ merke (speicher);
+END PROC kommastellen;
+ 
+REAL PROC prozent (REAL CONST wovon) :
+ percent * wovon / 100.0
+END PROC prozent;
+ 
+REAL PROC runden (REAL CONST was) :
+  round (was,nachkommastellen)
+END PROC runden;
+ 
+PROC init status line :
+   statusline := 
+"$Anzeige: & __________._________  $    %%%.%%% Memory: ----------.--------- &"
+;  change all (statusline,"$",""15"");
+   change all (statusline,"&",""14"");
+   anzeigestart := pos (statusline,"_");
+   anzeigelaenge:= pos (statusline," ",anzeigestart)-anzeigestart; 
+   memorystart  := pos (statusline,"-");
+   prozentstart := pos (statusline,"%");
+   set anzeigetext (0.0);
+   replace (statusline,anzeigestart,anzeigetext);
+   set anzeigetext (speicher);
+   replace (statusline,memorystart,anzeigetext);
+   replace (statusline,prozentstart,text(percent,6,2))
+END PROC init status line;
+ 
+PROC show status line :
+   cursor (1,y screen size); out (statusline);
+   displayed value := 0.0;
+   display value
+END PROC show status line;
+ 
+PROC display value :
+   IF displayed value <> result THEN
+      cursor (anzeigestart,y screen size);
+      set anzeigetext (result);
+      out (anzeigetext)
+   FI.
+ 
+END PROC display value;
+ 
+PROC get expression (TEXT VAR exp) :
+  cursor (1,yscreen size);
+  out (gib ausdruck);
+  (x screen size - 4 - LENGTH gib ausdruck) TIMESOUT " ";
+  out (""14""15""8" ");
+  cursor (LENGTH gib ausdruck, y screen size);
+  editget (exp);
+END PROC get expression;
+ 
+PROC set anzeigetext (REAL CONST r) :
+  IF decimal exponent (r) + nachkommastellen + 3 <= anzeigelaenge THEN
+     anzeigetext := text (r,anzeigelaenge,nachkommastellen);
+     IF decimal exponent (r) < 0 THEN
+        change (anzeigetext," .","0."); change (anzeigetext," -.","-0.");
+     FI;
+     IF nachkommastellen = 0 THEN 
+        replace (anzeigetext, LENGTH anzeigetext, " ")
+     FI;
+  ELSE
+     anzeigetext := text (r,anzeigelaenge)
+  FI
+END PROC set anzeigetext;
+ 
+(***************  TeCal - Editor - Schnittstelle  *****************)
+ 
+ 
+LET  tecal tasten    = "tq%()*+-/=CEFHKLMNRSVW^T"9"?",
+     funktionenliste = "LSCEFHKMNRVWtq%"9"T?"        ,
+     zahlzeichen     = "1234567890.,-+"              ,
+     std tasten      = "tqevw19dpgn"9""              ;
+ 
+LET kommando prozent  = 15,
+    kommando clear    = 3,
+    kommando einlesen = 4,
+    kommando formel   = 5,
+    kommando recall   = 7,
+    kommando lesen    = 1,
+    kommando store    = 8,
+    kommando naechste = 9,
+    kommando q        = 14,
+    kommando runden   = 10,
+    kommando schreiben= 2,
+    kommando umschalt = 13,
+    kommando ver sum  = 11,
+    kommando fenster  = 12,
+    kommando type     = 17,
+    kommando help     = 18;
+ 
+LET x screen size       = 79,
+    y screen size       = 24;
+ 
+FILE VAR tecal file;
+ 
+TEXT VAR record, input buffer;
+INT VAR record pos;
+ 
+PROC dateizeile lesen :
+  set busy indicator;
+  read record (tecal file, record);
+  record pos := col (tecal file)
+END PROC dateizeile lesen; 
+ 
+PROC zahl aufsammeln :
+   dateizeile lesen;
+   REAL VAR zahl := pick up number (record, record pos);
+   IF last pick up ok THEN
+      push (zahl)
+   ELSE
+      errorstop ("Keine Zahl gefunden")
+   FI
+END PROC zahl aufsammeln;
+ 
+REAL PROC spaltensumme :
+ 
+   anfangsposition merken;
+   nach oben laufen und addieren;
+   zum anfang zurueck;
+   summe.
+ 
+nach oben laufen und addieren :
+   WHILE NOT oben angekommen REP
+      hochgehen und satz lesen;
+      record auswerten
+   PER.
+ 
+anfangsposition merken :
+   INT VAR alte zeile := line no (tecal file);
+   dateizeile lesen;
+   REAL VAR summe := pick up number (record,record pos);
+   BOOL VAR weiterlaufen := TRUE
+   IF NOT last pick up ok THEN
+       summe := 0.0
+   FI.
+ 
+zum anfang zurueck :
+   to line (tecalfile, alte zeile).
+ 
+hochgehen und satz lesen :
+   up (tecal file);
+   read record (tecal file, record).
+ 
+oben angekommen : line no (tecalfile) = 1 COR NOT weiterlaufen.
+ 
+record auswerten :
+   IF blankzeile THEN
+      weiterlaufen := TRUE 
+   ELIF kein zahlzeichen THEN
+      weiterlaufen := FALSE
+   ELSE
+      summe INCR pick up number (record,record pos);
+      weiterlaufen := last pick up ok
+   FI.
+ 
+blankzeile : LENGTH record < record pos COR (record SUB record pos) = " ".
+ 
+kein zahlzeichen : pos (zahlzeichen,record SUB recordpos) = 0. 
+ 
+END PROC spaltensumme;
+ 
+PROC tecal (TEXT CONST filename) :
+  type (""27"t");
+  edit (filename).
+ 
+END PROC tecal;
+ 
+PROC tecal :
+ IF groesster editor > 0
+    THEN tecal auf editfile
+    ELSE tecal (lastparam)
+ FI.
+ 
+tecal auf editfile :
+   FILE VAR f := editfile;
+   quit;
+   tecal (f) .
+ 
+END PROC tecal;
+ 
+PROC tecal (FILE VAR ed file) :
+  enable stop     ;
+  open editor (groesster editor + 1, ed file,  TRUE,
+               1, 1, x screen size, y screen size - 1);
+  show status line;
+  edit (groesster editor, tecal tasten + std tasten,
+        PROC (TEXT CONST) tecal interpreter) .
+ 
+END PROC tecal;
+ 
+PROC tecal interpreter (TEXT CONST symbol) :
+ 
+  tecal file := editfile ;
+  nichts neu ;
+  INT VAR kommando := pos (operatorenliste,symbol);
+  IF kommando > 0 THEN
+     normale rechenoperation
+  ELSE kommando := pos (funktionenliste,symbol);
+     sonderfunktion
+  FI.
+ 
+normale rechenoperation :
+  IF operand expected CAND keine klammer auf THEN
+     zahl aufsammeln
+  FI;
+  push (kommando);
+  display value.
+ 
+keine klammer auf : symbol <> "(".
+ 
+sonderfunktion :
+  SELECT kommando OF
+    CASE kommando prozent  : do prozent
+    CASE kommando clear    : do clear
+    CASE kommando einlesen : do get
+    CASE kommando formel   : do formelrechnung
+    CASE kommando ver sum  : do spaltensumme
+    CASE kommando recall   : do speicher lesen
+    CASE kommando lesen    : do zahl aufsammeln
+    CASE kommando store    : do speicher schreiben
+    CASE kommando naechste : do zur naechsten zahl
+    CASE kommando q        : quit
+    CASE kommando runden   : do runden
+    CASE kommando schreiben: do schreiben
+    CASE kommando umschalt : do tecal abschalten
+    CASE kommando type     : do type displayed value
+(*  CASE kommando hor sum  : calculate ver sum*)
+    CASE kommando fenster  : do fenster als zweiten operanden
+(*  CASE kommando tab      :  calculate tab sum *)
+    CASE kommando help     : do ("tecal auskunft")
+    OTHERWISE              : std kommando interpreter (symbol)
+  END SELECT.
+ 
+do prozent :
+  IF operand expected THEN
+     zahl aufsammeln
+  FI;
+  do (REAL PROC (REAL CONST) prozent);
+  display value.
+ 
+do clear :
+  clear;
+  ueberschrift neu;
+  show status line.
+ 
+do get : 
+  input buffer := "";
+  get expression (input buffer);
+  IF input buffer > " " THEN
+     disable stop;
+     superklammer auf;
+     evaluate (input buffer);
+     superklammer zu;
+     show status line;
+     enable stop;
+  ELSE
+     show status line
+  FI.
+ 
+do zahl aufsammeln :
+  zahl aufsammeln;
+  display value.
+ 
+do speicher schreiben :
+  merke (result);
+  show status line.
+ 
+do type displayed value :
+  set anzeigetext (result);
+  push(compress(anzeigetext)).
+ 
+do speicher lesen :
+  push (speicher);
+  display value.
+ 
+do spaltensumme :
+  push (spaltensumme);
+  display value.
+ 
+do formelrechnung :
+  dateizeile lesen;
+     disable stop;
+     superklammer auf;
+     evaluate (record);
+     superklammer zu;
+     enable stop;
+  display value;
+  IF enthaelt gleichzeichen CAND NOT empty THEN 
+     ergebnis dahinter schreiben 
+  ELSE
+     col (LENGTH record + 1)
+  FI.
+ 
+enthaelt gleichzeichen :
+  INT VAR gleichpos := pos (record,"=");
+  gleichpos > 0.
+ 
+ergebnis dahinter schreiben :
+  record pos := gleichpos + 2 + decimal exponent (result);
+  gleich pos := pos (record, ".", recordpos + 1) -1;
+  IF gleichpos > 0 THEN
+     record pos := gleichpos
+  FI;
+  ergebnis eintragen und dateizeile zurueckschreiben.
+ 
+ergebnis eintragen und dateizeile zurueckschreiben :
+  replace number (record, result, record pos, nachkommastellen);
+  write record (tecal file, record);
+  zeile neu;
+  col (record pos).
+ 
+do zur naechsten zahl :
+  dateizeile lesen;
+  record pos := pos (record,"0","9",record pos);
+  IF record pos = 0 THEN
+     record pos := LENGTH record + 1
+  FI;
+  col (record pos).
+ 
+do schreiben :
+  IF NOT empty THEN
+     dateizeile lesen;
+     ergebnis eintragen und dateizeile zurueckschreiben
+  FI.
+ 
+do runden :
+  IF NOT empty AND NOT operand expected THEN
+     do (REAL PROC (REAL CONST) runden)
+  FI.
+ 
+do fenster als zweiten operanden :
+  IF empty THEN 
+     push (0.0)
+  ELSE
+     push (result)
+  FI.
+ 
+do tecal abschalten :
+  quit;
+  edit (tecalfile).
+ 
+END PROC tecal interpreter;
+ 
+clear;
+kommando auf taste legen ("t","tecal");
+(*kommando auf taste legen ("?","tecalauskunft");*)
+ 
+END PACKET tecal functions; 
+

@@ -1,0 +1,2305 @@
+(***************************************************************************)
+(*                                                                         *)
+(*           Dritte von drei Dateien des EUMEL-BASIC-Systems               *)
+(*                                                                         *)
+(*           Autor: Heiko Indenbirken                                      *)
+(*           Überarbeitet von: Rudolf Ruland und Michael Overdick          *)
+(*                                                                         *)
+(*           Stand: 27.10.1987                                             *)
+(*                                                                         *)
+(***************************************************************************)
+
+PACKET basic compiler DEFINES basic,          (* Autor: Heiko Indenbirken *)
+                              basic version:  (* Stand: 27.10.1987/rr/mo  *)
+
+PROC basic version :
+
+putline (""13" "15"              BASIC - Compiler     Version 1.1   (27.10.1987)              "14"");
+
+END PROC basic version;
+
+LET compiler msg  = "       *******  ENDE DER UEBERSETZUNG  *******",
+    compiler err msg = " Fehler entdeckt";
+
+LET (*                    S y m b o l    T y p e n                       *)
+    any     = 0,  const   = 1,  var     = 2,  array   = 3,  denoter = 5,
+    res word= 8,  operator= 9,  eos     = 10, del     =11,  stat no = 12,
+    result const = 13,                                           (* F3/rr *)
+    user fn = 20;     (* DEF/mo *)
+
+LET (*                    S y m b o l z e i c h e n                      *)
+    plus         = 43,  minus        = 45,  mult          = 42,
+    div          = 47,  backslash    = 92,  exponent      = 94,
+    equal        = 61,  semicolon    = 59,  comma         = 44,
+    numbersign   = 35,  open bracket = 40,  close bracket = 41,
+    eol          = 13,  eop          = 14,  mod op        = 249;
+
+LET  (*                   Reservierte Worte                              *)
+  as s       = 129,  base s     = 132,  call s     = 133,  chain s    = 135,
+  clear s    = 138,  close s    = 139,  common s   = 140,  data s     = 144,
+  def s      = 145,  defdbl s   = 146,  defint s   = 147,  defsng s   = 148,
+  defstr s   = 149,  dim s      = 150,  else s     = 151,  end s      = 152,
+  eof s      = 153,  error s    = 156,  field s    = 158,  for s      = 160,
+  get s      = 162,  gosub s    = 164,  goto s     = 165,  if s       = 167,  (* F2/rr *)
+  input s    = 169,  kill s     = 173,  let s      = 176,  line in s  = 177,
+  lprint s   = 180,  lset s     = 181,  mid s      = 182,  name s     = 185,
+  next s     = 186,  on s       = 188,  open s     = 189,  option s   = 190,
+  print s    = 193,  put s      = 194,  rand s     = 195,  read s     = 196,
+  rem s      = 197,  restore s  = 198,  resume s   = 199,  return s   = 200,
+  rset s     = 203,  step s     = 209,  stop s     = 210,  swap s     = 213,
+  tab s      = 214,  then s     = 216,  to s       = 217,  troff s    = 218,
+  tron s     = 219,  using s    = 220,  wait s     = 222,  wend s     = 223,
+  while s    = 224,  width s    = 225,  write s    = 226,  not        = 250,
+  cls s      = 227,  usr        = 234,  sub        = 235;     (* mo *)
+
+LET nil   = "",
+    intern error = 51;
+
+LET SYMBOL = STRUCT (TEXT name, INT no, type, ADDRESS adr, DTYPE data);
+ADDRESS CONST niladr :: LOC -4;
+SYMBOL CONST nilsymbol :: SYMBOL : (nil, any, any, nil adr, void type);
+SYMBOL VAR symb;
+BOOL VAR found;
+OPN VAR opn;
+
+TEXT OP NAME (SYMBOL CONST val):
+  IF val.type = const
+  THEN constant value
+  ELIF val.type = stat no
+  THEN text (val.no)
+  ELSE val.name FI  .
+
+constant value:
+  IF val.data = int type AND length (val.name) = 2
+  THEN text (val.name ISUB 1)
+  ELIF val.data = real type AND length (val.name) = 8
+  THEN text (val.name RSUB 1)
+  ELSE val.name FI  .
+
+END OP NAME;
+
+PROC careful error (INT CONST no, TEXT CONST name, addition):    (* DEF/mo *)
+  IF at end of statement
+    THEN basic error (no, name, addition)
+    ELSE basic error without leaving statement
+  FI.
+
+at end of statement:
+  symb.type = eos.
+
+basic error without leaving statement:
+  basic error (no, name, addition, FALSE);
+  error no INCR 1.
+
+END PROC careful error;
+
+(*                       P r e c o m p i l e r                           *)
+PROC next symbol:
+  symb.adr := niladr;
+  next symbol (symb.name, symb.no, symb.type, symb.data); 
+
+  IF symb.no = end symbol AND symb.type = res word
+  THEN symb.no   := -symb.no;
+       symb.type := eos;
+  FI
+END PROC next symbol;
+
+PROC skip (INT CONST symbol, type):
+  IF symb.type = type AND symb.no = symbol
+  THEN next symbol
+  ELSE basic error (2, NAME symb, name of (symbol) + " erwartet")  FI  .
+END PROC skip;
+
+PROC get letter (SYMBOL VAR symbol):
+  IF symb.type = var AND (LENGTH symb.name) = 1
+  THEN symbol := symb;
+       next symbol
+  ELSE basic error (2, NAME symb, "Buchstabe erwartet, " + type of (symb.type) + " gefunden") FI  .
+
+END PROC get letter;
+
+PROC get var (SYMBOL VAR symbol):
+  IF symb.type = var
+  THEN variable (symbol)
+  ELIF symb.type = array
+  THEN array var (symbol)
+  ELSE basic error (2, NAME symb, "Variable erwartet, " + type of (symb.type) + " gefunden") FI  .
+
+END PROC get var;
+
+PROC get expr (SYMBOL VAR symbol):
+  get expression (symbol, 0)
+END PROC get expr;
+
+PROC get const (SYMBOL VAR symbol, DTYPE CONST data):
+  IF symb.type = const
+  THEN symbol := symb;
+       declare const (symbol, data);                             (* F3/rr *)
+       next symbol
+  ELSE basic error (2, NAME symb, "Konstante erwartet, " + type of (symb.type) + " gefunden")  FI  .
+ 
+END PROC get const;
+
+PROC get var (SYMBOL VAR symbol, DTYPE CONST data):
+  get var (symbol);
+  convert (symbol, data)
+END PROC get var;
+
+PROC get expr (SYMBOL VAR symbol, DTYPE CONST data):
+  get expression (symbol, 0);
+  convert (symbol, data)
+END PROC get expr;
+
+PROC get expression (SYMBOL VAR result, INT CONST last prio):
+  get single result;
+  WHILE symb.type = operator AND higher priority
+  REP get dyadic operand;
+      gen dyadic operation
+  PER  .
+
+get single result:
+  INT VAR prio;
+  SELECT symb.type OF
+  CASE var:      variable (result)
+  CASE array:    array var (result)
+  CASE const:    get const
+  CASE operator: get monadic operator
+  CASE res word: basic function (result)
+  CASE user fn:  user function (result)                      (* DEF/mo *)
+  OTHERWISE get bracket END SELECT  .
+
+get const:
+  result := symb;
+  declare const (result, result. data);                      (* F3/rr *)
+  next symbol  .
+
+get monadic operator:
+  get operator;
+  prio := monadic op prio;                                  (* mo *)
+  get monadic operand;
+  generate monadic operator  .
+
+monadic op prio:                                            (* mo *)
+  IF op no = not
+    THEN 6
+    ELSE 12
+  FI.
+
+get monadic operand:
+  SYMBOL VAR operand;
+  next symbol;
+  get expression (operand, prio).
+
+generate monadic operator:
+(*                      Mögliche Ops:  +, - und NOT                      *)
+  parameter (1, operand.data, const, operand.adr); 
+  parameter (2, operand.data, var, next local adr (operand.data));
+  parameter (3, void type, const, nil adr);
+
+  IF op no = plus
+  THEN result := operand
+  ELIF op no = minus
+  THEN generate minus op
+  ELIF op no = not
+  THEN generate not op
+  ELSE basic error (2, op name, "Kein monadischer Operator") FI  .
+
+generate minus op:
+  IF operand.data = int type
+  THEN apply (1, 2, int minus)
+  ELIF operand.data = real type
+  THEN apply (1, 2, real minus)
+  ELSE basic error (82, op name, NAME operand + " : " + dump (operand.data)) FI;
+  result := SYMBOL:(op name, 0, result const, local adr, operand.data)  .
+
+generate not op:
+  IF operand.data = int type
+  THEN apply (1, 1, int not opn)
+  ELIF operand.data = real type
+  THEN apply (1, 1, real not opn)
+  ELSE basic error (82, op name, NAME operand + " : " + dump (operand.data)) FI;
+  result := SYMBOL:(op name, 0, result const, local adr, operand.data)  .
+
+get operator:
+  INT CONST op no :: symb.no;
+  TEXT CONST op name :: symb.name  .
+
+higher priority:
+  get operator;
+  prio := dyadic op prio;
+  prio > last prio  .
+
+dyadic op prio:
+  IF is bool op (op no)                 THEN bool op prio
+  ELIF op no = plus OR op no = minus    THEN 8
+  ELIF op no = mod op                   THEN 9
+  ELIF op no = backslash                THEN 10
+  ELIF op no = mult OR op no = div      THEN 11
+  ELIF op no = exponent                 THEN 13
+  ELSE (* relational operator *)             7
+  FI.
+
+bool op prio:
+  256 - op no.
+
+get bracket:
+  IF symb.type = del AND symb.no = open bracket
+  THEN next symbol
+  ELSE basic error (22, NAME symb, "") FI;
+  get expression (result, 0);
+  skip (close bracket, del)  .
+
+get dyadic operand:
+  next symbol;
+  get expression (operand, prio)  .
+
+gen dyadic operation:
+  convert operands;
+  identify dyadic operator;
+  generate dyadic operator  .
+
+convert operands:
+ DTYPE CONST op type :: type of operation;
+ convert (result, op type);
+ convert (operand, op type)  .
+
+type of operation:
+  IF is bool op (op no)
+  THEN int type
+  ELIF result.data = operand.data
+  THEN result.data
+  ELSE real type FI  .
+
+identify dyadic operator:
+  BOOL VAR local found;
+  OPN VAR local opn;
+  DTYPE VAR data;
+  parameter (1, result.data,  const, result.adr); 
+  parameter (2, operand.data, const, operand.adr);
+  identify (op no, 1, 2, local opn, local found);
+  IF NOT local found
+  THEN basic error (83, symbol of (op no),
+                    NAME result + " : " + dump (result.data) + " und " +
+                    NAME operand + " : " + dump (operand.data))
+  ELSE data := dtype (3) FI  .
+
+generate dyadic operator:
+  declare (3, var);
+  define (3, next local adr (data));
+  apply (3, push);
+  apply (1, 2, local opn);
+  result := SYMBOL:(op name, 0, result const, local adr, data)  .
+
+END PROC get expression;
+
+PROC variable (SYMBOL VAR symbol):
+   symbol := symb;
+   next symbol;
+   IF known (symbol.no)
+   THEN get adr from table
+   ELSE declare var (symbol, nil) FI  .
+
+get adr from table:
+  TEXT VAR defined dim;
+  remember (symbol.no, symbol.type, symbol.adr, symbol.data, defined dim)  .
+
+END PROC variable;
+
+PROC array var (SYMBOL VAR symbol field):
+(*           Aufbau der Dimensionsangaben in der Symboltabelle           *)
+(*               limit 1   [limit 2]...   Basis   Elemente               *)
+(*                    jeweils als 2 Byte Integer/Text                    *)
+(*                    Die Dimension ist dann   DIM/2-2                   *)
+  ROW 100 SYMBOL VAR indizes;
+  TEXT VAR limits;
+  INT VAR dim;
+
+  symbol field := symb;  next symbol;
+  get paramfield (indizes, dim, int type);
+
+  IF known (symbol field.no)
+  THEN check field dim and data
+  ELSE declare new field FI;
+  generate field index  .
+
+check field dim and data:
+  INT VAR type;
+  DTYPE VAR data;
+  remember (symbol field.no, type, symbol field.adr, data, limits);
+
+  IF old dim <> dim
+  THEN basic error (84, symbol field.name, "Dimensioniert in " + text (old dim) + " Dimensionen, gefundene Anzahl Indizes: " + text (dim))
+  ELIF NOT (symbol field.data = data)
+  THEN basic error (intern error, symbol field.name, dump (data) + " <=> " + dump (symbol field.data))
+  ELIF NOT (symbol field.type = type)
+  THEN basic error (intern error, symbol field.name, "Feld erwartet, " + type of (type) + " gefunden") FI  .
+
+old dim: (length (limits) DIV 2) - 2  .
+
+declare new field:
+  limits := dim * ""10""0"" + mki (array base) +
+            mki ((10 - array base + 1)**dim);
+  declare var (symbol field, limits)  .
+
+generate field index:
+  init field subscription;
+  FOR j FROM 1 UPTO dim
+  REP increase field index;
+      calc index length and limit;
+      calculate field pointer;
+      symbol field.adr := REF pointer
+  PER  .
+
+init field subscription:
+  ADDRESS VAR pointer :: next local adr (row type),
+              index adr :: next local adr (int type);
+  INT VAR j, elem length :: (limits ISUB (dim+2)) * typesize (symbol field.data),
+             elem limit,
+             elem offset :: 1 - (limits ISUB (dim+1));
+  BOOL CONST base zero := elem offset = 1  .
+
+increase field index:
+   IF base zero
+   THEN parameter (1, int type, const, index.adr);
+        parameter (2, int type, const, one value);
+        parameter (3, int type, var, index adr);
+        parameter (4, void type, const, nil adr);
+        apply (1, 3, int add);
+   ELSE index adr := index.adr FI  .
+
+index: indizes [j]  .
+
+calc index length and limit:
+  elem limit  := (limits ISUB j) + elem offset;
+  elem length := elem length DIV elem limit  .
+
+calculate field pointer:
+  parameter (1, int type, const, symbol field.adr);
+  parameter (2, int type, const, index adr);
+  parameter (3, int type, elem length);
+  parameter (4, int type, elem limit);
+  parameter (5, int type, const, pointer);
+  parameter (6, void type, const, nil adr);
+  apply (1, 5, subscript);
+
+END PROC array var;
+
+PROC get paramfield (ROW 100 SYMBOL VAR params list, INT VAR no):
+  skip (open bracket, del);
+  FOR no FROM 1 UPTO 100
+  REP get expression (params list [no], 0);
+      IF symb.type = del AND symb.no = close bracket
+      THEN next symbol;
+           LEAVE get paramfield
+      ELSE skip (comma, del) FI
+  PER  .
+
+END PROC get paramfield;
+
+PROC get paramfield (ROW 100 SYMBOL VAR params list, INT VAR no, DTYPE CONST data):
+  skip (open bracket, del);
+  FOR no FROM 1 UPTO 100
+  REP get expression (params list [no], 0);
+      convert (params list [no], data);
+      IF symb.type = del AND symb.no = close bracket
+      THEN next symbol;
+           LEAVE get paramfield
+      ELSE skip (comma, del) FI
+  PER  .
+
+END PROC get paramfield;
+
+PROC examine access rights (ROW 100 SYMBOL VAR params list, INT CONST no):
+
+  INT VAR j;
+  FOR j FROM 1 UPTO no REP
+    IF params list [j].type = const OR params list [j].type = result const
+      THEN IF access (j) = 2
+             THEN basic error (103, NAME params list [j], "im " + text (j)
+                                     + ". Eintrag der Parameterliste")
+           FI
+    FI
+  PER
+
+END PROC examine access rights;
+
+PROC basic function (SYMBOL VAR ftn):                  (* Änd. 11.08.87, mo *)
+  init and check function;
+  IF symb.type = del AND symb.no = open bracket
+    THEN get paramfield (params list, number params);
+  FI;
+  apply function  .
+
+init and check function:
+  ROW 100 SYMBOL VAR params list;
+  INT VAR number params :: 0;
+  BOOL CONST is usr :: symb.no = usr;
+  IF is usr
+    THEN check proc name
+  FI;
+  ftn := symb;
+  next symbol   .
+
+check proc name:
+  next symbol;
+  IF symb.type = array
+    THEN symb.name := subtext (symb.name, 1, LENGTH symb.name-2)
+  ELIF symb.type <> var
+    THEN basic error (2, NAME symb, "Prozedurname erwartet")
+  FI.
+
+apply function:
+  OPN VAR ftn local opn;
+  BOOL VAR ftn found;
+  INT CONST result :: number params+1;
+
+  INT VAR j;
+  FOR j FROM 1 UPTO number params
+  REP parameter (j, params list [j].data, const, params list [j].adr) PER;
+  IF is usr
+    THEN identify proc;
+         examine access rights (params list, number params);
+    ELSE identify function
+  FI;
+  
+  ftn.adr := next local adr (ftn.data);
+
+  declare (result, var);
+  define (result, ftn.adr);
+  apply (result, push);
+  apply (1, number params, ftn local opn).
+
+identify proc:
+  identify (deshift (ftn.name), 1, number params, ftn local opn, ftn found);
+  ftn.data := dtype (result);
+  IF NOT ftn found
+    THEN basic error (99, ftn.name, "Parameter angegeben: " + param list (1, number params))
+  ELIF ftn.data = void type
+    THEN basic error (5, ftn.name, "Die Prozedur liefert keinen Wert")
+  ELIF NOT (ftn.data = int type) AND NOT (ftn.data = real type) AND NOT (ftn.data = text type)
+    THEN basic error (5, ftn.name, "Der Typ des Resultats ist nicht erlaubt, gefunden: "
+                                   + dump (dtype (result)))
+  FI.
+
+identify function:
+  identify (ftn.no, 1, number params, ftn local opn, ftn found);
+  IF ftn found
+    THEN ftn.data := dtype (result)
+  ELIF is basic function (ftn.no)
+    THEN basic error (98, ftn.name, "Argument(e) angegeben: " + param list (1, number params))
+    ELSE basic error (22, ftn.name, "Anweisung(sbestandteil) gefunden")
+  FI.
+
+END PROC basic function;
+
+PROC user function (SYMBOL VAR result):                     (* DEF/mo *)
+  check if function defined;
+  get arguments if expected;
+  gosub (user function label);
+  copy result.
+
+check if function defined:
+  TEXT CONST scope :: name of (symb.no) + "?";
+  IF NOT known (symb.no)
+    THEN basic error (18, symb.name, "")
+  ELIF scanner scope = scope
+    THEN basic error (85, symb.name, "")
+  FI.
+
+get arguments if expected:
+  INT VAR param counter;
+  TEXT VAR dim text;
+  result := symb;
+  remember (symb.no, symb.type, result.adr, result.data, dim text);
+  INT VAR number of params :: LENGTH dim text DIV 2 - 1;
+  next symbol;
+  IF number of params > 0
+    THEN get all arguments
+  ELIF symb.no = open bracket AND symb.type = del
+    THEN basic error (5, symb.name, "Kein Argument erwartet")
+  FI.
+
+get all arguments:
+  IF symb.no <> open bracket OR symb.type <> del
+    THEN basic error (5, NAME symb, text (number of params) + " Argument(e) erwartet")
+  FI;
+  next symbol;
+  FOR param counter FROM 2 UPTO number of params REP
+    get one argument;
+    skip comma;
+  PER;
+  get one argument;
+  skip close bracket.
+
+get one argument:
+  SYMBOL VAR ftn param;
+  ftn param.no := dim text ISUB param counter;
+  remember (ftn param.no, ftn param.type, ftn param.adr, ftn param.data, ftn param.name);
+  IF ftn param.type <> var
+    THEN basic error (intern error, name of (ftn param.no), "Parametereintrag fehlerhaft")
+  FI;
+  SYMBOL VAR expr res;
+  get expr (expr res, ftn param.data);
+  apply move (ftn param.adr, expr res.adr, ftn param.data).
+
+skip comma:
+  IF symb.no = close bracket AND symb.type = del
+    THEN basic error (5, symb.name, text (number of params) + " Argumente erwartet")
+  ELIF symb.no <> comma OR symb.type <> del
+    THEN basic error (2, NAME symb, "  , in Argumentenliste erwartet")
+  FI;
+  next symbol.
+
+skip close bracket:
+  IF symb.no = comma AND symb.type = del
+    THEN basic error (5, symb.name, "Nur " + text (number of params) + " Argument(e) erwartet")
+  ELIF symb.no <> close bracket OR symb.type <> del
+    THEN basic error (2, NAME symb, "  ) nach Argumentenliste erwartet")
+  FI;
+  next symbol.
+
+user function label:
+  label list [dim text ISUB 1].
+
+copy result :
+  apply move (next local adr (result.data), result.adr, result.data);
+  result.adr := local adr.
+
+END PROC user function;
+
+PROC apply move (ADDRESS CONST dest adr, source adr, DTYPE CONST datype):
+  parameter (1, datype, var, dest adr);
+  parameter (2, datype, const, source adr);
+  parameter (3, void type, const, nil adr);
+
+  IF datype = int type
+  THEN apply (1, 2, int move)
+  ELIF datype = real type
+  THEN apply (1, 2, real move)
+  ELIF datype = text type
+  THEN apply (1, 2, text move)
+  ELSE basic error (2, "=", "Unbekannter Datentyp: " + dump (datype)) FI  .
+
+END PROC apply move;
+
+PROC convert (SYMBOL VAR symbol, DTYPE CONST to data):           (* F3/rr *)
+  IF   to data = from data
+  THEN
+  ELIF symbol.type = const
+  THEN declare const (symbol, to data)
+  ELIF to data = int type 
+  THEN make int
+  ELIF to data = real type
+  THEN make real
+  ELSE basic error (13, NAME symbol, dump (to data) + " erwartet, " + dump (from data) + " gefunden") FI  .
+
+from data : symbol.data  .
+
+make real :
+  IF   symbol.data = int type
+  THEN parameter (1, symbol.data, const, symbol.adr);
+       parameter (2, real type, var, next local adr (real type));
+       parameter (3, void type, const, nil adr);
+       apply (1, 1, int to real);
+       symbol.adr  := local adr;
+       symbol.data := real type
+  ELSE basic error (13, NAME symbol, dump (to data) + " erwartet, " + dump (from data) + " gefunden") FI  .
+
+make int :
+  IF   symbol.data = real type
+  THEN parameter (1, symbol.data, const, symbol.adr);
+       parameter (2, int type, var, next local adr (int type));
+       parameter (3, void type, const, nil adr);
+       apply (1, 1, real to int);
+       symbol.adr  := local adr;
+       symbol.data := int type
+  ELSE basic error (13, NAME symbol, dump (to data) + " erwartet, " + dump (from data) + " gefunden") FI  .
+
+END PROC convert;
+
+PROC declare const (SYMBOL VAR symbol constant, DTYPE CONST data):
+  convert symb value;
+  IF new constant
+  THEN declare this constant
+  ELSE get table entry FI  .
+
+convert symb value:
+  IF data = symbol constant.data
+  THEN LEAVE convert symb value
+  ELIF data = int type AND symbol constant.data = real type
+  THEN symbol constant.name := mki (symbol constant.name RSUB 1);
+  ELIF data = real type AND symbol constant.data = int type
+  THEN symbol constant.name := mkd (symbol constant.name ISUB 1);
+  ELIF data = text type AND symbol constant.data = int type
+  THEN symbol constant.name := text (symbol constant.name ISUB 1)
+  ELIF data = text type AND symbol constant.data = real type
+  THEN symbol constant.name := text (symbol constant.name RSUB 1)
+  ELSE basic error (13, NAME symbol constant, dump (data) + " erwartet, "
+                          + dump (symbol constant.data) + " gefunden") FI;
+  symbol constant.data := data  .
+
+new constant:
+(*                 Konstanten werden wie folgt abgelegt:                 *)
+(*                           INT:   § HL                                 *)
+(*                           REAL:  § MMMMMMME                           *)
+(*                           TEXT:  § Text                               *)
+  put name ("§ " + symbol constant.name, symbol constant.no);
+  NOT known (symbol constant.no)  .
+
+declare this constant:
+  IF data = int type
+  THEN allocate denoter (symbol constant.adr, symbol constant.name ISUB 1)
+  ELIF data = real type
+  THEN allocate denoter (symbol constant.adr, symbol constant.name RSUB 1)
+  ELIF data = text type
+  THEN allocate denoter (symbol constant.adr, symbol constant.name) FI;
+  recognize (symbol constant.no, const, symbol constant.adr, data, nil)  .
+
+get table entry:
+  INT VAR table type;
+  TEXT VAR table dim;
+  remember (symbol constant.no, table type, symbol constant.adr, symbol constant.data, table dim);
+  IF table dim <> nil
+  THEN basic error (intern error, NAME symbol constant,  "Dimension in Tabelle ungleich niltext")
+  ELIF NOT (symbol constant.data = data)
+  THEN basic error (intern error, NAME symbol constant, "Falscher DTYPE in Tabelle, erw: " + dump (data)
+                        + ", gef: " + dump (symbol constant.data)) FI  .
+
+END PROC declare const;
+
+PROC declare var (SYMBOL VAR symbol var, TEXT CONST dim):               (* F4/rr *)
+  allocate variable;
+  recognize (symbol var.no, symbol var.type, symbol var.adr, symbol var.data, dim) .
+
+allocate variable :
+  symbol var.adr := next local adr (symbol var.data);
+  IF dim <> nil
+     THEN INT VAR index;
+          ADDRESS VAR dummy;
+          FOR index FROM 2 UPTO no of elements
+             REP dummy := next local adr (symbol var.data) PER;
+  FI .
+
+no of elements:
+  (dim ISUB (LENGTH dim DIV 2)) .
+END PROC declare var;
+
+PROC parameter (INT CONST p, DTYPE CONST d type, INT CONST value):
+  declare (p, d type);
+  declare (p, denoter);
+  define (p, value);
+END PROC parameter;
+
+PROC apply  (INT CONST first, number params, TEXT CONST name):
+  identify (name, first, number params, opn, found);
+  IF NOT found
+  THEN errorstop (1051, "PROC " + name + ", Parameter: " + param list (first, number params) + ", nicht gefunden!") FI;
+  apply (first, number params, opn)
+
+END PROC apply;
+
+PROC clear local stack :                                         (* F4/rr *)
+
+  define local variables;
+  clear index;
+  define (rep); index incr one;
+                if local storage less or equal index then goto end;
+                get cell address; 
+                clear cell;
+                apply (rep);
+  define (end);
+  clear cell address;
+
+  . define local variables :
+      LABEL VAR rep, end;
+      ADDRESS VAR index;
+      declare (rep); declare (end);
+      allocate variable (index, type size (int type));
+
+  . clear index :
+      parameter (1, int type, var, index);
+      apply (1, 1, clear);
+
+  . index incr one :
+      parameter (1, int type, var, index);
+      apply (1, 1, incone);
+
+  . if local storage less or equal index then goto end :
+      parameter (1, int type, const, loc storage);
+      parameter (2, int type, const, index);
+      apply (1, 2, lsequ);
+      apply (end, TRUE);
+
+  . get cell address :
+      parameter (1, int type, const, LOC 2);
+      parameter (2, int type, const, index);
+      parameter (3, int type, 1);
+      parameter (4, int type, 16000);
+      parameter (5, int type, const, LOC 0);
+      apply (1, 5, subscript);
+
+  . clear cell :
+      parameter (1, int type, var, REF LOC 0);
+      apply (1, 1, clear);
+
+  . clear cell address :
+      parameter (1, int type, var, LOC 0);
+      apply (1, 1, clear);
+      parameter (1, int type, var, LOC 1);
+      apply (1, 1, clear);
+
+END PROC clear local stack;
+
+(*                                M a i n                                *)
+(* ̃̃̃̃̃̃̃̃̃̃̃̃̃̃̃̃̃̃̃̃̃̃̃̃̃̃̃̃̃̃̃̃̃̃̃̃̃̃̃̃̃̃̃̃̃̃̃̃̃̃̃̃̃̃̃̃̃̃̃̃̃̃̃̃̃̃̃̃̃ *)
+(*                         C o m p i l e r                               *)
+(* *****              G l o b a l e   V a r i a b l en             ***** *)
+INT VAR end symbol :: 0,  error no :: 0, act stat no :: 0, array base :: 0;
+BOOL VAR basic trace, was warning;
+ADDRESS VAR data pos, data text;
+
+
+(*            Globale Operationen                                        *)
+OPN VAR basic init, basic frame, basic module, ret, equal op,
+        int minus, real minus, int not opn, real not opn,
+        trace op, ln op, push,
+        int incr, real incr, int add,
+        int move, real move, text move, test,
+        real to int, int to real, subscript,
+        clear, incone, lsequ,                                    (* F4/rr *)
+        basic out text;
+
+(*                             Parameter VOID                            *)
+  init ("RTN", 1, 0, ret);
+
+(*                             Parameter INT                             *)
+  declare (1, int type);
+  init ("intnot", 1, 1, int not opn);         (* mo *)
+  init ("PP",  1, 1, push);
+  init ("LN", 1, 1, ln op);
+  init ("real", 1, 1, int to real);
+  init ("TEST", 1, 1, test);
+  init ("CLEAR", 1, 1, clear); 
+  init ("INCONE", 1, 1, incone); 
+  init ("trace", 1, 1, trace op);
+
+(*                           Parameter INT INT                           *)
+  declare (2, int type);
+  init ("COMPLINT", 1, 2, int minus);
+  init ("MOVE", 1, 2, int move); 
+  init ("INC", 1, 2, int incr);
+  init ("EQU", 1, 2, equal op);
+  init ("LSEQU", 1, 2, lsequ); 
+
+(*                         Parameter INT INT INT                         *)
+  declare (3, int type);
+  init ("ADD", 1, 3, int add);
+
+(*                             Paramter REAL                             *)
+  declare (1, real type);
+  init ("realnot", 1, 1, real not opn);       (* mo *)
+  init ("cint", 1, 1, real to int);
+
+(*                          Parameter REAL REAL                          *)
+  declare (2, real type);
+  init ("COMPLREAL", 1, 2, real minus);
+  init ("FMOVE", 1, 2, real move);
+  init ("INCR", 1, 2, real incr);
+
+(*                             Parameter TEXT                            *)
+  declare (1, text type);
+  init ("basicout", 1, 1, basic out text);
+
+(*                           Paramter TEXT TEXT                          *)
+  declare (2, text type);
+  init ("TMOVE", 1, 2, text move);
+
+(*             Parameter ADDRESS INT DENOTER DENOTER ADDRESS             *)
+  declare (3, denoter);
+  declare (4, denoter);
+  init ("SUBSCRIPT", 1, 5, subscript);
+
+PROC init (TEXT CONST name, INT CONST local from, number params, OPN VAR local opn):
+  identify (name, local from, number params, local opn, found);
+  IF NOT found
+  THEN errorstop (1051, "PROC init (TC, IC, IC, OPN VAR): OPN für """ + name + """ nicht gefunden") FI
+END PROC init;
+
+(*                           Runtime Konstanten                          *)
+  ADDRESS VAR true value, false value, niltext value,
+              zero value, one value, two value, three value,
+              comma value, int one value, real one value,
+              loc storage;                                  (* F4/rr *)
+
+(* +++++                     Globale Variablen                     +++++ *)
+  BOOL VAR proc found;
+  INT VAR deftype, field elems, i, params;
+  ROW 100 SYMBOL VAR param;
+  SYMBOL VAR base size, begin range, end range, expr result, field, filename,
+             from, len, image, label, old name, new name,
+             question, size, tab pos, var result;
+  TEXT VAR constant, field size, proc name;
+
+(*                            Label-Verwaltung                           *)
+LET label list size = 4100;
+BOUND ROW label list size LABEL VAR label list;
+DATASPACE VAR label ds;
+INITFLAG VAR label init :: FALSE;
+INT VAR last label no;
+
+(* *****           I n t e r f a c e     P r o z d u r e n         ***** *)
+PROC basic:
+  basic (last param)
+END PROC basic;
+
+PROC basic (TEXT CONST basic file name):
+  basic (basic file name, nil)
+END PROC basic;
+
+PROC basic (TEXT CONST basic file name, prog name):
+  IF NOT exists (basic file name)
+    THEN errorstop ("""" + basic file name + """ gibt es nicht")
+    ELSE FILE VAR basic file :: sequential file (modify, basic file name); (* F5/rr *)
+         headline (basic file, basic file name);
+         last param (basic file name);
+         basic (basic file, prog name)
+  FI;
+
+END PROC basic;
+
+PROC basic (FILE VAR source file, TEXT CONST prog name):
+  IF prog name <> nil CAND prog name is not a tag                (* F5/rr *)
+     THEN errorstop ("unzulässiger Programmname : """ + prog name + """");
+  FI;
+  modify (source file);                                          (* F5/rr *)
+  disable stop;
+  init label table;
+  store status;
+  coder on (data allocation by coder); 
+  compile (source file, progname);
+  restore status;
+  start basic prog  . 
+
+prog name is not a tag :                                         (* F5/rr *)
+  LET tag = 1;
+  INT  VAR symbol type;
+  TEXT VAR symbol name;
+  scan (prog name);
+  next symbol (symbol name, symbol type);
+  symbol name <> prog name OR symbol type <> tag .
+
+init label table:
+  IF NOT initialized (label init)
+  THEN label ds    := nilspace;
+       label list  := label ds;
+  FI  .
+
+store status:
+  INT CONST source line :: line no (source file), 
+            source col  :: col (source file);
+  BOOL CONST check status :: check;
+  check on  .
+
+restore status:
+  to line (source file, source line);
+  col (source file, source col);
+  IF NOT check status
+  THEN check off FI  .
+
+start basic prog:
+  IF error no > 0 OR is error
+    THEN basic error end
+    ELSE normal end
+  FI;
+  close (source file)  .
+
+basic error end:
+  coder off (FALSE, FALSE, nop);
+  IF is error
+    THEN put error;
+         clear error
+    ELSE display (""13""10""10"");                            (* F20/rr *)
+         display (text (error no) + compiler err msg);
+         display (""13""10""10"");
+         display (compiler msg);
+         display (""13""10"");
+         IF sysout <> ""
+            THEN line (2);
+                 put (text (error no) + compiler err msg);
+                 line (2);
+                 put (compiler msg);
+                 line
+         FI
+  FI;
+  show file and error  .
+
+show file and error:                                             (* F20/rr *)
+  IF anything noted CAND command dialogue
+     THEN noteedit (source file);
+  FI;
+  errorstop (nil) .
+
+normal end:
+  IF prog name = nil
+  THEN run basic proc
+  ELSE insert basic proc FI;
+  IF warnings AND was warning
+    THEN show file and error
+  FI.
+
+run basic proc:
+  coder off (FALSE, TRUE, basic frame); 
+  display (""13""10"") .
+ 
+insert basic proc:
+  coder off (TRUE, TRUE, basic frame);
+  coder on (data allocation by coder);
+  coder off (FALSE, FALSE, basic init);
+  display (""13""10"") .
+
+END PROC basic;
+
+PROC compile (FILE VAR source file, TEXT CONST progname):
+  enable stop;
+  init compiler;
+  init basic prog;
+
+  begin scanning (source file);
+  next symbol;
+  get statement group (eop);
+  end compiling  .
+ 
+init compiler:
+  end symbol  := 0;
+  error no    := 0;
+  act stat no := 0;
+  array base  := 0;
+  basic trace := FALSE;
+  was warning := FALSE;
+
+  init storage;
+  init label;
+  init data;
+  init table .
+ 
+init label:                                                      
+  TEXT VAR local stat no;
+  INT VAR stat nos;
+  init stat no (source file, error no);                          (* F21/rr *)
+  IF error no > 0 THEN LEAVE compile FI;
+  all stat no (local stat no, stat nos);
+  FOR i FROM 1 UPTO stat nos
+  REP declare (label list [i]) PER;
+  last label no := stat nos.                                     (* DEF/mo *)
+
+init basic prog:
+  LIB VAR packet;
+  declare (basic packet name, packet);
+  define (packet);
+  parameter (1, void type, const, nil adr);
+  declare (basic init);
+  IF progname = nil
+  THEN declare (basic frame)
+  ELSE declare (progname, 1, 0, basic frame) FI;
+  declare (basic module);
+  declare runtime const;
+  declare basic init;
+  declare basic frame;
+  declare basic module  .
+
+basic packet name:
+  IF progname <> ""
+    THEN "BASIC." + progname
+    ELSE "BASIC"
+  FI.
+
+declare runtime const:
+  allocate variable (data text, type size (text type));
+  allocate variable (data pos, type size (int type));
+  allocate variable (loc storage, type size (int type));         (* F4/rr *)
+
+  allocate denoter (true value, 0);
+  allocate denoter (false value, -1);
+  allocate denoter (niltext value, nil);
+  allocate denoter (one value, 1);
+  allocate denoter (two value, 2);
+  allocate denoter (three value, 3);
+  allocate denoter (real one value, 1.0);
+  allocate denoter (comma value, ",");
+
+  zero value    := true value;
+  int one value := one value  .
+
+declare basic init:
+  begin module;
+  define (basic init, 4);
+  parameter (1, text type, var, data text); 
+  parameter (2, int type, var, data pos);
+  apply (1, 2, "initdata");
+  parameter (1, void type, const, nil adr);
+  apply (1, 0, ret);
+  end module  .
+
+declare basic frame:
+  begin module;
+  define (basic frame, 4);
+
+  IF prog name = nil
+  THEN parameter (1, void type, const, nil adr);
+       apply (1, 0, basic init);
+  FI;
+ 
+  declare (1, int type);
+  declare (1, const);
+  define (1, 0);
+  parameter (2, void type, const, nil adr);
+  apply (1, 1, ln op);
+
+  apply (1, 0, "disablestop");
+  apply (1, 0, "startbasic");
+
+  parameter (1, int type, var, data pos);
+  parameter (2, int type, const, one value);
+  parameter (3, void type, const, nil adr);
+  apply (1, 2, int move);
+
+  parameter (1, void type, const, nil adr);
+  apply (1, 0, basic module);
+  apply (1, 0, "endbasic");
+  parameter (1, void type, const, nil adr);
+  apply (1, 0, ret);
+  end module  .
+
+declare basic module:
+  LABEL VAR start lab;
+  begin module;
+  define (basic module);
+  declare (start lab);
+  apply (1, 0, "enablestop");
+  gosub (start lab);
+  parameter (1, void type, const, nil adr);
+  apply (1, 0, "returnerror");                                   (* mo *)
+  define (start lab);
+  clear local stack .                                            (* F4/rr *)
+
+end compiling:
+  parameter (1, void type, const, nil adr);
+  apply (1, 0, ret); 
+  define (loc storage, local storage - 1);                       (* F4/rr *)
+  set length of local storage (basic module, max (2, local storage));  (* F4/rr *)
+  IF error no = 0
+  THEN end module FI  .
+
+END PROC compile;
+
+PROC get statement group (INT CONST new symbol): 
+(* 'get statement group' compiliert das ganze Programm bis zum Auftreten *)
+(* von 'end symbol'                                                      *)
+  disable stop;
+  new end symbol;
+  get all basic lines;
+  old end symbol  .
+
+new end symbol:
+  INT CONST old symbol :: end symbol;
+  end symbol := new symbol  .
+
+old end symbol:
+  end symbol := old symbol  .
+
+get all basic lines:
+  REP get basic line;
+ 
+      IF is error
+      THEN error handling
+      ELIF symb.type = eos
+      THEN check this eos FI
+  PER  .
+
+error handling:                                                  (* F20/rr *)
+  IF error in basic program 
+       THEN error no INCR 1
+  ELIF end of source file
+       THEN clear error;
+            LEAVE get all basic lines
+  ELIF halt from terminal
+       THEN LEAVE get statement group
+       ELSE error no INCR 1;
+            handle internal error;
+            LEAVE get statement group
+  FI;
+  clear error;
+  scope compulsory (TRUE);                                      (* DEF/mo *)
+  set scope ("");                                               (* DEF/mo *)
+  next statement;
+  next symbol  .
+
+error in basic program:
+  errorcode = 101.
+
+end of source file:
+  errorcode = 99.
+
+halt from terminal:
+  errorcode = 1.
+
+handle internal error :                                          (* F20/rr *)
+  TEXT VAR error :: "BASIC-Compiler ERROR";
+  IF errorcode <> 0
+  THEN error CAT " #" + text (errorcode) FI;
+  IF errorline > 0
+  THEN error CAT " at " + text (errorline) FI;
+  error CAT "  : ";
+  error CAT errormessage;
+  IF sysout <> "" THEN putline (error) FI;
+  note (error);
+  noteline;
+  clear error;
+  errorstop (error).
+
+check this eos:
+  IF symb.no = eol
+  THEN next symbol
+  ELIF symb.no = -new symbol OR symb.no = eop
+  THEN LEAVE get all basic lines                      (* mo *)
+  ELSE basic error (intern error, NAME symb, "EOL erwartet, " +
+                    type of (symb.type) + " gefunden")
+  FI  .
+
+END PROC get statement group;
+
+PROC get basic line (INT CONST new symbol):
+(*Die Abbruchbedingungen werden neu gesetzt und bei Verlassen der        *)
+(*Prozedur zurückgesetzt.                                                *)
+  disable stop;
+  INT CONST old symbol :: end symbol;
+  end symbol := new symbol; 
+  get basic line;
+  end symbol := old symbol  .
+
+END PROC get basic line;
+
+PROC get basic line:
+(* 'get basic line' behandelt genau eine Zeile mit Zeilennummer.         *)
+  enable stop;
+  IF symb.type = stat no
+  THEN gen stat no (symb.no) FI;
+
+  REP get one basic statement PER  .
+ 
+get one basic statement:
+(* 'get one basic statement' behandelt genau ein Statement.              *)
+  IF symb.type = eos
+  THEN get end of statement
+  ELIF symb.type = res word OR symb.type = var OR symb.type = array
+  THEN get one statement
+  ELSE basic error (2, NAME symb, type of (symb.type) + " ohne Zusammenhang") FI  .
+
+get end of statement:
+  IF symb.no = eos
+  THEN next symbol
+  ELSE LEAVE get basic line FI  .
+
+get one statement:
+  IF symb.type = res word
+    THEN get res word statement
+  ELIF symb.type = var OR symb.type = array
+    THEN let statement
+  FI;
+  skip comma if else expected;
+  IF symb.type <> eos
+    THEN basic error (2, NAME symb, "EOS erwartet, " + type of (symb.type) + " gefunden")
+  FI.
+
+skip comma if else expected:
+  IF end symbol = else s AND symb.type = del AND symb.no = comma
+    THEN next symbol;
+         IF symb.type <> eos OR symb.no <> -else s
+           THEN basic error (2, NAME symb, "ELSE erwartet")
+         FI
+  FI.
+  
+get res word statement:
+  SELECT symb.no OF
+  CASE as s     : basic error (90, symb.name, "") 
+  CASE base s   : basic error (91, symb.name, "")
+  CASE call s,    
+       chain s  : call statement
+  CASE clear s  : not implemented
+  CASE close s  : not implemented
+  CASE cls s    : cls statement                           (* mo *)
+  CASE common s : not implemented
+  CASE data s   : data statement 
+  CASE def s    : def statement                           (* mo *)
+  CASE defint s,
+       defdbl s,
+       defsng s,
+       defstr s : def type statement
+  CASE dim s    : dim statement
+  CASE else s   : basic error (92, symb.name, "")
+  CASE end s    : end statement
+  CASE error s  : error statement
+  CASE field s  : not implemented
+  CASE for s    : for statement
+  CASE get s    : not implemented
+  CASE gosub s  : gosub statement
+  CASE goto s   : goto statement
+  CASE if s     : if statement
+  CASE input s  : input statement
+  CASE kill s   : kill statement
+  CASE let s    : let statement
+  CASE line in s: line statement
+  CASE lprint s : lprint statement                        (* mo *)
+  CASE l set s  : l set statement
+  CASE mid s    : mid statement
+  CASE name s   : name statement
+  CASE next s   : basic error (1, symb.name, "")
+  CASE on s     : on statement
+  CASE open s   : not implemented
+  CASE option s : option statement
+  CASE print s  : print statement
+  CASE put s    : not implemented
+  CASE rand s   : randomize statement
+  CASE read s   : read statement
+  CASE rem s    : rem statement
+  CASE restore s: restore statement 
+  CASE resume s : not implemented
+  CASE return s : return statement
+  CASE r set s  : r set statement
+  CASE step s   : basic error (93, symb.name, "")
+  CASE stop s   : stop statement
+  CASE sub      : basic error (101, symb.name, "")
+  CASE swap s   : swap statement
+  CASE tab s    : basic error (94, symb.name, "")
+  CASE then s   : basic error (95, symb.name, "")
+  CASE to s     : basic error (96, symb.name, "")
+  CASE troff s  : troff statement
+  CASE tron s   : tron statement
+  CASE using s  : basic error (97, symb.name, "")
+  CASE wait s   : not implemented
+  CASE wend s   : basic error (30, symb.name, "")
+  CASE while s  : while statement
+  CASE width s  : width statement
+  CASE write s  : write statement
+  OTHERWISE basic error (104, symb.name, "") END SELECT.
+  
+not implemented:
+  basic error (100, symb.name, "").
+
+call statement:
+(*CALL <proc name> [(<argument list>)]                                   *)
+  next symbol;
+  get proc name;
+  get proc parameter;
+  apply proc  .
+
+get proc name:
+  proc name := symb.name;
+  IF symb.type = array
+  THEN proc name := subtext (proc name, 1, LENGTH proc name-2) FI;
+  next symbol  .
+
+get proc parameter:
+  params := 0;
+  IF symb.type = del AND symb.no = open bracket
+  THEN get paramfield (param, params) FI  .
+
+apply proc:
+  OPN VAR proc opn;
+  FOR i FROM 1 UPTO params
+  REP parameter (i, param [i].data, const, param [i].adr) PER;
+  identify (deshift (proc name), 1, params, proc opn, proc found);
+
+  IF NOT proc found
+    THEN basic error (99, proc name, "Parameter angegeben: " + param list (1, params))
+  ELIF result found
+    THEN basic error (5, proc name, "Kein Resultat erlaubt (gefunden: " + dump (result data) + ")")
+  FI;
+
+  examine access rights (param, params);
+
+  parameter (params+1, void type, const, nil adr);
+  apply (1, params, proc opn)  .
+
+result found:
+  NOT (result data = void type)  .
+
+result data:
+  dtype (params+1)  .
+
+cls statement:
+(*CLS                                                                    *)
+  next symbol;
+  apply (1, 0, "nextpage").
+
+data statement:
+(*DATA <list of constants>                                               *)
+  DTYPE VAR const data;
+  data line (act stat no);
+  REP IF next data (constant, const data)
+      THEN data (constant, const data)
+      ELSE basic error (2, "EOL", "Daten fehlen !") FI;
+
+      next symbol;
+      IF symb.type = eos
+      THEN LEAVE data statement
+      ELIF symb.type <> del OR symb.no <> comma
+      THEN basic error (2, NAME symb, "  , erwartet") FI
+  PER  .
+
+def statement:                         (* DEF/mo *)
+(*DEF FN<name> [(parameter list)] = <function definition>                *)
+  get function name;
+  store label of function;
+  get all params;
+  get function definition.
+
+get function name:
+  next symbol;
+  IF symb.type <> user fn
+    THEN treat wrong function name
+  ELIF LENGTH symb.name <= 2
+    THEN basic error (2, symb.name, "Unerlaubter Funktionsname")
+  ELIF known (symb.no)
+    THEN basic warning ("Die Funktion """ + symb.name + """ wurde bereits definiert");
+         was warning := TRUE
+  FI;
+  SYMBOL VAR function :: symb;
+  function.name := name of (function.no).
+
+treat wrong function name:
+  IF symb.type = var OR symb.type = array
+    THEN basic error (2, symb.name, "Funktionsname muß mit FN beginnen")
+    ELSE basic error (2, NAME symb, "Funktionsname erwartet")
+  FI.
+
+store label of function:
+  IF last label no < label list size
+    THEN last label no INCR 1
+    ELSE errorstop ("Zu viele Label")
+  FI;
+  declare (label list [last label no]);
+  TEXT VAR dim text :: "";
+  dim text CAT last label no;
+  recognize (function.no, user fn, niladr, function.data, dim text).
+
+get all params:
+  set scope (function.name + "?");
+  next symbol;
+  IF symb.type = del AND symb.no = open bracket
+    THEN REP
+           try to get a param;
+           try to get del
+         UNTIL symb.no = close bracket OR
+                    (symb.type <> del AND symb.type <> var) PER;
+         skip close bracket
+  FI.
+
+try to get a param:
+  REP
+    IF symb.type <> var
+      THEN next symbol
+    FI;
+    IF symb.type <> var
+      THEN careful error (2, NAME symb, "Parametervariable erwartet");
+           IF symb.type <> del
+             THEN next symbol
+           FI
+      ELSE treat param
+    FI
+  UNTIL symb.type <> del OR symb.no = close bracket PER.
+
+treat param:
+  IF NOT known (symb.no) 
+    THEN declare var (symb, nil);
+  ELIF already appeared in param list
+    THEN careful error (89, symb.name, "");
+  FI;
+  dim text CAT symb.no.
+
+already appeared in param list:
+  INT VAR param counter;
+  FOR param counter FROM 2 UPTO LENGTH dim text DIV 2 REP
+    IF (dim text ISUB param counter) = symb.no
+      THEN LEAVE already appeared in param list WITH TRUE
+    FI
+  PER;
+  FALSE.
+
+try to get del:
+  IF symb.type = var
+    THEN next symbol
+  FI;
+  IF symb.type = var OR (symb.type = del CAND (symb.no <> comma AND symb.no <> close bracket))
+    THEN careful error (2, symb.name, "  , in Parameterliste erwartet")
+  FI.
+
+skip close bracket:
+  IF symb.type = del AND symb.no = close bracket
+    THEN next symbol
+    ELSE careful error (2, NAME symb, "  ) nach Parameterliste erwartet")
+  FI.
+
+get function definition:
+  scope compulsory (FALSE);
+  skip (equal, operator);
+  generate forward jump;
+  define this label;
+  get expr (expr result, function.data);
+  recognize (function.no, user fn, expr result.adr, function.data, dim text);
+  goret;
+  define (behind);
+  scope compulsory (TRUE);
+  set scope ("").
+
+generate forward jump:
+  LABEL VAR behind;
+  declare (behind);
+  apply (behind).
+
+define this label:
+  define (label list [last label no]).
+
+
+def type statement:
+(*DEFINT/DBL/SNG/STR <range(s) of letters>                              *)
+  deftype := symb.no;
+  next symbol;
+  REP get letter (begin range);
+      IF symb.type = operator AND symb.no = minus
+      THEN next symbol;
+           get letter (end range)
+      ELSE end range := begin range FI; 
+
+      IF name of (begin range.no) > name of (end range.no)
+      THEN basic error (87, begin range.name + "-" + end range.name, "") 
+      ELSE define chars (name of (begin range.no), name of (end range.no), data type) FI;
+
+      IF symb.type = eos
+      THEN LEAVE def type statement
+      ELSE skip (comma, del) FI
+  PER  .
+ 
+data type:
+  SELECT deftype OF
+  CASE defint s: int type
+  CASE defstr s: text type
+  OTHERWISE real type ENDSELECT  .
+
+ dim statement:
+(*DIM <list of subscripted var results>                                    *)
+  next symbol;
+  REP get field var;
+      get field size;
+      declare field;
+
+      IF symb.type = eos
+      THEN LEAVE dim statement
+      ELSE skip (comma, del) FI
+  PER  .
+
+get field var:
+  IF symb.type = array
+    THEN IF known (symb.no)
+           THEN basic error (10, symb.name, "")
+           ELSE field := symb;
+                next symbol
+         FI
+  ELIF symb.type = var
+    THEN basic error (2, symb.name, "Dimensionsangabe fehlt")
+    ELSE basic error (2, NAME symb, "Feldname erwartet")
+  FI.
+
+get field size:
+  field size := "";
+  field elems := 1;
+  skip (open bracket, del);
+
+  REP get const (size, int type);
+      INT CONST field limit :: size.name ISUB 1;
+      IF field limit < array base
+      THEN basic error (88, NAME size, "Die Obergrenze muß >= " +
+                                        text (array base) + " sein")
+      ELSE field size CAT (mki (field limit));
+           field elems := field elems * (field limit + 1 - array base)
+      FI;
+
+      IF symb.type = del AND symb.no = close bracket
+      THEN next symbol;
+           LEAVE get field size
+      ELSE skip (comma, del) FI
+  PER  .
+
+declare field:
+  field size CAT mki (array base);
+  field size CAT mki (field elems);
+  declare var (field, field size)  .
+
+end statement:
+(*END                                                                    *)
+  next symbol;
+  parameter (1, void type, const, nil adr);
+  apply (1, 0, ret)  .
+
+error statement:
+(*ERROR <integer expr result>                                             *)
+  next symbol;
+  get expr (expr result, int type);
+  parameter (1, int type, const, expr result.adr);
+  parameter (2, text type, const, niltext value);
+  apply (1, 2, "errorstop")  .
+
+gosub statement:
+(*GOSUB <line number>                                                    *) 
+  next symbol;
+  get const (label, int type);
+  gosub (this label)  .
+
+goto statement :
+(*GOTO <line number>                                                     *)
+  next symbol;
+  get const (label, int type);
+  apply (this label)  .
+
+this label: label list [label pos (label no)]  .
+label no:  label.name ISUB 1  .
+
+input statement:
+(*INPUT [;]["Anfrage" ;/,] Variable [, Variable]                         *) 
+  ROW 100 DTYPE VAR input var data;
+  INT VAR number input vars;
+  LABEL VAR input lab;
+  next symbol;
+  declare (input lab);
+  define (input lab);
+  get semicolon for cr lf;
+  get question and question mark;
+  apply (1, 3, "readinput");
+  get input eof;
+  get data types of input vars (input var data, number input vars); (* F25/rr *)
+  check data types of input vars;                                (* F8/F25/rr *)
+  apply (1, 0, "inputok");
+  apply (input lab, FALSE);                                      
+  assign list of input var .                                     (* F8/F25/rr *)
+
+get semicolon for cr lf:
+  IF symb.type = del AND symb.no = semicolon
+  THEN next symbol;
+       parameter (1, bool type, const, false value)
+  ELSE parameter (1, bool type, const, true value) FI   .
+
+get question and question mark:
+  IF symb.type = const AND symb.data = text type
+  THEN get const (question, text type);
+       parameter (2, text type, const, question.adr);
+       parameter (3, bool type, const, question mark value);
+       next symbol
+  ELSE parameter (2, text type, const, niltext value);
+       parameter (3, bool type, const, true value);              (* F7/rr *)
+  FI  .
+
+question mark value:
+  IF symb.type = del AND symb.no = semicolon
+  THEN true value
+  ELIF symb.type = del AND symb.no = comma
+  THEN false value
+  ELSE basic error (2, NAME symb, "  ; oder , erwartet"); nil adr FI  .
+
+get input eof:
+ IF symb.type = res word AND symb.no = eof s
+ THEN next symbol;
+      get const (label, int type);
+      apply (1, 0, "inputeof");
+      apply (this label, TRUE)
+ FI .
+ 
+check data types of input vars :                                (* F8/F25/rr *)
+  FOR i FROM 1 UPTO number input vars
+  REP parameter (1, int type, const, input data type);
+      apply (1, 1, "checkinput");
+      apply (input lab, FALSE);
+  PER .
+
+input data type :                                               (* F8/F25/rr *)
+   IF   input var data (i) =  int type THEN one value
+   ELIF input var data (i) = real type THEN two value
+   ELIF input var data (i) = text type THEN three value
+                                       ELSE zero value
+   FI .
+
+assign list of input var :                                       (* F8/F25/rr *)
+  REP get var (var result);
+      parameter (1, var result. data, var, var result. adr);
+      apply (1, 1, "assigninput");
+
+      IF symb.type = del AND symb.no = comma
+      THEN next symbol
+      ELSE LEAVE assign list of input var FI
+  PER .
+
+kill statement:
+(*KILL <filename>                                                        *)
+  next symbol;
+  get expr (filename, text type);
+
+  parameter (1, text type, const, filename.adr);
+  parameter (2, quiet type, const, next local adr (int type));
+  apply (2, 0, "quiet");
+  apply (1, 2, "forget")  .
+
+let statement:
+(*[LET] <var> = <expression>                                             *)
+  IF symb.type = res word AND symb.no = let s
+  THEN next symbol FI;
+  get var (var result);
+  skip (equal, operator);
+  get expr (expr result, var result.data);
+  apply move (var result.adr, expr result.adr, var result.data).
+
+line statement:                                                  (* F9/rr *)
+(*1.  LINE INPUT [;][<"prompt string">;]<string var result>                *)
+  next symbol;
+  skip (input s, res word);
+  get semicolon;
+  get prompt string;
+  apply (1, 3, "readinput");
+  assign string var result  .
+
+get semicolon:
+  IF symb.type = del AND symb.no = semicolon
+  THEN next symbol;
+       parameter (1, bool type, const, false value)
+  ELSE parameter (1, bool type, const, true value) FI   .
+
+get prompt string:
+  IF symb.type = const AND symb.data = text type
+  THEN get const (question, text type);
+       parameter (2, text type, const, question.adr);
+       skip (semicolon, del);
+  ELSE parameter (2, text type, const, niltext value);
+  FI;
+  parameter (3, bool type, const, false value) .
+
+assign string var result :
+  get var (var result, text type);
+  parameter (1, text type, var, var result.adr);
+  apply (1, 1, "assigninputline") .
+
+lprint statement:
+(*LPRINT        (cf. PRINT)                                              *)
+  apply (1, 0, "switchtoprintoutfile");
+  print statement;
+  apply (1, 0, "switchbacktooldsysoutstate").
+
+l set statement:
+(*LSET <string var> = <string expression>                                *) 
+  next symbol;
+  get var (var result, text type);
+  skip (equal, operator);
+  get expr (expr result, text type);
+  parameter (1, text type, var, var result.adr);
+  parameter (2, text type, const, expr result.adr);
+  apply (1, 2, "lset")  .
+
+mid statement:
+(*MID$  (<string var>, from [,len]) = <string expression>                *) 
+  next symbol;
+  skip (open bracket, del);
+  get var (var result, text type);
+  skip (comma, del);
+  get expr (from, int type);
+  IF symb.type = del AND symb.no = comma
+  THEN next symbol;
+       get expr (len, int type)
+  ELSE len := nilsymbol FI;
+  skip (close bracket, del);
+  skip (equal, operator);
+  get expr (expr result, text type);
+
+  parameter (1, text type, var, var result.adr);
+  parameter (2, int type, const, from.adr);
+  parameter (3, text type, const, expr result.adr);
+  IF len.data = int type
+  THEN parameter (4, int type, const, one value);
+       parameter (5, int type, const, len.adr);
+       parameter (6, text type, var, next local adr (text type));
+       apply (3, 3, "subtext");
+       parameter (3, text type, const, local adr);
+  FI;
+  apply (1, 3, "replace")  .
+
+name statement:
+(*NAME <old filename> AS <new filename>                                  *) 
+  next symbol;
+  get expr (old name, text type);
+  skip (as s, res word);
+  get expr (new name, text type);
+  parameter (1, text type, const, old name.adr);
+  parameter (2, text type, const, new name.adr);
+  apply (1, 2, "rename")  .
+
+option statement:
+(*OPTION BASE 0|1                                                        *)
+  next symbol;
+  skip (base s, res word);
+  get const (base size, int type);
+  IF new array base > 1
+    THEN basic error (105, NAME base size, "")
+    ELSE array base := new array base
+  FI.
+
+new array base:
+  base size.name ISUB 1.
+
+randomize statement:
+(*RANDOMIZE [<expression>]                                               *)
+  next symbol;
+  IF symb.type = eos
+  THEN apply (1, 0, "initrnd")
+  ELSE get expr (expr result, real type);
+       parameter (1, real type, const, expr result.adr);
+       apply (1, 1, "initrnd")
+  FI  .
+
+read statement:
+(*READ <list of var>                                                *) 
+  next symbol;
+  REP get var (var result);
+      parameter (1, text type, const, data text);
+      parameter (2, int type, var, data pos);
+      parameter (3, var result.data, var, var result.adr);
+      apply (1, 3, "read");
+
+      IF symb.type = eos
+      THEN LEAVE read statement
+      ELSE skip (comma, del) FI
+  PER  .
+
+rem statement:
+(*REM <remark>                                                           *)
+  next statement;
+  symb := SYMBOL : ("", eol, eos, LOC 0, void type); 
+  LEAVE get basic line  .
+
+restore statement:
+(*RESTORE [<line number>]                                                *) 
+  next symbol;
+  IF symb.type = eos
+  THEN parameter (1, int type, var, data pos);
+       parameter (2, int type, const, one value);
+       parameter (3, void type, const, nil adr);
+       apply (1, 2, int move);
+  ELSE get const (label, int type);
+       parameter (1, text type, const, data text);
+       parameter (2, int type, var, data pos);
+       parameter (3, int type, const, label.adr);
+       apply (1, 3, "restore")
+  FI  .
+
+return statement :
+(*RETURN                                                                 *)
+  next symbol;
+  goret  .
+
+r set statement:
+(*RSET <string var> = <string expression>                           *) 
+  next symbol;
+  get var (var result, text type);
+  skip (equal, operator);
+  get expr (expr result, text type);
+  parameter (1, text type, var, var result.adr);
+  parameter (2, text type, const, expr result.adr);
+  apply (1, 2, "rset")  .
+
+stop statement: 
+(*STOP                                                                   *)
+  next symbol;
+  expr result := SYMBOL: (nil, any, const, nil adr, int type);
+  expr result.name CAT act stat no;
+  declare const (expr result, int type);
+  parameter (1, int type, const, expr result.adr);
+  apply (1, 1, "basicstop");
+  parameter (1, void type, const, nil adr);
+  apply (1, 0, ret)  .
+
+swap statement:
+(*SWAP <var>,<var>                                             *)
+  next symbol;
+  get var (var result);
+  parameter (1, var result.data, var, var result.adr);
+  DTYPE CONST first var result data :: var result.data;
+  skip (comma, del);
+  get var (var result);
+  IF first var result data = var result.data
+    THEN parameter (2, var result.data, var, var result.adr);
+         apply (1, 2, "swap")
+    ELSE basic error (106, var result.name, "gefunden: "
+           + dump (first var result data) + ", " + dump (var result.data))
+  FI.
+
+troff statement:
+(*TROFF                                                                  *)
+  next symbol;
+  basic trace := FALSE  .
+
+tron statement:
+(*TRON                                                                   *)
+  next symbol;
+  basic trace := TRUE  .
+
+width statement:
+(*WIDTH Größe                                                            *)
+  next symbol;
+  get expr (expr result, int type);
+  parameter (1, int type, const, expr result.adr);
+  apply (1, 1, "width")  .
+
+write statement:
+(*WRITE [<list of expr results>]                                          *)
+  next symbol;
+
+  IF symb.type = eos
+  THEN apply (1, 0, "nextline")
+  ELSE write list of expr results FI  .
+
+write list of expr results:
+  REP get expr (expr result);
+      parameter (1, expr result.data, const, expr result.adr);
+      apply (1, 1, "basicwrite");
+
+      IF symb.type = eos
+      THEN apply (1, 0, "nextline");
+           LEAVE write list of expr results
+      ELSE skip (comma, del);
+           parameter (1, text type, const, comma value);
+           apply (1, 1, "basicout") 
+      FI
+  PER  .
+
+END PROC get basic line;
+
+PROC gen stat no (INT CONST local stat no):
+(*               Die Zeilennummer wird als Label definiert               *)
+(*     Die Prozedur 'stat no' wird mit der Statementnummer aufgerufen    *)
+  act stat no := local stat no;
+  define (label list [label pos (act stat no)]);
+
+  declare (1, int type);
+  declare (1, const);
+  define (1, act stat no);
+  parameter (2, void type, const, nil adr);
+  apply (1, 1, ln op);
+
+  IF basic trace
+  THEN expr result := SYMBOL: (nil, any, const, nil adr, int type);
+       expr result.name CAT act stat no;
+       declare const (expr result, int type);
+       parameter (1, int type, const, expr result.adr);
+       apply (1, 1, trace op)
+  FI;
+  next symbol  .
+
+END PROC gen stat no;
+
+PROC for statement:
+(*FOR <var> = x TO y [STEP z]                                       *)
+  SYMBOL VAR local var result, init val, limit val, step val;
+  LABEL VAR start loop, end loop;
+  INT CONST  for stat no      := act stat no,                     (* F29/rr *)
+             for scan line no := scan line no;
+  TEXT CONST for symb name    := symb.name;
+  declare (start loop);
+  declare (end loop);
+
+  next symbol;
+  get loop var;
+  skip (equal, operator);
+  get expr (init val, local var result.data);
+  skip (to s, res word);
+  get expr (limit val, local var result.data);
+  get step val;
+
+  init loop var;
+  define (start loop);
+  gen check of variable;
+  get statement group (next s);
+
+  IF symb.type = eos AND symb.no = -next s
+  THEN next var statement
+  ELSE define (end loop);
+       basic error ("Compiler", 26, for scan line no, for stat no, for symb name, "", TRUE); (* F29/rr *)
+  FI  .
+
+get loop var:
+  get var (local var result);
+  IF NOT (local var result.data = int type OR local var result.data = real type)
+    THEN basic error (2, NAME local var result, "INT oder REAL erwartet, "
+                        + dump (local var result.data) + " gefunden")
+  FI  .
+
+get step val:
+  IF symb.type = res word AND symb.no = step s
+  THEN next symbol;
+       get expr (step val, local var result.data)
+  ELIF local var result.data = int type
+  THEN step val.data := int type;
+       step val.adr  := int one value
+  ELSE step val.data := real type;
+       step val.adr  := real one value
+  FI  .
+
+init loop var:
+  IF local var result.data = int type
+  THEN init int loop
+  ELSE init real loop FI .
+
+init int loop:
+  IF limit val.type = var
+  THEN parameter (1, int type, var, next local adr (int type));
+       parameter (2, int type, const, limit val.adr);
+       parameter (3, void type, const, nil adr);
+       apply (1, 2, int move);
+       limit val.adr := local adr;
+  FI;
+  IF step val.type = var
+  THEN parameter (1, int type, var, next local adr (int type));
+       parameter (2, int type, const, step val.adr);
+       parameter (3, void type, const, nil adr);
+       apply (1, 2, int move);
+       step val.adr := local adr;
+  FI;
+  IF NOT (init val.no = local var result.no)
+  THEN parameter (1, int type, var, local var result.adr);
+       parameter (2, int type, const, init val.adr);
+       parameter (3, void type, const, nil adr);
+       apply (1, 2, int move) 
+  FI  .
+
+init real loop:
+  IF limit val.type = var
+  THEN parameter (1, real type, var, next local adr (real type));
+       parameter (2, real type, const, limit val.adr);
+       parameter (3, void type, const, nil adr);
+       apply (1, 2, real move);
+       limit val.adr := local adr;
+  FI;
+  IF step val.type = var
+  THEN parameter (1, real type, var, next local adr (real type));
+       parameter (2, real type, const, step val.adr);
+       parameter (3, void type, const, nil adr);
+       apply (1, 2, real move);
+       step val.adr := local adr;
+  FI;
+  IF NOT (init val.no = local var result.no)
+  THEN parameter (1, real type, var, local var result.adr);
+       parameter (2, real type, const, init val.adr);
+       parameter (3, void type, const, nil adr);
+       apply (1, 2, real move) 
+  FI  .
+
+gen check of variable:
+  parameter (1, local var result.data, const, local var result.adr);
+  parameter (2, limit val.data,  const, limit val.adr);
+  parameter (3, step val.data, const, step val.adr);
+  parameter (4, bool type, const, nil adr);  apply (4, nop);
+(*    In der nächsten Coder-Version ist eine PUSH-Angabe nop nicht nötig *)
+  apply (1, 3, "loopend");
+  apply (end loop, TRUE)  .
+
+next var statement:
+(*NEXT [<var>][,<var>...]                                  *)
+  next symbol;
+  generate loop end;
+  IF symb.type <> eos
+  THEN check next var result FI  .
+
+check next var result:
+  IF symb.no = local var result.no
+  THEN next symbol;
+       IF symb.type = del AND symb.no = comma
+       THEN next for loop FI
+  ELSE basic error (86, NAME symb, local var result.name + " erwartet") FI  .
+
+next for loop:
+  IF end symbol = next s
+    THEN symb := SYMBOL:("", -next s, eos, nil adr, void type)
+    ELSE basic error (1, symb.name, "")                        (* mo *)
+  FI.
+
+generate loop end:
+  parameter (1, local var result.data, var, local var result.adr);
+  parameter (2, step val.data, const, step val.adr);
+  parameter (3, void type, const, nil adr);
+  IF local var result.data = int type
+  THEN apply (1, 2, int incr)
+  ELSE apply (1, 2, real incr) FI;
+
+  apply (start loop);
+  define (end loop)  .
+
+END PROC for statement;
+
+PROC if statement :                                   (* Änd. 11.08.87, mo *)
+(*  IF <expression> THEN <statement(s)>|<line number>                    *)
+(*                 [ELSE <statement(s)>|<line number>]                   *)
+(*  IF <expression> GOTO <line number>                                   *)
+(*                 [ELSE <statement(s)>|<line number>]                   *)
+  SYMBOL VAR local expr result;
+  next symbol;
+  get expr (local expr result, int type);
+  skip comma if there;
+  IF symb.type = res word AND (symb.no = then s OR symb.no = goto s)
+    THEN test expr result;
+         IF symb.no = goto s
+           THEN next symbol;
+                if goto statement
+         ELIF next symbol is stat no
+           THEN if goto statement
+           ELSE if then statement
+         FI
+  ELSE basic error (2, NAME symb, "THEN oder GOTO erwartet") FI  .
+
+skip comma if there:
+  IF symb.no = comma AND symb.type = del
+    THEN next symbol
+  FI.
+
+test expr result:
+  parameter (1, int type, const, local expr result.adr);
+  parameter (2, bool type, var, nil adr);  apply (2, nop);
+  apply (1, 1, test)  .
+
+next symbol is stat no:
+  next symbol;
+  symb.type = const AND symb.data = int type.
+
+if goto statement:
+  SYMBOL VAR stat label;
+  get const (stat label, int type);
+  expect else if comma found;
+  IF symb.type = res word AND symb.no = else s
+    THEN apply (this label, FALSE);
+         treat else case
+  ELIF symb.type <> eos OR symb.no <> eol
+    THEN declare (else label);
+         apply (this label, FALSE);
+         apply (else label);
+         get basic line (else s);
+         IF symb.type = eos AND symb.no = -else s
+           THEN else statement
+           ELSE define (else label)
+         FI
+    ELSE apply (this label, FALSE)
+  FI.
+
+this label: label list [label pos (label no)]  .
+label no:  stat label.name ISUB 1  .
+
+expect else if comma found:
+  IF symb.type = del AND symb.no = comma
+    THEN next symbol;
+         IF symb.no <> else s OR symb.type <> res word
+           THEN basic error (2, NAME symb, "ELSE erwartet")
+         FI
+  FI.
+
+treat else case:
+  IF next symbol is stat no
+    THEN get const (stat label, int type);
+         apply (this label)
+    ELSE get basic line
+  FI.
+
+if then statement:
+  LABEL VAR fi label;
+  declare (else label);
+  apply (else label, TRUE);
+  get basic line (else s);
+
+  IF symb.type = eos AND symb.no = -else s
+  THEN declare (fi label);
+       apply (fi label);
+       else statement;
+       define (fi label)
+  ELSE define (else label) FI  .
+
+
+else statement:
+  LABEL VAR else label;
+  define (else label); 
+  treat else case.
+
+
+END PROC if statement;
+
+PROC on statement:
+(*2.  ON <expression> GOSUB <list of line numbers>                       *)
+(*3.  ON <expression> GOTO <list of line numbers>                        *)
+  LABEL VAR before case, after case, return case;
+  declare (before case);
+  declare (after case);
+  declare (return case);
+
+  next symbol;
+  IF symb.type = res word AND symb.no = error s
+    THEN basic error (100, symb.name, "")
+  FI;
+  get expr (expr result, int type);
+  IF on gosub statement
+  THEN gosub (before case);
+       apply (after case)
+  ELIF NOT on goto statement
+  THEN basic error (2, symb.name, "GOTO oder GOSUB erwartet") FI;
+
+  get case stat no;
+  define (before case);
+  gen case branches;
+  gen return case;
+  define (after case)  .
+
+on gosub statement:
+  BOOL CONST gosub found := symb.type = res word AND symb.no = gosub s;
+  gosub found  .
+
+on goto statement:
+  symb.type = res word AND symb.no = goto s.
+
+get case stat no:
+  TEXT VAR case stat no :: nil;
+  INT VAR case no :: 0;
+  next symbol;
+  REP get const (label, int type);
+      case no INCR 1;
+      case stat no CAT label.name;
+
+      IF symb.type = eos
+      THEN LEAVE get case stat no
+      ELSE skip (comma, del) FI
+  PER  .
+
+gen case branches:
+  computedbranch (expr result.adr, case no + 1, otherwise lab);  (* F6/rr *)
+  apply (otherwise lab);
+  FOR i FROM 1 UPTO case no
+  REP apply (label i) PER  .
+
+gen return case:
+  IF gosub found
+  THEN define (return case);
+       goret
+  FI  .
+
+otherwise lab:
+  IF gosub found
+  THEN return case
+  ELSE after case FI  .
+
+label i:
+  label list [label pos (case stat no ISUB i)]  .
+
+END PROC on statement;
+
+PROC print statement:
+(*PRINT [<list of expr results>]                                         *)
+(*PRINT USING <string exp>;<list of expression>                          *)
+(*PRINT #<file number>,<list of expr results>                            *) 
+(*PRINT #<file number>, USING <string exp>;<list of expression>          *)
+  next symbol;
+  IF symb.type = del AND symb.no = numbersign
+  THEN print file statement
+  ELSE print display statement FI  .
+
+print file statement:
+  basic error (100, symb.name, "")  .
+
+print display statement:
+  get format string;
+  print list of expr results;
+  reset format string  .
+
+get format string:
+  IF symb.type = res word AND symb.no = using s
+  THEN next symbol;
+       get expr (image, text type);
+       skip (semicolon, del);
+       parameter (1, text type, const, image.adr);
+       apply (1, 1, "using");
+  ELSE image := nilsymbol FI  .
+
+reset format string:
+  IF image.type <> any
+  THEN apply (1, 0, "clearusing") FI  .
+
+print list of expr results:
+  REP IF symb.type = res word AND symb.no = tab s
+      THEN get tabulation
+      ELIF symb.type = del AND symb.no = comma
+      THEN get next zone
+      ELIF symb.type = del AND symb.no = semicolon
+      THEN get next pos
+      ELIF symb.type = eos
+      THEN apply (1, 0, "nextline");
+           LEAVE print list of expr results 
+      ELSE get print expr result FI;
+  PER  .
+
+get tabulation:
+  next symbol;
+  skip (open bracket, del);
+  get expr (tab pos, int type);
+  skip (close bracket, del);
+  parameter (1, int type, const, tab pos.adr);
+  apply (1, 1, "tab")  .
+
+get next zone:
+  next symbol;
+  IF image.type = any
+  THEN apply (1, 0, "nextzone") FI;
+  IF symb.type = eos
+  THEN LEAVE print list of expr results FI  .
+
+get next pos:
+  next symbol;
+  IF symb.type = eos
+  THEN LEAVE print list of expr results FI  .
+
+get print expr result:
+  get expr (expr result);
+  parameter (1, expr result.data, const, expr result.adr);
+  apply (1, 1, "basicout")  .
+
+END PROC print statement;
+
+PROC while statement:
+(*WHILE <expression>                                                     *)
+  LABEL VAR while lab, wend lab;
+  SYMBOL VAR while expr result;
+  INT CONST  while stat no      := act stat no,                   (* F29/rr *)
+             while scan line no := scan line no;
+  TEXT CONST while symb name    := symb.name;
+  next symbol;
+  declare (while lab);
+  declare (wend lab);
+
+  define (while lab);
+  get expr (while expr result, int type);
+  parameter (1, int type, const, while expr result.adr);
+  parameter (2, bool type, const, nil adr);  apply (2, nop);
+  apply (1, 1, test);
+  apply (wend lab, TRUE);              (* 'test' vergleicht mit 0 *)
+
+  get statement group (wend s);
+  IF symb.type = eos AND symb.no = -wend s
+  THEN wend statement
+  ELSE basic error ("Compiler", 29, while scan line no, while stat no, while symb name, "", TRUE) FI. (* F29/rr *)
+
+wend statement:
+(*WEND                                                                   *)
+  apply (while lab);
+  define (wend lab);
+  next symbol  .
+
+END PROC while statement;
+
+END PACKET basic compiler
+

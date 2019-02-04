@@ -1,0 +1,3 @@
+PACKETrenamearchivecmdDEFINESrenamearchive:DATASPACE VARds:=nilspace;forget(ds);LET HEADER = STRUCT(TEXTname,date,INTtype,TEXTpass);BOUND HEADER VARheader;INT VARopc;PROCrenamearchive(TEXT CONSTnewname):archive(newname);release(archive);opc:=channel;forget(ds);ds:=nilspace;continue(31);disablestop;rewind;read(ds);break(quiet);enablestop;continue(opc);header:=ds;IFyes("archiv """+header.name+""" in """+newname+""" umbenennen")THENheader.name:=newname;continue(31);disablestop;rewind;write(ds);brea
+k(quiet);enablestop;continue(opc);archive(newname)FI;forget(ds).ENDPROCrenamearchive;ENDPACKETrenamearchivecmd;
+

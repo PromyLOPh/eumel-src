@@ -1,0 +1,389 @@
+PACKET net hardware
+
+(************************************************************************)
+(****  Netzprotokoll Anpassung                                          *)
+(****  Komplette Version mit BUS Anpassung           10.06.87           *)
+(****  mit I/0 Controls  fuer integrierte Karten                        *)
+(****  Verschiedene Nutztelegrammgrössen                                *)
+(****  Version: GMD 2.0                              A.Reichpietsch     *)
+(************************************************************************)
+
+   DEFINES
+        blockin,
+        blockout,
+        set net mode,
+        net address,
+        mode text,
+        data length,
+        data length via node,
+        decode packet length,
+        next packet start,
+        flush buffers,
+        transmit header,
+        transmit trailer,
+        version,
+        reset box,
+        max mode,
+        net mode:
+
+
+
+
+   LET                eak prefix laenge = 6,
+               packet length before stx = 14  (*eth header =14 *),
+                        maximum mode nr = 12,
+                                    stx = ""2"",
+                                niltext = "",
+                                   null = "0",
+                               hex null = ""0"",
+                                  blank = " ",
+                             eak prefix = ""0""0""0""0"",
+                             typefield  = "EU",
+                        prefix adresse  = "BOX",
+                 second prefix adresse  = ""0"BOX",
+             second address type bound  = 90;
+
+   INT CONST data length via node :: 64;
+   TEXT CONST version :: "GMD 2.0  (10.6.87)";
+
+
+   TEXT VAR own address;
+   INT VAR paketlaenge, eumel paket laenge, mode, rahmenlaenge, actual data length;
+
+BOOL PROC blockin (DATASPACE VAR ds, INT CONST seite, abstand, laenge): 
+   INT VAR hilfslaenge:=laenge, code:= abstand+laenge+512;
+   REAL VAR time out := clock (1) + 10.0;
+   REP 
+      blockin (ds,seite,code-hilfslaenge, hilfslaenge, hilfslaenge); 
+   UNTIL hilfslaenge = 0 OR clock (1) > time out PER  ;
+   IF hilfslaenge <> 0
+   THEN report ("blockin abbruch, fehlende Zeichen: "+text(hilfslaenge));
+    FI;
+   hilfslaenge = 0
+END PROC blockin; 
+ 
+PROC blockout (DATASPACE CONST ds, INT CONST seite, abstand, laenge): 
+   INT VAR hilfslaenge:=laenge, code:= abstand+laenge+512; 
+   REP 
+      blockout (ds,seite,code-hilfslaenge, hilfslaenge, hilfslaenge); 
+   UNTIL hilfslaenge = 0 PER 
+END PROC blockout; 
+
+PROC set net mode (INT CONST new mode):
+   mode := new mode ;
+   own address := net address (station(myself));
+   SELECT mode OF
+      CASE 1,3   : set data length (64);
+      CASE 2     : std framelength; set data length (64)
+      CASE 4,6   : set data length (128)
+      CASE 5     : std framelength; set data length (128)
+      CASE 7,9   : set data length (256)
+      CASE 8     : std framelength; set data length (256)
+      CASE 10,12 : set data length (512)
+      CASE 11    : std framelength; set data length (512);
+
+      OTHERWISE
+   END SELECT.
+
+   std framelength:
+      rahmenlaenge := eak prefix laenge + packet length before stx.
+
+ENDPROC set net mode;
+
+INT PROC max mode:
+   maximum mode nr
+ENDPROC max mode;
+
+INT PROC net mode:
+   mode
+ENDPROC net mode;
+
+TEXT PROC mode text:
+   mode text (mode)
+ENDPROC mode text;
+
+TEXT PROC mode text (INT CONST act mode):
+   SELECT act mode OF
+      CASE 1:   "Modus: (1)  EUMEL-Netz           64 Byte"
+      CASE 2:   "Modus: (2)  ETHERNET via V.24    64 Byte"
+      CASE 3:   "Modus: (3)  ETHERNET integrated  64 Byte"
+      CASE 4:   "Modus: (4)  EUMEL-Netz           128 Byte"
+      CASE 5:   "Modus: (5)  ETHERNET via V.24    128 Byte"
+      CASE 6:   "Modus: (6)  ETHERNET integrated  128 Byte"
+      CASE 7:   "MODUS: (7)  EUMEL-Netz           256 Byte"
+      CASE 8:   "MODUS: (8)  ETHERNET via V.24    256 Byte"
+      CASE 9:   "MODUS: (9)  ETHERNET integrated  256 Byte"
+      CASE 10:  "MODUS: (10) EUMEL-Netz           512 Byte"
+      CASE 11:  "MODUS: (11) ETHERNET via V.24    512 Byte"
+      CASE 12:  "MODUS: (12) ETHERNET integrated  512 Byte"
+      OTHERWISE  errorstop ("Modus " + text(mode) + " gibt es nicht");
+                 error message
+   END SELECT
+
+ENDPROC mode text;
+
+PROC set data length (INT CONST new data length):
+    actual data length := new data length
+ENDPROC set data length;
+
+INT PROC data length:
+    actual data length
+ENDPROC data length;
+
+PROC reset box (INT CONST net mode):
+   SELECT net mode OF
+      CASE 1,4,7,10   :   eumel net box reset
+      CASE 2,5,8,11   :   eak reset
+      OTHERWISE    controler reset
+   END SELECT.
+
+   eumel net box reset:
+      out (90*""4""); 
+      REP UNTIL incharety (1) = niltext PER. 
+
+   eak reset:
+      out ("E0"13"E0"13"").
+
+   controler reset:
+      INT VAR dummy;
+      control (-35, 0,0,dummy);
+      control (22,0,0,dummy).
+
+ENDPROC reset box;
+
+PROC remove frame
+   (TEXT VAR erstes zeichen vom eumel telegramm, BOOL VAR kein telegramm da):
+   kein telegramm da := FALSE;
+   SELECT net mode OF
+      CASE 2,5,8,11  : remove ethernet frame
+                       (erstes zeichen vom eumel telegramm, kein telegramm da)
+   OTHERWISE
+   END SELECT;
+ENDPROC remove frame;
+
+PROC remove ethernet frame (TEXT VAR string, BOOL VAR schrott):
+   TEXT VAR  speicher, t;
+   INT VAR lg;
+
+   t := string;
+   speicher := niltext;
+   WHILE kein stx da REP
+      lies zeichen ein;
+      teste auf timeout;
+   UNTIL textoverflow PER;
+   melde eingelesene zeichen.
+
+   lies zeichen ein:
+      speicher CAT t;
+      t := incharety (1).
+
+   teste auf timeout:
+      IF t = niltext THEN schrott := (speicher <> niltext)
+                                         CAND not only fill characters;
+                          string := niltext;
+                          LEAVE remove ethernet frame
+      FI.
+
+   not only fill characters:
+      pos (speicher, ""1"", ""254"",1) <> 0.
+
+   kein stx da :
+      t <> stx.
+
+   textoverflow:
+      length (speicher) > 1000.
+
+   melde eingelesene zeichen:
+      IF kein stx da
+         THEN kein eumeltelegrammanfang
+         ELSE untersuche ethernet header
+      FI.
+
+   kein eumeltelegrammanfang:
+      report ("skipped ,fehlendes <STX> ,letztes Zeichen:", t);
+      string := t;
+      schrott := TRUE.
+
+   untersuche ethernet header:
+      string := t;
+      IF ethernet header inkorrekt
+         THEN melde fehler
+      FI.
+
+   ethernet header inkorrekt:
+      lg := length (speicher);
+      packet zu kurz COR adresse falsch.
+
+   packet zu kurz:
+      lg < packet length before stx.
+
+   adresse falsch:
+      INT VAR adrpos := pos (speicher, own address);
+      zieladresse falsch COR adresse nicht an der richtigen pos .
+
+   zieladresse falsch:
+      adrpos < 1.
+
+   adresse nicht an der richtigen pos:
+      adrpos <> lg - packet length before stx + 1.
+
+   melde fehler:
+      report ("Header inkorrekt eingelesen: ", speicher + t);
+      string := t;
+      schrott := TRUE.
+
+ENDPROC remove ethernet frame;
+
+TEXT PROC next packet start:
+
+  TEXT VAR t := niltext;
+  BOOL VAR schrott := FALSE;
+
+   t:= incharety (1);
+   IF t = niltext THEN LEAVE next packet start WITH niltext
+                  ELSE remove frame (t, schrott)
+   FI;
+   IF schrott THEN no stx or niltext
+              ELSE t
+   FI.
+
+   no stx or niltext:
+      IF t = stx THEN "2"
+        ELIF t = niltext THEN "0"
+          ELSE t
+      FI.
+
+ENDPROC next packet start;
+
+PROC flush buffers:
+  REP UNTIL incharety (5) = niltext PER;
+  report ("buffers flushed");
+ENDPROC flush buffers;
+
+PROC transmit header (DATASPACE CONST w):
+   BOUND INT VAR laengeninformation := w;
+   eumel paket laenge := laengeninformation ;
+   decode packet length (eumel paket laenge);
+   SELECT net mode OF
+      CASE 1,4,7,10     :
+      CASE 2,5,8,11     : eak und eth header senden (w)
+      OTHERWISE         : telegrammanfang melden;
+                          std ethernet header senden (w)
+   END SELECT;
+
+ENDPROC transmit header;
+
+PROC decode packet length (INT VAR decoded length):
+
+  decoded length DECR 2;
+  rotate (decoded length, 8);
+
+  IF decoded length < 96 THEN
+    ELIF decoded length < 128 THEN decoded length INCR 32
+      ELIF decoded length < 160 THEN decoded length INCR 128
+        ELIF decoded length < 192 THEN decoded length INCR 352
+          ELIF decoded length < 224 THEN decoded length INCR 832
+            ELIF decoded length < 256 THEN decoded length INCR 1824
+  FI;
+
+ENDPROC decode packet length;
+
+PROC transmit trailer:
+   INT VAR dummy;
+   SELECT net mode OF
+      CASE 3,6,9,12 : control (21,0,0,dummy)
+       OTHERWISE
+   END SELECT.
+
+ENDPROC transmit trailer;
+
+PROC std ethernet header senden (DATASPACE CONST x):
+   TEXT VAR  eth adresse, ethernet kopf := niltext;
+   INT VAR adresse;
+   BOUND STRUCT (INT head, zwischennummern) VAR header := x;
+   zieladresse holen;
+   zieladresse senden;
+   quelladresse senden;
+   typfeld senden;
+   ausgeben.
+   
+   zieladresse holen:
+      adresse := header.zwischennummern AND 255;
+      eth adresse := net address (adresse).
+
+   zieladresse senden:
+      ethernetkopf CAT eth adresse.
+
+   quelladresse senden:
+      ethernetkopf CAT own address.
+
+   typfeld senden:
+      ethernetkopf CAT typefield.
+
+   ausgeben:
+      out (ethernetkopf).
+
+ENDPROC std ethernet header senden;
+
+PROC telegrammanfang melden:
+   INT VAR dummy;
+      control (20,eumel paket laenge + packet length before stx,0, dummy).
+
+ENDPROC telegrammanfang melden;
+
+PROC eak und eth header senden (DATASPACE CONST x):
+   TEXT VAR res:= niltext;
+
+   neue laenge berechnen;
+   eak kopf senden;
+   std ethernet header senden (x).
+
+   neue laenge berechnen:
+      paket laenge := rahmenlaenge + eumel paket laenge.
+    
+   eak kopf senden:
+      res := code (paket laenge DIV 256);
+      res CAT (code (paket laenge AND 255));
+      res CAT eak prefix;
+      out(res).
+
+ENDPROC eak und eth header senden;
+
+TEXT PROC net address (INT CONST eumel address):
+   TEXT VAR res ;
+   INT VAR low byte;
+
+SELECT mode OF
+   CASE 1,4,7,10 : eumel net address
+   OTHERWISE ethernet address
+END SELECT.
+
+eumel net address:
+    text(eumel address).
+
+ethernet address:
+   IF second adress kind THEN second eth header
+                         ELSE first eth header
+   FI;
+   res.
+
+   second adress kind:
+      eumel address = 34 COR
+       eumel address > second address type bound.
+
+   second eth header:
+      low byte := eumel address AND 255;
+      res := second prefix adresse + code (low byte);
+      res CAT hex null.
+
+   first eth header:
+      res := prefix adresse + text (eumel address, 3);
+      changeall (res, blank, null).
+
+ENDPROC net address;
+
+ENDPACKET net hardware;
+
+
+
+

@@ -1,0 +1,373 @@
+PACKET kyocera f 1010 printer
+ 
+(**************************************************************************)
+(*                                                Stand   : 03.12.86      *)
+(*  KYOCERA   F - 1010                            Verison : 4             *)
+(*                                                Autor   : Rudolf Ruland *)
+(**************************************************************************)
+
+(**************************************************************************)
+(*  Hinweis : Die 'time-out' Zeit, nach der der Eingabepuffer ausgegeben  *)
+(*            wird, wenn keine Eingabe mehr erfolgt, sollte moeglichst    *)
+(*            gross gewaehlt werden,                                      *)
+(*            z.B.  mit   FRPO H9, 60;   wird sie auf 5 Min. gesetzt      *)
+(**************************************************************************)
+
+ 
+       DEFINES open,
+               close,
+               execute,
+ 
+               paper size :
+ 
+LET underline           =  1,
+(*  bold                =  2,
+    italics             =  4,
+    reverse             =  8,
+ 
+    underline linetype  =  1, *)
+ 
+    c document          =  1,
+    c page              =  2,
+ 
+    c write text        =  1,
+    c write cmd         =  2,
+    c carriage return   =  3, 
+    c move              =  4,
+    c draw              =  5,
+    c on                =  6, 
+    c off               =  7,
+    c type              =  8;
+ 
+INT VAR blankpitch, high, low;
+REAL VAR x size, y size;
+BOOL VAR is landscape, is underline;
+
+(*********************************************************************)
+ 
+paper size (21.0, 29.7);
+ 
+PROC paper size (REAL CONST x, y) :
+ 
+  x size := x;
+  y size := y;
+ 
+END PROC paper size;
+ 
+PROC paper size : 
+ 
+  line;
+  putline ("Papierbreite  =  " + text (x size, 5, 2) + " cm  =  " + text (x size / 2.54, 5, 2) + " Zoll");
+  putline ("Papierlaenge  =  " + text (y size, 5, 2) + " cm  =  " + text (y size / 2.54, 5, 2) + " Zoll");
+ 
+END PROC paper size;
+ 
+(*********************************************************************)
+ 
+PROC open (INT CONST op code, INT VAR param1, param2) :
+ 
+SELECT op code OF
+  CASE c document : open document 
+  CASE c page     : open page
+END SELECT; 
+ 
+ 
+. x steps : param1
+. y steps : param2
+. 
+  open document :
+    out ("!"82"! RES; UNIT D; EXIT;");         (* Reset des Druckers *)
+    IF pos (material, "landscape") > 0 OR pos (material, "quer") > 0
+       THEN is landscape := TRUE;
+            x steps      := x step conversion ( y size );
+            y steps      := y step conversion ( x size );
+            out (""27"&l1O");
+       ELSE is landscape := FALSE;
+            x steps      := x step conversion ( x size );
+            y steps      := y step conversion ( y size );
+    FI;
+    is underline := FALSE;
+    IF y size < 29.7 OR x size < 21.0
+       THEN out ("!"82"! SLM ");
+            IF is landscape
+               THEN out (text (x step conversion (29.7 - y size)));
+                    out ("; STM ");
+                    out (text (y step conversion ((21.0 - x size) * 0.5)));
+               ELSE out (text (x step conversion ((21.0 - x size) * 0.5)));
+            FI;
+            out ("; EXIT;");
+     FI;
+
+. x start : param1
+. y start : param2
+. 
+  open page :
+    out ("!"82"! MZP 0, 0; EXIT;");       (* Positionierung zum Nullpunkt *)
+    IF is landscape
+       THEN x start  := x step conversion (0.19);
+            y start  := y step conversion (0.70);
+       ELSE x start  := x step conversion (0.56);
+            y start  := y step conversion (0.60);
+    FI;
+    IF   pos (material, "tray") > 0
+         THEN out (""27"&l1H");
+    ELIF pos (material, "manual") > 0
+         THEN out (""27"&l2H");
+    FI;
+    out (""13"");
+ 
+END PROC open; 
+ 
+ 
+PROC close (INT CONST op code, INT CONST param1) :
+ 
+SELECT op code OF
+  CASE c document : close document 
+  CASE c page     : close page
+  OTHERWISE : put (param1)
+END SELECT; 
+ 
+. 
+  close document :
+ 
+ 
+(*. remaining y steps : param1*)
+.
+  close page :
+    out (""12"");
+
+END PROC close;
+ 
+ 
+PROC execute (INT CONST op code, TEXT CONST string, INT CONST param1, param2) :
+ 
+SELECT op code OF
+  CASE c write text       :  write text
+  CASE c write cmd        :  write cmd
+  CASE c carriage return  :  carriage return
+  CASE c move             :  move
+  CASE c draw             :  draw
+  CASE c on               :  on
+  CASE c off              :  off
+  CASE c type             :  type
+END SELECT
+
+ 
+. from : param1
+. to   : param2
+.
+  write text :
+    out subtext (string, from, to)
+ 
+.
+  write cmd :
+    out subtext (string, from, to)
+ 
+ 
+(*. x steps to left margin : param1*)
+.
+  carriage return :
+    out (""13"")
+ 
+ 
+. x steps : param1
+. y steps : param2
+.
+  move :
+    IF   x steps > 0
+         THEN IF is underline
+                 THEN underline x move
+                 ELSE out (""27"*p+" + text (x steps) + "X");
+              FI;
+    ELIF x steps < 0
+         THEN out (""27"*p"  + text (x steps) + "X");
+    ELIF y steps > 0
+         THEN out (""27"*p+" + text (y steps) + "Y");
+    ELIF y steps < 0
+         THEN out (""27"*p"  + text (y steps) + "Y");
+    FI;
+
+    . underline x move :
+        high := x steps DIV blankpitch;
+        low  := x steps MOD blankpitch;
+        IF high > 0 THEN high TIMESOUT " " FI;
+        IF low  > 0 THEN out (" "27"*p" + text (low - blank pitch) + "X") FI;
+ 
+. 
+  draw :
+    stop
+ 
+ 
+. modification : param1
+.
+  on :
+    IF on string (modification) <> ""
+       THEN out (on string (modification));
+            IF modification = underline THEN is underline := TRUE FI;
+       ELSE stop
+    FI
+ 
+.
+  off :
+    IF off string (modification) <> ""
+       THEN out (off string (modification));
+            IF modification = underline THEN is underline := FALSE FI;
+       ELSE stop
+    FI
+ 
+ 
+. font nr : param1
+.
+  type :
+    out (font string (font nr));
+    blankpitch := char pitch (font nr, " ");
+ 
+END PROC execute;
+ 
+ 
+END PACKET kyocera f 1010 printer;
+ 
+ 
+ 
+#page# 
+(******************************************************************)
+(***                                                            ***)
+(***   Generierung des Printers                                 ***)
+(***                                                            ***)
+(******************************************************************)
+ 
+LET printer name = "printer.kyocera.f-1010";
+ 
+TEXT VAR fonttab name := "fonttab.kyocera.f-1010";
+ 
+BOOL CONST multi user := (pcb (9) AND 255) <> 1;
+ 
+INT VAR pr channel;
+TEXT VAR buffer;
+ 
+command dialogue (TRUE);
+IF NOT multi user 
+  THEN errorstop ("Dieser Treiber arbeitet nur mit Multi-Tasking-EUMEL") 
+FI; 
+ask for print channel;
+dynamic font hint;
+load font table;
+forget (printer name, quiet);
+IF multi user THEN generate printer spool FI;
+check on;
+command dialogue (TRUE);
+.
+  ask for print channel : 
+    line;
+    put ("gib Druckerkanal:");
+    get (pr channel);
+    do ("serverchannel(" + text (pr channel) + ")" ) ;
+    line;
+.
+  dynamic font hint :
+    line (3);
+    putline (""4"Hinweis zur Benutzung der dynamischen Schrifttypen:");
+    line;
+    putline ("    In der Fonttabelle """ + fonttab name + """ sind einige dynamische");
+    putline ("    Schrifttypen angepaßt. Diese müssen nach jedem Einschalten des");
+    putline ("    Druckers neu generiert werden.");
+    putline ("    Zur Generierung dieser Schrifttypen befinden sich auf dem Standard-");
+    putline ("    archive die folgenden Dateien:");
+    line;
+    putline ("               ""genfont.kyocera.f-1010.dynamic1""");
+    putline ("               ""genfont.kyocera.f-1010.dynamic2""");
+    line;
+    putline ("    Nach Einschalten des Druckers müssen diese Dateien zuerst ausgedruckt");
+    putline ("    werden.");
+    putline ("    Die Generierung benötigt pro Schriftart etwa 15 Minuten.");
+    line (2);
+    putline ("Weiter nach Eingabe einer Taste");
+    pause;
+.
+  load font table :
+    IF NOT exists (fonttab name)
+       THEN REP line (2); 
+                putline ("Bitte Archiv mit der Fonttabelle """ +
+                          fonttab name + """ einlegen!");
+                line;
+            UNTIL yes ("Archiv eingelegt") PER;
+            reserve archive;
+            fetch (fonttab name, archive);
+            release (archive);
+    FI;
+    font table (fonttab name);
+    IF multi user
+       THEN command dialogue (FALSE);
+            do ("save(""" + font tab name + """,task(""configurator""))")
+    FI;
+    forget (fonttab name, quiet);
+ 
+    . reserve archive :
+        INT VAR p1, p2;
+        archive (" "31" ");
+        disable stop;
+        list (archive);
+        IF is error
+           THEN buffer := errormessage;
+                p1 := pos (buffer, """", 1 ) + 1;
+                p2 := pos (buffer, """", p1) - 1;
+                IF p1 > 0 AND p2 > 0
+                   THEN clear error;
+                        buffer := subtext (buffer, p1, p2);
+                        archive (buffer);
+                FI;
+        FI;
+        enable stop;
+ 
+. generate printer spool :
+    eumel must advertise;
+    cursor (1, 12);
+    putline ("In allen bestehenden Tasks - insbesondere in der Task ""PUBLIC"" - muß");
+    putline ("die Fonttabelle mit dem Kommando");
+    line;
+    putline ("      font table (""" + font tab name + """)");
+    line;
+    putline ("eingestellt werden!!!");
+    line (4);
+    putline ("Generierung beendet, weiter mit 'SV'");
+    generate printer server;
+    do (buffer);
+ 
+. generate printer server :
+    buffer :=  "break (quiet);";
+    buffer CAT "spool manager (PROC printer);";
+    buffer CAT "INT VAR reply; DATASPACE VAR ds; FILE VAR file;";
+    buffer CAT "PROC printer:";
+    buffer CAT "  disable stop;";
+    buffer CAT "  continue (server channel);";
+    buffer CAT "  check error (error message);";
+    buffer CAT "  ds := nilspace;";
+    buffer CAT "  REP forget (ds);";
+    buffer CAT "      execute print;";
+    buffer CAT "      IF is error AND online";
+    buffer CAT "         THEN out (""""27""(8U""27""(s0p10h12v0s0b3T"");";
+    buffer CAT "              put error; clear error; out (""""12"""");";
+    buffer CAT "      FI;";
+    buffer CAT "  PER;";
+    buffer CAT "END PROC printer;";
+    buffer CAT "PROC execute print:";
+    buffer CAT "  LET ack = 0, fetch code = 11, file type = 1003;";
+    buffer CAT "  enable stop;";
+    buffer CAT "  ds := nilspace;";
+    buffer CAT "  call (father, fetch code, ds, reply);";
+    buffer CAT "  IF reply = ack CAND type (ds) = file type";
+    buffer CAT "     THEN file := sequential file (input, ds);";
+    buffer CAT "          print (file,";
+    buffer CAT "            PROC (INT CONST, INT VAR, INT VAR) open,";
+    buffer CAT "            PROC (INT CONST, INT CONST) close,";
+    buffer CAT "            PROC (INT CONST, TEXT CONST, INT CONST, INT CONST) execute);";
+    buffer CAT "  FI;";
+    buffer CAT "END PROC execute print;";
+    buffer CAT "PROC check error(TEXT CONST message):";
+    buffer CAT "  IF is error";
+    buffer CAT "     THEN clear error; rename myself (message);";
+    buffer CAT "          IF is error THEN end(myself) FI;";
+    buffer CAT "          pause (9000); end(myself);";
+    buffer CAT "  FI;";
+    buffer CAT "END PROC check error;";
+

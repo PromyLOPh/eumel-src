@@ -1,0 +1,466 @@
+#type ("prop")##limit (14.0)# 
+#format# 
+#page (61)# 
+#kapitel ("6","Struktur","von","EUDAS-Dateien")# 
+ 
+ 
+ 
+EUDAS-Dateien können unabhängig von EUDAS über den Daten­
+typ EUDAT manipuliert werden. Die zur Verfügung stehenden Zu­
+griffsoperationen sind in diesem Kapitel beschrieben. 
+    Der Datentyp EUDAT ist analog zum Datentyp FILE. Jede
+EUDAT-Variable kann an eine EUDAS-Datei angekoppelt werden.
+Dadurch lassen sich beliebig viele EUDAS-Dateien gleichzeitig be­
+arbeiten. Wie der Abschnitt 6.6 zeigt, sind so auch ganz andere
+Anwendungen realisierbar. 
+    Die wesentlichen EUDAS-Funktionen (Ansehen, Suchen, Druk­
+ken) können jedoch nicht direkt auf EUDAT-Variablen angewendet
+werden, sondern greifen auf die virtuelle Datei zu, die im nächsten
+Kapitel beschreiben wird. 
+ 
+ 
+#abschnitt ("6.1", "DER DATENTYP SATZ", "Der Datentyp SATZ")# 
+ 
+Der Datentyp SATZ stellt einen einzelnen EUDAS-Satz dar, der
+intern als TEXT realisiert ist. Ein SATZ besteht aus bis zu 256
+Feldern, die jeweils einen TEXT enthalten können. Nach dem Initi­
+alisieren sind alle Felder mit "" vorbelegt. Die Felder können über
+Nummern von 1 bis 256 angesprochen werden. 
+    Damit kann man sich einen SATZ als dynamisches ROW n TEXT
+vorstellen, das bis zu 256 Elemente haben kann. Anders als ein
+entsprechendes ROW belegt ein leerer SATZ praktisch keinen Spei­
+cherplatz. 
+    Folgende Zugriffsprozeduren stehen zur Verfügung: 
+ 
+#proc# 
+TYPE SATZ 
+ 
+OP := (SATZ VAR, SATZ CONST) 
+ 
+PROC satz initialisieren (SATZ VAR) 
+#endproc# 
+    Jeder SATZ muß vor Benutzung initialisiert werden. 
+ 
+#proc# 
+INT PROC felderzahl (SATZ CONST) 
+#endproc# 
+    Liefert die Nummer des höchsten belegten Feldes. 
+ 
+#proc# 
+PROC feld lesen (SATZ CONST, INT CONST feldnr, 
+                 TEXT VAR inhalt) 
+#endproc# 
+    Liest den Inhalt des Feldes 'feldnr' in 'inhalt'. 
+#f2# 
+    FEHLER: 
+#f2# 
+    #on("i")#n ist keine Feldnummer#off("i")# 
+    'n' liegt außerhalb des Bereiches 1..256. 
+ 
+#proc# 
+PROC feld bearbeiten (SATZ CONST, INT CONST feldnr, 
+     PROC (TEXT CONST, INT CONST, INT CONST) bearbeite) 
+#endproc# 
+    Ruft 'bearbeite' auf, wobei 'bearbeite' ein Text und zwei Posi­
+    tionen in diesem Text übergeben werden. Die Positionen geben
+    das erste und das letzte Zeichen des durch 'feldnr' ausgewähl­
+    ten Feldes an. Ist der Anfang größer als das Ende, so ist das
+    Feld leer. 
+#f2# 
+    FEHLER: 
+#f2# 
+    #on("i")#n ist keine Feldnummer#off("i")# 
+    'n' liegt außerhalb des Bereiches 1..256. 
+ 
+#proc# 
+PROC feld aendern (SATZ VAR, INT CONST feldnr, 
+                   TEXT CONST inhalt) 
+#endproc# 
+    Schreibt 'inhalt' in das Feld mit der Nummer 'feldnr' 
+#f2# 
+    FEHLER: 
+#f2# 
+    #on("i")#n ist keine Feldnummer#off("i")# 
+    'n' liegt außerhalb des Bereiches 1..256. 
+ 
+#proc# 
+INT PROC feldindex (SATZ CONST, TEXT CONST muster) 
+#endproc# 
+    Falls eines der Felder 'muster' enthält, wird die Nummer dieses
+    Feldes geliefert, sonst 0. 
+ 
+ 
+#abschnitt ("6.2","DER DATENTYP EUDAT","Der Datentyp EUDAT")# 
+ 
+Der Datentyp EUDAT muß ähnlich wie ein FILE an einen benann­
+ten oder unbenannten Datenraum angekoppelt werden. Der Daten­
+raum hat anschließend den Typ 3243. Weitere Zugriffe auf eine
+EUDAT-Variable sind erst nach erfolgtem Ankoppeln zulässig. An­
+derenfalls können undefinierte Fehler entstehen. 
+ 
+#proc# 
+TYPE EUDAT 
+ 
+PROC oeffne (EUDAT VAR, TEXT CONST dateiname) 
+#endproc# 
+    Koppelt die EUDAT-Variable an die EUDAS-Datei mit dem
+    Namen 'dateiname' an. Die Datei wird eingerichtet, falls sie
+    noch nicht existiert. 
+#f2# 
+    FEHLER: 
+#f2# 
+    #on("i")#Datei ist keine EUDAS-Datei#off("i")# 
+    Die angegebene Datei hat nicht den Typ 3243. 
+ 
+#proc# 
+PROC oeffne (EUDAT VAR, DATASPACE CONST ds) 
+#endproc# 
+    Koppelt die EUDAT-Variable an den Datenraum 'ds'. 
+#f2# 
+    FEHLER: 
+#f2# 
+    #on("i")#Datei ist keine EUDAS-Datei#off("i")# 
+    Der Datenraum wurde bereits verwendet und hat nicht den Typ
+    3243. 
+ 
+Eine EUDAS-Datei ist in Felder und Sätze unterteilt. Die Felder
+werden beim Zugriff über Nummern angesprochen. Jedem Feld ist
+jedoch zur Identifikation ein TEXT als Feldname zugeordnet. Die
+Feldnamen werden als SATZ gespeichert, wobei jedes Feld seinen
+zugeordneten Namen enthält. 
+ 
+#proc# 
+INT PROC felderzahl (EUDAT CONST) 
+#endproc# 
+    Liefert Anzahl der benannten Felder. Ist zu Anfang 0. 
+ 
+#proc# 
+PROC feldnamen aendern (EUDAT VAR, 
+                        SATZ CONST neue namen) 
+#endproc# 
+    Setzt die Feldnamen einer Datei. Ist 'felderzahl (neue namen)'
+    größer als die Felderzahl der Datei, so wird die Felderzahl der
+    Datei entsprechend heraufgesetzt. 
+ 
+#proc# 
+PROC feldnamen lesen (EUDAT CONST, SATZ VAR namen) 
+#endproc# 
+    Liefert alle Feldnamen in einer SATZ-Variablen. 
+ 
+Eine EUDAS-Datei enthält drei zusätzliche Notiztexte. Zwei davon
+sind bereits reserviert, und zwar: 
+#free (0.2)# 
+  1: Prüfbedingungen 
+  2: Datum der letzten Änderung 
+#f2# 
+Der dritte kann für freie Notizen verwendet werden. 
+ 
+#proc# 
+PROC notizen lesen (EUDAT CONST, INT CONST notiz nr, 
+                    TEXT VAR notizen) 
+#endproc# 
+    Schreibt die Notizen der EUDAS-Datei in 'notizen' ('notiz nr' =
+   1,2,3). 
+ 
+#proc# 
+PROC notizen aendern (EUDAT VAR, INT CONST notiz nr, 
+                      TEXT CONST notizen) 
+#endproc# 
+    Ändert die Notizen. Alte Notizen werden dabei überschrieben
+    ('notiz nr' = 1,2,3). 
+ 
+ 
+#abschnitt ("6.3", "SATZPOSITION", "Satzposition")# 
+ 
+Eine EUDAS-Datei läßt sich sequentiell vorwärts und rückwärts
+bearbeiten. Dazu gibt es eine aktuelle Satzposition. Ein bestimmter
+Satz kann auch direkt angesprungen werden. Die Prozeduren, die
+nach dem Inhalt des ersten Feldes suchen, arbeiten besonders
+schnell, da die entsprechenden Sätze über eine Hashmethode gefun­
+den werden. 
+ 
+#proc# 
+INT PROC satznr (EUDAT CONST) 
+#endproc# 
+    Liefert aktuelle Satzposition. 
+ 
+#proc# 
+INT PROC saetze (EUDAT CONST) 
+#endproc# 
+    Liefert Anzahl der Sätze. 
+ 
+#proc# 
+BOOL PROC dateiende (EUDAT CONST) 
+#endproc# 
+    Liefert TRUE, wenn 'satznr' groesser als 'saetze' ist. Die letzte
+    erreichbare Satzposition liegt um eins hinter dem letzten Satz
+    (um auch am Ende anfügen zu können). 
+ 
+#proc# 
+PROC auf satz (EUDAT VAR, INT CONST satznr) 
+#endproc# 
+    Positioniert auf den gewünschten Satz. Bei nicht existierenden
+    Sätzen wird auf den ersten bzw. hinter den letzten Satz ge­
+    sprungen. 
+ 
+#proc# 
+PROC weiter (EUDAT VAR) 
+#endproc# 
+    Geht einen Satz weiter, jedoch nicht über das Dateiende hinaus. 
+ 
+#proc# 
+PROC zurueck (EUDAT VAR) 
+#endproc# 
+    Geht einen Satz zurück, falls der erste Satz noch nicht erreicht
+    ist. 
+ 
+#proc# 
+PROC auf satz (EUDAT VAR, TEXT CONST muster) 
+#endproc# 
+    Positioniert auf den ersten Satz, der als erstes Feld 'muster'
+    enthält, anderenfalls hinter den letzten Satz. 
+ 
+#proc# 
+PROC weiter (EUDAT VAR, TEXT CONST muster) 
+#endproc# 
+    Geht weiter, bis das erste Feld 'muster' enthält, bzw. bis hinter
+    den letzten Satz. 
+ 
+#proc# 
+PROC zurueck (EUDAT VAR, TEXT CONST muster) 
+#endproc# 
+    Geht zurück, bis das erste Feld 'muster' enthält, bzw. auf den
+    ersten Satz der EUDAS-Datei. 
+ 
+ 
+#abschnitt ("6.4", "SATZZUGRIFFE", "Satzzugriffe")# 
+ 
+Der aktuelle Satz ist ein SATZ-Objekt. Auf die Felder des aktuellen
+Satzes kann direkt zugegriffen werden. 
+ 
+#proc# 
+PROC feld lesen (EUDAT CONST, INT CONST feldnr, 
+                 TEXT VAR inhalt) 
+#endproc# 
+    Wirkt wie 'feld lesen' auf den aktuellen Satz. 
+ 
+#proc# 
+PROC feld aendern (EUDAT VAR, INT CONST feldnr, 
+                   TEXT CONST inhalt) 
+#endproc# 
+    Wirkt wie 'feld aendern' auf den aktuellen Satz. 
+ 
+#proc# 
+PROC feld bearbeiten (EUDAT CONST, INT CONST feldnr, 
+     PROC (TEXT CONST, INT CONST, INT CONST) bearbeite) 
+#endproc# 
+     Wirkt wie 'feld bearbeiten' auf den aktuellen Satz. 
+ 
+Der aktuelle Satz kann auch als Ganzes bearbeitet werden. 
+ 
+#proc# 
+PROC satz lesen (EUDAT CONST, SATZ VAR satz) 
+#endproc# 
+    Liefert den aktuellen Satz. 
+ 
+#proc# 
+PROC satz aendern (EUDAT VAR, SATZ CONST satz) 
+#endproc# 
+    Ersetzt den aktuellen Satz durch 'satz'. 
+ 
+#proc# 
+PROC satz einfuegen (EUDAT VAR, SATZ CONST satz) 
+#endproc# 
+    Fügt 'satz' vor dem aktuellen Satz ein. 
+#f2# 
+    FEHLER: 
+#f2# 
+    #on("i")#EUDAS-Datei voll#off("i")# 
+    Eine EUDAS-Datei faßt mindestens 5000 Sätze. 
+ 
+#proc# 
+PROC satz loeschen (EUDAT VAR) 
+#endproc# 
+    Löscht den aktuellen Satz. 
+ 
+ 
+#abschnitt ("6.5", "SORTIEREN UND REORGANISIEREN", "Sortieren und Reorganisieren")# 
+ 
+Zum Sortieren können für die einzelnen Felder Typen angegeben
+werden, damit auch Zahlen und Daten richtig sortiert werden kön­
+nen. Außerdem kann die Feldreihenfolge angegeben werden, nach
+der sortiert werden soll. 
+ 
+#proc# 
+PROC feldinfo (EUDAT VAR, INT CONST feldnr, info) 
+#endproc# 
+    Setzt den Feldtyp des Feldes 'feldnr'. Es bedeuten 
+      -1 : normaler Text (Standard) 
+       0 : Text nach DIN. Ziffern und Sonderzeichen werden igno­
+           riert. Groß-und Kleinbuchstaben gelten gleich. Umlaute
+           werden beachtet. 
+       1 : Zahl (beim Vergleich werden alle Zeichen außer Zif­
+           fern ignoriert). 
+       2 : Datum. Es werden Daten der Form "tt.mm.jj" vergli­
+           chen. 
+ 
+#proc# 
+INT PROC feldinfo (EUDAT CONST, INT CONST feldnr) 
+#endproc# 
+    Der Feldtyp des angegebenen Feldes wird geliefert. Zu Anfang
+    ist -1 voreingestellt. 
+ 
+#proc# 
+INT PROC unsortierte saetze (EUDAT CONST) 
+#endproc# 
+    Liefert die Anzahl von Sätzen, die seit dem letzten Sortiervor­
+    gang geändert wurden. Bei einer neuen Datei, die noch nie
+    sortiert wurde, wird immer 0 geliefert. 
+ 
+#proc# 
+PROC dezimalkomma (TEXT CONST komma) 
+#endproc# 
+    Stellt das Dezimalkomma ein, das beim Vergleich von Zahlen
+    gelten soll. 
+#f2# 
+    FEHLER: 
+#f2# 
+    #on("i")#Nicht erlaubtes Dezimalkomma#off("i")# 
+    Nur Texte der Länge 1 sind zugelassen. 
+ 
+#proc# 
+TEXT PROC dezimalkomma 
+#endproc# 
+    Liefert das eingestellte Dezimalkomma ("," ist voreingestellt). 
+ 
+#proc# 
+PROC sortiere (EUDAT VAR, TEXT CONST reihenfolge) 
+#endproc# 
+    Sortiert die Datei in der von 'reihenfolge' angegebenen Reihen­
+    folge. Dabei enthält 'reihenfolge' an der Stelle #bsp ("2*i+1")# den Code
+    der Feldnummer, die als i-te in der Sortierung berücksichtigt
+    werden soll. Das Zeichen an der Stelle #bsp ("2*i")# gibt an, ob das Feld
+    mit der davorstehenden Feldnummer aufsteigend ('+') oder
+    absteigend ('-') sortiert werden soll. 
+ 
+#proc# 
+PROC sortiere (EUDAT VAR) 
+#endproc# 
+    Sortiert die Datei in der zuletzt eingestellten Reihenfolge.
+    Wurde noch keine Reihenfolge angegeben, wird die Datei in der
+    Feldreihenfolge sortiert. 
+ 
+#proc# 
+TEXT PROC sortierreihenfolge (EUDAT CONST) 
+#endproc# 
+    Liefert die zuletzt eingestellte Reihenfolge. Wurde noch nicht
+    sortiert, so wird "" geliefert. 
+ 
+Nach umfangreichen Änderungen an einer EUDAS-Datei ist eine
+Reorganisation sinnvoll, um "Textleichen" zu beseitigen. 
+ 
+#proc# 
+PROC reorganisiere (TEXT CONST dateiname) 
+#endproc# 
+    Die EUDAS-Datei mit dem Namen 'dateiname' wird reorgani­
+    siert. 
+ 
+ 
+#abschnitt ("6.6", "EUDAS-DATEIEN ALS ASSOZIATIVSPEICHER", "EUDAS-Dateien als Assoziativspeicher")# 
+ 
+In diesem Abschnitt soll ein Beispiel erläutert werden, in dem
+EUDAS-Dateien unabhängig von EUDAS für einen ganz anderen
+Zweck benutzt werden. Das folgende kurze Paket soll ein Abkür­
+zungsverzeichnis realisieren, das auf einer EUDAS-Datei basiert. 
+ 
+#beispiel# 
+    PACKET abkuerzungsverzeichnis 
+      DEFINES 
+      verzeichnis laden, 
+      abkuerzung einfuegen, 
+      abkuerzung aendern, 
+      abkuerzung loeschen, 
+      langform : 
+ 
+    EUDAT VAR verz; 
+    SATZ VAR satz; 
+    TEXT VAR inhalt; 
+ 
+    PROC verzeichnis laden (TEXT CONST dateiname) : 
+ 
+      oeffne (verz, dateiname) 
+ 
+    END PROC verzeichnis laden; 
+ 
+    PROC abkuerzung einfuegen (TEXT CONST abk, lang) : 
+ 
+      auf satz (verz, abk); 
+      IF NOT dateiende (verz) THEN 
+        errorstop ("Abkürzung existiert bereits") 
+      ELSE 
+        satz initialisieren (satz); 
+        feld aendern (satz, 1, abk); 
+        feld aendern (satz, 2, lang); 
+        satz einfuegen (satz) 
+      END IF 
+ 
+    END PROC abkuerzung einfuegen; 
+ 
+    PROC abkuerzung aendern (TEXT CONST abk, lang) : 
+ 
+      auf satz (verz, abk); 
+      IF dateiende (verz) THEN 
+        errorstop ("Abkürzung existiert nicht") 
+      ELSE 
+        feld aendern (verz, 2, lang) 
+      END IF 
+ 
+    END PROC abkuerzung aendern; 
+ 
+    PROC abkuerzung loeschen (TEXT CONST abk) : 
+ 
+      auf satz (verz, abk); 
+      IF NOT dateiende (verz) THEN 
+        satz loeschen (verz) 
+      END IF 
+ 
+    END PROC abkuerzung loeschen; 
+ 
+    TEXT PROC langform (TEXT CONST abk) : 
+ 
+      auf satz (verz, abk); 
+      IF dateiende (verz) THEN 
+        inhalt := ""; 
+        errorstop ("Abkürzung nicht vorhanden") 
+      ELSE 
+        feld lesen (verz, 2, inhalt) 
+      END IF; 
+      inhalt
+ 
+    END PROC langform; 
+ 
+    END PACKET abkuerzungsverzeichnis; 
+#text# 
+ 
+Die Prozedur 'verzeichnis laden' koppelt die interne EUDAT-Vari­
+able 'verz' an eine benannte EUDAS-Datei, die eventuell vorher mit
+EUDAS erstellt wurde. In diesem Beispiel sind die Feldnamen egal;
+falls die übergebene EUDAS-Datei noch nicht existiert, wird sie mit
+0 Feldern eingerichtet, was aber nur für eine spätere Anzeige mit
+EUDAS störend wäre. 
+    Grundlage für das Aufsuchen einer bestimmten Abkürzung bil­
+det immer die Prozedur 'auf satz', die nach dem Inhalt des ersten
+Feldes optimiert sucht. Falls die Abkürzung nicht gefunden wurde,
+wird auf das Dateiende positioniert, daher wird jeweils 'dateiende'
+abgefragt. 
+    Beim Einfügen eines neuen Satzes muß eine komplette Satz­
+variable angegeben werden, die bereits mit den Inhalten gefüllt ist.
+Beim späteren Ändern kann jedoch direkt auf ein Feld zugegriffen
+werden, ohne die Satzvariable explizit rauszuholen. 
+    Die Abfrage einer bestimmten Abkürzung bereitet dann keine
+Schwierigkeiten mehr. 
+    Für die Verwendung von EUDAS-Dateien in diesem Beispiel
+spricht zum einen die einfache Programmierung, zum anderen aber
+auch die Möglichkeit, das erstellte Verzeichnis mit den Hilfsmitteln
+von EUDAS zu warten und auszudrucken. 
+

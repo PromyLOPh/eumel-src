@@ -1,0 +1,978 @@
+(* ------------------- VERSION 9 vom 09.06.86 ------------------- *)
+PACKET tasks DEFINES                          (* Autor: J.Liedtke *)
+ 
+    TASK ,
+    PROCA ,
+    := ,
+    = ,
+    < ,
+    / ,
+    niltask ,
+    is niltask ,
+    exists ,
+    exists task ,
+    supervisor ,
+    myself ,
+    public ,
+    proca ,
+    collector ,
+    access ,
+    name ,
+    task ,
+    canal ,
+    dataspaces ,
+    index ,
+    station ,
+    update ,
+    father ,
+    son ,
+    brother ,
+    next active ,
+    access catalogue ,
+    family password ,
+    task in catalogue ,
+    entry ,
+    delete ,
+    define station ,
+
+    pcb ,
+    status ,
+    channel ,
+    clock ,
+    storage ,
+    callee ,
+
+    send ,
+    wait ,
+    call ,
+    pingpong ,
+    collected destination ,
+ 
+    begin ,
+    end ,
+    break ,
+    continue ,
+    rename myself ,
+    task password ,
+    set autonom ,
+    reset autonom ,
+    set automatic startup ,
+    reset automatic startup ,
+
+    sys cat :
+
+ 
+
+LET nil = 0 ,
+
+    max version = 30000 ,
+    max task = 125 ,
+    max station no = 127 ,
+    sv no = 1 ,
+
+    hex ff   = 255 ,
+    hex 7f00 = 32512 ,
+
+    collected dest field 1 = 2 ,
+    collected dest field 2 = 3 ,
+    channel field = 4 ,
+    myself no field = 9 ,
+    myself version field = 10 ,
+    callee no field = 11 ,
+    callee version field = 12 ,
+
+    highest terminal channel = 16 ,
+    number of channels       = 32 ,
+
+    wait state = 2 ,
+
+    ack                            = 0 ,
+    nak                            = 1 ,
+    error nak                      = 2 ,
+    system catalogue code          = 3 ,
+    begin code                     = 4 ,
+    end code                       = 5 ,
+    break code                     = 6 ,
+    rename code                    = 7 ,
+    password code                  = 9 ,
+    family password code           = 40 ,
+    set autonom code               = 41 ,
+    reset autonom code             = 42 ,
+    task of channel code           = 45 ,
+    canal of channel code          = 46 ,
+    set automatic startup code     = 47 ,
+    reset automatic startup code   = 48 ,
+
+    continue code                  = 100,
+    define station code            = 32000,
+
+    lowest ds number               = 4 ,
+    highest ds number              = 255 ;
+
+
+TYPE TASK  = STRUCT (INT no, version) ,
+     PROCA = STRUCT (INT a, b) ;
+ 
+OP := (PROCA VAR right, PROCA CONST left) :
+  CONCR (right) := CONCR (left)
+ENDOP :=  ;
+
+PROCA PROC proca (PROC p) : 
+
+  push (0, PROC p) ;
+  pop
+
+ENDPROC proca ;
+
+PROC push (INT CONST dummy, PROC p) : ENDPROC push ;
+
+PROCA PROC pop :
+  PROCA VAR res;
+  res
+ENDPROC pop ;
+
+TASK CONST niltask := TASK: (0,0) ,
+           collector  := TASK: (-1,0) ;
+
+TASK PROC supervisor :
+ 
+  TASK: (my station id + sv no, 0) .
+
+my station id :  pcb (myself no field) AND hex 7f00 .
+
+ENDPROC supervisor ;
+
+TASK VAR   father task ;
+
+INITFLAG VAR catalogue known := FALSE , father known := FALSE ;
+
+
+
+LET TASKVECTOR = STRUCT (INT version, father, son, brother) ;
+
+
+DATASPACE VAR catalogue space , sv space ;
+
+BOUND STRUCT (THESAURUS dir,
+              ROW max task TASKVECTOR link) VAR system catalogue ;
+ initialize catalogue ; 
+ 
+BOUND STRUCT (TEXT tname, tpass, TASK task, PROCA start proc) VAR sv msg ;
+
+
+PROC initialize catalogue :
+
+  catalogue space := nilspace ;
+  system catalogue := catalogue space ;
+  system catalogue.dir := empty thesaurus ;
+
+  insert (system catalogue.dir, "SUPERVISOR") ;
+  insert (system catalogue.dir, "UR") ;
+  system catalogue.link (1) := TASKVECTOR:(0,0,0,2) ;
+  system catalogue.link (2) := TASKVECTOR:(0,0,0,0) .
+
+ENDPROC initialize catalogue ;
+
+DATASPACE PROC sys cat :
+  catalogue space
+ENDPROC sys cat ;
+
+
+TASK PROC myself :
+
+  TASK: (pcb (myself no field), pcb (myself version field))
+
+ENDPROC myself ;
+
+
+OP := (TASK VAR dest, TASK CONST source):
+
+  CONCR (dest) := CONCR (source)
+
+ENDOP := ;
+
+BOOL OP = (TASK CONST left, right) :
+
+  left.no = right.no  AND  left.version = right.version
+
+ENDOP = ;
+
+BOOL PROC is niltask (TASK CONST t) :
+
+  t.no = 0
+
+ENDPROC is niltask ;
+
+BOOL OP < (TASK CONST left, right) :
+
+  IF both of my station
+    THEN access (left) ;
+         access (right) ;
+            ( index (left) > 0  CAND  index (left) <= max task )
+         CAND
+            ( father (left) = right  COR  father (left) < right )
+    ELSE FALSE
+  FI .
+
+both of my station :
+  station (left) = station (right) AND station (right) = station (myself) .
+
+ENDOP < ;
+
+BOOL PROC exists (TASK CONST task) :
+
+  EXTERNAL 123
+
+ENDPROC exists ;
+ 
+BOOL PROC exists task (TEXT CONST name) :
+
+  task id (name).no <> 0
+
+ENDPROC exists task ;
+
+TEXT PROC name (TASK CONST task) :
+
+  IF is task of other station
+  THEN external name (task)
+  ELSE
+    access (task) ;
+    INT CONST task no := index (task) ;
+    IF task in catalogue (task ,task no)
+      THEN name (system catalogue.dir, task no) 
+      ELSE ""
+    FI 
+  FI.
+
+is task of other station :
+  (task.no AND hex 7f00) <> (pcb (myself no field) AND hex 7f00) .
+ 
+ENDPROC name ;
+
+BOOL PROC task in catalogue (TASK CONST task, INT CONST task no) :
+
+  access catalogue ;
+  task no >= 1 CAND task no <= max task CAND
+  task.version = system catalogue.link (task no).version .
+
+ENDPROC task in catalogue ;
+
+PROC access (TASK CONST task) :
+
+  INT CONST task no := task.no AND hex ff ;
+  IF task no < 1 OR task no > max task
+    THEN
+  ELIF is task of other station
+    THEN errorstop ("TASK anderer Station")
+  ELIF actual task id not in catalogue COR NOT exists (task)
+    THEN access catalogue
+  FI .
+
+actual task id not in catalogue :
+  NOT initialized (catalogue known)  COR
+  ( task no > 0 CAND catalogue version <> task.version ) .
+ 
+catalogue version :  system catalogue.link (task no).version .
+
+is task of other station :
+  (task.no AND hex 7f00) <> (pcb (myself no field) AND hex 7f00) .
+
+ENDPROC access ;
+
+TASK PROC task (TEXT CONST task name) :
+
+  TASK CONST id := task id (task name) ;
+  IF id.no = 0
+    THEN errorstop (""""+task name+""" gibt es nicht")
+  FI ;
+  id
+
+ENDPROC task ;
+
+TASK PROC task id (TEXT CONST task name) :
+
+  IF task name = "-" OR task name = ""
+    THEN errorstop ("Taskname unzulaessig")
+  FI ;
+  IF NOT initialized (catalogue known)
+    THEN access catalogue
+  FI ;
+
+  TASK VAR
+  id := task id (link (system catalogue.dir, task name)) ;
+  IF NOT exists (id)
+    THEN access catalogue ;
+         id  := task id (link (system catalogue.dir, task name)) ;
+  FI ;
+  id .
+
+ENDPROC task id ;
+
+TASK OP / (TEXT CONST task name) :
+
+  task (task name)
+
+ENDOP / ;
+
+INT PROC index (TASK CONST task) :
+
+  IF NOT initialized (catalogue known)
+    THEN access catalogue
+  FI ;
+  task.no AND hex ff
+
+ENDPROC index ;
+
+INT PROC station (TASK CONST task) :
+
+  task.no DIV 256
+
+ENDPROC station ;
+
+PROC update (TASK VAR task) :
+
+  IF task.no <> nil
+    THEN task.no := (task.no AND hex ff) + new station number
+  FI .
+
+new station number :  (pcb (myself no field) AND hex 7f00) .
+
+ENDPROC update ;
+
+
+TASK PROC public :
+
+  task ("PUBLIC")
+
+ENDPROC public ;
+
+TASK PROC father :
+
+  IF NOT initialized (father known) COR station or rename changed father id
+    THEN access catalogue ;
+         father task := father (myself)
+  FI ;
+  father task .
+
+station or rename changed father id :
+  NOT exists (father task) .
+
+ENDPROC father ;
+
+INT VAR task no ;
+
+TASK PROC father (TASK CONST task) :
+
+  task no := index (task) ;
+  task id (system catalogue.link (task no).father) .
+
+ENDPROC father ;
+
+TASK PROC son (TASK CONST task) :
+
+  task no := index (task) ;
+  IF task no = nil
+    THEN supervisor
+    ELSE task id (system catalogue.link (task no).son)
+  FI .
+
+ENDPROC son ;
+
+TASK PROC brother (TASK CONST task) :
+
+  task no := index (task) ;
+  task id (system catalogue.link (task no).brother) .
+
+ENDPROC brother ;
+
+PROC next active (TASK VAR task) :
+
+  next active task index (task.no) ;
+  IF task.no > 0
+    THEN task.version := pcb (task, myself version field)
+    ELSE task.version := 0
+  FI 
+
+ENDPROC next active ;
+
+PROC next active task index (INT CONST no) :
+
+  EXTERNAL 118
+
+ENDPROC next active task index ;
+
+TASK PROC task id (INT CONST task nr) :
+
+  INT VAR task index := task nr AND hex ff ;
+  TASK VAR result ;
+  result.no := task index ;
+  IF task index = nil
+    THEN result.version := 0
+    ELSE result.version := system catalogue.link (task index).version ;
+         result.no INCR my station id
+  FI ;
+  result .
+
+my station id : pcb (myself no field) AND hex 7f00 .
+
+ENDPROC task id ;
+
+PROC access catalogue :
+
+  IF this is not supervisor
+    THEN get catalogue from supervisor
+  FI .
+
+this is not supervisor :
+  (pcb (myself no field) AND hex ff) <> sv no .
+
+get catalogue from supervisor :
+  INT VAR dummy reply ;
+  forget (catalogue space) ;
+  catalogue space := nilspace ;
+  call (supervisor, system catalogue code, catalogue space, dummy reply) ;
+  system catalogue := catalogue space .
+
+ENDPROC access catalogue ;
+
+
+PROC entry (TASK CONST father task, TEXT CONST task name,
+            TASK VAR son task) :
+
+  IF task name <> "-" CAND (system catalogue.dir CONTAINS task name)
+    THEN errorstop (""""+task name+""" existiert bereits")
+  ELIF is niltask (father task)
+    THEN errorstop ("Vatertask existiert nicht")
+  ELSE   entry task 
+  FI .
+
+entry task :
+  INT VAR son task nr ;
+  INT CONST father task nr := index (father task) ;
+  insert (system catalogue.dir, task name, son task nr) ;
+  IF son task nr = nil OR son task nr > max task
+    THEN delete (system catalogue.dir, son task nr) ;
+         son task := niltask ;
+         errorstop ("zu viele Tasks")
+    ELSE insert task (father task, father vec, son task, son vec, son tasknr)
+  FI .
+
+father vec : system catalogue.link (father task nr) .
+
+son vec    : system catalogue.link (son task nr) .
+
+ENDPROC entry ;
+
+PROC insert task (TASK CONST father task, TASKVECTOR VAR father vec,
+                  TASK VAR son task, TASKVECTOR VAR son vec, INT CONST nr) :
+
+  initialize version number if son vec is first time used ; 
+  increment version (son vec) ;
+  son task.no := my station id + nr ;
+  son task.version := son vec.version ;
+  link into task tree .
+
+initialize version number if son vec is first time used :
+  IF son vec.version < 0
+    THEN son vec.version := 0
+  FI .
+
+link into task tree :
+  son vec.son := nil ;
+  son vec.brother := father vec.son ;
+  son vec.father := index (father task) ;
+  father vec.son := son task.no .
+
+my station id :  pcb (myself no field) AND hex 7f00 .
+
+END PROC insert task ;
+
+
+PROC delete (TASK CONST superfluous) :
+
+  INT CONST superfluous nr := index (superfluous) ;
+  delete (system catalogue.dir, superfluous nr) ;
+  delete superfluous task ;
+  increment version (superfluous vec) .
+ 
+delete superfluous task :
+  INT CONST successor of superfluous := superfluous vec.brother ;
+  TASK VAR
+  last := father (superfluous) ,
+  actual := son (last) ;
+  IF actual = superfluous
+    THEN delete first son of last
+    ELSE search previous brother of superfluous ;
+         delete from brother chain
+  FI .
+
+delete first son of last :
+  last vec.son := successor of superfluous .
+
+search previous brother of superfluous :
+  REP
+    last := actual ;
+    actual := brother (actual)
+  UNTIL actual = superfluous PER .
+
+delete from brother chain :
+  last vec.brother := successor of superfluous .
+
+last vec        :   system catalogue.link (index (last)) .
+
+superfluous vec :   system catalogue.link (superfluous nr) .
+
+ENDPROC delete ;
+
+
+PROC name (TASK VAR task, TEXT CONST new name) :
+
+  INT CONST task no := index (task) ;
+  IF (system catalogue.dir CONTAINS new name) AND (new name <> "-")
+                  AND (name (task) <> new name)
+    THEN errorstop (""""+new name+""" existiert bereits")
+    ELSE rename (system catalogue.dir, task no, new name) ;
+         increment version (system catalogue.link (task no)) ;
+         IF this is supervisor
+           THEN update task version in pcb and task variable
+         FI
+  FI .
+
+this is supervisor :  (pcb (myself no field) AND hex ff) = sv no .
+
+update task version in pcb and task variable :
+  INT CONST new version := system catalogue.link (task no).version ;
+  write pcb (task, myself version field, new version) ;
+  task.version := new version .
+
+ENDPROC name ;
+
+
+PROC increment version (TASKVECTOR VAR task vec) :
+
+  task vec.version := task vec.version MOD max version + 1
+
+ENDPROC increment version ;
+
+
+INT PROC pcb (TASK CONST id, INT CONST field) :
+ 
+  EXTERNAL 104
+
+ENDPROC pcb ;
+
+INT PROC status (TASK CONST id) :
+
+  EXTERNAL 107
+
+ENDPROC status ;
+
+INT PROC channel (TASK CONST id) :
+
+  pcb (id, channel field)
+
+ENDPROC channel ;
+
+REAL PROC clock (TASK CONST id) :
+
+  EXTERNAL 106
+
+ENDPROC clock ;
+
+INT PROC storage (TASK CONST id) :
+
+  INT VAR ds number, storage sum := 0, ds size;
+  FOR ds number FROM lowest ds number UPTO highest ds number REP
+    ds size := pages (ds number, id) ;
+    IF ds size > 0
+      THEN storage sum INCR ((ds size + 1) DIV 2)
+    FI
+  PER ;
+  storage sum
+
+ENDPROC storage ;
+
+INT PROC pages (INT CONST ds number, TASK CONST id) :
+
+  EXTERNAL 88
+
+ENDPROC pages ;
+
+TASK PROC callee (TASK CONST from) :
+
+  IF status (from) = wait state
+    THEN TASK:(pcb (from, callee no field), pcb (from, callee version field))
+    ELSE niltask
+  FI
+
+ENDPROC callee ;
+
+
+PROC send (TASK CONST dest, INT CONST send code, DATASPACE VAR ds,
+           INT VAR quit) :
+  EXTERNAL  113
+ 
+ENDPROC send ;
+
+PROC send (TASK CONST dest, INT CONST send code, DATASPACE VAR ds) :
+
+  INT VAR dummy quit ;
+  send (dest, send code, ds, dummy quit) ;
+  forget (ds)
+
+ENDPROC send ;
+
+PROC wait (DATASPACE VAR ds, INT VAR receive code, TASK VAR source) :
+
+  EXTERNAL 114
+ 
+ENDPROC wait ;
+
+PROC call (TASK CONST dest, INT CONST order code, DATASPACE VAR ds,
+           INT VAR reply code) :
+  EXTERNAL 115
+ 
+ENDPROC call ;
+
+PROC pingpong (TASK CONST dest, INT CONST order code, DATASPACE VAR ds,
+                  INT VAR reply code) :
+  EXTERNAL 122
+ 
+ENDPROC pingpong ;
+
+TASK PROC collected destination :
+
+  TASK: (pcb (collected dest field 1), pcb (collected dest field 2))
+
+ENDPROC collected destination ;
+
+
+PROC begin (PROC start, TASK VAR new task) :
+
+  begin ("-", PROC start, new task)
+
+ENDPROC begin ;
+
+PROC begin (TEXT CONST son name, PROC start, TASK VAR new task) :
+
+  enable stop ;
+  forget (sv space) ;
+  sv space := nilspace ;
+  sv msg := sv space ;
+  CONCR (sv msg).tname := son name ;
+  CONCR (sv msg).start proc := proca (PROC start) ;
+  supervisor call (begin code) ;
+  sv msg := sv space ;
+  new task := CONCR (sv msg).task .
+ 
+ENDPROC begin ;
+
+PROC begin (DATASPACE VAR ds, PROC start, INT VAR reply) :
+
+  sv msg := ds ;
+  sv msg.start proc := proca (PROC start)  ;
+  call (supervisor, begin code, ds, reply)
+
+ENDPROC begin ;
+
+PROC end :
+
+  command dialogue (TRUE) ;
+  say ("task """) ;
+  say (name (myself)) ;
+  IF yes (""" loeschen")
+    THEN eumel must advertise ;
+         end (myself)
+  FI
+
+ENDPROC end ;
+
+PROC end (TASK CONST id) :
+
+  forget (sv space) ;
+  sv space := nilspace ;
+  sv msg := sv space ;
+  CONCR (sv msg).task := id ;
+  supervisor call (end code)
+
+ENDPROC end ;
+
+PROC break (QUIET CONST quiet) :
+
+  simple supervisor call (break code)
+
+ENDPROC break ;
+
+PROC break :
+
+  eumel must advertise ;
+  simple supervisor call (break code)
+
+ENDPROC break ;
+
+PROC continue (INT CONST channel nr) :
+ 
+  simple supervisor call (continue code + channel nr)
+
+ENDPROC continue ;
+
+PROC rename myself (TEXT CONST new name) :
+
+  forget (sv space) ;
+  sv space := nilspace ;
+  sv msg := sv space ;
+  CONCR (sv msg).tname := new name ;
+  supervisor call (rename code) .
+
+ENDPROC rename myself ;
+
+
+PROC simple supervisor call (INT CONST code) :
+
+  forget (sv space) ;
+  sv space := nilspace ;
+  supervisor call (code)
+
+ENDPROC simple supervisor call ;
+ 
+PROC supervisor call (INT CONST code) :
+
+  INT VAR answer ;
+  call (supervisor, code, sv space, answer) ;
+  WHILE answer = nak REP
+    pause (20) ;
+    call (supervisor, code, sv space, answer)
+  PER ;
+  IF answer = error nak
+    THEN BOUND TEXT VAR error message := sv space ;
+         errorstop (CONCR (error message))
+  FI 
+
+ENDPROC supervisor call ;
+
+PROC task password (TEXT CONST password) :
+
+  IF online 
+    THEN say (""3""5""10"")
+  FI ;
+  forget (sv space) ;
+  sv space := nilspace ;
+  sv msg := sv space ;
+  CONCR (sv msg).tpass := password ;
+  supervisor call (password code) ;
+  cover tracks .
+
+ENDPROC task password ;
+
+PROC set autonom :
+ 
+  simple supervisor call (set autonom code)
+
+ENDPROC set autonom ;
+
+PROC reset autonom :
+
+  simple supervisor call (reset autonom code)
+
+ENDPROC reset autonom ;
+
+PROC set automatic startup :
+    simple supervisor call (set automatic startup code)
+ENDPROC set automatic startup ;
+
+PROC reset automatic startup :
+    simple supervisor call (reset automatic startup code)
+ENDPROC reset automatic startup ;
+
+PROC define station (INT CONST station number) :
+
+  IF this is supervisor
+    THEN update all tasks
+    ELIF i am privileged
+        THEN IF station number is valid
+               THEN send define station message
+               ELSE errorstop ("ungueltige Stationsnummer (0 - 127)")
+             FI
+        ELSE errorstop ("falscher Auftrag fuer Task ""SUPERVISOR""")
+  FI .
+
+update all tasks :
+  start at supervisor ;
+  REP
+    get next task ;
+    IF no more task found
+      THEN update station number of supervisor ;
+           LEAVE update all tasks
+    FI ;
+    update station number of actual task
+  PER .
+
+i am privileged :
+  myself < supervisor .
+
+station number is valid :
+  station number >= 0 AND station number <= max station no .
+
+start at supervisor :
+  TEXT VAR name ;
+  INT VAR index := sv no .
+ 
+get next task :
+  get (system catalogue.dir, name, index) .
+ 
+no more task found :  index = 0 .
+
+update station number of actual task :
+  write pcb (task id (index), myself no field, station number * 256 + index).
+
+update station number of supervisor :
+  write pcb (supervisor, myself no field, station number * 256 + sv no) .
+
+send define station message :
+  forget (sv space) ;
+  sv space := nilspace ;
+  INT VAR receipt ;
+  REP
+    send (supervisor, define station code+station number, sv space, receipt)
+  UNTIL receipt = ack PER .
+
+this is supervisor :
+  (pcb (myself no field) AND hex ff) = sv no .
+
+ENDPROC define station ;
+
+
+TASK OP / (INT CONST station number, TEXT CONST task name) :
+
+  IF station number = station (myself)
+    THEN task (task name)
+    ELSE get task id from other station
+  FI .
+
+get task id from other station :
+  enable stop ;
+  forget (sv space) ;
+  sv space := nilspace ;
+  BOUND TEXT VAR name message := sv space ;
+  name message := task name ;
+  INT VAR reply ;
+  call (collector, station number, sv space, reply) ;
+  IF reply = ack
+    THEN BOUND TASK VAR result := sv space ;
+         CONCR (result) 
+  ELIF reply = error nak
+    THEN name message := sv space;
+         disable stop;
+         errorstop (name message) ;
+         forget (sv space) ;
+         niltask
+    ELSE forget (sv space);
+         errorstop ("Collector-Task fehlt") ;
+         niltask
+  FI
+
+ENDOP / ;
+
+
+TASK OP / (INT CONST station number, TASK CONST tsk):
+
+  station number / name (tsk)
+
+END OP / ;
+
+ 
+TEXT PROC external name (TASK CONST tsk):
+
+  IF tsk = nil task 
+  THEN 
+    ""
+  ELIF tsk = collector
+  THEN
+    "** collector **"
+  ELSE
+    name via net
+  FI.
+
+name via net:
+  enable stop ;
+  forget (sv space);
+  sv space := nil space;
+  BOUND TASK VAR task message := sv space;
+  task message := tsk;
+  INT VAR reply;
+  call (collector, 256, sv space, reply);
+  BOUND TEXT VAR result := sv space;
+  CONCR (result).
+
+END PROC external name;
+
+PROC write pcb (TASK CONST task, INT CONST field, value) :
+  EXTERNAL  105
+ENDPROC write pcb ;
+
+TASK PROC task (INT CONST channel number) :
+
+  IF channel number < 1 OR channel number > 32
+    THEN errorstop ("ungueltige Kanalnummer")
+  FI ;
+  forget (sv space) ;
+  sv space := nilspace ;
+  sv msg := sv space ;
+  sv msg.tname := text (channel number) ;
+  supervisor call (task of channel code) ;
+  sv msg := sv space ;
+  sv msg.task
+
+END PROC task;
+
+TASK PROC canal (INT CONST channel number) :
+
+  IF channel number < 1 OR channel number > highest terminal channel
+    THEN errorstop ("ungueltige Kanalnummer")
+  FI ;
+  forget (sv space);
+  sv space := nilspace ;
+  sv msg := sv space ;
+  sv msg.tname := text (channel number) ;
+  supervisor call (canal of channel code) ;
+  sv msg := sv space ;
+  sv msg.task
+
+END PROC canal ;
+
+PROC family password (TEXT CONST password) :
+
+  IF online 
+    THEN say (""3""5""10"")
+  FI ;
+  forget (sv space) ;
+  sv space := nilspace ;
+  sv msg := sv space ;
+  sv msg.tpass := password ;
+  supervisor call (family password code) ;
+  cover tracks .
+
+ENDPROC family password ;
+
+INT PROC dataspaces (TASK CONST task) :
+
+  INT VAR ds number, spaces := 0 ;
+  FOR ds number FROM lowest ds number UPTO highest ds number REP
+    IF pages (ds number, index (task)) >= 0
+      THEN spaces INCR 1
+    FI
+  PER ;
+  spaces
+
+ENDPROC dataspaces ;
+
+INT PROC dataspaces :
+  dataspaces (myself)
+ENDPROC dataspaces ;
+
+INT PROC pages (INT CONST ds number, INT CONST task no) :
+  EXTERNAL 88
+ENDPROC pages ;
+
+ENDPACKET tasks ;
+

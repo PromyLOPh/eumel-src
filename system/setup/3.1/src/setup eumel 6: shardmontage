@@ -1,0 +1,389 @@
+
+(**************************************************************************)
+(***** Zusammenbau eines SHards aus Modulen mit Dialog    *****************)
+(***** Copyright (c) 1987, 1988 by                        *****************)
+(***** Lutz Prechelt, Karlsruhe                           *****************)
+(**************************************************************************)
+
+PACKET setup eumel shardmontage        (* Copyright (c) 1987 by    *)
+DEFINES build shard,                   (* Lutz Prechelt, Karlsruhe *)
+        add bad sector table to shard, (* Stand : 08.04.88   3.2   *)
+        installation nr,               (* Eumel 1.8.1              *)
+        print configuration :
+
+(* Beschreibung des SHard-Hauptmodulformats siehe "modulkonfiguration" *)
+
+(* In diesem Paket sind viele Namenskonventionen verankert. 
+   Das leere SHard-Hauptmodul hat den Namen "SHard leer", teilaufgebaute
+   SHards heissen normalerweise in der Form "SHard 07.07.87 14:34" (andere
+   Namen sind möglich, wenn sie mit "SHard " beginnen.)
+   Die Prozedur build shard bastelt in Dialogsteuerung durch den Benutzer
+   aus Modulen und einem leeren oder teilaufgebauten SHard-Hauptmodul einen 
+   neuen SHard zusammen und schreibt ihn in die Datei SHARD 
+   Die Prozedur add bad block table to shard fügt einem so zusammengebauten
+   SHard eine bad block tabelle gemäß dem Zustand der Partition hinzu oder
+   ändert die vorhandene.
+   Dann ist der SHard komplett fertig zum auf-die-Partition-schleudern.
+   (einschliesslich Installationsnummer)
+*) 
+ 
+LET hauptmodul namentyp    = "SHard *", 
+  (*modul namentyp         = "SHardmodul *",*)
+    shard name             = "SHARD";
+
+LET bad sector table size            = 1024,   (* Entries *)
+    max sh length                    =   60,   (* Blocks, vorläufig !!! *)
+    nr of channels total             =   40,
+    offset shard length              =    6,
+    offset bad sector table pointer  =    8,
+    offset verbal identification     =  176,   (* Start Shardleiste *)
+    offset id 4                      =  196;   (* 176 + 14h *)
+
+INT VAR actual installation nr :: id (5);
+DATASPACE VAR ds :: nilspace;
+ 
+PROC build shard (DATASPACE CONST old shard ds) :
+  (* Der Aufrufer muß hinterher nachsehen, ob es die Datei SHARD auch
+     wirklich gibt. Falls nicht, ist "Aufbau des SHards war nicht möglich"
+     zu melden.
+  *)
+  BOUND MODUL VAR old shard :: old shard ds, new shard;
+  TEXT VAR t;
+  INT  VAR i;
+  THESAURUS VAR th, modules, automatic mode modules,
+                modules in old shard, modules in new shard;
+  BOOL CONST old shard valid :: int (old shard, offset id 4) = id (4) AND
+                                  verbal identification ok;
+  perhaps take old shard;  (* ggf. LEAVE *) 
+  get main module name in t;
+  copy (t, shard name);
+  new shard := old (shard name);
+  enable stop;
+  eliminate bad sector table from shard (new shard);
+  get module names; 
+  configurate modules and build shard;
+  add ids.
+ 
+verbal identification ok :
+  text (old shard, offset verbal identification, 16) =
+  "SHard Schoenbeck".
+
+perhaps take old shard : 
+  kopf; 
+  forget (shard name, quiet); 
+  IF old shard valid CAND 
+     yes ("Wollen Sie den SHard genauso wie beim letzten Setup", FALSE) 
+  THEN copy (old shard ds, shard name); LEAVE build shard
+  ELSE out (""10"")  FI.
+ 
+get main module name in t : 
+  putline ("   A u s w a h l   d e s   S H a r d - H a u p t m o d u l s "10"");
+  th := all LIKE hauptmodul namentyp;
+  IF highestentry (th) > 1
+  THEN let the user select one
+  ELSE take the only one  FI.
+
+let the user select one :
+  putline ("Wählen Sie jetzt bitte, welches SHard-Hauptmodul Sie als"); 
+  putline ("Ausgangspunkt der Konfiguration benutzen möchten."); 
+  putline ("(Namen durch Zeiger auswählen dann RETURN-Taste drücken)"); 
+  t := ONE th;
+  out (""4""13""10""10""10""). 
+
+take the only one :
+  t := name (th, 1);
+  putline ("Das einzige verfügbare SHard Hauptmodul ist");
+  putline (t);
+  pause (30).
+
+get module names :
+  (* Besorgt die Listen 1. vorhandene Module   2. Module im alten SHard
+     und 3. Module im SHard Hauptmodul
+     Liefert in modules eine Auswahl von 1. ohne 3. mit 2. als Vorschläge
+     und in automatic mode modules eine Auswahl von 2. (alles vorgeschlagen)
+     Die Liste 2. ist dabei so sortiert, daß stets eingekettete Module in der
+     richtigen Reihenfolge auftauchen.
+  *)
+  kopf;
+  put ("Ich untersuche den SHard: ");
+  get modules in shard (new shard, modules in new shard);
+  IF old shard valid
+  THEN get modules in shard (old shard, modules in old shard)
+  ELSE modules in old shard := empty thesaurus  FI;
+  kopf;
+  putline ("Wählen Sie jetzt bitte mit RETURN/rauf/runter, welche Module Sie");
+  putline ("mit in den SHard aufnehmen möchten.");
+  putline ("(Zum Verlassen ESC q)");
+  modules := certain (all modules - modules in new shard,
+                      modules in old shard);
+  IF old shard valid
+  THEN kopf;
+       putline ("Wählen Sie jetzt, welche der Module vollautomatisch wie im");
+       putline ("Vorlage-SHard konfiguriert werden sollen (Reihenfolge egal)");
+       automatic mode modules := certain (modules / modules in old shard,
+                                          modules in old shard)
+  ELSE automatic mode modules := empty thesaurus  FI.
+
+configurate modules and build shard :
+  FOR i FROM 1 UPTO highest entry (modules) REP
+    page; cout (i); collect heap garbage;
+    t := name (modules, i);
+    configurate module (new shard, old shard,
+                        modules in old shard CONTAINS t,
+                        automatic mode modules CONTAINS t, t)
+  PER;
+  IF highest entry (automatic mode modules) < highest entry (modules)
+  THEN perhaps keep copy of partly build shard  FI;
+  collect heap garbage.
+
+perhaps keep copy of partly build shard :
+  kopf;
+  storage info;
+  out (""10"Möchten Sie eine zusätzliche Kopie des SHard in dieser Version"13""10"");
+  IF yes ("aufheben", FALSE)
+  THEN TEXT CONST start :: subtext (hauptmodul namentyp, 1,
+                                    LENGTH hauptmodul namentyp - 1);
+       t := date;
+       put ("Gewünschter Name :"); out (start); editget (t); out (""13""10"");
+       t := start + t;
+       IF NOT exists (t) COR overwrite THEN copy (shard name, t)  FI
+  FI.
+
+add ids :
+  int (new shard, offset id 4 + 2  (* ID5 *), actual installation nr);
+  int (new shard, offset id 4 + 4  (* ID6 *), id (6));
+  int (new shard, offset id 4 + 6  (* ID7 *), id (7)).
+
+overwrite :
+  IF yes ("Existierende Datei """ + t + """ überschreiben", FALSE)
+  THEN forget (t, quiet);
+       TRUE
+  ELSE FALSE  FI.
+END PROC build shard;
+
+(******************** print configuration **********************************)
+
+PROC print configuration (DATASPACE CONST old shard ds, BOOL CONST on screen):
+  (* Ruft für alle Module, die in old shard ds und als Datei vorhanden sind
+     print configuration aus dem Paket modulkonfiguration auf.
+     Macht bei on screen nach jedem Modul eine Pause, andernfalls wird die
+     Ausgabe in einem Rutsch gemacht und mit indirect list auf den Drucker
+     umgeleitet.
+  *)
+  BOUND MODUL VAR old shard :: old shard ds;
+  THESAURUS VAR modules in old shard;
+  BOOL CONST old shard valid :: int (old shard, offset id 4) = id (4) AND
+                                  verbal identification ok;
+  enable stop;
+  IF NOT old shard valid
+  THEN errorstop ("Der SHard ist ungültig");
+       LEAVE print configuration
+  FI;
+  write head ("Anzeigen der Konfiguration des SHard");
+  put ("Bitte fassen Sie sich in Geduld");
+  get modules in shard (old shard, modules in old shard);
+  out (""4""13""10"");  (* clear cout, line *)
+  IF on screen
+  THEN putline ("Nach jedem Modul eine Taste drücken.")
+  ELSE putline ("Die Ausgabe geht zum Drucker");
+       indirect list (TRUE);
+       putline ("***** SHardkonfiguration *****"); line;
+  FI;
+  disable stop;
+  do print configuration (old shard, modules in old shard, on screen);
+  IF is error THEN put error; pause; clear error  FI;
+  enable stop;
+  IF NOT on screen THEN indirect list (FALSE)  FI.
+
+verbal identification ok :
+  text (old shard, offset verbal identification, 16) =
+  "SHard Schoenbeck".
+END PROC print configuration;
+
+PROC do print configuration (MODUL CONST old shard,
+                            THESAURUS CONST modules in old shard,
+                            BOOL CONST on screen) :
+  INT  VAR i;
+  TEXT VAR t;
+  enable stop;
+  FOR i FROM 1 UPTO highest entry (modules in old shard) REP
+    t := name (modules in old shard, i);
+    print configuration (old shard, t);
+    collect heap garbage;
+    IF on screen THEN pause  FI
+  PER.
+END PROC do print configuration;
+
+(********************** modules in shard **********************************)
+
+PROC get modules in shard (MODUL CONST old shard,
+                           THESAURUS VAR modules in old shard) :
+  (* Stellt einem THESAURUS zusammen, der aus den Namen aller in old shard
+     enthaltenen Module besteht (ohne Duplikate).
+     Dabei sind diejenigen Modulnamen, deren Treiber in old SHard nicht als
+     eingekettete Treiber vorkommen, im Resultat VOR den eingeketteten
+     (d.h. mit kleineren link-Nummern) zu finden, um die richtige
+     Konfigurationsreihenfolge vorschlagen zu können.
+     Es muß zuvor bereits einmal init modules list aufgerufen worden sein !
+  *)
+  INT  VAR kanal;
+  REAL VAR p dtcb, p ccb;
+  TEXT VAR type, m name;
+  THESAURUS VAR simple :: empty thesaurus, chained :: empty thesaurus;
+  FOR kanal FROM 0 UPTO nr of channels total - 1 REP
+    cout (kanal);
+    p dtcb := sh dtcb offset (old shard, kanal);
+    p ccb  := sh ccb  offset (old shard, kanal);
+    look at this chain
+  PER;
+  invert chained thesaurus;
+  modules in old shard := what comes out when i let nameset do all the hard
+           work for me with a little trick and knowledge of implementation.
+
+look at this chain :
+  (* Das Verfahren ist auf den ersten Blick etwas kompliziert, spart aber
+     einiges an Kodeduplikation
+  *)
+  m name :=  "";
+  WHILE p dtcb <> 0.0 AND p ccb <> 0.0 REP
+    IF m name <> "" AND NOT (chained CONTAINS m name)
+    THEN insert (chained, m name)  FI;
+    type   := text (old shard, p dtcb, 4);
+    m name := module name (type);
+    p dtcb := unsigned (int (old shard, p ccb + 2.0));  (* verkettet *)
+    p ccb  := unsigned (int (old shard, p ccb + 4.0));
+  PER;
+  IF m name <> "" THEN insert (simple, m name)  FI.
+
+invert chained thesaurus :
+  (* bis jetzt sind bei mehrfachen Verkettungen die zuletzt eingeketteten
+     Treiber als erstes eingetragen, das darf jedoch nicht so bleiben
+  *)
+  INT VAR i;
+  THESAURUS VAR help :: empty thesaurus;
+  FOR i FROM highest entry (chained) DOWNTO 1 REP
+    insert (help, name (chained, i))
+  PER;
+  chained := help.
+
+what comes out when i let nameset do all the hard
+work for me with a little trick and knowledge of implementation :
+  (* Beware of false algebraic identities !   These are neither numbers nor
+     sets but lists (ordered and not duplicate-free)
+  *)
+  empty thesaurus + (simple - chained) + chained.
+END PROC get modules in shard;
+
+(*************** add bad sector table to shard ****************************)
+
+PROC add bad sector table to shard (INT CONST eumel type,
+                                    DATASPACE CONST shard ds,
+                                    BOOL CONST take from partition,
+                                    INT VAR bad sector count) :
+  (* Fügt einem SHard eine bad sector table hinzu oder ändert sie.
+     Ist noch keine vorhanden, so sollte der Zeiger 0 sein.
+  *)
+  ROW bad sector table size REAL VAR bst;
+  BOUND MODUL VAR new shard :: shard ds;
+  REAL VAR new shard length, offset bst;
+  INT  VAR i;
+  enable stop;
+  IF take from partition
+  THEN put ("kopiere Tabelle :");
+       find bst in shard on partition
+  ELSE put ("Spur :");
+       get bad sector table (bst, bad sector count, eumel type);
+  FI;
+  eliminate bad sector table from shard (new shard);
+  new shard length := unsigned (int (new shard, offset shard length));
+  int (new shard, new shard length, bad sector count);
+  int (new shard, offset bad sector table pointer, unsigned (new shard length));
+  new shard length INCR 2.0;
+  IF take from partition
+  THEN copy bst from old to new shard
+  ELSE write bst to new shard  FI;
+  int (new shard, offset shard length, unsigned (new shard length)).
+
+copy bst from old to new shard :
+  copy (old shard, offset bst + 2.0, new shard, new shard length,
+        bad sector count * 4);
+  cout (bad sector count * 4);
+  new shard length INCR real (bad sector count * 4).
+
+write bst to new shard :
+  FOR i FROM 1 UPTO bad sector count REP
+    cout (i);
+    enter bad sector low word
+  PER;
+  FOR i FROM 1 UPTO bad sector count REP
+    cout (i);
+    enter bad sector high word;
+  PER.
+
+find bst in shard on partition :
+  cout (0);
+  read file (ds, start of partition (eumel type) + 1.0, max sh length,
+             setup channel);
+  BOUND MODUL CONST old shard :: ds;
+  IF int (old shard, offset id 4) <> id (4)
+  THEN errorstop ("SHard auf Partition unbrauchbar")  FI;
+  offset bst := unsigned (int (old shard, offset bad sector table pointer));
+  bad sector count := int (old shard, unsigned (offset bst)).
+
+enter bad sector low word :
+  int (new shard, new shard length, low word (bst [i]));
+  new shard length INCR 2.0.
+
+enter bad sector high word :
+  int (new shard, new shard length, high word (bst [i]));
+  new shard length INCR 2.0.
+END PROC add bad sector table to shard;
+
+(************ eliminate bad sector table from shard ****************)
+
+PROC eliminate bad sector table from shard (MODUL VAR shard) :
+  (* Entfernt die bad sector table (bst) aus dem shard falls sie sich am Ende
+     desselben befindet. Trägt korrekte neue Werte für den bst pointer und
+     shard laenge ein.
+  *)
+  REAL VAR shard length :: unsigned (int (shard, offset shard length)),
+           bst offset   :: unsigned (int (shard, offset bad sector table pointer));
+  LET bst entry length  =  4.0;  (* bst entries sind Wort-Paare *)
+  IF bst offset = 0.0
+  THEN (* ist gar keine bst vorhanden, also schon prima eliminiert *)
+  ELIF bst ist am ende
+  THEN bst entfernen  FI;
+  bst austragen.
+
+bst ist am ende :
+  bst offset + bst entry length * nr of bst entries + 2.0 =
+  shard length.
+
+nr of bst entries :
+  unsigned (int (shard, bst offset)).
+
+bst entfernen :
+  int (shard, offset shard length, unsigned (bst offset)).
+
+bst austragen :
+  int (shard, offset bad sector table pointer, 0).
+END PROC eliminate bad sector table from shard;
+
+(******************* installation nr *************************************)
+
+INT PROC installation nr :
+  actual installation nr
+END PROC installation nr;
+
+PROC installation nr (INT CONST new) :
+  actual installation nr := new
+END PROC installation nr;
+
+(*********************** Hilfsprozeduren **********************************)
+
+PROC kopf :
+  write head ("M o d u l - S H a r d     Zusammenbau eines SHard").
+END PROC kopf;
+
+END PACKET setup eumel shardmontage;
+

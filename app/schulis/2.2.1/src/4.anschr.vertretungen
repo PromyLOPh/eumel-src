@@ -1,0 +1,149 @@
+PACKET anschrvertretungenDEFINES vertretungeneingang,vertretungenstarten,
+vertretungensonderwerte,vertretungendruckdateibauen,vertretungenscanbedingung
+,vertretungslistedrucken:LET swnameaufbereitet=550,swdatum=520,swzeit=521,
+swstd=521,swart=522,swlv=523,swlangtext=523;LET maske=
+"ms vertretungen eingang",fnrparaphe=2,fnrvonzeit=3,fnrbiszeit=4,fnrbsausgabe
+=5,fnrdrausgabe=6,niltext="",blank=" ",strich="-----",kreuz="+",klammerauf=
+"(",klammerzu=")",maxvertretungsarten=16,sonstigkuerzel="qq",
+mnrauswahlnichtsinnvoll=56,mnrbittewarten=69,mnrlistewirderstellt=7,
+mnrnichtimbestand=55;LET druckdatei="liste.1";TEXT CONST sonstiges:=
+"Sonstiges",dateimitformularkopf:="vordruck1 vertretungen",
+dateimitvertretungsdaten:="vordruck2 vertretungen";REAL VAR obergrenze,
+untergrenze,aktzeit;INT VAR index:=dnrlehrer,status,zeilenzahl,
+zeilenhilfszahl,zusatzzeilen,zaehler;TEXT VAR angegebeneparaphe:="",
+aktparaphe,letzteparaphe,datum,hilfstext,bestand:="c02 anrechnung vertret",
+vertretungsarten;ROW maxvertretungsartenTEXT VAR vertretungen;BOOL VAR 
+bildschirmausgabe,einzelbearbeitung,zeituntergrenze,zeitobergrenze,dateiende,
+ersteraufruf;PROC vertretungslistedrucken(BOOL CONST drucken):IF druckenTHEN 
+print(druckdatei);FI ;forget(druckdatei,quiet);IF einzelbearbeitungTHEN 
+forget(dateimitformularkopf,quiet);forget(dateimitvertretungsdaten,quiet);
+enter(2)ELIF dateiendeTHEN forget(dateimitformularkopf,quiet);forget(
+dateimitvertretungsdaten,quiet);enter(2)ELSE enter(1)FI ;END PROC 
+vertretungslistedrucken;PROC vertretungeneingang:ersteraufruf:=TRUE ;
+standardvproc(maske)END PROC vertretungeneingang;PROC vertretungenstarten:
+TEXT VAR vonzeit,biszeit;IF NOT ersteraufrufTHEN putwert(fnrvparaphe,
+aktparaphe);zusammengesetztesanschreiben(ixvpar,bildschirmausgabe,
+einzelbearbeitung,BOOL PROC vertretungensonderwerte,BOOL PROC 
+vertretungenscanbedingung,TEXT PROC vertretungendruckdateibauen);ELSE last(
+ixvpar);letzteparaphe:=wert(fnrvparaphe);standardpruefe(5,fnrbsausgabe,
+fnrdrausgabe,0,"",status);IF status<>0THEN infeld(status);return(1);ELSE 
+standardmeldung(mnrbittewarten,niltext);vonzeit:=standardmaskenfeld(
+fnrvonzeit);biszeit:=standardmaskenfeld(fnrbiszeit);zeituntergrenze:=vonzeit
+<>niltext;zeitobergrenze:=biszeit<>niltext;IF datumspruefungenkorrektTHEN 
+angegebeneparaphe:=standardmaskenfeld(fnrparaphe);IF 
+angabenindateivertretungenvorhandenTHEN ersteraufruf:=FALSE ;
+parametersetzenundstartenELSE standardmeldung(mnrnichtimbestand,niltext);
+return(1)FI ;ELSE return(1)FI ;FI ;FI ;.parametersetzenundstarten:dateiende:=
+FALSE ;datum:=wert(fnrvdatum);vertretungsartenausbestandholen;
+bildschirmausgabe:=standardmaskenfeld(fnrdrausgabe)=niltext;
+setzesonderwerteschulkenndaten;vordruckeholen;standardmeldung(
+mnrlistewirderstellt,niltext);putwert(fnrvparaphe,aktparaphe);disablestop;
+zusammengesetztesanschreiben(ixvpar,bildschirmausgabe,einzelbearbeitung,BOOL 
+PROC vertretungensonderwerte,BOOL PROC vertretungenscanbedingung,TEXT PROC 
+vertretungendruckdateibauen);IF iserrorTHEN clearerrorFI ;enablestop.
+vordruckeholen:forget(dateimitformularkopf,quiet);forget(
+dateimitvertretungsdaten,quiet);fetch(dateimitformularkopf,/
+"anschreiben server");fetch(dateimitvertretungsdaten,/"anschreiben server");.
+datumspruefungenkorrekt:IF zeituntergrenzeTHEN standardpruefe(6,fnrvonzeit,0,
+0,"",status);IF status<>0THEN infeld(status);LEAVE datumspruefungenkorrekt
+WITH FALSE ELSE datum:=subtext(vonzeit,5,6);datumCAT subtext(vonzeit,3,4);
+datumCAT subtext(vonzeit,1,2);untergrenze:=real(datum);FI ;FI ;IF 
+zeitobergrenzeTHEN standardpruefe(6,fnrbiszeit,0,0,"",status);IF status<>0
+THEN infeld(status);LEAVE datumspruefungenkorrektWITH FALSE ELSE datum:=
+subtext(biszeit,5,6);datumCAT subtext(biszeit,3,4);datumCAT subtext(biszeit,1
+,2);obergrenze:=real(datum);FI ;FI ;IF zeituntergrenzeAND zeitobergrenzeTHEN 
+IF untergrenze>obergrenzeTHEN infeld(fnrvonzeit);standardmeldung(
+mnrauswahlnichtsinnvoll,niltext);LEAVE datumspruefungenkorrektWITH FALSE FI ;
+FI ;TRUE .vertretungsartenausbestandholen:vertretungsarten:=niltext;inittupel
+(dnrschluessel);putwert(fnrschlsachgebiet,bestand);search(dnrschluessel);
+WHILE wert(fnrschlsachgebiet)=bestandREP vertretungsartenCAT text(wert(
+fnrschlschluessel),2);succ(dnrschluessel);PER ;.
+angabenindateivertretungenvorhanden:BOOL VAR ok:=FALSE ;einzelbearbeitung:=
+angegebeneparaphe<>niltext;inittupel(dnrvertretungen);IF einzelbearbeitung
+THEN putwert(fnrvparaphe,angegebeneparaphe);search(ixvpar,TRUE )ELSE search(
+ixvpar,FALSE )FI ;IF dbstatus<>0THEN ok:=FALSE ELSE aktparaphe:=wert(
+fnrvparaphe);IF einzelbearbeitungTHEN WHILE dbstatus=0AND angegebeneparaphe=
+aktparapheAND obergrenzeokAND NOT untergrenzeokREP succ(ixvpar);aktparaphe:=
+wert(fnrvparaphe);PER ;ok:=dbstatus=0AND obergrenzeokAND untergrenzeokAND 
+angegebeneparaphe=aktparapheELSE WHILE dbstatus=0AND (NOT obergrenzeokCOR 
+NOT untergrenzeok)REP succ(ixvpar);PER ;aktparaphe:=wert(fnrvparaphe);ok:=
+dbstatus=0AND obergrenzeokAND untergrenzeokFI ;FI ;okEND PROC 
+vertretungenstarten;BOOL PROC obergrenzeok:BOOL VAR b:=TRUE ;IF 
+zeitobergrenzeTHEN datum:=wert(fnrvdatum);hilfstext:=subtext(datum,7,8);
+hilfstextCAT subtext(datum,4,5);hilfstextCAT subtext(datum,1,2);aktzeit:=real
+(hilfstext);b:=aktzeit<=obergrenze;FI ;bEND PROC obergrenzeok;BOOL PROC 
+untergrenzeok:BOOL VAR b:=TRUE ;IF zeituntergrenzeTHEN datum:=wert(fnrvdatum)
+;hilfstext:=subtext(datum,7,8);hilfstextCAT subtext(datum,4,5);hilfstextCAT 
+subtext(datum,1,2);aktzeit:=real(hilfstext);b:=aktzeit>=untergrenze;FI ;bEND 
+PROC untergrenzeok;BOOL PROC vertretungenscanbedingung:BOOL VAR b;IF 
+einzelbearbeitungTHEN b:=aktparaphe=angegebeneparapheAND dbstatus=0ELSE b:=
+dbstatus=0AND NOT dateiendeFI ;bEND PROC vertretungenscanbedingung;BOOL PROC 
+vertretungensonderwerte:TEXT VAR hilfsstring1:=niltext,hilfsstring2;INT VAR 
+dbstatussave;initialisieresonderwerte;adressat(aktparaphe);dbstatussave:=
+dbstatus;inittupel(dnrlehrer);putwert(fnrlparaphe,aktparaphe);search(
+dnrlehrer,TRUE );IF wert(fnrlgeschlecht)="m"THEN hilfsstring1:="Herrn "ELSE 
+hilfsstring1:="Frau ";FI ;hilfsstring2:=wert(fnrlamtsbeztitel);IF 
+hilfsstring2<>niltextTHEN hilfsstring1CAT hilfsstring2+blank;FI ;hilfsstring2
+:=wert(fnrlzusatz);IF hilfsstring2<>niltextTHEN hilfsstring1CAT hilfsstring2+
+blank;FI ;hilfsstring1CAT wert(fnrlfamname);setzesonderwert(swnameaufbereitet
+,hilfsstring1);dbstatus(0);TRUE END PROC vertretungensonderwerte;TEXT PROC 
+vertretungendruckdateibauen:LET druckdatei="liste.1",hilfsdatei="hilfsdatei";
+TEXT VAR zeile;INT VAR i;BOOL VAR einsatzda:=FALSE ;setzemitseitennummern(
+TRUE );druckvorbereiten;zeilenzahl:=0;zusatzzeilen:=0;briefalternative(
+dateimitformularkopf,hilfsdatei);hilfsdateiindruckdatei(hilfsdatei);FOR 
+zaehlerFROM 1UPTO maxvertretungsartenREP vertretungen(zaehler):=niltextPER ;
+vordruck2xmalinhilfsdatei;hilfsdateiindruckdatei(hilfsdatei);IF zeilenzahl+3>
+drucklaengeTHEN seitenwechsel;zeilenzahl:=0FI ;zeile:=blank;
+druckzeileschreiben(zeile);druckzeileschreiben(zeile);zeile:=
+"Summe Stunden    Art";druckzeileschreiben(zeile);zeile:=3*strich+kreuz+7*
+strich;druckzeileschreiben(zeile);zeilenzahlINCR 4;setzesonderwert(swdatum,
+niltext);imrowgemerktedatenübervordruck2indruckdatei;
+drucknachbereitenohneausdrucken;druckdateiEND PROC 
+vertretungendruckdateibauen;PROC vordruck2xmalinhilfsdatei:LET hilfsdatei=
+"hilfsdatei";INT VAR savedbstatus;savedbstatus:=dbstatus;inittupel(
+dnrvertretungen);statleseschleife(ixvpar,"",aktparaphe,fnrvparaphe,
+fnrvparaphe,PROC saetzezurparapheinvordruck);dbstatus(savedbstatus);IF NOT 
+einzelbearbeitungTHEN search(ixvpar,FALSE );WHILE dbstatus=0AND (NOT 
+obergrenzeokCOR NOT untergrenzeokCOR aktparaphe=wert(fnrvparaphe))REP succ(
+ixvpar);PER ;dateiende:=letzteparaphe=aktparapheOR dbstatus<>0;aktparaphe:=
+wert(fnrvparaphe);FI ;END PROC vordruck2xmalinhilfsdatei;PROC 
+saetzezurparapheinvordruck(BOOL VAR b):LET hilfsdatei="hilfsdatei";b:=FALSE ;
+IF NOT obergrenzeokCOR wert(fnrvparaphe)<>aktparapheCOR dbstatus=3THEN b:=
+TRUE ;ELSE IF untergrenzeokTHEN swvertretungenfuellen;briefalternative(
+dateimitvertretungsdaten,hilfsdatei);FI ;FI ;END PROC 
+saetzezurparapheinvordruck;PROC swvertretungenfuellen:TEXT VAR zeitaufber,
+artvertr,lehrveranstg,lvaufber;INT VAR zeit,std,tag,position;zeit:=intwert(
+fnrvtagstd);lehrveranstg:=wert(fnrvveranstaltung);artvertr:=text(wert(
+fnrvanrechnung),2);datum:=wert(fnrvdatum);position:=pos(vertretungsarten,
+artvertr);IF position=0THEN vertretungen(16)CAT sonstigkuerzelELSE WHILE (
+positionMOD 2)=0AND position<>0AND position<32REP position:=pos(
+vertretungsarten,artvertr,position+1);PER ;IF position=0OR (positionMOD 2)=0
+THEN vertretungen(16)CAT sonstigkuerzelELSE vertretungen(position)CAT 
+artvertrFI ;FI ;tag:=(zeit-1)DIV 12;std:=zeitMOD 12;IF tag=0THEN zeitaufber:=
+"Mo "ELIF tag=1THEN zeitaufber:="Di "ELIF tag=2THEN zeitaufber:="Mi "ELIF tag
+=3THEN zeitaufber:="Do "ELIF tag=4THEN zeitaufber:="Fr "ELIF tag=5THEN 
+zeitaufber:="Sa "FI ;zeitaufberCAT text(std,2);lvaufber:=subtext(lehrveranstg
+,1,2)+blank;lvaufberCAT subtext(lehrveranstg,3,4)+blank;lvaufberCAT subtext(
+lehrveranstg,5,8);setzesonderwert(swdatum,datum);setzesonderwert(swzeit,
+zeitaufber);setzesonderwert(swart,artvertr);setzesonderwert(swlv,lvaufber);
+END PROC swvertretungenfuellen;PROC 
+imrowgemerktedatenübervordruck2indruckdatei:BOOL VAR angabeda:=FALSE ;TEXT 
+VAR hilfsdatei:="hilfsdatei",kuerzel,langtext;INT VAR savedbstatus;
+savedbstatus:=dbstatus;inittupel(dnrschluessel);putwert(fnrschlsachgebiet,
+bestand);zaehler:=1;WHILE zaehler<=maxvertretungsartenREP kuerzel:=text(
+vertretungen(zaehler),2);IF kuerzel<>"  "THEN IF kuerzel=sonstigkuerzelTHEN 
+kuerzel:="  ";langtext:=sonstigesELSE putwert(fnrschlschluessel,compress(
+kuerzel));search(dnrschluessel,TRUE );langtext:=wert(fnrschllangtext);FI ;
+setzesonderwert(swstd,text(length(vertretungen(zaehler))DIV 2,2));
+setzesonderwert(swart,kuerzel);setzesonderwert(swlangtext,klammerauf+langtext
++klammerzu);briefalternative(dateimitvertretungsdaten,hilfsdatei);angabeda:=
+TRUE ;FI ;zaehlerINCR 1;PER ;dbstatus(savedbstatus);IF angabedaTHEN 
+hilfsdateiindruckdatei(hilfsdatei)FI ;END PROC 
+imrowgemerktedatenübervordruck2indruckdatei;PROC hilfsdateiindruckdatei(TEXT 
+CONST hilfsdatei):FILE VAR f;INT VAR i;TEXT VAR zeile;f:=sequentialfile(input
+,hilfsdatei);zeilenhilfszahl:=lines(f);IF zeilenzahl+zeilenhilfszahl+
+zusatzzeilen>=drucklaengeTHEN seitenwechsel;zeilenzahl:=0;FI ;FOR iFROM 1
+UPTO zeilenhilfszahlREP getline(f,zeile);druckzeileschreiben(zeile)PER ;
+forget(hilfsdatei,quiet);zeilenzahlINCR zeilenhilfszahlEND PROC 
+hilfsdateiindruckdatei;END PACKET anschrvertretungen;
+

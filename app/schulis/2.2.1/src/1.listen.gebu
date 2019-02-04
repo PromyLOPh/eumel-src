@@ -1,0 +1,125 @@
+PACKET geburtslistenDEFINES gebulispezielleteile:LET niltext="",blank=" ",
+mittestrich="-",null=0,komma=",",ueberschriftenzeilen=2,klas="Klasse",name=
+"Name, Rufname",gebtag="Geburtstag",spalte1breite=7,spalte3breite=12,
+anzspaltentrenner=2,ausgkopflaenge=2,ausgfeldlaenge=1,AUSGFELD =ROW 
+ausgfeldlaengeTEXT ,AUSGKOPF =ROW ausgkopflaengeTEXT ,gebulieingangsmaske=
+"ms liste gebjahr eingang",gebulianfpos=2,mnrbearbeitetwird=100;INT CONST 
+spalte2bildbreite:=bildbreite-anzspaltentrenner-spalte1breite-spalte3breite;
+INT VAR spalte2druckbreite,druckzeilenzahl,bildanf,eingabestatus,
+aktuelleindexnr;TEXT VAR gebjahreingang,schuelername,schuelerrufname,
+schuelernamenszus,schuelergebdat,klasse,alteklasse,druckstrich,bearbeitetwird
+,startjahr,startgeschl;TEXT CONST bildstrich:=bildbreite*mittestrich;
+AUSGFELD VAR ausgfeld;AUSGKOPF VAR ausgkopf;BOOL VAR weibl,maennl,
+ersteraufbildschirm,klassegeaendert:=FALSE ;#DBMASKE VAR sortiertnachgebjahr,
+sortiertnachgebjahrgeschl,sortiertnachklassename;#BOOL PROC multistopstatus:
+BOOL VAR b:=wert(fnrsustatuss)="ls";setzebestandende(NOT b);bENDPROC 
+multistopstatus;BOOL PROC multistopdrucken:BOOL VAR b:=multistopmitdbstatus(
+FALSE );setzebestandende(NOT b);bENDPROC multistopdrucken;BOOL PROC 
+multistopmitdbstatusdrucken:BOOL VAR b:=multistopmitdbstatus(TRUE );
+setzebestandende(NOT b);bENDPROC multistopmitdbstatusdrucken;BOOL PROC 
+multistop:multistopmitdbstatus(FALSE )ENDPROC multistop;BOOL PROC 
+multistopmitdbstatus:multistopmitdbstatus(TRUE )ENDPROC multistopmitdbstatus;
+BOOL PROC multistopmitdbstatus(BOOL CONST mitdbstatus):BOOL VAR b:=FALSE ;IF 
+wert(fnrsustatuss)="ls"THEN IF startgeschl<>""THEN IF wert(fnrsugeschlechts)=
+startgeschlTHEN b:=(subtext(wert(fnrsugebdatums),7,8)=gebjahreingang)ELSE b:=
+FALSE FI ELSE b:=(subtext(wert(fnrsugebdatums),7,8)=gebjahreingang);IF 
+mitdbstatusTHEN b:=bCAND (dbstatus=ok)FI FI ;FI ;bEND PROC 
+multistopmitdbstatus;PROC gebulispezielleteile(INT CONST nr):SELECT nrOF 
+CASE 1:gebulidialogvorbereitenCASE 2:gebulieingabenrichtigCASE 3:
+gebulilistenvorbereitenCASE 4:gebulidruckvorbereitenCASE 5:gebuliseitedrucken
+CASE 6:gebulibildschirmvorbereitenCASE 7:gebuliseitezeigenENDSELECT .END 
+PROC gebulispezielleteile;PROC gebulidialogvorbereiten:setzeanfangswerte(
+gebulieingangsmaske,gebulianfpos)END PROC gebulidialogvorbereiten;PROC 
+gebulieingabenrichtig:LET fnrgebjahr=2,fnrmaennlich=3,fnrweiblich=4,
+fnrausgdrucker=5,fnrausgbild=6;standardpruefe(2,fnrgebjahr,null,null,niltext,
+eingabestatus);IF eingabestatus<>0THEN infeld(eingabestatus);setzeeingabetest
+(FALSE )ELSE waspruefen;wohinpruefen;IF eingabestatus<>0THEN infeld(
+eingabestatus);setzeeingabetest(FALSE )ELSE setzegeburtsjahr;
+setzeausgabedrucker(standardmaskenfeld(fnrausgbild)=niltext);setzeeingabetest
+(TRUE )FI FI .waspruefen:weibl:=(standardmaskenfeld(fnrmaennlich)=niltext)
+AND (standardmaskenfeld(fnrweiblich)<>niltext);maennl:=(standardmaskenfeld(
+fnrweiblich)=niltext)AND (standardmaskenfeld(fnrmaennlich)<>niltext).
+wohinpruefen:standardpruefe(5,fnrausgdrucker,fnrausgbild,null,niltext,
+eingabestatus).setzegeburtsjahr:gebjahreingang:=standardmaskenfeld(fnrgebjahr
+);IF int(gebjahreingang)<10THEN gebjahreingang:=text(null)+text(int(
+gebjahreingang))FI .END PROC gebulieingabenrichtig;PROC 
+gebulilistenvorbereiten:#bestanderstellen(PROC 
+bestandgeburtsjahrgaengeerstellen).#BOOL VAR b:=FALSE ;startjahr:="01.01."+
+gebjahreingang;setzescanendewert("01.01."+text(int(gebjahreingang)+1));
+setzescanstartwert(startjahr);IF weiblTHEN startgeschl:="w";ELIF maennlTHEN 
+startgeschl:="m";ELSE startgeschl:="";FI ;IF startgeschl=""THEN 
+aktuelleindexnr:=ixsustatgebELSE aktuelleindexnr:=ixsustatgeschlgeb;FI ;
+inittupel(dnrschueler);initobli(14);parsenooffields(19);setzeidentiwert("");
+putdatumwert(fnrsugebdatums,startjahr);putwert(fnrsugeschlechts,startgeschl);
+putwert(fnrsustatuss,"ls");dbstatus(ok);objektlistestarten(aktuelleindexnr,""
+,fnrsugebdatums,TRUE ,b);setzebestandende(NOT multistopmitdbstatus)END PROC 
+gebulilistenvorbereiten;PROC gebulibildschirmvorbereiten:LET fnrausganf=2,
+gebuliueberschriftneu="Schülerliste Geburtsjahrgang 19";INT VAR i;
+standardkopfmaskeaktualisieren(gebuliueberschriftneu+gebjahreingang);
+initspalten;setzespaltenbreite(spalte1breite);setzespaltenbreite(
+spalte2bildbreite);setzespaltenbreite(spalte3breite);initausgabekopf(
+bildstrich);bildanf:=fnrausganf;FOR iFROM 1UPTO ausgkopflaengeREPEAT ausgkopf
+(i)IN bildanf;bildanfINCR 1END REPEAT ;klasse:=niltext;#
+setzenderhilfsgroessenfuersblaettern(min(bildblocklaenge,maxblocklaenge),
+bildsatzzahl);#setzebildanfangsposition(bildanf).END PROC 
+gebulibildschirmvorbereiten;PROC gebuliseitezeigen:ersteraufbildschirm:=TRUE 
+;blaettern(PROC (INT CONST )schuelerzeigen,aktion,TRUE ,TRUE ,BOOL PROC 
+multistop).END PROC gebuliseitezeigen;PROC schuelerzeigen(INT CONST x):
+schuelerholen1;schuelerholen2;IF ersteraufbildschirmTHEN klassegeaendert:=
+TRUE ;ersteraufbildschirm:=FALSE FI ;schueleraufbereiten;
+schueleraufbildschirm.END PROC schuelerzeigen;PROC schueleraufbildschirm:INT 
+VAR i;FOR iFROM 1UPTO ausgfeldlaengeREPEAT ausgfeld(i)IN ausgabepos;
+erhoeheausgabeposumeinsEND REPEAT .END PROC schueleraufbildschirm;PROC 
+gebulidruckvorbereiten:LET uebteil1="Liste der im Jahr 19",uebteil2=
+" geborenen ",uebteil31="weiblichen ",uebteil32="männlichen ",uebteil4=
+"Schüler";TEXT VAR ueberschrift;klasse:=niltext;druckvorbereiten;
+variablenfuerdrucksetzen;ueberschriftvorbereitendruck;initdruckkopf(
+ueberschrift);initspalten;setzespaltenbreite(spalte1breite);
+setzespaltenbreite(spalte2druckbreite);setzespaltenbreite(spalte3breite);
+initausgabekopf(druckstrich);holemeldungen;#putwert(dateinr(primdatid(
+aktuelleindexnr))+1,"");putwert(fnrsugebdatums,"01.01."+gebjahreingang);
+dbstatus(ok);#inittupel(dnrschueler);putwert(fnrsustatuss,"ls");
+aktuelleindexnr:=ixsustatjgstzug;BOOL VAR b;objektlistestarten(
+aktuelleindexnr,"",fnrsusgrpzugtut,TRUE ,b);lesenvorbereitendruck(PROC (INT 
+CONST ,BOOL PROC ,INT VAR )scanforward,#BOOL PROC multistopmitdbstatusdrucken
+#BOOL PROC multistopstatus).variablenfuerdrucksetzen:druckstrich:=druckbreite
+*mittestrich;spalte2druckbreite:=druckbreite-anzspaltentrenner-spalte1breite-
+spalte3breite;druckzeilenzahl:=drucklaenge(ueberschriftenzeilen)-
+ausgkopflaenge.ueberschriftvorbereitendruck:ueberschrift:=uebteil1+
+gebjahreingang+uebteil2;IF weiblTHEN ueberschrift:=ueberschrift+uebteil31
+ELSE IF maennlTHEN ueberschrift:=ueberschrift+uebteil32FI ;FI ;ueberschrift:=
+ueberschrift+uebteil4.holemeldungen:meldungstext(mnrbearbeitetwird,
+bearbeitetwird).END PROC gebulidruckvorbereiten;PROC gebuliseitedrucken:
+gebuliueberschriftdrucken;seitedrucken(PROC (INT VAR )schuelerdrucken,
+druckzeilenzahl,ausgfeldlaenge,#BOOL PROC multistopdrucken#BOOL PROC 
+multistopstatus);seitenwechsel.END PROC gebuliseitedrucken;PROC 
+gebuliueberschriftdrucken:INT VAR i;druckkopfschreiben;FOR iFROM 1UPTO 
+ausgkopflaengeREPEAT druckzeileschreiben(ausgkopf(i))END REPEAT .END PROC 
+gebuliueberschriftdrucken;PROC schuelerdrucken(INT VAR zeilenzaehler):LET 
+markiert="#";schuelerholen1;evtleave;schuelerholen2;ggflmeldungklasse;IF 
+zeilenzaehler=nullTHEN klassegeaendert:=TRUE FI ;IF klassegeaendertTHEN 
+leerzeileindruckdateiFI ;schueleraufbereiten;zeilenzaehlerINCR ausgfeldlaenge
+;schuelerindruckdatei.evtleave:IF jahrstimmtnichtCOR geschlechtstimmtnicht
+THEN LEAVE schuelerdruckenFI .jahrstimmtnicht:subtext(wert(fnrsugebdatums),7,
+8)<>gebjahreingang.geschlechtstimmtnicht:startgeschl<>""CAND wert(
+fnrsugeschlechts)<>startgeschl.ggflmeldungklasse:IF klassegeaendertTHEN 
+meldungklasseFI .meldungklasse:standardmeldung(bearbeitetwird,klasse+markiert
+).leerzeileindruckdatei:ausgfeld(1):=text(blank,druckbreite);
+druckzeileschreiben(ausgfeld(1));zeilenzaehlerINCR 1.END PROC schuelerdrucken
+;PROC schuelerindruckdatei:INT VAR i;FOR iFROM 1UPTO ausgfeldlaengeREPEAT 
+druckzeileschreiben(ausgfeld(i))END REPEAT .END PROC schuelerindruckdatei;
+PROC initausgabekopf(TEXT CONST strich):spaltenweise(klas);spaltenweise(name)
+;spaltenweise(gebtag);ausgkopf(1):=zeile;ausgkopf(2):=strich;END PROC 
+initausgabekopf;PROC schuelerholen1:schuelergebdat:=wert(fnrsugebdatums);
+schuelername:=wert(fnrsufamnames);schuelerrufname:=wert(fnrsurufnames);
+schuelernamenszus:=wert(fnrsunamenszusatzs);#alteklasse:=klasse;klasse:=wert(
+fnrsusgrpjgst)+blank+wert(fnrsusgrpzugtut);klassegeaendert:=alteklasse<>
+klasse.#END PROC schuelerholen1;PROC schuelerholen2:alteklasse:=klasse;klasse
+:=wert(fnrsusgrpjgst)+blank+wert(fnrsusgrpzugtut);klassegeaendert:=alteklasse
+<>klasse.END PROC schuelerholen2;PROC schueleraufbereiten:
+schreibeklassenamegebdat.schreibeklassenamegebdat:IF klassegeaendertTHEN 
+spaltenweise(klasse)ELSE spaltenweise(blank)FI ;spaltenweise(
+schuelernameaufber);spaltenweise(schuelergebdat);ausgfeld(1):=zeile.
+schuelernameaufber:schuelername+komma+blank+schuelerrufname+blank+
+schuelernamenszus.END PROC schueleraufbereiten;END PACKET geburtslisten;
+

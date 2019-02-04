@@ -1,0 +1,1306 @@
+PACKET lisp heap and oblist management              (* Autor: J.Durchholz *) 
+                                                    (* Datum: 09.05.1984  *) 
+    DEFINES                                         (* Version 1.7.2      *) 
+                                                    (* hey 25.2.83 *) 
+  initialize lisp system, 
+  dump lisp heap, 
+  lisp storage, 
+  collect lisp heap garbage, 
+  SYM, 
+  :=, 
+  nil, 
+  pname, 
+  head, 
+  set head, 
+  tail, 
+  set tail, 
+  cons, 
+  eq, 
+  equal, 
+  null, 
+  atom, 
+  is named atom, 
+  begin oblist dump, 
+  next atom, 
+  new atom, 
+  create atom, 
+  delete atom, 
+  begin property list dump, 
+  next property, 
+  add property, 
+  alter property, 
+  property, 
+  delete property, 
+  property exists, 
+  add flag, 
+  flag, 
+  delete flag, 
+  text, 
+  is text, 
+  character, 
+  is character, 
+  sym character, 
+  int 1, 
+  int 2, 
+  is int pair, 
+  sym: 
+ 
+ 
+(* NOTE: All internal routines are prefixed by x *) 
+ 
+ 
+(***************************** heap management ****************************) 
+ 
+LET 
+    max size = 32767, 
+    NODE = STRUCT (INT status, 
+                       head, tail); 
+LET HEAP = STRUCT (INT size, 
+                   ROW max size NODE node); 
+ 
+ 
+BOUND HEAP VAR heap; 
+ 
+ 
+PROC initialize lisp system (DATASPACE CONST ds): 
+  IF type (ds) < 0 THEN 
+    heap := ds; 
+    x initialize oblist and heap size; 
+    create atom ("NIL"); 
+    create atom ("PNAME"); 
+  ELSE 
+    heap := ds 
+  FI 
+END PROC initialize lisp system; 
+ 
+ 
+PROC dump lisp heap (FILE VAR f): 
+  put line (f, "Groesse :" + text (CONCR (heap).size)); 
+  line (f); 
+  put (CONCR (heap).size); 
+  BOOL VAR is char := FALSE; 
+  INT VAR i; 
+  FOR i FROM 1 UPTO CONCR (heap).size REP 
+    cout (i); 
+    dump ith node 
+  PER. 
+ 
+dump ith node: 
+  put (f, text (i, 6)); 
+  put (f, status); 
+  put (f, head); 
+  put (f, tail); 
+  line (f). 
+ 
+status: 
+  SELECT ith node.status OF 
+    CASE atomic             : "ATOMIC............" 
+    CASE non atomic         : "NON ATOMIC........" 
+    CASE oblist bone        : "OBLIST BONE......." 
+    CASE property indicator : "PROPERTY INDICATOR" 
+    CASE property root      : "PROPERTY ROOT....." 
+    CASE flag indicator     : "FLAG INDICATOR...." 
+    CASE text data          : "TEXT DATA........." 
+    CASE character data     : is char := TRUE; "CHARACTER DATA...." 
+    CASE int data           : "INT DATA.........." 
+    OTHERWISE                 "????." + text (ith node.status, 6) + ".????" 
+  END SELECT. 
+ 
+head: 
+  maybe a code + text (ith node.head, 6). 
+ 
+maybe a code: 
+  IF is char THEN 
+    is char := FALSE; 
+    IF ith node.head > 31 AND 128 > ith node.head THEN 
+      " " + code (ith node.head) + " " 
+    ELSE 
+      "   " 
+    FI 
+  ELSE 
+    "   " 
+  FI. 
+ 
+tail: 
+  text (ith node.tail, 6). 
+ 
+ith node: 
+  CONCR (heap).node (i). 
+ 
+END PROC dump lisp heap; 
+ 
+ 
+PROC lisp storage (INT VAR size, used): 
+  size := max size; 
+  used := CONCR (heap).size 
+END PROC lisp storage; 
+ 
+ 
+PROC collect lisp heap garbage: 
+  mark all used nodes; 
+  transfer all used high address nodes to unused low address nodes; 
+  adjust all pointers to cleared high address area and unmark all nodes; 
+  adjust size. 
+ 
+mark all used nodes: 
+  INT VAR i; 
+  FOR i FROM 2 UPTO 28 REP 
+    x mark (i) 
+  PER. 
+ 
+transfer all used high address nodes to unused low address nodes: 
+  INT VAR high address :: CONCR (heap).size + 1, 
+          low address :: 0; 
+  REP 
+    find next lower used high address node; 
+    IF no used high address node found THEN 
+      LEAVE transfer all used high address nodes to unused low address nodes 
+    FI; 
+    find next higher unused low address node; 
+    IF no unused low address node found THEN 
+      LEAVE transfer all used high address nodes to unused low address nodes 
+    FI; 
+    transfer high address node to low address node 
+  PER. 
+ 
+find next lower used high address node: 
+  REP 
+    high address DECR 1 
+  UNTIL high address node marked PER. 
+ 
+high address node marked: 
+  high address node.status < 0. 
+ 
+no used high address node found: 
+  low address = high address. 
+ 
+find next higher unused low address node: 
+  REP 
+    low address INCR 1 
+  UNTIL low address node not marked OR low address = high address PER. 
+ 
+low address node not marked: 
+  low address node.status > 0. 
+ 
+no unused low address node found : 
+  low address = high address. 
+ 
+transfer high address node to low address node: 
+  low address node.status := high address node.status; 
+  low address node.head := high address node.head; 
+  low address node.tail := high address node.tail; 
+  high address node.head := low address. 
+ 
+adjust all pointers to cleared high address area and unmark all nodes: 
+  (* 'high address' should now point to the last node of the used area   *) 
+  FOR low address FROM 1 UPTO high address REP 
+    unmark low address node; 
+    SELECT low address node.status OF 
+      CASE oblist bone: adjust head
+      CASE atomic, 
+           non atomic, 
+           property indicator, 
+           property root, 
+           flag indicator: adjust head; adjust tail 
+      CASE text data, character data: adjust tail 
+      CASE int data: 
+      OTHERWISE x lisp error ("Status " + text (low address node.status) + 
+                              " gefunden bei pointer Justage") 
+    END SELECT 
+  PER. 
+ 
+unmark low address node: 
+  low address node.status := - low address node.status. 
+ 
+adjust head: 
+  IF low address node.head > high address THEN 
+    low address node.head := node (low address node.head).head 
+  FI. 
+ 
+adjust tail: 
+  IF low address node.tail > high address THEN 
+    low address node.tail := node (low address node.tail).head 
+  FI. 
+ 
+adjust size: 
+  CONCR (heap).size := high address. 
+ 
+low address node: 
+  node (low address). 
+ 
+high address node: 
+  node (high address). 
+ 
+node: 
+  CONCR (heap).node. 
+ 
+END PROC collect lisp heap garbage; 
+ 
+ 
+PROC x mark (INT CONST ptr): 
+  IF node not yet marked THEN 
+    mark node; 
+    SELECT - ptr node.status OF 
+      CASE oblist bone: x mark (ptr node.head) 
+      CASE atomic, 
+           non atomic, 
+           property indicator, 
+           property root, 
+           flag indicator: x mark (ptr node.head); x mark (ptr node.tail) 
+      CASE text data, character data: x mark (ptr node.tail) 
+      CASE int data: 
+      OTHERWISE error stop ("Status " + text (- ptr node.status) + 
+                            " gefunden beim Markieren") 
+    END SELECT 
+  FI. 
+ 
+ 
+node not yet marked: 
+  ptr node.status > 0. 
+ 
+mark node: 
+  ptr node.status := - ptr node.status. 
+ 
+ptr node: 
+  CONCR (heap).node (ptr) 
+ 
+END PROC x mark; 
+ 
+ 
+TYPE SYM = INT; 
+ 
+ 
+OP := (SYM VAR left, SYM CONST right): 
+  CONCR (left) := CONCR (right) 
+END OP :=; 
+ 
+ 
+LET atomic = 1, 
+    non atomic = 2, 
+    oblist bone = 3, 
+    property indicator = 4, 
+    property root = 5, 
+    flag indicator = 6, 
+    text data = 7, 
+    character data = 8, 
+    int data = 9; 
+ 
+SYM CONST nil :: SYM :(35),   (* 'x initialize oblist and heap size' will *) 
+          pname :: SYM :(44); (* place the atom NIL at node 35 and PNAME  *) 
+                              (* at node 44                               *) 
+ 
+ 
+(***************************** basic functions ****************************) 
+ 
+ 
+SYM PROC head (SYM CONST sym): 
+  SELECT status of sym OF 
+    CASE atomic: error stop ("Atome haben keinen head"); nil 
+    CASE non atomic: SYM :(head of sym) 
+    CASE oblist bone, 
+         property indicator, 
+         property root, 
+         flag indicator    : x lisp error ("Versteckter Knoten, Type:" + 
+                                         text (status of sym)); 
+                             nil 
+    CASE text data, 
+         character data, 
+         int data       : error stop ("Daten haben keinen head"); nil 
+    OTHERWISE x lisp error ("Illegaler Status " + text (status of sym));
+              nil 
+  END SELECT. 
+ 
+status of sym: 
+  sym node.status. 
+ 
+head of sym: 
+  sym node.head. 
+ 
+sym node: 
+  CONCR (heap).node (CONCR (sym)) 
+ 
+END PROC head; 
+ 
+ 
+SYM PROC x head (SYM CONST sym): 
+  SYM :(CONCR (heap).node (CONCR (sym)).head) 
+END PROC x head; 
+ 
+ 
+PROC set head (SYM CONST sym, new head): 
+  SELECT status of sym OF 
+    CASE atomic: errorstop ("Atome haben keinen head") 
+    CASE non atomic: head of sym := CONCR (new head) 
+    CASE oblist bone, 
+         property indicator, 
+         property root, 
+         flag indicator    : x lisp error ("Versteckter Knoten, Type:" + 
+                                         text (status of sym)) 
+    CASE text data, 
+         character data, 
+         int data        : error stop ("Daten haben keinen head") 
+    OTHERWISE x lisp error ("Illegaler Status " + text (status of sym))
+  END SELECT. 
+ 
+status of sym: 
+  sym node.status. 
+ 
+head of sym: 
+  sym node.head. 
+ 
+sym node: 
+  CONCR (heap).node (CONCR (sym)). 
+ 
+END PROC set head; 
+ 
+ 
+PROC x set head (SYM CONST sym, new head): 
+  CONCR (heap).node (CONCR (sym)).head := CONCR (new head) 
+END PROC x set head; 
+ 
+ 
+SYM PROC tail (SYM CONST sym): 
+  SELECT status of sym OF 
+    CASE atomic: error stop ("Atome haben keinen tail"); nil 
+    CASE non atomic: SYM :(tail of sym) 
+    CASE oblist bone, 
+         property indicator, 
+         flag indicator    : x lisp error ("Versteckter Knoten:" + 
+                                         text (status of sym)); 
+                             nil 
+    CASE text data, 
+         character data, 
+         int data        : error stop ("Daten haben keinen tail"); nil 
+    OTHERWISE x lisp error ("Illegaler Status: "+ text (status of sym)); 
+              nil 
+  END SELECT. 
+ 
+status of sym: 
+  sym node.status. 
+ 
+tail of sym: 
+  sym node.tail. 
+ 
+sym node: 
+  CONCR (heap).node (CONCR (sym)). 
+ 
+END PROC tail; 
+ 
+ 
+SYM PROC x tail (SYM CONST sym): 
+  SYM :(CONCR (heap).node (CONCR (sym)).tail) 
+END PROC x tail; 
+ 
+ 
+PROC set tail (SYM CONST sym, new tail): 
+  SELECT status of sym OF 
+    CASE atomic: error stop ("Atome haben keinen tail") 
+    CASE non atomic: tail of sym := CONCR (new tail) 
+    CASE oblist bone, 
+         property indicator, 
+         property root, 
+         flag indicator    : x lisp error ("Versteckter Knoten, Type: " + 
+                                         text (status of sym)) 
+    CASE text data, 
+         character data, 
+         int data       : error stop ("Daten tails sind unveraenderbar")
+    OTHERWISE x lisp error ("Illegaler Status: " + text (status of sym)) 
+  END SELECT. 
+ 
+status of sym: 
+  sym node.status. 
+ 
+tail of sym: 
+  sym node.tail. 
+ 
+sym node: 
+  CONCR (heap).node (CONCR (sym)). 
+ 
+END PROC set tail; 
+ 
+ 
+PROC x set tail (SYM CONST sym, new tail): 
+  CONCR (heap).node (CONCR (sym)).tail := CONCR (new tail) 
+END PROC x set tail; 
+ 
+ 
+SYM PROC cons (SYM CONST head, tail): 
+  SYM VAR result; 
+  search free node; 
+  result node.status := non atomic; 
+  result node.head := CONCR (head); 
+  result node.tail := CONCR (tail); 
+  result. 
+ 
+search free node: 
+  IF CONCR (heap).size = max size THEN 
+    error stop ("LISP Heap Ueberlauf"); 
+    LEAVE cons WITH nil 
+  ELSE 
+    CONCR (heap).size INCR 1; 
+    CONCR (result) := CONCR (heap).size; cout(CONCR(result))
+  FI. 
+ 
+result node: 
+  CONCR (heap).node (CONCR (result)). 
+ 
+END PROC cons; 
+ 
+ 
+BOOL PROC eq (SYM CONST sym 1, sym 2): 
+  CONCR (sym 1) = CONCR (sym 2) 
+END PROC eq; 
+ 
+ 
+BOOL PROC equal (SYM CONST sym 1, sym 2): 
+  eq (sym 1, sym 2) COR have same value. 
+ 
+have same value: 
+  IF sym 1 node.status <> sym 2 node.status THEN 
+    FALSE 
+  ELSE 
+    SELECT sym 1 node.status OF 
+      CASE atomic: FALSE 
+      CASE non atomic: equal (head (sym 1), head (sym 2)) CAND 
+                       equal (tail (sym 1), tail (sym 2)) 
+      CASE oblist bone, 
+           property indicator, 
+           property root, 
+           flag indicator: x lisp error ("Versteckter Knoten, Type: " + 
+                                         text (x status (sym 1))); FALSE 
+      CASE text data: equal texts 
+      CASE character data: sym 1 node.head = sym 2 node.head 
+      CASE int data: sym 1 node.head = sym 2 node.head AND 
+                     sym 1 node.tail = sym 2 node.tail 
+      OTHERWISE x lisp error ("Ilegaler Status " + text (x status (sym 1)));
+                              FALSE 
+    END SELECT 
+  FI. 
+ 
+equal texts: 
+  equal length CAND equal character sequence. 
+ 
+equal length: 
+  eq (x head (sym 1), x head (sym 2)). 
+ 
+equal character sequence: 
+  SYM VAR actual sym 1 character :: sym 1, 
+          actual sym 2 character :: sym 2; 
+  INT VAR i; 
+  FOR i FROM 1 UPTO sym 1 node. head REP 
+    actual sym 1 character := x tail (actual sym 1 character); 
+    actual sym 2 character := x tail (actual sym 2 character); 
+    IF eq (actual sym 1 character, actual sym 2 character) THEN 
+      LEAVE equal character sequence WITH TRUE 
+    FI; 
+    IF x status (actual sym 1 character) <> character data OR 
+       x status (actual sym 2 character) <> character data    THEN 
+      x lisp error ("Ungueltiges Zeichen im text"); 
+      LEAVE equal character sequence WITH FALSE 
+    FI; 
+    IF CONCR (x head (actual sym 1 character)) <> 
+       CONCR (x head (actual sym 2 character))    THEN 
+      LEAVE equal character sequence WITH FALSE 
+    FI 
+  PER; 
+  TRUE. 
+ 
+sym 1 node: 
+  CONCR (heap).node (CONCR (sym 1)). 
+ 
+sym 2 node: 
+  CONCR (heap).node (CONCR (sym 2)). 
+ 
+END PROC equal; 
+ 
+ 
+BOOL PROC null (SYM CONST sym): 
+  CONCR (sym) = CONCR (nil) 
+END PROC null; 
+ 
+ 
+BOOL PROC atom (SYM CONST sym): 
+  SELECT x status (sym) OF 
+    CASE atomic, 
+         text data, 
+         character data, 
+         int data:       TRUE 
+    CASE non atomic: FALSE 
+    CASE oblist bone, 
+         property indicator, 
+         property root, 
+         flag indicator    : x lisp error ("Versteckter Knoten, Type:" + 
+                                         text (x status (sym))); TRUE 
+    OTHERWISE x lisp error ("Illegaler Status " + 
+                             text (x status (sym))); TRUE
+  END SELECT 
+END PROC atom; 
+ 
+ 
+BOOL PROC is named atom (SYM CONST sym): 
+  x status (sym) = atomic 
+END PROC is named atom; 
+ 
+ 
+(*------------------- internal heap management routines ------------------*) 
+ 
+ 
+SYM PROC x new node (INT CONST status, head, tail): 
+  IF CONCR (heap).size = max size THEN 
+    error stop ("LISP Heap Ueberlauf"); nil 
+  ELSE 
+    CONCR (heap).size INCR 1; 
+    new node.status := status; 
+    new node.head := head; 
+    new node.tail := tail; 
+    SYM :(CONCR (heap).size) 
+  FI. 
+ 
+new node: 
+  node (CONCR (heap).size). 
+ 
+node: 
+  CONCR (heap).node. 
+ 
+END PROC x new node; 
+ 
+ 
+INT PROC x status (SYM CONST sym): 
+  CONCR (heap).node (CONCR (sym)).status 
+END PROC x status; 
+ 
+ 
+(**************************** oblist management ***************************) 
+ 
+ 
+(* Oblist organization: 
+ 
+(NOTE: 
+ 
+                                 +-----------------+ 
+                                 l     <status>    l 
+ All nodes are represented as    +--------+--------+    in all comments 
+                                 l <head> l <tail> l    of this packet. 
+                                 +--------+--------+ 
+ 
+END OF NOTE) 
+ 
+ 
+The 'oblist' (object list) is organized as follows: 
+ 
+  +-------------+ 
+  l oblist bone l 
+  +------+------+  +--> list of all atoms whose print names begin with "§" 
+  l   o  l XXXX l  l 
+  +---+--+------+  l 
+      +------------+ 
+  +-------------+ 
+  l oblist bone l 
+  +------+------+  +--> list of all atoms whose print names begin with "A" 
+  l   o  l XXXX l  l 
+  +---+--+------+  l 
+      +------------+ 
+            . 
+            . 
+            . 
+ 
+  +-------------+ 
+  l oblist bone l 
+  +------+------+  +--> list of all atoms whose print names begin with "Z" 
+  l   o  l XXXX l  l 
+  +---+--+------+  l 
+      +------------+ 
+ 
+ 
+These nodes with status 'oblist bone' form the oblist skeleton. As long as
+the lisp heap exists, they are stored contiguously in nodes 2 - 28; they
+cannot be changed directly by the user. This way of storing the oblist
+skeleton allows a hashing scheme to be applied when searching for an atom
+with a given name. The hash width of 27 is the smallest one thas distributes
+all atoms according to their character; with a smaller hash size, two or
+more lists would be merged, with the effect that some of the atom lists
+would contain atoms beginning with different characters.
+ 
+ 
+The list of all atoms whose print names begin with a certain character
+is organized as follows: 
+ 
+  +-------------+ 
+  l    atomic   l 
+  +------+------+ 
+  l   o  l  o---+--> property list of first atom 
+  +---+--+------+ 
+      l 
+      V 
+  +-------------+ 
+  l    atomic   l 
+  +------+------+ 
+  l   o  l  o---+--> property list of 2nd atom 
+  +---+--+------+ 
+      l 
+      V 
+      . 
+      . 
+      . 
+ 
+      l 
+      V 
+  +-------------+ 
+  l    atomic   l 
+  +------+------+ 
+  l   o  l  o---+--> property list of last atom 
+  +---+--+------+ 
+      l 
+      V 
+    oblist bone where the atom list began 
+ 
+ 
+These lists cannot be acessed directly by the user, too. 
+*) 
+ 
+ 
+ 
+PROC x initialize oblist and heap size: 
+  node (1).status := text data; 
+  node (1).head := 32 (* blank *); 
+  node (1).tail := 1; 
+  INT VAR i; 
+  FOR i FROM 2 UPTO 28 REP 
+    node (i).status := oblist bone; 
+    node (i).head := i 
+  PER; 
+  CONCR (heap).size := 28. 
+ 
+node: 
+  CONCR (heap).node. 
+ 
+END PROC x initialize oblist and heap size; 
+ 
+ 
+(*++++++++++++++++++++++++++++++ oblist dump +++++++++++++++++++++++++++++*) 
+ 
+ 
+SYM VAR actual oblist bone :: SYM :(0), 
+        actual atom :: SYM :(0); 
+ 
+ 
+PROC begin oblist dump: 
+  actual oblist bone := SYM :(2); 
+  actual atom := SYM :(2) 
+END PROC begin oblist dump; 
+ 
+ 
+SYM PROC next atom: 
+  actual atom := x head (actual atom); 
+  WHILE no more atoms in this atom list REP 
+    try next oblist bone 
+  PER; 
+  actual atom. 
+ 
+no more atoms in this atom list: 
+  (* NIL is given as last atom when 'next atom' is called repeatedly, so *) 
+  (* it can serve as a terminator. So NIL "does not count" if it is      *) 
+  (* encountered during one of the calls.                                *) 
+  IF null (actual atom) THEN 
+    actual atom := x head (actual atom) 
+  FI; 
+  eq (actual atom, actual oblist bone). 
+ 
+try next oblist bone: 
+  IF actual oblist bone is last oblist bone THEN 
+    actual atom := SYM :(2); 
+    LEAVE next atom WITH nil 
+  FI; 
+  CONCR (actual oblist bone) INCR 1; 
+  actual atom := x head (actual oblist bone). 
+ 
+actual oblist bone is last oblist bone: 
+  CONCR (actual oblist bone) = 28. 
+ 
+END PROC next atom; 
+ 
+ 
+(*+++++++++++++++++++++++ atom search and creation +++++++++++++++++++++++*) 
+ 
+ 
+SYM VAR predecessor, result; 
+  (* Variables used for communication between the internal search        *) 
+  (* procedures and the procedures calling them.                         *) 
+ 
+ 
+SYM PROC atom (TEXT CONST name): 
+  x search atom (name); 
+  IF atom not already existing THEN 
+    nil 
+  ELSE 
+    result 
+  FI. 
+ 
+atom not already existing: 
+  x status (result) = oblist bone. 
+ 
+END PROC atom; 
+ 
+ 
+SYM PROC new atom (TEXT CONST name): 
+  x search atom (name); 
+  IF atom not already existing THEN 
+    x create new atom (name); 
+  FI; 
+  result. 
+ 
+atom not already existing: 
+  x status (result) = oblist bone. 
+ 
+END PROC new atom; 
+ 
+ 
+PROC create atom (TEXT CONST name): 
+  x search atom (name); 
+  IF atom already existing THEN 
+    error stop ("Atom " + name + " existiert bereits") 
+  ELSE 
+    x create new atom (name) 
+  FI. 
+ 
+atom already existing: 
+  x status (result) <> oblist bone. 
+ 
+END PROC create atom; 
+ 
+ 
+PROC delete atom (SYM CONST atom): 
+  IF is named atom (atom) THEN 
+    IF null (atom) OR eq (atom, pname) THEN 
+      error stop ("Dies Atom darf nicht geloescht werden") 
+    ELSE 
+      search predecessor; 
+      delete atom from atom list 
+    FI 
+  ELSE 
+    error stop ("Nur benannte Atome können geloescht werden") 
+  FI. 
+ 
+search predecessor: 
+  predecessor := x head (atom); 
+  WHILE NOT eq (x head (predecessor), atom) REP 
+    predecessor := x head (predecessor) 
+  PER. 
+ 
+delete atom from atom list: 
+  x set head (predecessor, x head (atom)). 
+ 
+END PROC delete atom; 
+ 
+ 
+PROC x search atom (TEXT CONST name): 
+  CONCR (result) := (code (name SUB 1) + 17) MOD 27 + 2; 
+  (* This formula places the list of atoms beginning with "§" at the     *) 
+  (* first oblist bone, the list of atoms beginning with "A" at the      *) 
+  (* at the second one, and so on. (See also the big comment in lines    *) 
+  (* 600 - 700)                                                          *) 
+  REP 
+    predecessor := result; 
+    result := x head (predecessor); 
+  UNTIL end of atom list reached COR right atom found PER. 
+ 
+end of atom list reached: 
+  x status (result) = oblist bone. 
+ 
+right atom found: 
+  SYM VAR actual character node := property (result, pname); 
+  IF NOT is text (actual character node) THEN 
+    x lisp error ("Namen erwartet"); 
+    LEAVE right atom found WITH FALSE 
+  FI; 
+  IF CONCR (x head (actual character node)) <> length (name) THEN 
+    FALSE 
+  ELSE 
+    INT VAR i; 
+    FOR i FROM 1 UPTO length (name) REP 
+      to next character node; 
+      check wether is character data node; 
+      check wether character matches; 
+    PER; 
+    TRUE 
+  FI. 
+ 
+to next character node: 
+  actual character node := x tail (actual character node). 
+ 
+check wether is character data node: 
+  IF x status (actual character node) <> character data THEN 
+    x lisp error ("Zeichenkette erwartet"); 
+    LEAVE right atom found WITH FALSE 
+  FI. 
+ 
+check wether character matches: 
+  IF code (name SUB i) <> CONCR (x head (actual character node)) THEN 
+    LEAVE right atom found WITH FALSE 
+  FI. 
+ 
+END PROC x search atom; 
+ 
+ 
+PROC x create new atom (TEXT CONST name): 
+  (* It is necessary that 'x search atom' has been executed before        *) 
+  (* calling 'x create new atom' because this procedure relies on the     *) 
+  (* value of 'predecessor'.                                              *) 
+  enable stop; 
+  SYM CONST sym name :: sym (name); 
+  IF CONCR (heap).size + 3 > max size THEN 
+    error stop ("LISP Heap Ueberlauf") 
+  FI; 
+  result := newly created atom; 
+  x set head (predecessor, result). 
+ 
+newly created atom: 
+  x new node (atomic, CONCR (oblist bone node), CONCR (property list)). 
+ 
+oblist bone node: 
+  x head (predecessor). 
+ 
+property list: 
+  x new node (property indicator, CONCR (pname), property root node). 
+ 
+property root node: 
+  CONCR (x new node (property root, CONCR (sym name), CONCR (nil))). 
+ 
+END PROC x create new atom; 
+ 
+ 
+(************************* property list handling *************************) 
+ 
+(* 
+The property lists consist of chained units of the structure 
+ 
+  +--------------------+   +---------------+ 
+  l property indicator l   l property root l 
+  +----------+---------+   +-------+-------+ 
+  l    o     l    o----+-->l   o   l   o---+--> . . . 
+  +----+-----+---------+   +---+---+-------+ 
+       l                       l 
+       V                       V 
+  property id              property 
+ 
+ 
+or 
+ 
+  +----------------+ 
+  l flag indicator l 
+  +--------+-------+ 
+  l   o    l   o---+--> . . . 
+  +---+----+-------+ 
+      l 
+      V 
+   flag id 
+ 
+ 
+ 
+The property lists cannot be altered or read directly, too. 
+ 
+For property list handling there exist procedures that insert, change, read
+and delete properties resp. flags. Thus, the only thing that can be done
+with any property of an atom without using these special procedures, is
+comparing to or 'cons'ing with some other S-expression. 
+At any given time the property list of any atom (including 'NIL') contains
+the property 'PNAME' giving the print name of the atom, stored as a list of
+characters. This special property cannot be altered, overwritten by 'add
+property' or deleted.
+*) 
+ 
+ 
+(*++++++++++++++++++++++++++ property list dump ++++++++++++++++++++++++++*) 
+ 
+ 
+SYM VAR actual property list node :: nil; 
+ 
+ 
+PROC begin property list dump (SYM CONST atom): 
+  actual property list node := x tail (atom) 
+END PROC begin property list dump; 
+ 
+ 
+PROC next property (SYM VAR property id, property): 
+  IF null (actual property list node) THEN 
+    property id := nil; 
+    property := nil 
+  ELSE 
+    SELECT x status (actual property list node) OF 
+      CASE flag indicator: get flag id 
+      CASE property indicator: get property id and property 
+      OTHERWISE x lisp error ("Flagge oder Eigenschaft erwartet und nicht: " 
+                              + text (x status (actual property list node))) 
+    END SELECT 
+  FI. 
+ 
+get flag id: 
+  property id := x head (actual property list node); 
+  actual property list node := x tail (actual property list node); 
+  property := nil. 
+ 
+get property id and property: 
+  property id := x head (actual property list node); 
+  actual property list node := x tail (actual property list node); 
+  IF x status (actual property list node) = property root THEN 
+    property := x head (actual property list node); 
+    actual property list node := x tail (actual property list node) 
+  ELSE 
+    x lisp error ("Eigenschaftswurzel erwartet, nicht:" + 
+                text (x status (actual property list node))); 
+    property := nil 
+  FI. 
+ 
+END PROC next property; 
+ 
+ 
+(*+++++++++++++++++++++++++++++ properties +++++++++++++++++++++++++++++++*) 
+ 
+ 
+SYM VAR last atom :: SYM :(0), 
+        p list predecessor, 
+        p list result; 
+ 
+ 
+PROC add property (SYM CONST atom, property id, property): 
+  IF eq (property id, pname) THEN 
+    errorstop ("Der PNAME eines Atoms darf nicht versteckt sein") 
+  ELSE 
+    IF CONCR (heap).size + 2 > max size THEN 
+      error stop ("LISP Heap Ueberlauf"); 
+      LEAVE add property 
+    FI; 
+    x set tail (atom, new property plus old property list); 
+    IF eq (atom, last atom) AND 
+       eq (property id, x head (p list result)) THEN 
+      p list predecessor := atom; 
+      p list result := x tail (atom) 
+    FI 
+  FI. 
+ 
+new property plus old property list: 
+  x new node (property indicator, 
+        CONCR (property id), CONCR (property root plus old property list)). 
+ 
+property root plus old property list: 
+  x new node (property root, CONCR (property), CONCR (old property list)). 
+ 
+old property list: 
+  x tail (atom) 
+ 
+END PROC add property; 
+ 
+ 
+PROC alter property (SYM CONST atom, property id, new property): 
+  IF eq (property id, pname) THEN 
+    error stop ("Namen kann man nicht aendern") 
+  ELSE 
+    x search property id (atom, property id); 
+    IF null (p list result) THEN 
+      error stop ("Eigenschaft existiert nicht") 
+    ELSE 
+      x set head (x tail (p list result), new property) 
+    FI 
+  FI 
+END PROC alter property; 
+ 
+ 
+SYM PROC property (SYM CONST atom, property id): 
+  x search property id (atom, property id); 
+  IF null (p list result) THEN 
+    nil 
+  ELSE 
+    x head (x tail (p list result)) 
+  FI 
+END PROC property; 
+ 
+ 
+PROC delete property (SYM CONST atom, property id): 
+  IF eq (property id, pname) THEN 
+    errorstop ("Der Name eines Atoms darf nicht geloescht werden") 
+  ELSE 
+    x search property id (atom, property id); 
+    IF NOT null (p list result) THEN 
+      x set tail (p list predecessor, x tail (x tail (p list result))); 
+      last atom := SYM :(0) 
+    FI 
+  FI 
+END PROC delete property; 
+ 
+ 
+BOOL PROC property exists (SYM CONST atom, property id): 
+  x search property id (atom, property id); 
+  NOT null (p list result) 
+END PROC property exists; 
+ 
+ 
+PROC x search property id (SYM CONST atom, property id): 
+  IF eq (last atom, atom) AND eq (x head (p list result), property id) THEN 
+    LEAVE x search property id 
+  FI; 
+  last atom := atom; 
+  p list predecessor := atom; 
+  REP 
+    p list result := x tail (p list predecessor); 
+    IF end of property list THEN 
+      last atom := SYM :(0); 
+      LEAVE x search property id 
+    FI; 
+    SELECT x status (p list result) OF 
+      CASE flag indicator: p list predecessor := p list result 
+      CASE property indicator: check wether property root node follows; 
+                               IF correct property id found THEN 
+                                 LEAVE x search property id 
+                               ELSE 
+                                 p list predecessor := xtail (p list result) 
+                               FI 
+      CASE property root: xlisperror("Unordentliche Eigenschaftwurzel"); 
+                          p list result := nil; 
+                          last atom := SYM :(0); 
+                          LEAVE x search property id 
+      OTHERWISE x lisp error ("Eigenschaften erwartet und nicht: " + 
+                              text (x status (p list result))); 
+                p list result := nil; 
+                last atom := SYM :(0); 
+                LEAVE x search property id 
+    END SELECT 
+  PER. 
+ 
+end of property list: 
+  null (p list result). 
+ 
+check wether property root node follows: 
+  IF x status (x tail (p list result)) <> property root THEN 
+    x lisp error ("Eigenschaftswurzel erwartet"); 
+    p list result := nil; 
+    last atom := SYM :(0); 
+    LEAVE x search property id 
+  FI. 
+ 
+correct property id found: 
+  eq (x head (p list result), property id). 
+ 
+END PROC x search property id; 
+ 
+ 
+(*++++++++++++++++++++++++++++++++ flags +++++++++++++++++++++++++++++++++*) 
+ 
+ 
+PROC add flag (SYM CONST atom, flag id): 
+  enable stop; 
+  x set tail (atom, new flag plus old property list). 
+ 
+new flag plus old property list: 
+  x new node (flag indicator, CONCR (flag id), old property list). 
+ 
+old property list: 
+  CONCR (x tail (atom)) 
+ 
+END PROC add flag; 
+ 
+ 
+BOOL PROC flag (SYM CONST atom, flag id): 
+  x search flag id (atom, flag id); 
+  NOT null (result) 
+END PROC flag; 
+ 
+ 
+PROC delete flag (SYM CONST atom, flag id): 
+  x search flag id (atom, flag id); 
+  IF NOT (is error COR null (result)) THEN 
+    x set tail (predecessor, x tail (result)) 
+  FI 
+END PROC delete flag; 
+ 
+ 
+PROC x search flag id (SYM CONST atom, flag id): 
+  predecessor := atom; 
+  REP 
+    result := x tail (predecessor); 
+    IF end of property list THEN 
+      LEAVE x search flag id 
+    FI; 
+    SELECT x status (result) OF 
+      CASE property root, property indicator: predecessor := result 
+      CASE flag indicator: IF correct flag id found THEN 
+                             LEAVE x search flag id 
+                           ELSE 
+                             predecessor := result 
+                           FI 
+      OTHERWISE x lisp error ("Eigenschaften erwartet und nicht:" + 
+                              text (x status (result))); 
+                result := nil; 
+                LEAVE x search flag id 
+    END SELECT 
+  PER. 
+ 
+end of property list: 
+  null (result). 
+ 
+correct flag id found: 
+  eq (x head (result), flag id). 
+ 
+END PROC x search flag id; 
+ 
+ 
+(****** Conversion of non-LISP data to LISP structures and vice versa *****) 
+ 
+ 
+TEXT PROC text (SYM CONST sym): 
+  IF is text (sym) THEN 
+    TEXT VAR result := ""; 
+    SYM VAR actual node :: sym; 
+    INT VAR i; 
+    FOR i FROM 1 UPTO CONCR (x head (sym)) REP 
+      actual node := x tail (actual node); 
+      result CAT actual character 
+    PER; 
+    result 
+  ELSE 
+    error stop ("ist kein text"); 
+    "" 
+  FI. 
+ 
+actual character: 
+  IF x status (actual node) <> character data THEN 
+    x lisp error ("Zeichenfolge erwartet"); 
+    LEAVE text WITH result 
+  FI; 
+  code (CONCR (x head (actual node))). 
+ 
+END PROC text; 
+ 
+ 
+BOOL PROC is text (SYM CONST sym): 
+  x status (sym) = text data 
+END PROC is text; 
+ 
+ 
+SYM PROC sym (TEXT CONST text): 
+  SYM VAR result :: x new node (text data, 
+                                length (text), CONCR (nil)), 
+          actual character node :: result; 
+  INT VAR length of text; 
+  ignore blanks at end of text;
+  INT VAR i; 
+  FOR i FROM 1 UPTO length of text REP 
+    x set tail (actual character node, new next character node); 
+    actual character node := x tail (actual character node) 
+  PER; 
+  result. 
+ 
+ignore blanks at end of text: 
+  FOR length of text FROM length (text) DOWNTO 0 REP 
+    IF (text SUB length of text) <> " " THEN 
+      LEAVE ignore blanks at end of text 
+    FI 
+  PER; 
+  length of text := 0. 
+ 
+new next character node: 
+  x new node (character data, code (text SUB i), 1). 
+ 
+END PROC sym; 
+ 
+ 
+INT PROC character (SYM CONST sym): 
+  IF x status (sym) = character data THEN 
+    CONCR (x head (sym)) 
+  ELSE 
+    error stop ("ist kein Charakter"); 
+    -1 
+  FI 
+END PROC character; 
+ 
+ 
+BOOL PROC is character (SYM CONST sym): 
+  x status (sym) = character data 
+END PROC is character; 
+ 
+ 
+SYM PROC sym character (INT CONST char): 
+  x new node (character data, char MOD 256, 1) 
+END PROC sym character; 
+ 
+ 
+INT PROC int 1 (SYM CONST sym): 
+  IF x status (sym) = int data THEN 
+    CONCR (x head (sym)) 
+  ELSE 
+    error stop ("ist keine Zahl"); 
+    -1 
+  FI 
+END PROC int 1; 
+ 
+ 
+INT PROC int 2 (SYM CONST sym): 
+  IF x status (sym) = int data THEN 
+    CONCR (x tail (sym)) 
+  ELSE 
+    error stop ("ist keine Zahl"); 
+    -1 
+  FI 
+END PROC int 2; 
+ 
+ 
+BOOL PROC is int pair (SYM CONST sym): 
+  x status (sym) = int data 
+END PROC is int pair; 
+ 
+ 
+SYM PROC sym (INT CONST int 1, int 2): 
+  x new node (int data, int 1, int 2) 
+END PROC sym; 
+ 
+ 
+(********************* internal error routine *****************************) 
+ 
+ 
+PROC x lisp error (TEXT CONST error message): 
+  error stop (""13"LISP SYSTEM FEHLER: " + error message ) 
+END PROC x lisp error; 
+ 
+ 
+END PACKET lisp heap and oblist management; 
+ 
+ 
+ 
+PACKET name                                         (* Autor: J.Durchholz *) 
+                                                    (* Datum: 15.06.1982  *) 
+    DEFINES                                         (* Version 1.1.1      *) 
+ 
+  name: 
+ 
+TEXT PROC name (SYM CONST sym): 
+  IF is named atom (sym) THEN 
+    text (property (sym, pname)) 
+  ELSE 
+    ""15"IST_KEIN_ATOM"14"" 
+  FI 
+END PROC name; 
+ 
+ 
+END PACKET name; 
+ 
+ 
+ 
+PACKET lisp storage info                            (* Autor: J.Durchholz *) 
+                                                    (* Datum: 23.08.1982  *) 
+    DEFINES                                         (* Version 1.1.1      *) 
+ 
+  lisp storage info: 
+ 
+ 
+PROC lisp storage info: 
+  INT VAR size, used; 
+  lisp storage (size, used); 
+  out (""13""10"      "); 
+  put (used); 
+  put ("Knoten von"); 
+  put (size); 
+  put line ("Knoten des LISP-Heaps sind belegt!") 
+END PROC lisp storage info; 
+ 
+ 
+END PACKET lisp storage info; 
+

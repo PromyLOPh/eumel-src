@@ -1,0 +1,146 @@
+(* 
+        
+         ********************************************************** 
+         ********************************************************** 
+         **                                                      ** 
+         **                    ls-Prozess/gen                    ** 
+         **                                                      ** 
+         **                     Version 1.02                     ** 
+         **                                                      ** 
+         **                  (Stand : 26.01.90)                  ** 
+         **                                                      ** 
+         **                                                      ** 
+         **                                                      ** 
+         **         Autoren: Bruno Pollok, Bielefeld             ** 
+         **                  Wolfgang Weber, Bielefeld           ** 
+         **                                                      ** 
+         **                                                      ** 
+         **    Copyright (C) 1988  Eva Latta-Weber, Bielefeld    ** 
+         **    Copyright (C) 1990  ERGOS GmbH, Siegburg          ** 
+         ********************************************************** 
+         ********************************************************** 
+ 
+                                                                           *) 
+WINDOW VAR fenster := window (1, 1, 79, 24); 
+TEXT CONST titel        :: ""15"ls-Prozess :  Automatische Generierung "14"",
+           ueberschrift :: "Auswahl der Interface-Anpassung",
+           hinweis      :: "Bitte gewünschte Anpassung ankreuzen!";
+TEXT VAR   anpassung;
+BOOL VAR   alles okay;
+frage nach diskette;
+IF alles okay
+   THEN installation
+FI;
+PROC installation:
+  THESAURUS VAR thes :: infix namen (ALL archive, "ls-Prozess 1");
+  anpassung := boxone (fenster, thes, ueberschrift, hinweis, FALSE);
+  cursor (1, 3);
+  out (""4"");
+  IF anpassung <> ""
+     THEN installiere ls prozess
+     ELSE warnung
+  FI.
+  warnung:
+    out (""7"");
+    line (2);
+    out ("    FEHLER: Es muß unbedingt eine Anpassung ausgewaehlt werden!");
+    cursor (5, 7);
+    IF no ("Generierung abbrechen")
+       THEN installation
+    FI.
+END PROC installation;
+PROC installiere ls prozess:
+  forget ("ls-Prozess/gen", quiet);
+  frage evtl nach interfacekanal;
+  check off;
+  warnings off;
+  installiere (anpassung);
+  installiere ("ls-Prozess 2");
+  installiere ("ls-Prozess 3");
+  installiere ("ls-Prozess 4");
+  installiere ("ls-Prozess 5");
+
+  installiere ("ls-MENUKARTE:Prozess");
+  check on;
+  release (archive);
+  setze ggf interface kanal;
+  global manager.
+  frage evtl nach interfacekanal:
+    IF adapter fuer separate schnittstelle
+       THEN erfrage kanalnummer
+    FI.
+  erfrage kanalnummer:
+    INT VAR kanalnummer;
+    line (2);
+    REP put ("    Gib Interfacekanal:");
+        get (kanalnummer);
+        IF kanalnummer < 1 OR kanalnummer > 24
+           THEN out (""7"    Unzulaessige Kanalnummer!");
+                line (2)
+
+        FI
+    UNTIL kanalnummer > 0 AND kanalnummer < 25 PER;
+    cursor (1, 3);
+    out (""4"").
+  setze ggf interfacekanal:
+    IF adapter fuer separate schnittstelle
+       THEN do ("interface kanal (" + text (kanalnummer) + ")")
+    FI.
+  adapter fuer separate schnittstelle:
+    (anpassung = "ls-Prozess 1 für AKTRONIC-Adapter") OR
+    (anpassung = "ls-Prozess 1 für MUFI als Endgerät").
+END PROC installiere ls prozess;
+PROC installiere (TEXT CONST datei):
+  INT VAR zeile, spalte;
+
+  hole datei vom archiv;
+  IF datei = "ls-MENUKARTE:Prozess"
+     THEN schicke zu menukarten task
+     ELSE insertiere
+  FI.
+  hole datei vom archiv:
+    line (2);
+    out ("'" + datei + "' ");
+    get cursor (spalte, zeile);
+    IF NOT exists (datei)
+       THEN out ("wird von der Archivdiskette geholt.");
+            fetch (datei, archive)
+    FI.
+  insertiere:
+    cursor (spalte, zeile);
+    out (""5"");
+    out ("wird insertiert.");
+    insert (datei);
+    cursor (spalte, zeile);
+
+    out (""4"");
+    forget (datei, quiet).
+  schicke zu menukarten task:
+    cursor (spalte, zeile);
+    out (""5"");
+    command dialogue (FALSE);
+    save (datei, /"ls-MENUKARTEN");
+    command dialogue (TRUE);
+    forget (datei, quiet).
+END PROC installiere;
+PROC frage nach diskette:
+  page;
+  out (center (fenster, titel));
+  line (4);
+  putline ("      Ist das Archiv angemeldet,");
+  putline ("      die Diskette mit 'ls-Prozess' eingelegt");
+  IF yes  ("      und das Laufwerk geschlossen")
+
+     THEN alles okay := TRUE
+     ELSE alles okay := FALSE;
+          warnung
+  FI.
+  warnung:
+    line (3);
+    out ("      FEHLER : Diskettenzugriff nicht gesichert!"7"");
+    line (2);
+    out ("      Bitte Fehler beseitigen und Programm neu starten!");
+    line (5)
+END PROC frage nach diskette;
+
+

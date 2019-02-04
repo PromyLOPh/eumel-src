@@ -1,0 +1,125 @@
+PACKET maskenverarbeitungDEFINES INITBY ,tagexists,storetag,renametag,copytag
+,forgettag,listedermasken,startemaskenverarbeitung:LET datenraumpraefix=
+"BAISY-",datenraumbasis=2;LET maxtag=100,maxtab=20,maxinhalt=2000;LET niltext
+="",null=0;TYPE EINTRAG =STRUCT (TEXT name,INT dr,tagnr);TYPE INHALT =STRUCT 
+(LONGROW ordnung,INT maxeintrag,ersterfreier,ROW maxinhaltEINTRAG eintrag);
+TYPE ZEILE =STRUCT (BOOL gueltig,TAG maske);TYPE TAGTAB =STRUCT (INT 
+maxeintrag,zahldereintraege,ersterfreier,ROW maxtagZEILE zeile);BOUND INHALT 
+VAR inhaltsverzeichnis;ROW maxtabBOUND TAGTAB VAR tagtable;INT VAR maxeintrag
+,ersterfreier;OP INITBY (TAG VAR maske,TEXT CONST name):BOOL VAR gefunden;
+INT VAR eintragsnr,dr,tagnr;suchen(name,eintragsnr,dr,tagnr,gefunden);IF 
+gefundenTHEN maske:=tagtable(dr).zeile(tagnr).maskeELSE nil(maske)FI END OP 
+INITBY ;BOOL PROC tagexists(TEXT CONST name):tagindex(name)>nullEND PROC 
+tagexists;PROC storetag(TAG CONST maske,TEXT CONST name):BOOL VAR gefunden;
+INT VAR katalognr,inhaltnr,dr,tagnr;suchen(name,katalognr,dr,tagnr,gefunden);
+IF NOT gefundenTHEN neueinrichtenELSE ueberschreibenFI .neueinrichten:
+freieplaetzesuchen;einfuegen.freieplaetzesuchen:naechstenfreiensuchen(
+inhaltnr,dr,tagnr).einfuegen:intagtable;inkatalog.intagtable:tagtable(dr).
+zeile(tagnr).maske:=maske;tagtable(dr).zeile(tagnr).gueltig:=true.inkatalog:
+eintragmachen;inordnungaufnehmen.eintragmachen:EINTRAG VAR e;e.name:=name;e.
+dr:=dr;e.tagnr:=tagnr;inhaltsverzeichnis.eintrag(inhaltnr):=e.
+inordnungaufnehmen:IF katalognr=nullTHEN anhaengenELSE einkettenFI .anhaengen
+:inhaltsverzeichnis.ordnungCAT inhaltnr.einketten:insert(inhaltsverzeichnis.
+ordnung,pos(inhaltsverzeichnis.ordnung,katalognr),inhaltnr).ueberschreiben:
+tagtable(dr).zeile(tagnr).maske:=maske.END PROC storetag;PROC renametag(TEXT 
+CONST alt,neu):BOOL VAR gefunden;INT VAR alterindex,neuerindex,dr,tagnr;
+alterindex:=tagindex(alt);IF alterindex<>nullTHEN umbenennenFI .umbenennen:
+suchen(neu,neuerindex,dr,tagnr,gefunden);IF NOT gefundenTHEN 
+alterindexausordnung;neuerindexinordnung;nameueberschreibenFI .
+alterindexausordnung:delete(inhaltsverzeichnis.ordnung,pos(inhaltsverzeichnis
+.ordnung,alterindex)).neuerindexinordnung:suchen(neu,neuerindex,dr,tagnr,
+gefunden);insert(inhaltsverzeichnis.ordnung,pos(inhaltsverzeichnis.ordnung,
+neuerindex),alterindex).nameueberschreiben:inhaltsverzeichnis.eintrag(
+alterindex).name:=neu.END PROC renametag;PROC copytag(TEXT CONST alt,neu):
+TAG VAR maske;maskeINITBY alt;storetag(maske,neu)END PROC copytag;PROC 
+forgettag(TEXT CONST name):ungueltigmachen(tagindex(name))END PROC forgettag;
+PROC begintaglist:taglistindex:=0;taglistlaenge:=length(inhaltsverzeichnis.
+ordnung)END PROC begintaglist;INT VAR taglistindex,taglistlaenge;PROC 
+nexttaglistentry(TEXT VAR name):taglistindexINCR 1;name:=naechstereintrag.
+naechstereintrag:IF taglistindex>taglistlaengeTHEN niltextELSE 
+inhaltsverzeichnis.eintrag(eintragindex).nameFI .eintragindex:
+inhaltsverzeichnis.ordnung_taglistindex.END PROC nexttaglistentry;PROC 
+listedermasken:LET listname="Masken";listedermasken(listname);show(listname);
+forget(listname,quiet)END PROC listedermasken;PROC listedermasken(TEXT CONST 
+dateiname):LONGROW VAR refinements;FILE VAR f:=sequentialfile(output,
+dateiname);refinements:=inhaltsverzeichnis.ordnung;INT VAR i;FOR iFROM 1UPTO 
+length(refinements)REP put(f,inhaltsverzeichnis.eintrag(refinements_i).name);
+line(f)PER ;close(f)END PROC listedermasken;INT PROC tagindex(TEXT CONST name
+):BOOL VAR gefunden;INT VAR eintragsnr,dr,tagnr;suchen(name,eintragsnr,dr,
+tagnr,gefunden);IF gefundenTHEN eintragsnrELSE nullFI END PROC tagindex;PROC 
+suchen(TEXT CONST muster,INT VAR eintragsnr,dr,tagnr,BOOL VAR gefunden):
+LONGROW CONST ordnung:=inhaltsverzeichnis.ordnung;INT CONST l:=length(ordnung
+);eintragsnr:=null;IF l=nullTHEN gefunden:=falseELSE INT VAR ordnungsindex;
+binsearch(ordnung,muster,BOOL PROC (TEXT CONST ,INT CONST )kleiner,
+ordnungsindex);IF ordnungsindex>lTHEN gefunden:=falseELSE eintragsnr:=ordnung
+_ordnungsindex;EINTRAG VAR e;e:=inhaltsverzeichnis.eintrag(eintragsnr);dr:=e.
+dr;tagnr:=e.tagnr;gefunden:=(muster=e.name)FI FI .END PROC suchen;BOOL PROC 
+kleiner(TEXT CONST muster,INT CONST verzeichnispos):muster<=
+inhaltsverzeichnis.eintrag(verzeichnispos).nameEND PROC kleiner;OP :=(
+EINTRAG VAR e,EINTRAG CONST f):CONCR (e):=CONCR (f)END OP :=;PROC 
+naechstenfreiensuchen(INT VAR index,dr,tagnr):
+naechstenfreienininhaltsverzeichnis(index);dr:=ersterfreier;
+naechstefreiezeile(dr,tagnr)END PROC naechstenfreiensuchen;PROC 
+naechstenfreienininhaltsverzeichnis(INT VAR index):index:=inhaltsverzeichnis.
+ersterfreier;IF index>inhaltsverzeichnis.maxeintragTHEN inhaltsverzeichnis.
+maxeintrag:=inhaltsverzeichnis.ersterfreier;inhaltsverzeichnis.ersterfreier
+INCR 1ELSE INT VAR i;FOR iFROM index+1UPTO inhaltsverzeichnis.maxeintragREP 
+IF NOT istgueltigTHEN inhaltsverzeichnis.ersterfreier:=i;LEAVE 
+naechstenfreienininhaltsverzeichnisFI PER ;inhaltsverzeichnis.ersterfreier:=
+inhaltsverzeichnis.maxeintrag+1FI .istgueltig:inhaltsverzeichnis.eintrag(i).
+name<>niltext.END PROC naechstenfreienininhaltsverzeichnis;PROC 
+naechstenfreiendatenraum:IF ersterfreier>maxeintragTHEN neuerdatenraumansende
+ELSE INT VAR i;FOR iFROM ersterfreier+1UPTO maxeintragREP IF NOT 
+datenraumvollTHEN ersterfreier:=i;LEAVE naechstenfreiendatenraumFI PER ;
+ersterfreier:=maxeintrag+1;neuerdatenraumansendeFI .neuerdatenraumansende:
+datenraumneuankoppeln(ersterfreier);maxeintrag:=ersterfreier.datenraumvoll:
+tagtable(i).zahldereintraege>=maxtag.END PROC naechstenfreiendatenraum;PROC 
+naechstefreiezeile(INT VAR dr,INT VAR tagnr):IF tagtable(dr).zahldereintraege
+=maxtagTHEN naechstenfreiendatenraum;dr:=ersterfreierFI ;tagnr:=tagtable(dr).
+ersterfreier;tagtable(dr).zahldereintraegeINCR 1;IF tagtable(dr).ersterfreier
+>tagtable(dr).maxeintragTHEN tagtable(dr).maxeintrag:=tagtable(dr).
+ersterfreier;tagtable(dr).ersterfreierINCR 1ELSE INT VAR i;FOR iFROM tagtable
+(dr).ersterfreier+1UPTO tagtable(dr).maxeintragREP IF NOT istgueltigTHEN 
+tagtable(dr).ersterfreier:=i;LEAVE naechstefreiezeileFI PER ;tagtable(dr).
+ersterfreier:=tagtable(dr).maxeintrag+1FI .istgueltig:tagtable(dr).zeile(i).
+gueltig.END PROC naechstefreiezeile;PROC ungueltigmachen(INT CONST index):IF 
+gueltigerindexTHEN tagungueltigmachen;eintragungueltigmachen;
+inordnungungueltigmachenFI .gueltigerindex:index>0.tagungueltigmachen:
+EINTRAG VAR e:=inhaltsverzeichnis.eintrag(index);ungueltigmachen(e.dr,e.tagnr
+).eintragungueltigmachen:e.name:=niltext;inhaltsverzeichnis.eintrag(index):=e
+;IF inhaltsverzeichnis.ersterfreier>indexTHEN inhaltsverzeichnis.ersterfreier
+:=indexFI .inordnungungueltigmachen:delete(inhaltsverzeichnis.ordnung,pos(
+inhaltsverzeichnis.ordnung,index)).END PROC ungueltigmachen;PROC 
+ungueltigmachen(INT CONST dr,tagnr):eintragungueltigmachen;IF letztereintrag
+THEN datenraumungueltigmachenFI .eintragungueltigmachen:INT VAR eintragszahl
+:=tagtable(dr).zahldereintraege;eintragszahlDECR 1;IF NOT letztereintragTHEN 
+tagtable(dr).zahldereintraege:=eintragszahl;INT VAR ef:=tagtable(dr).
+ersterfreier;IF tagnr<efTHEN tagtable(dr).ersterfreier:=tagnrFI ;tagtable(dr)
+.zeile(tagnr).gueltig:=false;nil(tagtable(dr).zeile(tagnr).maske);FI .
+letztereintrag:eintragszahl=null.datenraumungueltigmachen:TEXT CONST drname:=
+datenraumname(dr);forget(drname,quiet);IF letzterdatenraumTHEN weglassenELSE 
+neuanlegenFI .letzterdatenraum:(dr=maxeintrag)CAND (dr<>1).weglassen:
+maxeintragDECR 1;ersterfreier:=min(ersterfreier,maxeintrag).neuanlegen:
+datenraumneuankoppeln(dr);ersterfreier:=min(ersterfreier,dr).END PROC 
+ungueltigmachen;PROC datenraumneuankoppeln(INT CONST dr):tagtable(dr):=new(
+datenraumname(dr));tagtable(dr).zahldereintraege:=null;tagtable(dr).
+maxeintrag:=null;tagtable(dr).ersterfreier:=1END PROC datenraumneuankoppeln;
+PROC startemaskenverarbeitung:IF daTHEN nurankoppelnELSE neuerzeugenFI .da:
+TEXT CONST verwaltungsname:=datenraumpraefix+text(datenraumbasis);exists(
+verwaltungsname).neuerzeugen:inhaltsverzeichnis:=new(verwaltungsname);
+inhaltsverzeichnis.maxeintrag:=0;inhaltsverzeichnis.ersterfreier:=1;
+inhaltsverzeichnis.ordnung:=newrow;maxeintrag:=0;ersterfreier:=1;
+naechstenfreiendatenraum.nurankoppeln:verwaltungankoppeln;restankoppeln.
+verwaltungankoppeln:inhaltsverzeichnis:=old(verwaltungsname).restankoppeln:
+beginneliste;naechster;WHILE nochwelchedaREP anbinden;naechsterPER ;abschluss
+.beginneliste:beginlist;maxeintrag:=null.abschluss:ersterfreier:=null;
+naechstenfreiendatenraum.naechster:TEXT VAR name,datum;getlistentry(name,
+datum).nochwelcheda:name<>niltext.anbinden:INT VAR index:=datenraumnummer(
+name)-datenraumbasis;IF index>nullTHEN tagtable(index):=old(name);maxeintrag
+:=max(maxeintrag,index)FI .END PROC startemaskenverarbeitung;INT PROC 
+datenraumnummer(TEXT CONST name):IF pos(name,datenraumpraefix)<>1THEN null
+ELSE int(name-datenraumpraefix)FI END PROC datenraumnummer;TEXT PROC 
+datenraumname(INT CONST nr):datenraumpraefix+text(nr+datenraumbasis)END PROC 
+datenraumname;TEXT OP -(TEXT CONST s,t):TEXT VAR kurz:=s;change(kurz,t,
+niltext);kurzEND OP -;END PACKET maskenverarbeitung;
+

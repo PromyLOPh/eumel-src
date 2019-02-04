@@ -1,0 +1,383 @@
+PACKET offline manager                        (* Autor: Thomas Berlage *)
+                                              (* Stand: 20.01.88       *)
+  DEFINES
+
+  begin,
+  deferred end,
+  own task password,
+  continued from,
+  continue,
+  partner task :
+
+
+LET
+  ack               = 0,
+  nak               = 1,
+  error nak         = 2,
+  second phase ack  = 5,
+  password ack      = 6,
+
+  begin code        = 4,
+  password code     = 9,
+
+  continue code         = 100,
+  ask for password code = 199;
+
+LET
+  taskname invalid =
+    "Taskname ungültig",
+  task not ready =
+    "Vater antwortet nicht",
+  direct continue impossible =
+    "Zieltask kann nicht direkt angekoppelt werden",
+  t password =
+    "Passwort:",
+  t wrong password =
+    "Falsches Passwort",
+  order task no partner =
+    "Ankoppeln nur für Partnertasks",
+  continue not partner =
+    "Nur Partner können angekoppelt werden";
+
+
+BOOL VAR
+  controlled mode := FALSE,
+  end myself := FALSE;
+
+TEXT VAR
+  own password := "";
+
+DATASPACE VAR ds := nilspace;
+
+INT VAR
+  reply,
+  order,
+  control channel,
+  last order,
+  phase number;
+
+BOUND TEXT VAR reply message;
+
+BOUND STRUCT (TEXT tname, tpass, TASK task, PROCA start proc) VAR sv msg;
+
+TASK VAR
+  order task,
+  last order task := niltask;
+
+ROW 4 TASK VAR pt;
+
+INITFLAG VAR pt init;
+
+
+
+PROC begin (TEXT CONST task name, father name) :
+
+  enable stop;
+  init partner;
+  IF task name = "-" THEN
+    errorstop (taskname invalid)
+  END IF;
+  call begin code;
+  IF reply = password code THEN
+    sv msg := ds;
+    get password;
+    call (task (father name), begin code, ds, reply)
+  END IF;
+  IF reply = ack THEN
+    TASK CONST new task := task (task name);
+    forget (ds);
+    wait for init
+  ELIF reply = error nak THEN
+    reply message := ds;
+    disable stop;
+    errorstop (CONCR (reply message));
+    forget (ds)
+  ELSE
+    forget (ds)
+  END IF .
+
+call begin code :
+  INT VAR i;
+  forget (ds); ds := nilspace;
+  sv msg := ds;
+  CONCR (sv msg). tname := task name;
+  CONCR (sv msg). tpass := "";
+  FOR i FROM 1 UPTO 5 REP
+    pingpong (task (father name), begin code, ds, reply);
+    IF reply = -2 THEN pause (5) END IF
+  UNTIL reply <> -2 END REP;
+  IF reply = -2 THEN
+    errorstop (task not ready)
+  END IF .
+
+get password :
+  dialog (t password);
+  get secret line (CONCR (sv msg). tpass);
+  cover tracks .
+
+wait for init :
+  WHILE status (new task) <> 2 REP pause (10) END REP .
+
+END PROC begin;
+
+PROC deferred end :
+
+  end myself := TRUE
+
+END PROC deferred end;
+
+PROC own task password (TEXT CONST word) :
+
+  own password := length (own password) * " ";
+  own password := word;
+  cover tracks
+
+END PROC own task password;
+
+TASK PROC continued from :
+
+  last order task
+
+END PROC continued from;
+
+PROC i continue (TASK CONST t,
+     PROC (DATASPACE VAR, INT CONST, INT CONST, TASK CONST) manager) :
+
+  enable stop;
+  IF is niltask (t) THEN
+    break;
+    disable stop
+  ELSE
+    ask for continue
+  END IF;
+  end if required;
+  WHILE NOT online REP
+    remember error message;
+    prepare manager;
+    wait for order
+  END REP;
+  repeat error message .
+
+ask for continue :
+  INT CONST my channel := channel;
+  ask if password required;
+  break (quiet);
+  send continue request .
+
+ask if password required :
+  INT VAR i;
+  forget (ds); ds := nilspace;
+  FOR i FROM 1 UPTO 5 REP
+    pingpong (t, ask for password code, ds, reply);
+    IF reply = -2 THEN pause (5) END IF
+  UNTIL reply <> -2 END REP;
+  init password ds;
+  IF reply = password ack THEN
+    get password from user
+  ELIF reply = ack THEN
+    set password empty
+  ELSE
+    errorstop (direct continue impossible)
+  END IF .
+
+init password ds :
+  forget (ds);
+  ds := nilspace;
+  reply message := ds .
+
+get password from user :
+  dialog (t password);
+  get secret line (CONCR (reply message));
+  cover tracks .
+
+set password empty :
+  CONCR (reply message) := "" .
+
+send continue request :
+  FOR i FROM 1 UPTO 5 REP
+    pingpong (t, continue code + my channel, ds, reply);
+    IF reply = -2 THEN pause (5) END IF
+  UNTIL reply <> -2 END REP;
+  disable stop;
+  forget (ds);
+  IF reply <> ack THEN
+    continue (my channel)
+  END IF .
+
+end if required :
+  IF end myself OR (controlled mode CAND NOT exists (pt (1))) THEN
+    end (myself)
+  END IF .
+
+remember error message :
+  TEXT VAR stored error;
+  IF is error THEN
+    stored error := error message;
+    clear error
+  ELSE
+    stored error := ""
+  END IF .
+
+prepare manager :
+  set autonom;
+  command dialogue (FALSE);
+  INT VAR old heap size := heap size;
+  last order task := niltask .
+
+wait for order :
+  DATASPACE VAR local ds := nilspace;
+  REP
+    wait (local ds, order, order task);
+    IF order <> second phase ack THEN
+      prepare first phase;
+      manager with end check
+    ELIF order task = last order task THEN
+      prepare second phase;
+      manager (local ds, order, phase number, order task)
+    ELSE
+      send nak
+    END IF;
+    send error if necessary;
+    collect heap garbage if necessary
+  END REP .
+
+prepare first phase :
+  phase number := 1;
+  last order := order;
+  last order task := order task .
+
+prepare second phase :
+  phase number INCR 1;
+  order := last order .
+
+send nak :
+  forget (local ds);
+  local ds := nilspace;
+  send (order task, nak, local ds) .
+
+send error if necessary :
+  IF is error THEN
+    forget (local ds);
+    local ds := nilspace;
+    reply message := local ds;
+    CONCR (reply message) := error message;
+    clear error;
+    send (order task, error nak, local ds)
+  END IF .
+
+collect heap garbage if necessary :
+  IF heap size > old heap size + 8 THEN
+    collect heap garbage;
+    old heap size := heap size
+  END IF .
+
+manager with end check :
+  IF order = ask for password code THEN
+    answer if password required
+  ELIF order > continue code AND order < continue code + 16 THEN
+    try continue channel
+  ELSE
+    manager (local ds, order, phase number, order task)
+  END IF .
+
+answer if password required :
+  IF password required THEN
+    send (order task, password ack, local ds)
+  ELSE
+    send (order task, ack, local ds)
+  END IF .
+
+password required :
+  own password <> "" .
+
+try continue channel :
+  check control;
+  check password;
+  call (supervisor, order, local ds, reply);
+  IF NOT (order task = supervisor) THEN
+    send (order task, reply, local ds)
+  END IF;
+  IF reply = ack THEN
+    forget (local ds);
+    LEAVE wait for order
+  END IF .
+
+check control :
+  IF controlled mode CAND NOT is partner (order task) OR
+       control channel > 0 CAND order - continue code <> control channel THEN
+    errorstop (order task no partner);
+    LEAVE try continue channel
+  END IF .
+
+check password :
+  IF NOT (order task = supervisor) THEN
+    reply message := local ds;
+    IF CONCR (reply message) <> own password THEN
+      errorstop (t wrong password);
+      LEAVE try continue channel
+    END IF
+  END IF .
+
+repeat error message :
+  IF stored error <> "" THEN errorstop (stored error) END IF;
+  command dialogue (TRUE) .
+
+END PROC i continue;
+
+PROC continue (TASK CONST t,
+     PROC (DATASPACE VAR, INT CONST, INT CONST, TASK CONST) manager) :
+
+  enable stop;
+  init partner;
+  control channel := 0;
+  IF t = myself THEN
+    (* do nothing *)
+  ELIF controlled mode THEN
+    IF NOT is partner (t) THEN errorstop (continue not partner) END IF
+  ELIF is partner (t) THEN
+    control channel := channel
+  END IF;
+  i continue (t,
+      PROC (DATASPACE VAR, INT CONST, INT CONST, TASK CONST) manager)
+
+END PROC continue;
+
+BOOL PROC is partner (TASK CONST t) :
+
+  NOT is niltask (t) CAND
+    (t = pt (1) OR t = pt (2) OR t = pt (3) OR t = pt (4))
+
+END PROC is partner;
+
+TASK PROC partner task (INT CONST index) :
+
+  init partner;
+  pt (index)
+
+END PROC partner task;
+
+PROC partner task (INT CONST index, TASK CONST t) :
+
+  init partner;
+  pt (index) := t;
+  IF index = 1 CAND NOT (t = myself) THEN
+    controlled mode := TRUE
+  END IF
+
+END PROC partner task;
+
+PROC init partner :
+
+  IF NOT initialized (pt init) THEN
+    do init
+  END IF .
+
+do init :
+  pt (1) := niltask; pt (2) := niltask;
+  pt (3) := niltask; pt (4) := niltask .
+
+END PROC init partner;
+
+
+END PACKET offline manager;
+

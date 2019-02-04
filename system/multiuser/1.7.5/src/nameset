@@ -1,0 +1,355 @@
+(* ------------------- VERSION 3     17.03.86 ------------------- *)
+PACKET name set DEFINES                       (* Autor: J.Liedtke *)
+ 
+       ALL ,
+       SOME ,
+       LIKE ,
+       + ,
+       - ,
+       / ,
+       do ,
+       FILLBY ,
+       remainder ,
+       
+       fetch ,
+       save ,
+       fetch all ,
+       save all ,
+       forget ,
+       erase ,
+       insert ,
+       edit :
+
+
+LET cr lf = ""13""10"" ;
+
+TEXT VAR name ;
+DATASPACE VAR edit space ;
+
+THESAURUS VAR remaining thesaurus := empty thesaurus ;
+
+
+THESAURUS OP + (THESAURUS CONST left, right) :
+
+  THESAURUS VAR union := left ;
+  INT VAR index := 0 ;
+  get (right, name, index) ;
+  WHILE name <> "" REP
+    IF NOT (union CONTAINS name)
+      THEN insert (union, name)
+    FI ;
+    get (right, name, index)
+  PER ;
+  union .
+
+ENDOP + ;
+
+THESAURUS OP + (THESAURUS CONST left, TEXT CONST right) :
+
+  THESAURUS VAR union := left ;
+  IF NOT (union CONTAINS right)
+    THEN insert (union, right)
+  FI ;
+  union .
+
+ENDOP + ;
+
+THESAURUS OP - (THESAURUS CONST left, right) :
+
+  THESAURUS VAR difference := empty thesaurus ;
+  INT VAR index := 0 ;
+  get (left, name, index) ;
+  WHILE name <> "" REP
+    IF NOT (right CONTAINS name)
+      THEN insert (difference, name)
+    FI ;
+    get (left, name, index)
+  PER ;
+  difference .
+
+ENDOP - ;
+
+THESAURUS OP - (THESAURUS CONST left, TEXT CONST right) :
+
+  THESAURUS VAR difference := left ;
+  INT VAR index ;
+  delete (difference, right, index) ;
+  difference .
+
+ENDOP - ;
+
+THESAURUS OP / (THESAURUS CONST left, right) :
+
+  THESAURUS VAR intersection := empty thesaurus ;
+  INT VAR index := 0 ;
+  get (left, name, index) ;
+  WHILE name <> "" REP
+    IF right CONTAINS name
+      THEN insert (intersection, name)
+    FI ;
+    get (left, name, index)
+  PER ;
+  intersection .
+
+ENDOP / ;
+
+THESAURUS OP ALL (TEXT CONST file name) :
+
+  FILE VAR file := sequential file (input, file name) ;
+  THESAURUS VAR thesaurus := empty thesaurus ;
+  thesaurus FILLBY file ;
+  thesaurus .
+
+ENDOP ALL ;
+
+THESAURUS OP SOME (THESAURUS CONST thesaurus) :
+
+  copy thesaurus into file ;
+  edit file ;
+  copy file into thesaurus .
+
+copy thesaurus into file :
+  forget (edit space) ;
+  edit space := nilspace ;
+  FILE VAR file := sequential file (output, edit space) ;
+  file FILLBY thesaurus .
+  
+edit file :
+  modify (file) ;
+  edit (file) .
+
+copy file into thesaurus :
+  THESAURUS VAR result := empty thesaurus ;
+  input (file) ;
+  result FILLBY file ;
+  forget (edit space) ;
+  result .
+
+ENDOP SOME ;
+
+THESAURUS OP SOME (TASK CONST task) :
+
+  SOME ALL task
+
+ENDOP SOME ;
+
+THESAURUS OP SOME (TEXT CONST file name) :
+
+  SOME ALL file name
+
+ENDOP SOME ;
+
+THESAURUS OP LIKE (THESAURUS CONST thesaurus, TEXT CONST pattern) : 
+ 
+  THESAURUS VAR result:= empty thesaurus ; 
+  INT VAR index:= 0 ; 
+  REP get (thesaurus, name, index) ; 
+    IF name = "" 
+      THEN LEAVE LIKE WITH result 
+    ELIF name LIKE pattern 
+      THEN insert (result, name) 
+    FI 
+ PER ; 
+ result .
+ 
+ENDOP LIKE ; 
+
+THESAURUS PROC remainder :
+
+  remaining thesaurus
+
+ENDPROC remainder ;
+
+PROC do (PROC (TEXT CONST) operate, THESAURUS CONST thesaurus) :
+
+  INT VAR index := 0 , operation number := 0 ;
+  TEXT VAR name ;
+  
+  remaining thesaurus := empty thesaurus ;
+  disable stop ;
+  work off thesaurus ;
+  fill leftover with remainder .
+
+work off thesaurus :
+  REP
+    get (thesaurus, name, index) ;
+    IF name = ""
+      THEN LEAVE work off thesaurus
+    FI ;
+    operation number INCR 1 ;
+    cout (operation number) ;
+    execute (PROC (TEXT CONST) operate, name)
+  UNTIL is error ENDREP .
+
+fill leftover with remainder :
+  WHILE name <> "" REP
+    insert (remaining thesaurus, name) ;
+    get (thesaurus, name, index)
+  PER .
+
+ENDPROC do ;
+ 
+PROC execute (PROC (TEXT CONST) operate, TEXT CONST name) :
+
+  enable stop ;
+  operate (name)
+
+ENDPROC execute ;
+ 
+PROC do (PROC (TEXT CONST, TASK CONST) operate, THESAURUS CONST thesaurus,
+         TASK CONST task) :
+
+  INT VAR index := 0 , operation number := 0 ;
+  TEXT VAR name ;
+  
+  remaining thesaurus := empty thesaurus ;
+  disable stop ;
+  work off thesaurus ;
+  fill leftover with remainder .
+
+work off thesaurus :
+  REP
+    get (thesaurus, name, index) ;
+    IF name = ""
+      THEN LEAVE work off thesaurus
+    FI ;
+    operation number INCR 1 ;
+    cout (operation number) ;
+    execute (PROC (TEXT CONST, TASK CONST) operate, name, task)
+  UNTIL is error ENDREP .
+
+fill leftover with remainder :
+  WHILE name <> "" REP
+    insert (remaining thesaurus, name) ;
+    get (thesaurus, name, index)
+  PER .
+
+ENDPROC do ;
+ 
+PROC execute (PROC (TEXT CONST, TASK CONST) operate,
+              TEXT CONST name, TASK CONST task) :
+
+  enable stop ;
+  operate (name, task)
+
+ENDPROC execute ;
+ 
+OP FILLBY (THESAURUS VAR thesaurus, FILE VAR file) :
+
+  WHILE NOT eof (file) REP
+    getline (file, name) ;
+    delete trailing blanks ;
+    IF name <> "" CAND NOT (thesaurus CONTAINS name)
+      THEN insert (thesaurus, name)
+    FI
+  PER .
+
+delete trailing blanks :
+  WHILE (name SUB LENGTH name) = " " REP
+    name := subtext (name, 1, LENGTH name - 1)
+  PER .
+
+ENDOP FILLBY ;
+
+OP FILLBY (FILE VAR file, THESAURUS CONST thesaurus) :
+
+  INT VAR index := 0 ;
+  REP
+    get (thesaurus, name, index) ;
+    IF name = ""
+      THEN LEAVE FILLBY
+    FI ;
+    putline (file, name)
+  PER .
+
+ENDOP FILLBY ;
+
+OP FILLBY (TEXT CONST file name, THESAURUS CONST thesaurus) :
+
+  FILE VAR f := sequential file (output, file name) ;
+  f FILLBY thesaurus
+
+ENDOP FILLBY ;
+
+
+ 
+PROC fetch (THESAURUS CONST nameset) :
+
+  do (PROC (TEXT CONST) fetch, nameset)
+
+ENDPROC fetch ;
+ 
+PROC fetch (THESAURUS CONST nameset, TASK CONST task) :
+
+  do (PROC (TEXT CONST, TASK CONST) fetch, nameset, task)
+
+ENDPROC fetch ;
+ 
+PROC save (THESAURUS CONST nameset) :
+
+  do (PROC (TEXT CONST) save, nameset)
+
+ENDPROC save ;
+ 
+PROC save (THESAURUS CONST nameset, TASK CONST task) :
+
+  do (PROC (TEXT CONST, TASK CONST) save, nameset, task)
+
+ENDPROC save ;
+ 
+PROC fetch all :
+
+  fetch all (father)
+
+ENDPROC fetch all ;
+
+PROC fetch all (TASK CONST manager) :
+
+  fetch (ALL manager, manager)
+
+ENDPROC fetch all ;
+
+PROC save all :
+
+  save all (father)
+
+ENDPROC save all ;
+
+PROC save all (TASK CONST manager) :
+
+  save (ALL myself, manager)
+
+ENDPROC save all ;
+
+PROC forget (THESAURUS CONST nameset) :
+
+  do (PROC (TEXT CONST) forget, nameset)
+
+ENDPROC forget ;
+ 
+PROC erase (THESAURUS CONST nameset) :
+
+  do (PROC (TEXT CONST) erase, nameset)
+
+ENDPROC erase ;
+ 
+PROC erase (THESAURUS CONST nameset, TASK CONST task) :
+
+  do (PROC (TEXT CONST, TASK CONST) erase, nameset, task)
+
+ENDPROC erase ;
+ 
+PROC insert (THESAURUS CONST nameset) :
+
+  do (PROC (TEXT CONST) insert, nameset)
+
+ENDPROC insert ;
+ 
+PROC edit (THESAURUS CONST nameset) :
+
+  do (PROC (TEXT CONST) edit, nameset)
+
+ENDPROC edit ;
+ 
+ENDPACKET name set ;
+
