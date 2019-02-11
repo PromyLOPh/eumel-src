@@ -1,0 +1,69 @@
+PACKET multi user printer :
+
+INT VAR printer channel ;
+
+  put ("Druckerkanal:") ;
+  get (printer channel) ;
+  server channel (printer channel); 
+ 
+  command dialogue (FALSE) ;
+  spool manager (PROC printer) ;
+
+
+LET ack = 0 ,
+    fetch code = 11 ,
+    file type = 1003 ;
+
+INT VAR reply , old heap size ;
+
+DATASPACE VAR ds ;
+
+FILE VAR file ;
+
+PROC printer :
+
+  disable stop ;
+  continue (server channel) ;
+  IF is error
+    THEN clear error ;
+         end
+  FI ;
+
+  old heap size := heap size ;
+  REP
+    forget (ds) ;
+    execute print ;
+    IF is error AND online
+      THEN put error
+    FI ;
+    clear error ;
+    IF heap size > old heap size + 4
+      THEN collect heap garbage ;
+           old heap size := heap size
+    FI
+  PER 
+
+ENDPROC printer ;
+
+PROC execute print :
+
+  enable stop ;
+  REP
+    ds := nilspace ;
+    call (father, fetch code, ds, reply) ;
+    IF reply = ack CAND type (ds) = file type
+      THEN print file
+    FI ;
+    forget (ds)
+  PER .
+
+print file :
+  file := sequential file (input, ds) ;
+  IF is elan source (file)
+    THEN elan list (file)
+    ELSE print (file)
+  FI .
+
+ENDPROC execute print ;
+
+ENDPACKET multi user printer ;

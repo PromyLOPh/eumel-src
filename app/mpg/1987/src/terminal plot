@@ -1,0 +1,113 @@
+(* Prozeduren zur Ausgabe auf ASCII-Terminals *)
+INT CONST up         :=  1 ,
+          right      :=  1 ,
+          down       := -1 ,
+          left       := -1 ;
+ 
+INT VAR x pos := 0 ,
+        y pos := 0 ,
+        new x pos ,
+        new y pos ;
+ 
+BOOL VAR plot := FALSE;
+TEXT CONST empty line :: 79 * " ";
+ROW 24 TEXT VAR display;
+ 
+ 
+PROC plot vector (INT CONST dx , dy) :
+ 
+  IF dx >= 0
+    THEN IF   dy >  dx THEN vector (y pos, x pos, dy, dx, up, right)
+         ELIF dy >   0 THEN vector (x pos, y pos, dx, dy, right, up)
+ 
+         ELIF dy > -dx THEN vector (x pos, y pos, dx, -dy, right, down)
+         ELSE               vector (y pos, x pos, -dy, dx, down, right)
+         FI
+    ELSE IF   dy > -dx THEN vector (y pos, x pos, dy, -dx, up, left)
+         ELIF dy >   0 THEN vector (x pos, y pos, -dx, dy, left, up)
+ 
+         ELIF dy >  dx THEN vector (x pos, y pos, -dx, -dy, left, down)
+         ELSE               vector (y pos, x pos, -dy, -dx, down, left)
+         FI
+  FI .
+ 
+ENDPROC plot vector ;
+ 
+PROC vector (INT VAR x pos, y pos, INT CONST dx, dy, right, up) :
+
+  prepare first step ;
+  INT VAR i ;
+  FOR i FROM 1 UPTO dx REP
+    do one step
+  PER .
+ 
+prepare first step :
+  point;
+  INT VAR old error := 0 ,
+          up right error := dy - dx ,
+          right error    := dy .
+ 
+do one step :
+  IF right is better
+    THEN do right step
+    ELSE do up right step
+  FI .
+ 
+right is better :
+  abs (old error + right error) < abs (old error + up right error) .
+ 
+do upright step :
+  x pos INCR right ;
+  y pos INCR up ;
+  point ;
+  old error INCR upright error .
+ 
+do right step :
+  x pos INCR right ;
+  point ;
+  old error INCR right error .
+ 
+ENDPROC vector ;
+ 
+ 
+PROC point :
+  IF x pos < 1
+  THEN x pos := 1
+  ELIF x pos > 78
+  THEN x pos := 78 FI;
+
+  IF y pos < 1
+  THEN y pos := 1
+  ELIF y pos > 47
+  THEN y pos := 47 FI;
+
+  INT CONST line :: y pos DIV 2;
+  BOOL CONST above :: (y pos MOD 2) = 1;
+  TEXT CONST point :: display [line+1] SUB (x pos+1),
+             new point :: calculated point;
+ 
+  replace (display [line+1], x pos+1, new point);
+  cursor (x pos, 24-line);
+  out (new point) .
+ 
+calculated point :
+  IF above
+  THEN IF point = "," OR point = "|"
+       THEN "|"
+       ELSE "'" FI
+  ELSE IF point = "'" OR point = "|"
+       THEN "|"
+       ELSE "," FI
+  FI
+ 
+END PROC point;
+ 
+REAL CONST real max int := real (max int);
+INT PROC round (REAL CONST x) :
+  IF x > real max int
+  THEN max int
+  ELIF x < 0.0
+  THEN 0
+  ELSE int (x + 0.5) FI
+
+END PROC round;

@@ -1,0 +1,143 @@
+PACKET xlist DEFINES xlist :          (* M. Staubermann, 1.8.0 861203 *)
+                                      (* Heapsize korrigiert   870711 *) 
+DATASPACE VAR ds, act ;
+ 
+PROC x list : 
+ ds := nilspace ; 
+ FILE VAR f := sequentialfile (output, ds) ; 
+ headline (f, "Dataspaces:" + text (dataspaces) + 
+              "  Speicher:" + text (storage (myself))) ; 
+ disablestop ;
+ xlist (f) ; 
+ show (f) ; 
+ forget (ds) ; 
+ENDPROC x list ; 
+ 
+PROC x list (FILE VAR f) : 
+ INT VAR i, acttype, heapsiz, seiten ;
+ TEXT VAR name, status ;
+ FILE VAR f2 ;
+ ROW 255 STRUCT (TEXT name, status) VAR names ;
+
+ enablestop ;
+ FOR i FROM 1 UPTO 255 REP 
+  names (i).name := "" ; 
+  names (i).status := "" 
+ PER ; 
+ begin list ; 
+ get list entry (name, status) ; 
+ WHILE name <> "" REP 
+  makeid (old (name)) ; 
+  names (dsnr).name := name ; 
+  names (dsnr).status := status ;
+  get list entry (name, status) 
+ PER ;
+ maxlinelength (f, 1000) ;
+ putline (f, "Datum  Status Ds    kB  Type HeapLines Segs S/L ""Name""/'Headline'");
+ line (f) ;
+ putline (f, "               4 " + text ((pages (4, myself)+1) DIV 2, 5) +
+             "        " + text (heapsize, 3) + "    -    -  -") ; 
+ disablestop ;
+ FOR i FROM 5 UPTO 255 REP 
+  cout (i) ;
+  makeid (i) ;
+  act := reveal ds ; 
+  IF iserror
+   THEN clearerror
+   ELSE name := names (i).name ; 
+        status := names (i).status ; 
+        acttype := type (act) ;
+        names (i).name := "" ; 
+        names (i).status := "" ;
+        put (f,  stat + id + " " + speicher + " " + typ + " " + heap) ;
+        putline (f, zeilen + " " + segmente + " " + sl percent + dsname) ; 
+  FI ; 
+  forget (act) ; 
+  IF iserror THEN puterror ; clearerror FI
+ PER . 
+ 
+dsname : 
+ IF name = "" 
+    THEN IF act type = 1003 
+            THEN " '" + headline (f2) + "'" 
+            ELSE ""
+         FI
+    ELSE " """ + name + """" 
+ FI . 
+ 
+stat : 
+ IF status = "" 
+    THEN "             " 
+    ELSE status 
+ FI . 
+ 
+typ: 
+ text (act type, 5) .
+ 
+id : 
+ text (i, 3) .
+ 
+speicher : 
+ seiten := ds pages (act) ;
+ text ((seiten+1) DIV 2, 5) . 
+ 
+zeilen : 
+ IF act type <> 1003 THEN "   -" 
+ ELSE f2 := sequentialfile (modify, act) ; 
+      text (lines (f2), 4) 
+ FI . 
+ 
+segmente : 
+ IF act type <> 1003 THEN "   -" 
+ ELSE INT CONST segs :: segments (f2) ; 
+      text (segs, 4) 
+ FI . 
+ 
+sl percent: 
+ IF act type <> 1003 THEN " - "
+ ELIF segs = 1 THEN "   " 
+ ELSE text (int (real (segs) * 100.0 / real (lines (f2))+0.5), 2) + "%" 
+ FI . 
+ 
+heap :
+ heapsiz:= heapsize (act) * 2 ;
+ IF heapsiz >= 2046 
+    THEN "   -" 
+ ELIF act type = 1003 
+    THEN IF heapsiz < 192 
+            THEN "   0" 
+            ELSE text ((heapsiz-192) DIV 2, 4)
+         FI 
+ ELSE INT CONST next page :: next ds page (act, seiten) ; 
+      IF next page < 0 
+         THEN "   0" 
+      ELIF heapsiz = next page 
+         THEN "   1" 
+      ELSE text ((heapsiz + 1 - next page) DIV 2, 4)
+      FI 
+ FI .
+
+ENDPROC x list ; 
+ 
+PROC make id (DATASPACE CONST ds) : 
+ BOUND INT VAR i := ds 
+ENDPROC make id ; 
+ 
+INT PROC dsnr : 
+ INT VAR id ; 
+ id AND 255
+ENDPROC dsnr ; 
+ 
+PROC makeid (INT CONST nr) : 
+ INT VAR dsid := nr + 256 * index (myself) 
+ENDPROC makeid ; 
+ 
+DATASPACE PROC reveal ds :
+ DATASPACE VAR ds ; ds 
+ENDPROC reveal ds ;
+ 
+INT PROC pages (INT CONST dsnr, TASK CONST task) : 
+ EXTERNAL 88 
+ENDPROC pages ; 
+ 
+ENDPACKET x list ;

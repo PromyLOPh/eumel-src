@@ -1,0 +1,495 @@
+PACKET z80 disassembler DEFINES hex, dez, disassemble, disass , acht :
+ 
+LET max = 4096; (* Anzahl Bytes der ROW DIV 2 *) 
+ 
+BOUND ROW max INT VAR row; 
+ 
+INT VAR next byte, 
+        next word, 
+        byte, 
+        div 8, 
+        and 7, 
+        and f, 
+        div 10; 
+TEXT VAR index; 
+ 
+belegen (0,0,0);
+ 
+INT PROC dez (TEXT CONST wert) : 
+  TEXT VAR zahl := wert; 
+  INT VAR i; 
+  REAL VAR summe := 0.0; 
+  IF (zahl SUB 1) = "!" THEN int(subtext(zahl, 2)) 
+  ELIF (zahl SUB 1) = "%" THEN zahl := subtext(zahl, 2); 
+     FOR i FROM length(zahl) DOWNTO 1 REP 
+       summe INCR (2.0**(length(zahl) - i))* real(number)
+     PER; 
+     IF summe > 32767.0 THEN int (summe - 65536.0) 
+                        ELSE int (summe) 
+     FI 
+  ELSE IF (zahl SUB 1) = "$" THEN zahl := subtext(zahl, 2) FI; 
+     FOR i FROM length(zahl) DOWNTO 1 REP 
+       summe INCR (16.0**(length(zahl) - i))* real(number) 
+     PER; 
+     IF summe > 32767.0 THEN int (summe - 65536.0) 
+                        ELSE int (summe) 
+     FI 
+  FI. 
+ 
+number : 
+  IF (zahl SUB i) > "9" 
+     THEN code( zahl SUB i) -55 
+     ELSE int (zahl SUB i) 
+  FI 
+ENDPROC dez; 
+ 
+PROC disassemble (TEXT CONST source code) : 
+    row := old(source code); 
+    INT VAR counter, start, pc, b1, b2, b3, b4, ende; 
+    TEXT VAR addr; 
+    page;
+    out ("         "15"                    Z80 - DISASSEMBLER                   "14""13""10""10"");
+    out ("F r Adressangaben: $ = hex, % = bin„ r, ! = dezimal."13""10""10""); 
+    out ("Hexadezimale Eingaben mit den Zeichen 0 bis F."13""10""10""); 
+    out ("Disassemblierung mit ESC abbrechen."13""10""10""); 
+    out ("Addresse des ersten Eintrags der Liste:"); 
+    addr:="$0000"; 
+    editget(addr); 
+    start := dez(addr); 
+  REP
+    REP
+    out (""10""13""); 
+    out ("Startaddresse f r Disassemblierung    :"); 
+    addr:="$0000"; 
+    editget (addr); 
+    pc := dez(addr); 
+    UNTIL positive int (pc) >= positive int (start) PER;
+    REP
+    out (""10""13""); 
+    out ("Endaddresse f r Disassemblierung      :"); 
+    addr:="$FFFF"; 
+    editget (addr); 
+    out (""10""13""); 
+    ende := dez(addr); 
+    UNTIL positive int (ende) >= positive int (pc) PER; 
+    REP 
+      berechne b1 bis b4; 
+      put (text(hex(pc),4)); 
+      put(""); 
+      dump; 
+      put (" ");
+      disass (b1, b2, b3, b4, pc); 
+      line; 
+    UNTIL isincharety (""27"") OR positiveint (pc) > positive int (ende) PER 
+  UNTIL no ("Noch weitere Bereiche disassemblieren") PER.
+ 
+berechne b1 bis b4 : 
+   counter := pc - start; 
+   b1 := acht (counter ); 
+   b2 := acht (counter + 1); 
+   b3 := acht (counter + 2); 
+   b4 := acht (counter + 3). 
+ 
+dump : 
+   put (                   text(hex(b1),3)+ 
+                           text(hex(b2),3)+
+                           text(hex(b3),3)+ 
+                           text(hex(b4),3));
+   put (""142"" + ascii(b1) + ascii(b2) + ascii(b3) + ascii(b4) + ""143"");
+ 
+ENDPROC disassemble; 
+ 
+TEXT PROC ascii (INT CONST byte) : 
+   IF (byte MOD 128) < 32 OR (byte MOD 128) = 127 THEN "." 
+     ELSE code(byte) 
+   FI 
+ENDPROC ascii; 
+ 
+REAL PROC positive int (INT CONST wert) : 
+     IF wert < 0 THEN real(wert) + 65536.0 
+     ELSE real(wert) 
+     FI 
+ENDPROC positive int; 
+ 
+ 
+INT PROC acht (INT CONST pos) : 
+   IF (pos DIV 2) + 1 > max THEN LEAVE acht WITH 0 FI; 
+   INT CONST word := row (pos DIV 2 + 1); 
+   TEXT VAR w := "  "; 
+   replace (w, 1, word) ;
+   IF  (pos MOD 2) = 1 THEN code(w SUB 1) 
+                       ELSE code(w SUB 2) 
+   FI 
+ENDPROC acht; 
+ 
+TEXT PROC hex (INT CONST zahl) : 
+    IF zahl < 0 
+       THEN digit (((zahl XOR -1) DIV 4096) XOR 15) + 
+            hex   (zahl MOD 4096) 
+    ELIF zahl < 16 
+       THEN digit (zahl) 
+       ELSE hex (zahl DIV 16) + digit (zahl MOD 16) 
+   FI 
+ENDPROC hex; 
+ 
+TEXT PROC digit (INT CONST d) : 
+   IF d < 10 
+      THEN code(d + 48) 
+      ELSE code(d + 55) 
+   FI 
+ENDPROC digit; 
+ 
+PROC belegen (INT CONST b1, b2, b3) : 
+    byte := b1; 
+    next byte := b2; 
+    next word := (code(b3)+code(b2)) ISUB 1; 
+    and 7 := byte AND 7; 
+    and f := byte AND 15; 
+    div 10:= byte DIV 16; 
+    div 8 := byte DIV 8 AND 7; 
+ENDPROC belegen; 
+ 
+PROC counter incr 1 (INT CONST b2, b3, b4) : 
+    byte := b2; 
+    next byte := b3; 
+    next word := (code(b4)+code(b3)) ISUB 1; 
+    and 7 := byte AND 7; 
+    and f := byte AND 15; 
+    div 10:= byte DIV 16; 
+    div 8 := byte DIV 8 AND 7; 
+ENDPROC counter incr 1;
+ 
+PROC counter incr 2 (INT CONST b3, b4) : 
+    byte := b3; 
+    next byte := b4; 
+    next word := b4;
+    and 7 := byte AND 7; 
+    and f := byte AND 15; 
+    div 10:= byte DIV 16; 
+    div 8 := byte DIV 8 AND 7; 
+ENDPROC counter incr 2;
+ 
+PROC disass (INT CONST b1, b2, b3, b4, INT VAR counter): 
+   counter INCR int disass (b1, b2, b3, b4, counter) 
+ENDPROC disass;
+
+TEXT PROC arith log :
+    SELECT div 8 OF 
+       CASE 0 : "ADD" 
+       CASE 1 : "ADC" 
+       CASE 2 : "SUB" 
+       CASE 3 : "SBC" 
+       CASE 4 : "AND" 
+       CASE 5 : "XOR" 
+       CASE 6 : "OR" 
+       CASE 7 : "CP"
+    OTHERWISE "???" 
+  ENDSELECT 
+ 
+ENDPROC arith log; 
+ 
+TEXT PROC reg1 : 
+    SELECT div8 OF 
+      CASE 0 : "B" 
+      CASE 1 : "C" 
+      CASE 2 : "D" 
+      CASE 3 : "E" 
+      CASE 4 : "H" 
+      CASE 5 : "L" 
+      CASE 6 : "(HL)" 
+      CASE 7 : "A" 
+      OTHERWISE "???" 
+    ENDSELECT 
+ 
+ENDPROC reg1; 
+ 
+TEXT PROC reg2 : 
+    SELECT and7 OF 
+      CASE 0 : "B" 
+      CASE 1 : "C" 
+      CASE 2 : "D" 
+      CASE 3 : "E" 
+      CASE 4 : "H" 
+      CASE 5 : "L" 
+      CASE 6 : "(HL)" 
+      CASE 7 : "A" 
+      OTHERWISE "???" 
+    ENDSELECT 
+ 
+ENDPROC reg2; 
+ 
+TEXT PROC rp: 
+    SELECT div10 AND 3 OF 
+      CASE 0 : "BC" 
+      CASE 1 : "DE" 
+      CASE 2 : "HL" 
+      CASE 3 : "SP"
+      OTHERWISE "???" 
+    ENDSELECT 
+ 
+ENDPROC rp; 
+ 
+ 
+INT PROC bitmanipulation : 
+   SELECT byte DIV 32 OF 
+     CASE 1 : write ("BIT "+text(div8)+","+reg2);2 
+     CASE 2 : write ("RES "+text(div8)+","+reg2);2 
+     CASE 3 : write ("SET "+text(div8)+","+reg2);2 
+     OTHERWISE write("??? $"+hex(next byte));1 
+   ENDSELECT 
+ 
+ENDPROC bitmanipulation;
+ 
+BOOL PROC is special instruction : 
+   byte > 192 AND (and 7 = 3 OR 
+                   and 7 = 6 OR 
+                   and f = 9 ) 
+OR byte < 64  AND (and 7 = 7 OR 
+                   and 7 = 0 OR 
+                   and 7 = 2 ) . 
+ 
+ENDPROC is special instruction; 
+ 
+INT PROC int disass (INT CONST b1, b2, b3, b4, counter) : 
+    belegen (b1, b2, b3); 
+    IF is special instruction 
+       THEN disass special instruction 
+    ELIF div 10 < 4 
+       THEN lower case instruction 
+    ELIF div 10 < 128 
+       THEN ld instruction 
+    ELIF div 10 < 192 
+       THEN arith log instruction 
+    ELSE higher case instruction 
+    FI. 
+ 
+arith log instruction : 
+    write (arith log+" "+reg 2);1 . 
+ 
+ld instruction : 
+  write ("LD "+reg 1+","+reg 2);1 . 
+ 
+condition code : 
+    SELECT div8 OF 
+      CASE 0 : "NZ" 
+      CASE 1 : "Z" 
+      CASE 2 : "NC" 
+      CASE 3 : "C" 
+      CASE 4 : "PO" 
+      CASE 5 : "PE" 
+      CASE 6 : "P" 
+      CASE 7 : "M" 
+      OTHERWISE "???" 
+    ENDSELECT. 
+ 
+lower case instruction : 
+   IF and f = 1 THEN write ("LD "+rp+",$"+hex(next word));3 
+ ELIF and 7 = 3 THEN write ("INC "+rp);1 
+ ELIF and 7 = 4 THEN write ("INC "+reg1);1 
+ ELIF and 7 = 5 THEN write ("DEC "+reg1);1 
+ ELIF and 7 = 6 THEN write ("LD "+reg1+",$"+hex(next byte));2 
+ ELIF and f = 9 THEN write ("ADD HL,"+rp);1 
+ ELIF and f =11 THEN write ("DEC "+rp);1 
+ ELSE write ("??? $"+hex(next byte));1 
+ FI. 
+ 
+higher case instruction : 
+   SELECT and 7 OF 
+      CASE 0 : write ("RET "+condition code);1 
+      CASE 1 : write ("POP "+rp);1 
+      CASE 2 : write ("JP "+condition code+",$"+hex(next word));3 
+      CASE 4 : write ("CALL "+condition code+",$"+hex(next word));3 
+      CASE 5 : write ("PUSH "+rp);1 
+      CASE 7 : write ("RST "+text(div 8));1 
+      OTHERWISE write ("??? $"+hex(next byte));1 
+   ENDSELECT. 
+ 
+ 
+branchaddress : 
+     "$" + hex(counter + displacement) . 
+ 
+displacement : 
+     IF next byte < 128 
+        THEN next byte + 2
+        ELSE next byte - 254 
+     FI. 
+ 
+cb instructions : 
+   counter incr 1 (b2, b3, b4);
+   SELECT div 8 OF 
+     CASE 0 : write ("RCC "+reg2);2 
+     CASE 1 : write ("RRC "+reg2);2 
+     CASE 2 : write ("RL "+reg2);2 
+     CASE 3 : write ("RR "+reg2);2 
+     CASE 4 : write ("SLA "+reg2);2 
+     CASE 5 : write ("SRA "+reg2);2 
+     CASE 6 : write ("SLL "+reg2);2 
+     CASE 7 : write ("SLR "+reg2);2 
+     OTHERWISE bitmanipulation 
+   ENDSELECT . 
+ 
+disass special instruction : 
+   SELECT byte OF 
+     CASE 0  : write ("NOP");1 
+     CASE 2  : write ("LD (BC),A");1 
+     CASE 7  : write ("RLCA");1 
+     CASE 8  : write ("EX AF,AF'");1 
+     CASE 10 : write ("LD A,(BC)");1 
+     CASE 15 : write ("RRCA");1 
+     CASE 16 : write ("DJNZ "+branchaddress);2 
+     CASE 18 : write ("LD (DE),A");1 
+     CASE 23 : write ("RLA");1 
+     CASE 24 : write ("JR "+branchaddress);2 
+     CASE 26 : write ("LD A,(DE)");1 
+     CASE 31 : write ("RRA");1 
+     CASE 32 : write ("JR NZ,"+branchaddress);2 
+     CASE 34 : write ("LD ($"+hex (next word)+"),HL");3 
+     CASE 39 : write ("DAA");1 
+     CASE 40 : write ("JR Z,"+branchaddress);2 
+     CASE 42 : write ("LD HL,($"+hex(next word)+")");3 
+     CASE 47 : write ("CPL");1 
+     CASE 48 : write ("JR NC,"+branchaddress);2 
+     CASE 50 : write ("LD ($"+hex(next word)+"),A");3 
+     CASE 55 : write ("SCF");1 
+     CASE 56 : write ("JR C,"+branchaddress);2 
+     CASE 58 : write ("LD A,($"+hex(next word)+")");3 
+     CASE 63 : write ("CCF");1 
+     CASE 118: write ("HALT");1 
+     CASE 195: write ("JP $"+hex(next word));3 
+     CASE 198: write ("ADD A,$"+hex(next byte));2 
+     CASE 201: write ("RET");1 
+     CASE 203: cb instructions 
+     CASE 205: write ("CALL $"+hex(next word));3 
+     CASE 206: write ("ADC A,$"+hex(next byte));2 
+     CASE 211: write ("OUT ($"+hex(next byte)+")");2 
+     CASE 214: write ("SUB A,$"+hex(next byte));2 
+     CASE 217: write ("EXX");1 
+     CASE 219: write ("IN ($"+hex(next byte)+")");2
+     CASE 221: index := "IX"; dd and fd instructions 
+     CASE 222: write ("SBC A,$"+hex(next byte));2 
+     CASE 227: write ("EX (SP),HL");1 
+     CASE 230: write ("AND $"+hex(next byte));2 
+     CASE 233: write ("JP (HL)");1 
+     CASE 235: write ("EX DE,HL");1 
+     CASE 237: ed instructions 
+     CASE 238: write ("XOR $"+hex(next byte));2 
+     CASE 243: write ("DI");1 
+     CASE 246: write ("OR $"+hex(next byte));2 
+     CASE 249: write ("LD SP,HL");2 
+     CASE 251: write ("EI");1 
+     CASE 253: index := "IY"; dd and fd instructions 
+     CASE 254: write ("CP $"+hex(next byte));2 
+   OTHERWISE write ("??? $"+hex(byte));1 
+   ENDSELECT. 
+ 
+dd and fd instructions : 
+   counter incr 1 (b2, b3, b4); 
+   SELECT byte OF 
+     CASE 33 : write ("LD "+index+",$"+hex(next word));4 
+     CASE 34 : write ("LD ($"+hex(next word)+"),"+index);4 
+     CASE 35 : write ("INC "+index);2 
+     CASE 42 : write ("LD "+index+",($"+hex(next word)+")");4 
+     CASE 43 : write ("DEC "+index);2 
+     CASE 52 : write ("INC ("+index+"+$"+hex(next byte)+")");2 
+     CASE 53 : write ("DEC ("+index+"+$"+hex(next byte)+")");2 
+     CASE 203: dd and fd cb instructions
+     CASE 225: write ("POP "+index);2 
+     CASE 227: write ("EX (SP),"+index);2 
+     CASE 229: write ("PUSH "+index);2 
+     CASE 233: write ("JP ("+index+")");2 
+     CASE 249: write ("LD SP,"+index);2 
+   OTHERWISE calculated dd and fd instructions 
+   ENDSELECT. 
+ 
+calculated dd and fd instructions : 
+     IF andf = 9 THEN write ("ADD "+index+","+rp);2 
+   ELIF and7 = 6 AND div 10 > 3 AND div 10 < 8
+      THEN write ("LD "+reg1+",("+index+"+$"+hex(next byte)+")");3 
+   ELIF div 10 = 7 AND byte <> 118 
+      THEN write ("LD ("+index+"+$"+hex(next byte)+"),"+reg2);3 
+   ELIF and7 = 6 AND div 10 > 7 AND div 10 < 12 
+      THEN write (arith log+" ("+index+"+$"+hex(next byte)+")");3 
+   ELSE write ("??? $DD/FD "+hex(byte));2 
+   FI. 
+ 
+dd and fd cb instructions : 
+   counter incr 2 (b4, b3); 
+   IF and7 <> 6 THEN write ("??? $DD/FD "+hex(byte));3 
+   ELSE SELECT div 8 OF 
+          CASE 0 : write ("RLC ("+index+"+$"+hex(next byte)+")");4 
+          CASE 1 : write ("RRC ("+index+"+$"+hex(next byte)+")");4 
+          CASE 2 : write ("RL ("+index+"+$"+hex(next byte)+")");4 
+          CASE 3 : write ("RR ("+index+"+$"+hex(next byte)+")");4 
+          CASE 4 : write ("SLA ("+index+"+$"+hex(next byte)+")");4 
+          CASE 5 : write ("SRA ("+index+"+$"+hex(next byte)+")");4 
+          CASE 6 : write ("SLL ("+index+"+$"+hex(next byte)+")");4 
+          CASE 7 : write ("SRL ("+index+"+$"+hex(next byte)+")");4 
+        OTHERWISE dd and fd bitmanipulation 
+        ENDSELECT 
+   FI. 
+ 
+dd and fd bitmanipulation : 
+   SELECT byte DIV 32 OF 
+     CASE 1 : write ("BIT "+text(div8)+",("+index+"+$"+hex(next byte)+")");4 
+     CASE 2 : write ("RES "+text(div8)+",("+index+"+$"+hex(next byte)+")");4 
+     CASE 3 : write ("SET "+text(div8)+",("+index+"+$"+hex(next byte)+")");4 
+     OTHERWISE write ("??? $DD/FD CB "+hex(next byte)+" "+hex(byte));4 
+   ENDSELECT. 
+ 
+ed instructions : 
+   counter incr 1 (b2, b3, b4);
+   SELECT byte OF 
+     CASE 68 : write ("NEG");2 
+     CASE 69 : write ("RETN");2 
+     CASE 70 : write ("IM 0");2 
+     CASE 71 : write ("LD I,A");2 
+     CASE 77 : write ("RETI");2 
+     CASE 79 : write ("LD R,A");2 
+     CASE 86 : write ("IM 1");2 
+     CASE 87 : write ("LD A,I");2 
+     CASE 94 : write ("IM 2");2 
+     CASE 95 : write ("LD A,R");2 
+     CASE 103: write ("RRD");2 
+     CASE 111: write ("RLD");2 
+     CASE 171: write ("OUTD");2 
+     CASE 163: write ("OUTI");2 
+     CASE 179: write ("OTIR");2 
+     CASE 187: write ("OTDR");2 
+   OTHERWISE calculate ed instruction 
+   ENDSELECT. 
+ 
+ 
+ENDPROC int disass ; 
+ 
+INT PROC calculate ed instruction : 
+     IF and7 = 0 AND is 40 to 7f THEN write ("IN "+reg1+",(C)");2 
+   ELIF and7 = 1 AND is 40 to 7f THEN write ("OUT "+reg1+",(C)");2 
+   ELIF andf = 2 AND is 40 to 7f THEN write ("SBC HL,"+rp);2 
+   ELIF andf = 3 AND is 40 to 7f THEN write ("LD ($"+hex(nextword)+"),"+rp);4
+   ELIF andf =11 AND is 40 to 7f THEN write ("LD "+rp+",($"+hex(nextword)+")");4 
+   ELIF andf =10 AND is 40 to 7f THEN write ("ADC HL,"+rp);2 
+   ELIF div10 = 10 OR div10 = 11 THEN
+          IF and7 = 0 THEN write ("LD"+modification);2 
+        ELIF and7 = 1 THEN write ("CP"+modification);2 
+        ELIF and7 = 2 THEN write ("IN"+modification);2 
+        ELSE write ("??? $ED "+hex(next byte));2 
+        FI 
+   ELSE write ("??? $ED "+hex(next byte));2 
+   FI. 
+ 
+is 40 to 7f : 
+   div 10 < 8 AND div 10 > 3. 
+ 
+modification : 
+   SELECT div8 OF 
+     CASE 0 : "I" 
+     CASE 1 : "D" 
+     CASE 2 : "IR" 
+     CASE 3 : "DR" 
+   OTHERWISE "???" 
+   ENDSELECT. 
+ 
+ENDPROC calculate ed instruction; 
+ 
+ENDPACKET z80 disassembler
+

@@ -1,0 +1,810 @@
+ 
+PACKET file DEFINES                            (* Autor: J.Liedtke *)
+                                               (* Stand: 30.04.82  *)
+       FILE ,
+       := ,
+       input ,
+       output ,
+       modify ,
+       sequential file ,
+       getline ,
+       putline ,
+       line ,
+       reset ,
+       eof ,
+       put ,
+       get ,
+       page ,
+       out ,
+       eop ,
+       close ,
+       max line length ,
+       max page length ,
+       read record , 
+       write record , 
+       forward , 
+       backward , 
+       delete record , 
+       insert record , 
+       to first record ,
+       to eof , 
+       is first record , 
+       headline ,
+       copy attributes ,
+       reorganize ,
+       feldeditor ,
+       feldout ,
+       feldeinruecken ,
+       pos ,
+       change ,
+       subtext ,
+       sort :
+ 
+ 
+ 
+TYPE FILE = STRUCT ( BOUND DATEI f ,
+                     INT index, pointer, line counter,
+                         mode, max line length, max page length,
+                     BOOL edit status unchanged) ;
+ 
+TYPE TRANSPUTDIRECTION = INT ;
+ 
+LET closed = 1 ,
+    in     = 2 ,
+    outp   = 3 ,
+    mod    = 4 ,
+    end    = 5 ,
+    escape = ""27"" ,
+
+    nullzustand    = "    0    1    1" ,
+
+    max length = 15 000 ;    (*  < maxint/2 because 2 * maxlength possible*)
+
+ 
+TRANSPUTDIRECTION PROC input :
+  TRANSPUTDIRECTION : ( in )
+ENDPROC input ;
+ 
+TRANSPUTDIRECTION PROC output :
+  TRANSPUTDIRECTION : ( outp )
+ENDPROC output ;
+ 
+TRANSPUTDIRECTION PROC modify :
+  TRANSPUTDIRECTION : ( mod )
+ENDPROC modify ;
+ 
+LET DATEI = ROW 4075 STRUCT (
+                INT nachfolger, vorgaenger, index, fortsetzung,
+                TEXT inhalt ) ;
+ 
+LET anker = 2 ,
+    freianker = 1 ;
+ 
+TEXT VAR number word ;
+
+FILE VAR result file ;
+ 
+DATASPACE VAR scratch space ;
+close ;
+ 
+ 
+FILE PROC sequential file (TRANSPUTDIRECTION CONST mode) :
+ 
+  IF CONCR (mode) = outp
+    THEN close
+  FI ;
+  sequential file (mode, scratch space)
+ 
+ENDPROC sequential file ;
+ 
+FILE PROC sequential file (TRANSPUTDIRECTION CONST mode,
+                           DATASPACE VAR ds) :
+ 
+  IF type (ds) = 1002
+    THEN result file.f := ds
+  ELIF type (ds) < 0
+    THEN result file.f := ds ;
+         type (ds, 1002) ;
+         datei initialisieren (CONCR (result file.f))
+  ELSE   errorstop ("dataspace has wrong type") ;
+         result file.f := scratch space
+  FI ;
+  result file.mode := CONCR (mode) ;
+  reset (result file) ;
+  result file.max line length := max line length (result file) ;
+  result file.max page length := 0 ;
+ 
+  result file .
+ 
+ENDPROC sequential file ;
+ 
+ 
+FILE PROC sequential file (TRANSPUTDIRECTION CONST mode,
+                           TEXT CONST name ) :
+ 
+  IF exists (name)
+    THEN get dataspace if file
+  ELIF CONCR (mode) <> in
+    THEN get new file space
+  ELSE errorstop ("input file not existing") ;
+       result file.f := scratch space
+  FI ;
+  IF CONCR (mode) <> in
+    THEN status (name, "") ;
+         headline (result file, name)
+  FI ;
+  result file.mode := CONCR (mode) ;
+  reset (result file) ;
+  result file.max line length := max line length (result file) ;
+  result file.max page length := 0 ;
+ 
+  result file .
+ 
+get new file space :
+  result file.f := new (name) ;
+  IF NOT is error
+    THEN type (old (name), 1002) ;
+         datei initialisieren ( CONCR (result file.f) )
+  FI .
+ 
+get dataspace if file :
+  result file.f := old (name, 1002) .
+ 
+ENDPROC sequential file ;
+ 
+INT PROC max line length (FILE CONST file) :
+ 
+  int (subtext (zustand, 16, 20)) .
+ 
+zustand : 
+  CONCR (file.f) (freianker).inhalt .
+
+ENDPROC max line length ;
+ 
+PROC max line length (FILE VAR file, INT CONST length) :
+ 
+  replace (zustand, 16, text (length,5)) .
+ 
+zustand : 
+  CONCR (file.f) (freianker).inhalt .
+ 
+ENDPROC max line length ;
+ 
+PROC headline (FILE VAR file, TEXT CONST head) :
+ 
+  CONCR (file.f)(anker).inhalt := head
+ 
+ENDPROC headline ;
+ 
+TEXT PROC headline (FILE VAR file) :
+ 
+  CONCR (file.f)(anker).inhalt
+ 
+ENDPROC headline ;
+ 
+PROC copy attributes (FILE CONST source, FILE VAR dest) :
+
+  dest attributes := source attributes ;
+  reset edit status (dest) ;
+  dest headline   := source headline .
+
+dest attributes :   CONCR (dest.f) (freianker).inhalt .
+source attributes : CONCR (source.f) (freianker).inhalt .
+
+dest headline :     CONCR (dest.f) (anker).inhalt .
+source headline :   CONCR (source.f) (anker).inhalt .
+
+ENDPROC copy attributes ;
+
+
+PROC input (FILE VAR file) :
+ 
+  file.mode := in ;
+  reset (file)
+ 
+ENDPROC input ;
+ 
+PROC output (FILE VAR file) :
+ 
+  file.mode := outp ;
+  reset (file)
+ 
+ENDPROC output ;
+ 
+PROC modify (FILE VAR file) :
+ 
+  file.mode := mod ;
+  reset (file)
+ 
+ENDPROC modify ;
+ 
+ 
+PROC putline (FILE VAR file, TEXT CONST record) :
+ 
+  check mode (file, outp) ;
+  line (file) ;
+  CONCR (file.f)(file.index).inhalt := record ;
+  file.pointer := max length
+ 
+ENDPROC putline ;
+ 
+ 
+PROC getline (FILE VAR file, TEXT VAR record) :
+ 
+  check mode (file, in) ;
+  line (file) ;
+  record := CONCR (file.f)(file.index).inhalt ;
+  file.pointer := max length
+ 
+ENDPROC getline ;
+ 
+ 
+PROC line (FILE VAR file) :
+ 
+  file.index := CONCR (file.f) (file.index).nachfolger ;
+  file.pointer  := 0 ;
+  IF file.mode = in
+    THEN check eof
+  ELIF file.mode = outp
+    THEN satz erzeugen (CONCR (file.f), file.index) ;
+         CONCR (file.f)(file.index).inhalt := "" ;
+         perhaps implicit page feed
+  FI .
+ 
+check eof :
+  IF eof
+    THEN file.mode := end
+  FI .
+ 
+eof : CONCR (file.f)(file.index).nachfolger = anker .
+ 
+perhaps implicit page feed :
+  file.line counter INCR 1 ;
+  IF file.line counter = file.max page length
+    THEN page (file)
+  FI .
+ 
+ENDPROC line ;
+ 
+PROC check mode (FILE CONST file, INT CONST mode) :
+ 
+  IF file.mode = mode
+      THEN LEAVE check mode
+  ELIF file.mode = closed
+      THEN errorstop ("file not open")
+  ELIF file.mode = mod
+      THEN errorstop ("operation not in transputdirection 'modify'")
+  ELIF mode = mod
+      THEN errorstop ("operation only in transputdirection 'modify'")
+  ELIF file.mode = end
+      THEN IF eof (file) THEN errorstop ("input after end of file") FI
+  ELIF mode = in
+      THEN errorstop ("input access to output file")
+  ELIF mode = outp
+      THEN errorstop ("output access to input file")
+  FI
+ 
+ENDPROC check mode ;
+ 
+PROC reset (FILE VAR file) :
+ 
+  file.pointer := max length ;
+  file.line counter := 0 ;
+  file.edit status unchanged := TRUE ;
+  initialize file index ;
+  set correct file mode .
+ 
+initialize file index :
+  IF file.mode = outp
+    THEN file.index := last record
+    ELSE file.index := anker
+  FI .
+ 
+set correct file mode :
+  IF file.mode = end
+    THEN file.mode := in
+  FI ;
+  IF file.mode = in AND empty file
+    THEN file.mode := end
+  FI .
+ 
+last record : CONCR (file.f) (anker).vorgaenger .
+ 
+empty file  : CONCR (file.f) (anker).nachfolger = anker .
+ 
+ENDPROC reset ;
+ 
+BOOL PROC eof (FILE CONST file) :
+ 
+  IF file.mode = end
+    THEN end of record
+  ELIF file.mode = mod
+    THEN file.index = anker
+    ELSE FALSE
+  FI .
+ 
+end of record :
+  file.pointer >= length (CONCR (file.f)(file.index).inhalt) .
+ 
+ENDPROC eof ;
+ 
+PROC line (FILE VAR file, INT CONST lines) :
+ 
+  check mode (file, outp) ;
+  INT VAR i ;
+  FOR i FROM 1 UPTO lines REP
+    line (file)
+  PER
+ 
+ENDPROC line ;
+ 
+PROC page (FILE VAR file) :
+ 
+  file.line counter := 0 ;
+  putline (file, "#page")
+ 
+ENDPROC page ;
+ 
+BOOL PROC eop (FILE CONST file) :
+ 
+  CONCR (file.f)(file.index).inhalt = "#page"
+ 
+ENDPROC eop ;
+ 
+PROC put (FILE VAR file, TEXT CONST word) :
+ 
+  check mode (file, outp) ;
+  IF file.pointer + LENGTH word >= file.max line length
+    THEN line (file)
+  FI ;
+  put word (CONCR (file.f)(file.index).inhalt, word, file.pointer)
+ 
+ENDPROC put ;
+ 
+PROC put word (TEXT VAR record, TEXT CONST word, INT VAR pointer) :
+ 
+  IF pointer > 0
+    THEN record CAT " " ;
+  FI ;
+  record CAT word ;
+  pointer := LENGTH record
+ 
+ENDPROC put word ;
+ 
+PROC put (FILE VAR f, INT CONST value) :
+ 
+  put (f, text (value) )
+ 
+ENDPROC put ;
+ 
+PROC put (FILE VAR f, REAL CONST real) :
+ 
+  put (f, text (real) )
+ 
+ENDPROC put ;
+ 
+PROC out (FILE VAR file, TEXT CONST word) :
+ 
+  check mode (file, outp) ;
+  IF file.pointer + LENGTH word >= file.max line length
+    THEN line (file)
+  FI ;
+  record CAT word ;
+  file.pointer INCR LENGTH word .
+ 
+record : CONCR (file.f)(file.index).inhalt .
+ 
+ENDPROC out ;
+ 
+PROC get (FILE VAR file, TEXT VAR word, TEXT CONST separator) :
+ 
+  check mode (file, in) ;
+  get word (CONCR (file.f)(file.index).inhalt, word,
+            file.pointer, max length, separator)
+ 
+ENDPROC get ;
+ 
+PROC get (FILE VAR file, TEXT VAR word, INT CONST max length) :
+ 
+  check mode (file, in) ;
+  get word (CONCR (file.f)(file.index).inhalt, word,
+            file.pointer, max length, "")
+ 
+ENDPROC get ;
+ 
+PROC get (FILE VAR file, TEXT VAR word) :
+ 
+  check mode (file, in) ;
+  next word (file, CONCR (file.f)(file.index).inhalt, word)
+ 
+ENDPROC get ;
+ 
+PROC next word (FILE VAR file, TEXT CONST record, TEXT VAR word) :
+ 
+  get next non blank char ;
+  IF char found
+    THEN get word (record, word, file.pointer, max length, " ")
+  ELIF last line of file
+    THEN word := "" ;
+         file.pointer := max length
+    ELSE line (file) ;
+         get (file, word)
+  FI .
+ 
+get next non blank char :
+  TEXT VAR char ;
+  REP
+    file.pointer INCR 1 ;
+    char := record SUB file.pointer
+  UNTIL char <> " " PER ;
+  file.pointer DECR 1 .
+ 
+char found :  char <> "" .
+ 
+last line of file :
+  CONCR (file.f) (anker).nachfolger = anker .
+ 
+ENDPROC next word ;
+ 
+PROC get (FILE VAR f, INT VAR number) :
+ 
+  get (f, number word) ;
+  number := int (number word)
+ 
+ENDPROC get ;
+ 
+PROC get (FILE VAR f, REAL VAR number) :
+ 
+  get (f, number word) ;
+  number := real (number word)
+ 
+ENDPROC get ;
+ 
+PROC get word (TEXT CONST record, TEXT VAR word, INT VAR pointer,
+               INT CONST max length, TEXT CONST separator) :
+ 
+  INT VAR end of word := pos (record, separator, pointer+1) - 1 ;
+  IF end of word < 0
+    THEN end of word := pointer + max length
+  FI ;
+  word := subtext (record, pointer+1, end of word) ;
+  pointer := end of word + 1
+ 
+ENDPROC get word ;
+ 
+PROC close (FILE VAR file) :
+ 
+  file.mode := closed
+ 
+ENDPROC close ;
+ 
+PROC close :
+ 
+  disable stop ;
+  forget (scratch space) ;
+  scratch space := nilspace
+ 
+ENDPROC close ;
+ 
+INT PROC max page length (FILE CONST file) :
+  file.max page length
+ENDPROC max page length ;
+ 
+PROC max page length (FILE VAR file, INT CONST length) :
+  file.max page length := length
+ENDPROC max page length
+ 
+ 
+PROC read record (FILE CONST file, TEXT VAR record) : 
+ 
+  check mode (file, mod) ;
+  record := CONCR (file.f) (file.index).inhalt 
+ 
+ENDPROC read record ; 
+ 
+PROC write record (FILE VAR file, TEXT CONST record) : 
+ 
+  check mode (file, mod) ;
+  CONCR (file.f) (file.index).inhalt := record 
+ 
+ENDPROC write record ; 
+ 
+PROC forward (FILE VAR file) : 
+ 
+  check mode (file, mod) ;
+  IF file.index <> anker 
+    THEN file.index := CONCR (file.f) (file.index).nachfolger 
+    ELSE errorstop ("forward at eof") 
+  FI 
+ 
+ENDPROC forward ; 
+ 
+PROC backward (FILE VAR file) : 
+ 
+  check mode (file, mod) ;
+  file.index := CONCR (file.f) (file.index).vorgaenger ; 
+  IF file.index = anker 
+    THEN to first record (file) ; 
+         errorstop ("backward at first record") 
+  FI 
+ 
+ENDPROC backward ; 
+ 
+PROC delete record (FILE VAR file) : 
+ 
+  check mode (file, mod) ;
+  IF file.edit status unchanged
+    THEN reset edit status (file)
+  FI ;
+  satz loeschen (CONCR (file.f), file.index) 
+ 
+ENDPROC delete record ; 
+ 
+PROC insert record (FILE VAR file) : 
+ 
+  check mode (file, mod) ;
+  IF file.edit status unchanged
+    THEN reset edit status (file)
+  FI ;
+  satz erzeugen (CONCR (file.f), file.index) 
+ 
+ENDPROC insert record ; 
+ 
+PROC to first record (FILE VAR file) : 
+ 
+  check mode (file, mod) ;
+  file.index := CONCR (file.f) (anker).nachfolger 
+ 
+ENDPROC to first record ; 
+ 
+PROC to eof (FILE VAR file) : 
+ 
+  check mode (file, mod) ;
+  file.index := anker 
+ 
+ENDPROC to eof ; 
+ 
+BOOL PROC is first record (FILE CONST file) : 
+ 
+  file.index = CONCR (file.f) (anker).nachfolger 
+ 
+ENDPROC is first record ; 
+ 
+PROC reset edit status (FILE VAR file) :
+ 
+  replace (zustand, 1, nullzustand) ;
+  file.edit status unchanged := FALSE .
+ 
+zustand :  CONCR (file.f)(freianker).inhalt .
+ 
+ENDPROC reset edit status ;
+ 
+ 
+FILE VAR scratch , file ;
+TEXT VAR record ;
+ 
+LET esc = ""27"" ;
+ 
+PROC reorganize (TEXT CONST file name) :
+ 
+  IF exists (file name)
+    THEN last param (file name) ;
+         reorganize file
+    ELSE errorstop ("file does not exist")
+  FI .
+ 
+reorganize file :
+  scratch := sequential file (output) ;
+  headline (scratch, file name) ;
+  IF format 15
+    THEN set to 16 file type ; 
+         file := sequential file (input, file name)
+    ELSE file := sequential file (input, file name) ;
+         copy attributes (file, scratch) 
+  FI ;
+ 
+  disable stop ;
+
+  INT VAR counter := 0 ;
+  WHILE NOT eof (file) REP
+    getline (file, record) ;
+    putline (scratch, record) ;
+    counter INCR 1 ;
+    cout (counter) ;
+    IF is incharety (escape) OR is error
+      THEN close ;
+           LEAVE reorganize
+    FI
+  PER ;
+  forget file ;
+  copy (scratch space, file name) ;
+  close .
+ 
+forget file :
+  BOOL CONST old status := command dialogue ;
+  command dialogue (FALSE) ;
+  forget (file name) ;
+  command dialogue (old status) .
+ 
+format 15 :  type (old (file name)) = 1001 .
+
+set to 16 file type :
+  type (old (file name), 1002) .
+
+ENDPROC reorganize ;
+ 
+PROC reorganize :
+ 
+  reorganize (last param)
+ 
+ENDPROC reorganize ;
+ 
+PROC feldout (FILE CONST file, TEXT CONST satz) :
+ 
+  feldout ( CONCR (file.f) (file.index).inhalt )
+ 
+ENDPROC feldout ;
+ 
+PROC feldeinruecken (FILE CONST file, TEXT CONST satz) :
+ 
+  feldeinruecken ( CONCR (file.f) (file.index).inhalt )
+ 
+ENDPROC feldeinruecken ;
+ 
+PROC feldeditor (FILE VAR file, TEXT CONST satz) :
+ 
+  feldeditor ( CONCR (file.f) (file.index).inhalt )
+ 
+ENDPROC feldeditor ;
+ 
+INT PROC pos (FILE CONST file, TEXT CONST pattern, INT CONST from) :
+ 
+  pos ( CONCR (file.f) (file.index).inhalt, pattern, from )
+ 
+ENDPROC pos ;
+ 
+PROC change (FILE VAR file, INT CONST from, to, TEXT CONST new) :
+ 
+  change ( CONCR (file.f) (file.index).inhalt, from, to, new )
+ 
+ENDPROC change ;
+ 
+TEXT PROC subtext (FILE CONST file, INT CONST from) :
+ 
+  record := subtext ( CONCR (file.f) (file.index).inhalt, from ) ;
+  record
+ 
+ENDPROC subtext ;
+ 
+TEXT PROC subtext (FILE CONST file, INT CONST from, to) :
+ 
+  record := subtext ( CONCR (file.f) (file.index).inhalt, from, to ) ;
+  record
+ 
+ENDPROC subtext ;
+ 
+(*  sortieren sequentieller Dateien                  Autor: P.Heyderhoff *) 
+                                                  (* Stand: 14.11.80     *) 
+ 
+BOUND DATEI VAR datei; 
+INT  VAR sortierstelle, sortanker, byte;
+TEXT VAR median, tausch ;
+ 
+PROC sort (TEXT CONST dateiname) : 
+     sortierstelle := feldanfang; sort (dateiname, "")
+ END PROC sort; 
+ 
+PROC sort (TEXT CONST dateiname, INT CONST sortieranfang) : 
+     sortierstelle := sortieranfang; sort (dateiname, "")
+ END PROC sort; 
+ 
+PROC sort (TEXT CONST dateiname, feldname) :
+     IF   exists (dateiname)
+     THEN datei := old (dateiname); 
+          IF   CONCR(datei) (freianker).nachfolger <> freianker 
+          THEN reorganize (dateiname) 
+          FI ; 
+          sortanker := 3;
+          IF   feldname = ""
+          THEN byte := 0
+          ELSE feldname in feldnummer uebersetzen
+          FI;
+          quicksort(sortanker, CONCR(datei)(freianker).fortsetzung-1) 
+     FI .
+feldname in feldnummer uebersetzen :
+    byte := pos (CONCR(datei) (sortanker).inhalt, feldname);
+    IF   byte > 0
+    THEN byte := pos (CONCR(datei) (sortanker).inhalt, code(255-byte))
+    FI;
+    IF   byte = 0 
+    THEN errorstop ("sort: feldname"); LEAVE sort
+    FI ; sortanker INCR 1 .
+ END PROC sort; 
+ 
+PROC quicksort ( INT CONST anfang, ende ) : 
+     IF   anfang < ende 
+     THEN INT VAR p,q; 
+          spalte    (anfang, ende, p, q); 
+          quicksort (anfang, q); 
+          quicksort (p, ende)    FI 
+ END PROC quicksort; 
+ 
+PROC spalte (INT CONST anfang, ende, INT VAR p, q): 
+     fange an der seite an und waehle den median; 
+     ruecke p und q so dicht wie moeglich zusammen; 
+     hole ggf median in die mitte . 
+ 
+   fange an der seite an und waehle den median : 
+     p := anfang; q := ende ; 
+     INT CONST m :: (p + q) DIV 2 ; 
+     median := subtext(datei m, merkmal m) . 
+ 
+   ruecke p und q so dicht wie moeglich zusammen : 
+     REP schiebe p und q so weit wie moeglich auf bzw ab; 
+         IF p < q THEN vertausche die beiden FI 
+     UNTIL p > q END REP . 
+ 
+   vertausche die beiden : 
+     tausch := datei p; datei p := datei q; datei q := tausch; 
+     p INCR 1; q DECR 1 . 
+ 
+   schiebe p und q so weit wie moeglich auf bzw ab : 
+     WHILE p kann groesser werden REP p INCR 1 END REP; 
+     WHILE q kann kleiner  werden REP q DECR 1 END REP . 
+ 
+   p kann groesser werden : 
+     IF p <= ende THEN subtext (datei p, merkmal p) <= median ELSE FALSE FI . 
+ 
+   q kann kleiner werden : 
+     IF q >= anfang THEN subtext(datei q,merkmal q) >= median ELSE FALSE FI . 
+ 
+   hole ggf median in die mitte : 
+     IF   m < q THEN vertausche m und q 
+     ELIF m > p THEN vertausche m und p FI . 
+ 
+   vertausche m und q : 
+     tausch := datei m; datei m := datei q; datei q := tausch; q DECR 1 . 
+ 
+   vertausche m und p : 
+     tausch := datei m; datei m := datei p; datei p := tausch; p INCR 1 . 
+ 
+   merkmal m :
+     IF byte = 0 THEN sortierstelle  ELSE 255 - code (datei m SUB byte) FI .
+ 
+   merkmal p :
+     IF byte = 0 THEN sortierstelle  ELSE 255 - code (datei p SUB byte) FI .
+ 
+   merkmal q :
+     IF byte = 0 THEN sortierstelle  ELSE 255 - code (datei q SUB byte) FI .
+ 
+   datei m :  CONCR(datei)(m).inhalt . 
+   datei p :  CONCR(datei)(p).inhalt . 
+   datei q :  CONCR(datei)(q).inhalt . 
+ 
+END PROC spalte; 
+ 
+ 
+(*********** schrott ************)
+ 
+OP := (FILE VAR a, FILE CONST b) :
+  EXTERNAL 294
+ENDOP := ;
+ 
+PROC becomes (ROW 8 INT VAR a, b) :
+  INTERNAL 294 ;
+  a := b
+ENDPROC becomes ;
+ 
+PROC datei initialisieren (DATEI VAR datei) : 
+  EXTERNAL 290 ;
+END  PROC datei initialisieren; 
+ 
+PROC satz erzeugen (DATEI VAR datei, INT VAR satz): 
+  EXTERNAL 291;
+END  PROC satz erzeugen; 
+ 
+PROC satz loeschen (DATEI VAR datei, INT VAR satz): 
+  EXTERNAL 292 ;
+END  PROC satz loeschen; 
+ 
+ENDPACKET file ;

@@ -1,0 +1,552 @@
+PACKET tracer DEFINES breakpoint handler ,          (* M. Staubermann  *) 
+                      handlers module nr ,          (* 20.04.86        *)
+                      list breakpoints ,
+                      set breakpoint , 
+                      reset breakpoint ,
+                      source file , 
+                      trace ,
+                      reset breakpoints : 
+ 
+LET local base field           = 25 , 
+    packet data segment        = 0 , 
+    local data segment         = 1 ,
+ 
+    begin of module nr link table = 512 , 
+ 
+    previous local base offset = 0 , 
+    return address offset      = 1 , 
+    return segment offset      = 2 , 
+    c8k offset                 = 3 , 
+ 
+    opcode mask                = 31744 , 
+    bt opcode                  = 0 , 
+    btlong opcode              = 1024 , 
+    bf opcode                  = 28672 , 
+    bflong opcode              = 29696 , 
+    br opcode                  = 28672 , 
+    brlong opcode              = 29696 , 
+ 
+    ln opcode                  = 0 , 
+    ln long opcode             = 1024 , 
+    call opcode                = 30720 , 
+    pcall opcode               = 32543 ;
+ 
+LET nr of breakpoints = 2 , 
+    BREAKPOINT = STRUCT (BOOL set, 
+                         INT  segment, 
+                              address, 
+                              saved word) ; 
+ 
+ROW nr of breakpoints BREAKPOINT VAR breakpoints ;
+BREAKPOINT CONST init breakpoint :: BREAKPOINT:(FALSE, 3, -5, 0) ;
+ 
+FOR i FROM 1 UPTO nr of breakpoints REP 
+ breakpoints (i) := init breakpoint 
+PER ; 
+ 
+BOOL VAR auto trace := FALSE , 
+         zweizeilig ;
+INT VAR next instruction address ,
+        next instruction segment ,
+        next instruction ,
+        return segment,
+        return address, 
+        breakpoint address , 
+        breakpoint segment , 
+        breakpoint nr ,
+        lbas , 
+        this local base ,
+        branch address , 
+        c8k , 
+        packet base ,
+        op word,
+        saved word ,
+        i, x, y , 
+        actual line number := -1 , 
+        handler module := 395 ; (* PROC stop *) 
+ 
+TEXT VAR key := "" , 
+         previous key := "" , 
+         statement line := "" , 
+         source line := "" , 
+         source file name := "" ;
+ 
+FILE VAR source ; 
+ 
+PROC trace (BOOL CONST b) : 
+ auto trace := b 
+ENDPROC trace ; 
+ 
+PROC source file (TEXT CONST file name) : 
+ IF exists (file name) 
+    THEN source := sequentialfile (modify, file name) 
+ FI ; 
+ IF actual line number >= 0 CAND actual line number <= lines (source) 
+    THEN toline (source, actual line number) ; 
+         readrecord (source, source line) 
+    ELSE source line := ""
+ FI
+ENDPROC source file ; 
+ 
+TEXT PROC source file : 
+ source file name 
+ENDPROC source file ; 
+ 
+PROC breakpoint handler : 
+ determine return address ;
+ determine breakpoint nr ; 
+ reset breakpoints ; 
+ getcursor (x, y) ; 
+ REP 
+   ueberschrift schreiben ;
+   IF auto trace 
+      THEN IF incharety = "" 
+              THEN key := "s" 
+              ELSE auto trace := FALSE 
+           FI 
+   FI ; 
+   IF NOT auto trace 
+      THEN REP 
+            inchar (key) 
+           UNTIL pos (""13"acdefgst", key) > 0 PER ; 
+           IF key = "a" 
+              THEN auto trace := TRUE ; 
+                   key := "s" 
+           ELIF key = "f" 
+              THEN out (""13""5"Sourcefile:") ; 
+                   getline (source file name) ; 
+                   out (""3"") ;
+                   source file (source file name) 
+           ELIF key = ""13"" 
+              THEN key := "s" 
+           FI 
+   FI ; 
+   previous key := key 
+ UNTIL pos ("gst", key) > 0 PER ; 
+ cursor (1, 7) ; 
+ out (""5"") ;
+ IF key <> "t" 
+    THEN execute saved instruction 
+ FI ;
+ IF key = "t" 
+    THEN resetbreakpoints ; 
+         term 
+ ELIF key = "s" 
+    THEN singlestep 
+ FI ; 
+ cursor (x, y) . 
+ 
+ueberschrift schreiben : 
+ feld loeschen ; 
+ put (""1"Breakpoint") ; put (breakpoint nr) ; 
+ put ("lbas:") ; put (hex16 (lbas)) ; 
+ put ("pbas:") ; put (hex8 (packet base)) ; 
+ put ("c8k:") ;  put (hex8 (c8k)) ; 
+ IF valid source 
+    THEN out ("""") ; out (source file name) ; put ("""") 
+ FI ; 
+ line ;
+ IF valid source AND source line <> "" 
+    THEN put (text (actual line number, 5)) ; put ("|") ; 
+         outsubtext (source line, 1, 71) ; 
+         line ; 
+         IF LENGTH source line < 72 
+            THEN put (text (actual line number +1, 5)) ; put ("|") ; 
+                 toline (source, actual line number +1) ; 
+                 out (subtext (source, 1, 71)) ; 
+                 toline (source, actual line number) ; 
+                 line 
+            ELSE put ("______|") ; 
+                 outsubtext (source line, 72, 143) ; 
+                 line 
+         FI
+    ELSE line (2)
+ FI ; 
+ out (text (return segment AND 3)) ; 
+ put (hex16 (return address)) ; 
+ put ("|") ;
+ seg (breakpoint segment) ; 
+ addr (breakpoint address) ; 
+ zweizeilig := TRUE ;
+ disassemble one statement ; 
+ IF auto trace 
+    THEN pause (5) 
+ FI ; 
+ next instruction segment := breakpoint segment ; 
+ next instruction address := addr ADD 1 ; 
+ next instruction := getword (next instruction segment,
+                              next instruction address) ; 
+ line ; 
+ put ("a)uto, s)tep, g)o, t)erm, d)stop, e)stop, c)lrerr, f)ile:") . 
+ 
+feld loeschen : 
+ out (""1"") ; 
+ 7 TIMESOUT ""5""10"" ; 
+ 79 TIMESOUT "-" . 
+ 
+valid source : 
+ exists (source file name) . 
+ 
+disassemble one statement : 
+ statement line := hex16 (get word (breakpoint segment, addr)) ; 
+ statement line CAT " " ; 
+ code word line (statement line) ; 
+(* local base (lbas + offset) ; *) 
+ statement line := opcode ; 
+ local base (-1) ;
+ put (code word line) ; 
+(* i := max (0, 26 - length (code word line)) ; 
+ i TIMESOUT " " ; *) 
+i:=0; i := 71 - LENGTH codeword line - i ; 
+ outsubtext (statement line, 1, i) ; 
+ line ; 
+ IF zweizeilig 
+    THEN put ("      |") ; 
+         outsubtext (statement line, i + 1, i + 72) ; 
+         line 
+ FI ;
+ codeword line ("") . 
+ 
+singlestep : 
+ IF is return opcode
+    THEN set breakpoint behind previous call
+ ELIF bool result 
+    THEN set first breakpoint behind branch instruction ; 
+         set second breakpoint at branch address ;
+         bool result (FALSE) ;
+ ELIF is bool return opcode 
+    THEN set first breakpoint behind branch instruction at return address ; 
+         set second breakpoint at branch address of branch instruction at 
+         return address ; 
+ ELIF is branch instruction 
+    THEN set breakpoint at branch address 
+ ELIF is call opcode AND NOT auto trace CAND segment 3 module CAND
+      yes (""3"Subroutine Trace") 
+    THEN out (""3""13""5"") ; 
+         calculate subroutine segment and address ; 
+         set breakpoint behind next instruction
+ ELSE set breakpoint behind next instruction
+ FI . 
+ 
+is call opcode : 
+ (saved word AND opcode mask) = call opcode OR 
+(* saved word = pcall opcode OR //einbauen, wenn local zugriffe ok sind// *) 
+ saved word = -136 . (* LONGA CALL *) 
+ 
+is line number : 
+ (saved word AND opcode mask) = ln opcode OR 
+ (saved word AND opcode mask) = lnlong opcode . 
+ 
+is branch instruction : 
+ (saved word AND opcode mask) = br opcode OR 
+ (saved word AND opcode mask) = brlong opcode . 
+ 
+is return opcode : 
+ saved word = 32512 . 
+ 
+is bool return opcode : 
+ saved word = 32513 OR saved word = 32514 . 
+ 
+read source line : 
+ actual line number := ((saved word AND 768) * 2) OR (saved word AND 255);
+ IF saved word < 0 
+    THEN actual line number INCR 256 
+ FI ; 
+ IF (saved word AND opcode mask) = lnlong opcode 
+    THEN actual line number INCR 2048 
+ FI ; 
+ actual line number DECR 1 ; 
+ IF valid source 
+    THEN IF lineno (source) = actual line number CAND source line <> "" 
+            THEN (* nichts*) 
+         ELIF actual line number >= 0 AND actual line number <= lines(source) 
+            THEN toline (source, actual line number) ; 
+                 readrecord (source, source line) 
+         ELSE source line := "" 
+         FI 
+    ELSE source line := "" 
+ FI . 
+ 
+set first breakpoint behind branch instruction : 
+ op word := next instruction AND opcode mask ; 
+ IF op word = bf opcode OR op word = bflong opcode OR 
+    op word = bt opcode OR op word = btlong opcode 
+    THEN seg (next instruction segment) ; 
+         addr (next instruction address) ; 
+         out (""3"") ; 
+         out (text (next instruction segment)) ; 
+         put (hex16 (next instruction address)) ; 
+         put ("|") ; 
+         zweizeilig := FALSE ;
+         bool result (TRUE) ;
+         disassemble one statement ; (* Branch instruction *)
+         IF NOT auto trace
+            THEN pause (30) 
+            ELSE pause (5)
+         FI ;
+         next free breakpoint ;
+         set breakpoint (i, next instruction segment,
+                            next instruction address ADD 1) ;
+    ELSE putline (""3""7"Interner Fehler: Nach BOOL-Result folgt kein Branch"); 
+         LEAVE singlestep 
+ FI . 
+ 
+set second breakpoint at branch address : 
+ calculate branch address ; 
+ next free breakpoint ;
+ set breakpoint (i, next instruction segment, branch address) . 
+ 
+set breakpoint at branch address : 
+ next instruction := saved word ; 
+ next instruction address := breakpoint address ; 
+ calculate branch address ; 
+ set breakpoint (breakpoint nr, next instruction segment, branch address) . 
+ 
+set first breakpoint behind branch instruction at return address : 
+ next instruction address := getword (local data segment, 
+                             lbas + return address offset) ; 
+ next instruction segment := getword (local data segment, 
+                             lbas + return segment offset) AND 3 ; 
+ next instruction := getword (next instruction segment,
+                              next instruction address) ;
+ IF next instruction segment = 3 
+    THEN set first breakpoint behind branch instruction 
+    ELSE putline ("Trace beendet.") 
+ FI . 
+ 
+set second breakpoint at branch address of branch instruction at return address : 
+ set second breakpoint at branch address . 
+ 
+determine return address : 
+ pause (0) ;    (* Local Base fixieren *)
+ this local base := getword (local data segment, pcb (local base field)) ; 
+ pause (0) ;
+ lbas            := getword (local data segment, this local base + 
+                             previous local base offset) ; 
+ c8k             := getword (local data segment, this local base + 
+                             c8k offset) AND 255 ; 
+ return segment  := getword (local data segment, this local base + 
+                             return segment offset) ; 
+ return address  := getword (local data segment, this local base + 
+                             return address offset) ; 
+ packet base     := HIGH return segment ; 
+ arith 16 ; 
+ return address DECR 1 ; 
+ arith 15 . 
+ 
+segment 3 module : 
+ IF saved word = -136 (* LONGA CALL *) 
+    THEN op word := getword (breakpoint segment, breakpoint address ADD 1) 
+ ELSE op word := saved word AND 1023 ; 
+      IF saved word < 0 
+         THEN op word INCR 1024 
+      FI ; 
+ FI ; 
+ op word >= 1280 . 
+ 
+calculate subroutine segment and address : 
+ next instruction segment := 3 ; (* Laeuft nur in Segment 3 ! *) 
+ next instruction address := getword (packet data segment,
+                             begin of module nr link table + op word) ADD 1. 
+ 
+determine breakpoint nr : 
+ FOR i FROM 1 UPTO nr of breakpoints REP 
+  IF breakpoints (i).set CAND 
+     breakpoints (i).segment = (return segment AND 3) CAND 
+     breakpoints (i).address = return address 
+     THEN breakpoint nr := i ; 
+          breakpoint address := breakpoints (i).address ; 
+          breakpoint segment := breakpoints (i).segment ; 
+          saved word         := breakpoints (i).saved word ;
+          LEAVE determine breakpoint nr 
+  FI 
+ PER ;
+ put ("Returnaddresse:") ; 
+ out (text (return segment AND 3)) ; 
+ putline (hex16 (return address)) ; 
+ list breakpoints ;
+ reset breakpoints ; 
+ enablestop ;
+ errorstop ("Falsche Returnaddresse") . 
+ 
+calculate branch address : 
+ IF lowbyte replacement possible 
+    THEN branch address := (next instruction address AND -256) OR 
+                           (next instruction AND 255) ; 
+         LEAVE calculate branch address 
+ FI ; 
+ branch address := next instruction AND 768 ; 
+ IF branch long 
+    THEN branch address INCR 2048 
+ FI ; 
+ branch address INCR branch address ; 
+ IF next instruction < 0 
+    THEN branch address INCR 256 
+ FI ; 
+ arith 16 ;
+ branch address INCR (next instruction address AND -256) ; 
+ IF HIGH branch address >= c8k 
+    THEN branch address DECR 4096 
+ FI ;
+ arith 15 ; 
+ branch address := (branch address AND -256) OR (next instruction AND 255) . 
+ 
+lowbyte replacement possible : 
+ (next instruction AND -32000) = 0 . 
+ 
+branch long : 
+ bit (next instruction, 10) . 
+ 
+execute saved instruction : 
+ perhaps change error flags ; 
+ putword (local data segment, this local base + return address offset,
+          return address) ; 
+ putword (local data segment, this local base + return segment offset, 
+          return segment) . 
+ 
+perhaps change error flags : 
+ IF bit (return segment, 7) AND previous key = "c"
+    THEN reset bit (return segment, 7)
+ FI ; 
+ IF bit (return segment, 6) AND previous key = "e" 
+    THEN reset bit (return segment, 6) 
+ ELIF NOT bit (return segment, 6) AND previous key = "d" 
+    THEN set bit (return segment, 6) 
+ FI . 
+ 
+set breakpoint behind next instruction : 
+ IF is linenumber 
+    THEN read source line 
+ FI ; 
+ set breakpoint (breakpoint nr, next instruction segment, 
+                 next instruction address) . 
+ 
+set breakpoint behind previous call : 
+ return segment := getword (local data segment, 
+                   lbas + return segment offset) AND 3 ;
+ return address := getword (local data segment, 
+                   lbas + return address offset) ; 
+ IF return segment = 3 
+    THEN set breakpoint (breakpoint nr, return segment, return address) 
+    ELSE putline ("Trace beendet.") 
+ FI . 
+ 
+next free breakpoint : 
+ FOR i FROM 1 UPTO nr of breakpoints REP 
+  IF NOT breakpoints (i).set
+     THEN LEAVE next free breakpoint 
+  FI 
+ PER ; 
+ putline (""3""7"Alle " + text(nr of breakpoints) + " Breakpoints sind belegt") ; 
+ LEAVE singlestep . 
+ 
+ENDPROC breakpoint handler ; 
+ 
+INT OP HIGH (INT CONST word) : 
+ TEXT VAR t := "  " ; 
+ replace (t, 1, word) ; 
+ code (t SUB 2) 
+ENDOP HIGH ; 
+ 
+PROC reset breakpoints : 
+ FOR i FROM 1 UPTO nr of breakpoints REP 
+  IF breakpoints (i).set 
+     THEN reset breakpoint (i) 
+     ELSE breakpoints (i) := init breakpoint 
+  FI 
+ PER 
+ENDPROC reset breakpoints ; 
+ 
+PROC reset breakpoint (INT CONST nr) : 
+ IF nr < 1 OR nr > nr of breakpoints 
+    THEN errorstop ("Unzulaessige Breakpoint Nummer") 
+ ELIF NOT breakpoints (nr).set 
+    THEN display ("Warnung: Breakpoint " + text (nr) + " war nicht gesetzt")
+ ELSE putword (breakpoints (nr).segment, breakpoints (nr).address, 
+               breakpoints (nr).saved word) ; 
+      breakpoints (nr) := init breakpoint 
+ FI 
+ENDPROC reset breakpoint ; 
+ 
+PROC set breakpoint (INT CONST nr, segment, address) : 
+ INT VAR new word ;
+ IF nr < 1 OR nr > nr of breakpoints 
+    THEN errorstop ("Unzulaessige Breakpoint Nummer") 
+ ELIF breakpoints (nr).set 
+    THEN errorstop ("Breakpoint " + text (nr) + " ist bereits gesetzt") 
+ ELIF segment < 2 OR segment > 3 
+    THEN errorstop ("Segment " + text (segment) + " ist kein Codesegment") 
+ ELSE breakpoints (nr).segment := segment ; 
+      breakpoints (nr).address := address ; 
+      breakpoints (nr).saved word := get word (segment, address) ; 
+      new word := call opcode + (handler module AND 1023) ; 
+      IF handler module >= 1024 
+         THEN setbit (new word, 15) 
+      FI ; 
+      putword (segment, address, new word) ; 
+      IF getword (segment, address) <> new word 
+         THEN errorstop ("Addresse Schreibgeschuetzt")
+         ELSE breakpoints (nr).set := TRUE
+      FI 
+ FI 
+ENDPROC set breakpoint ; 
+ 
+PROC handlers module nr (INT CONST module nr) : 
+ handler module := module nr 
+ENDPROC handlers module nr ; 
+ 
+INT PROC handlers module nr : 
+ handler module
+ENDPROC handlers module nr ; 
+ 
+PROC set breakpoint : 
+ handlers module nr (module number ("breakpointhandler", 1)) ; 
+ auto trace := FALSE ;
+ source file name := "" ; 
+ actual line number := -1 ;
+ page ; 
+ TEXT VAR object ; 
+ INT VAR object nr ; 
+ put ("Object Name:") ; 
+ getline (object) ; 
+ changeall (object, " ", "") ;
+ putline ("Objekt von Anfang an abzaehlen") ; 
+ pause (5) ; 
+ help (object) ; 
+ put ("Objekt Nr:") ; 
+ get (object nr) ; 
+ INT VAR code address := code start (object, object nr) ADD 1 ; 
+ naechsten freien breakpoint setzen ; 
+ put ("Breakpoint") ; 
+ put (i) ; 
+ putline ("wurde gesetzt.") . 
+ 
+naechsten freien breakpoint setzen : 
+ FOR i FROM 1 UPTO nr of breakpoints REP 
+  IF NOT breakpoints (i).set 
+     THEN set breakpoint (i, code segment, code address) ; 
+          LEAVE naechsten freien breakpoint setzen 
+  FI 
+ PER ; 
+ errorstop ("Alle " + text (nr of breakpoints) + " Breakpoints sind belegt"). 
+ 
+ENDPROC set breakpoint ; 
+ 
+PROC list breakpoints : 
+ line ; 
+ putline (" No Set  Address Word") ; 
+ FOR i FROM 1 UPTO nr of breakpoints REP
+  put (text (i, 3)) ; 
+  IF breakpoints (i).set 
+     THEN put (" Y  ")
+     ELSE put (" N  ") 
+  FI ; 
+  out (text (breakpoints (i).segment)) ;
+  put (hex16 (breakpoints (i).address)) ; 
+  put(" ") ; 
+  put (hex16 (breakpoints (i).saved word)) ; 
+  line 
+ PER 
+ENDPROC list breakpoints ; 
+ 
+ENDPACKET tracer 

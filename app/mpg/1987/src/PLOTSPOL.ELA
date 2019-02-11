@@ -1,0 +1,129 @@
+PACKET plotten spool DEFINES plot:                  #Autor: H.Indenbirken #
+                                                    #Stand: 10.02.1985    #
+LET draw key      = 1,
+    move key      = 2,
+    text key      = 3,
+    move r key    = 4,
+    draw r key    = 5,
+    move cm key   = 6, 
+    draw cm key   = 7,
+    move cm r key = 8,
+    draw cm r key = 9,
+    bar key       = 10,
+    circle key    = 11,
+    max length    = 32000;
+
+
+TYPE PICTURE = STRUCT (INT dim, pen, TEXT points);
+
+
+INT VAR i, read pos, key;
+REAL VAR x, y, z;
+TEXT VAR t;
+
+
+PROC plot (PICTURE CONST p) :
+  INT CONST pic length := length (p.points);
+  read pos := 0;
+  IF p.dim = 2
+  THEN plot two dim pic
+  ELSE plot three dim pic FI  .
+
+plot two dim pic:
+  WHILE read pos < pic length
+  REP plot two dim position PER  .
+
+plot two dim position :
+  read pos INCR 1;
+  SELECT code (p.points SUB read pos) OF
+  CASE draw key : draw (next real, next real)
+  CASE move key : move (next real, next real)
+  CASE move r key : move r (next real, next real)
+  CASE draw r key : draw r (next real, next real)
+  CASE move cm key : move cm (next real, next real)
+  CASE draw cm key : draw cm (next real, next real)
+  CASE move cm r key : move cm r (next real, next real)
+  CASE draw cm r key : draw cm r (next real, next real)
+  CASE text key : draw (next text, next real, next real, next real)
+  CASE bar key : bar (next real, next real, next int) 
+  CASE circle key : circle (next real, next real, next real, next int) 
+  OTHERWISE errorstop ("wrong key code") END SELECT  . 
+
+plot three dim pic:
+  WHILE read pos < pic length
+  REP plot three dim position PER  .
+
+plot three dim position :
+  read pos INCR 1;
+  SELECT code (p.points SUB read pos) OF
+  CASE draw key : draw (next real, next real, next real)
+  CASE move key : move (next real, next real, next real)
+  CASE move r key : move r (next real, next real, next real)
+  CASE draw r key : draw r (next real, next real, next real)
+  CASE move cm key : move cm (next real, next real)
+  CASE draw cm key : draw cm (next real, next real)
+  CASE move cm r key : move cm r (next real, next real)
+  CASE draw cm r key : draw cm r (next real, next real)
+  CASE text key : draw (next text, next real, next real, next real)
+  CASE bar key : bar (next real, next real, next int) 
+  CASE circle key : circle (next real, next real, next real, next int) 
+  OTHERWISE errorstop ("wrong key code") END SELECT  . 
+
+next real :
+  read pos INCR 8;
+  subtext (p.points, read pos-7, read pos) RSUB 1  .
+
+next int :
+  read pos INCR 2;
+  subtext (p.points, read pos-1, read pos) ISUB 1  .
+
+next text :
+  INT CONST text length :: next int;
+  read pos INCR text length;
+  subtext (p.points, read pos-text length+1, read pos)  .
+ 
+END PROC plot;
+
+LET max pics = 1024,
+    pic dataspace = 1102;
+
+
+TYPE PICFILE = BOUND STRUCT (INT size, pos, background,
+                             ROW 16 ROW 3 INT pens,
+                             ROW 16 BOOL hidden,
+                             ROW 3 ROW 2 REAL sizes,
+                             ROW 2 ROW 2 REAL limits,
+                             ROW 4 REAL angles,
+                             ROW 2 REAL obliques,
+                             ROW 3 REAL perspectives
+                             ROW max pics PICTURE pic);
+
+PICFILE VAR p;
+
+PROC plot (DATASPACE VAR ds):
+  IF type (ds) = pic dataspace
+  THEN CONCR (p) :: old (ds);
+       plot (p)
+  ELSE errorstop ("Dataspace is no PICFILE") FI;
+END PROC plot;
+
+PROC plot (PICFILE VAR p) :
+  set values (p.sizes, p.limits, p.angles, p.obliques,
+              p.perspectives);
+  begin plot;
+  clear;
+  FOR i FROM 1 UPTO p.size
+  REP IF pen (p.pic [i]) <> 0
+      THEN plot pic FI
+  PER;
+  end plot  .
+
+plot pic:
+  pen (p.background, p.pens (pen (p.pic (i)))(1),
+       p.pens (pen (p.pic (i)))(2), p.pens (pen (p.pic (i)))(3));
+  hidden lines (p.hidden [pen (p.pic [i])]);
+  plot (p.pic (i))  .
+
+END PROC plot;
+
+END PACKET plotten spool 

@@ -1,0 +1,1658 @@
+;
+	TITLE	EUMEL fuer RUC 64180, 6502 Teil & Diskroutinen
+;
+;****************************************************************
+;
+;	 EUMEL 1.8.0 with RUC180-Card on BASIS 108
+;
+;	 6502 DISK-Driver und Motherboard I/O
+;
+;	 Stand (1.8) : 14.01.87, mit neuem Puffer-Handling
+;		     : 27.05.87, mit Hardcopy auf SHIFT CTRL F12
+;		     : 26.06.87, Druckerspooler loeschen mit Task 8
+;	 Version 23.09.85 ./. 22.11.85
+;
+;****************************************************************
+;
+	  .6502
+          .radix    16 
+;
+;----------------------------------------------------------------
+;
+;	Globale Variable
+;
+	GLOBAL	DES6502, PRG6502, LEN65, ST6502
+;
+;----------------------------------------------------------------
+;
+;	Konstanten
+;
+XOFF	EQU	13		; CTRL-S
+XON	EQU	11		; CTRL-Q
+;
+;	Adressen
+;
+KeyBoard 	equ	0C000
+Keyext		equ	0C008
+KeyStr		equ	0C010
+
+VIDBNK		equ	0C00C
+
+prackn		equ	0C1C1
+prport		equ	0C090
+
+speaker		equ	0C030
+
+serial_stat	equ	0C099
+SER_DAT 	EQU	0C098H		;Serial Interface Data
+SER_COM 	EQU	0C09AH		;Serial Command Register
+SER_CTR		EQU	0C09BH		;Serial Control Register
+	
+analog_1	EQU	$C063
+analogreset	EQU	$C070
+
+; Floppy Hardware
+
+phase0    equ      0C080
+phase1    equ      0C082
+phase2    equ      0C084
+phase3    equ      0C086
+mtroff    equ      0C088
+mtron     equ      0C089
+drive0    equ      0C08A
+Q6off     equ      0C08C
+Q6on      equ      0C08D
+Rstate    equ      0C08E
+Wstate    equ      0C08F
+;
+	INCLUDE	ZPAGE.INC	;Zero Page Adressen
+;
+;	sonstiges
+;
+bit_z		equ	24
+
+fast_step equ	$0E	; etwas weniger als 3 ms Track-Wechselzeit
+
+pagerr	  macro	    adr
+	  if high(*-start) ne high(adr-start)
+	  .printx 'Page-Error'
+	  endif
+	  endm
+
+	  cseg
+PRG6502:
+	  .phase    0C00
+DES6502:			; 6502-Startadresse zum kopieren
+
+start:				; Label fuer Pageboundcheck
+nible1:				; Anfang des Nibble-Buffers
+	defm	'6502-Teil'
+
+ST6502:				; Startadresse 6502-Teil Initialisierung
+	include BOOT.INC
+
+	include NIBLE.INC	
+
+write_data
+          SEC
+          LDA       Q6on,X
+          LDA       Rstate,X
+          BMI       wrdat99
+          LDA       nible2
+          STA       temp2
+          LDA       #0FF
+          STA       Wstate,X    ;  5
+          ORA       Q6off,X     ;  4
+          PHA                   ;  3
+          PLA                   ;  4     [sta..sta[
+          NOP                   ;  2
+          LDY       #04         ;  2
+wrdat1    PHA                   ;  3             3
+          PLA                   ;  4             4
+          JSR       wrt_nibl1   ;+13        15  13
+          DEY                   ;---         2
+          BNE       wrdat1      ; 40       + 3
+                                ;          --- ---
+                                ;           20+ 20 = 40
+
+	  pagerr    wrdat1
+
+                                ;           -1
+          LDA       #0D5        ;            2
+          JSR       wrt_nibl     ; 15       +15
+          LDA       #0AA        ;  2       ---
+          JSR       wrt_nibl     ;+15        36
+          LDA       #0AD        ;---
+          JSR       wrt_nibl     ; 32        15
+          TYA                   ;            2
+          LDY       #56         ;            2
+wrdat11   BNE       wrdat3      ;            3
+wrdat2    LDA       nible2,Y    ;            0    4
+wrdat3    EOR       nible2-1,Y  ;            5    5
+          TAX                   ;            2    2
+          LDA       to_nibble,X ;            4    4
+          LDX       slot10z     ;            3    3
+                                       ;   ---  ---
+                                       ;    36   18
+
+          STA       Q6on,X             ;     5
+          LDA       Q6off,X            ;     4
+          DEY                          ;     2
+          BNE       wrdat2             ;     3
+                                       ;   ---
+                                       ;    14 + 18 = 32
+                                       ;    -1
+          LDA       temp2              ;     3
+          NOP                          ;     2
+wrdat4    EOR       nible1,Y           ;     4    4
+          TAX                          ;     2    2
+          LDA       to_nibble,X        ;     4    4
+          LDX       slot10             ;     4    4
+                                       ;   ---  ---
+                                       ;    32   14
+
+          STA       Q6on,X             ;     5
+          LDA       Q6off,X            ;     4
+          LDA       nible1,Y           ;     4
+          INY                          ;     2
+          BNE       wrdat4             ;     3
+                                       ;   ---
+                                       ;    18+ 14 = 32
+
+	  pagerr	    wrdat11
+
+          TAX                          ;     2
+          LDA       to_nibble,X        ;     4
+          LDX       slot10z            ;     3
+          JSR       wrt_nibl2          ;     6  15
+          LDA       #0DE               ;   ---   2
+          JSR       wrt_nibl            ;    32  15
+          LDA       #0AA               ;       ---
+          JSR       wrt_nibl            ;        32
+          LDA       #0EB
+          JSR       wrt_nibl
+          LDA       #0FF
+          JSR       wrt_nibl
+          LDA       Rstate,X
+wrdat99
+          LDA       Q6off,X
+wrdat999
+	  dey
+	  bne	   wrdat999		; PostErase-Delay 1 ms
+
+          RTS
+
+read_hdr
+          sei
+          LDY       #0FC
+          STY       temp2
+rdhdr0
+          INY
+          BNE       rdhdr1
+          INC       temp2
+          BEQ       fail
+rdhdr1
+          LDA       Q6off,X
+          BPL       rdhdr1
+rdhdr11   CMP       #0D5
+          BNE       rdhdr0
+
+          NOP
+rdhdr2    LDA       Q6off,X
+          BPL       rdhdr2
+          CMP       #0AA
+          BNE       rdhdr11
+
+          LDY       #03
+rdhdr3    LDA       Q6off,X
+          BPL       rdhdr3
+          CMP       #96
+          BNE       rdhdr11
+          
+	  pagerr    rdhdr1
+
+          
+          LDA       #00
+nxthByte  STA       chk_sum
+rdhdr4    LDA       Q6off,X
+          BPL       rdhdr4
+	  ROL	    A
+          STA       temp2
+rdhdr5    LDA       Q6off,X
+          BPL       rdhdr5
+          AND       temp2
+          STA       chk_in_hdr,Y
+          EOR       chk_sum
+          DEY
+          BPL       nxthbyte
+
+          TAY
+          BNE       fail
+
+rdhdr6    LDA       Q6off,X
+          bpl       rdhdr6
+          cmp       #0DE
+          BNE       fail
+
+          NOP
+rdhdr7    LDA       Q6off,X
+          BPL       rdhdr7
+          CMP       #0AA
+          BNE       fail
+
+          CLC
+          RTS
+fail
+          SEC
+          RTS
+
+moving
+          LDY       #0
+mov0      LDA       Q6off,X
+	  JSR	    mov1
+	  PHA			;  3
+ 	  PLA			;  4
+	  CMP	    Q6off,X	;  4
+	  BNE	    mov1	;----
+	  DEY			; 21 uS
+	  BNE	    mov0
+mov1	  RTS
+
+
+read_data
+	  TXA
+	  ORA	    #8C
+	  STA	    ld1+1
+	  STA	    ld2+1
+	  STA	    ld3+1
+	  STA	    ld4+1
+	  STA	    ld5+1
+	  LDA	    user_data
+	  LDY	    user_data+1
+	  STA	    st5+1
+	  STY	    st5+2
+	  SEC
+	  SBC	    #54
+	  BCS	    rddat1
+	  DEY
+	  SEC
+rddat1
+	  STA	    st3+1
+	  STY	    st3+2
+          SBC       #57
+          BCS       rddat2
+          DEY
+rddat2
+          STA       st2+1
+          STY       st2+2
+
+          LDY       #20
+nxt_begin
+          DEY
+          BEQ       fail
+wait_begin
+waitb0    LDA       Q6off,X
+          BPL       waitb0
+waitb00   EOR       #0D5
+          BNE       nxt_begin
+          NOP
+waitb1    LDA       Q6off,X
+          BPL       waitb1
+          CMP       #0AA
+          BNE       waitb00
+          NOP
+waitb2    LDA       Q6off,X
+          BPL       waitb2
+          CMP       #0AD
+          BNE       waitb00
+
+          LDY       #0AA
+          LDA       #0
+rloop1    STA       temp2
+ld1       LDX       Q6off+60  ; addr modified by read init !
+          BPL       ld1
+          LDA       to_bits-96,X
+          STA       nible2-0AA,Y
+          EOR       temp2
+          INY
+          BNE       rloop1
+          
+;
+; read nible from disk and convert to user data
+;
+          LDY       #0AA
+          BNE       ld2
+rloop2
+st2       STA       1000,Y
+ld2       LDX       Q6off+60  ; modified by read init
+          BPL       ld2
+          EOR       to_bits-96,X
+          LDX       nible2-0AA,Y
+          EOR       to_bytes+0,X
+          INY
+          BNE       rloop2
+
+          PHA
+          AND       #0FC
+          LDY       #0AA
+ld3       LDX       Q6off+60  ; modified by read init
+          BPL       ld3
+          EOR       to_bits-96,X
+          LDX       nible2-0AA,Y
+          EOR       to_bytes+1,X
+st3       STA       1000,Y
+          INY
+          BNE       ld3
+
+ld4       LDX       Q6off+60  ; modified by read init
+          BPL       ld4
+          AND       #0FC
+          LDY       #0AC
+rloop5    EOR       to_bits-96,X
+          LDX       nible2-0AC,Y
+          EOR       to_bytes+2,X
+st5       STA       1000,Y
+ld5       LDX       Q6off+60  ; modified by read init
+          BPL       ld5
+          INY
+          BNE       rloop5
+          AND       #0FC
+          EOR       to_bits-96,X
+          LDX       slot10z
+          TAY
+          BNE       chk_fail
+rloop6    LDA       Q6off,X
+          BPL       rloop6
+          CMP       #0DE
+          BEQ       read_ok
+
+          pagerr      wait_begin
+chk_fail
+          SEC
+          db     bit_z
+read_ok
+          clc
+          PLA
+          LDY       #55
+          STA       (user_data),Y
+          RTS
+
+seekT	  lda	    iob_trk          
+seekL
+	  jsr	    trk_to_ph
+          cmp       phase0,X
+          cmp       phase1,X
+          cmp       phase2,X
+          cmp       phase3,X
+          LDY       disk_no
+          LDA       head_table,y	; da steht der Kopf jetzt
+          STA       head_pos
+	  lda	    dest_phase
+	  sta	    head_table,y	; da soll er nachher stehen
+          
+seekH
+          cmp       head_pos
+          BEQ       seek_rts
+          LDA       #0
+          STA       temp2
+seekh0    LDA       head_pos
+          STA       phase
+          SEC
+          SBC       dest_phase
+          BEQ       seekh5
+          BCS       seekh1
+          EOR       #0FF
+          INC       head_pos
+          BCC       seekh2
+seekh1    ADC       #0FE
+          DEC       head_pos
+seekh2    CMP       temp2
+          BCC       seekh3
+          LDA       temp2
+seekh3    CMP       #8
+          BCS       seekh4
+          TAY
+seekh4    SEC
+          JSR       step
+          LDA       time0,Y
+          JSR       step_wait
+          LDA       phase
+          CLC
+          JSR       step1
+          LDA       time1,Y
+          JSR       step_wait
+          INC       temp2
+          BNE       seekh0
+
+seekh5    JSR       step_wait
+          CLC
+step      LDA       head_pos
+step1     AND       #3
+          ROL       A
+          ORA       slot10z
+          TAX
+          LDA       phase0,X
+          LDX       slot10z
+seek_rts  RTS
+
+;-------------------------------;
+
+make_nibl
+          LDY       #56
+          LDA       #0
+maken0    STA       nible2-1,Y
+          DEY
+          BNE       maken0
+maken1    LDX       #55
+maken2    LDA       (user_data),Y
+          AND       #0FC
+          STA       nible1,Y
+          EOR       (user_data),Y
+          INY
+          CMP       #02
+          ORA       nible2,X
+          ROR       A
+          ROR       A
+          STA       nible2,X
+          DEX
+          BPL       maken2
+          CPY       #02
+          BNE       maken1
+          RTS
+
+;	ds	10
+          
+Dsk_RW 
+	  ldx	    #0A9	; LDA #xx
+	  lda	    def_byte
+	  and	    #$20	; Bit 5 ?
+	  bne	    rw_0	; Fast Step - use abs. value
+
+				; Slow Step - use MotorOn/Off-Tables
+	  ldx	    #0C9	; CMP #xx
+rw_0:	  stx	    step_wait
+	
+	  lda	    #fast_step	; Set Step Rate
+	  bit	    def_byte
+	  bmi	    rw_1	; Bit7: Controller-Typ
+				; Bit7=0 => Ehring
+	  lsr	    a		; bei Ehring 2-fache Phases => halbe Steprate
+
+rw_1:	  sta	    step_wait+1		; Steprate
+
+          lda       disk_no
+          LSR       A
+          TAY
+          LDA       slotn,Y
+          STA       slot10
+          sta       slot10z
+          adc       #0
+          STA       iob_drv
+          
+ 	  include TRACK.INC 
+
+trk_to_ph:			; IN: A = track / OUT: A,dest_phase = phase
+	sta	dest_phase
+
+; Select Side 0
+
+	bit	def_byte	; Bit7: 1=Erphi-Controller
+				; Bit6: 1=Erphi-Format
+
+	bvc	ehring_format	; Bit6 = 0 => Ehring-Format
+
+	lsr	dest_phase	; Erphi-Format
+	bcc	side0
+
+; Select Side 1
+; Erphi:  mtroff, Q6on, mtron
+; Ehring: mtroff,mtron
+
+side1:	lda	mtroff,x
+	bit	def_byte
+	bpl	side1_2
+				; Erphi-Side-1-Select
+	lda	Q6on,x
+side1_2:
+	lda	mtron,x
+	jmp	ph_mult
+
+ehring_format:
+	cmp	#$50		; Track >= 80 ?
+	bcc	side0		; nein: Select Side 0
+
+	sbc	#$50
+	sta	dest_phase
+	jmp	side1
+
+; Select Side 0
+; Ehring: lda cn00,x
+; Erphi : mtroff, Q6off, mtron
+
+side0:	bit	def_byte
+	bmi	erphi_s0	; Bit7 = 1 => Erphi-Controller
+
+	txa			; Ehring-Side-0-Select
+	lsr	a
+	lsr	a
+	lsr	a
+	lsr	a
+	ora	#$C0
+	sta	ehr_sel+2
+
+ehr_sel:lda	$C600
+	jmp	ph_mult
+
+erphi_s0:			; Erphi-Side-0-Select
+	cmp	mtroff,x
+	cmp	Q6off,x
+	cmp	mtron,x
+
+ph_mult:
+	lda	def_byte	; Bit 0..1: 0 = 1 Step/Track
+	and	#03		;           1 = 2 Steps/Track
+	tay			;           2 = 4 Steps/Track
+	beq	ph_mult2
+
+ph_mult1:
+	asl	dest_phase
+	dey
+	bne	ph_mult1
+
+ph_mult2:
+	lda	dest_phase
+	rts
+
+;---------------------------------------------------------------------------
+;
+;	D I S K R W
+;	Eingang:	iob_trk, sektor, def_byte, disk_no, param, last_track
+;			dma, ilv_tbl, 
+;	Ausgang:	iob_err
+;	Daten:		x000..xFFF (Ein Track, Sektoren in log. Reihenfolge)
+;	64180 darf nicht auf den Applebus, Aufruf mit JSR
+;
+;---------------------------------------------------------------------------
+
+DISKRW:
+		jsr	lock_bus
+
+		lda	iob_trk		; Track fuer Read/Write		
+		bit	param		; 0 = Write, FF = Read
+		bpl	writecmd
+		cmp	last_track	; Muss auf neuen Track positioniert
+		bne	readtrack	; werden ?
+
+		ldy	sektor
+		ldx	ilv_tble,y
+		lda	sec_tble,x
+		beq	readtrack	; Sektor nicht ok
+		ldx	ilv_tble+1,y
+		lda	sec_tble,x
+		beq	readtrack
+
+		lda	#00		; Nein, somit auch kein Lesefehler
+		sta	iob_err
+		jmp	unlock_bus
+
+readtrack:
+		sei
+		lda	#10		; Track muss ganz neu gelesen werden
+		sta	sec_cnt		; das sind 16 Sektoren a 256 Byte
+		lda	#00		; Kennzeichen fuer Einlesen
+		ldx	#0F
+sec_1_loop:	sta	sec_tble,x	; Sektortabelle = Kennzeichen setzen
+		dex
+		bpl	sec_1_loop
+		bmi	readwrite
+
+writecmd:	
+		sei
+		ldx	#02		; Bei Write nur 512 Byte schreiben
+		stx	sec_cnt
+		ldx	#0F
+		lda	#$FF		; Kennzeichen fuer 'nicht Einlesen'
+sec_2_loop:	sta	sec_tble,x
+		dex
+		bpl	sec_2_loop
+
+		ldy	sektor		; gewuenschter 1. Sektor
+		ldx	ilv_tble,y	; logisch --> physisch umrechnen
+		lda	#00		; Kennzeichen 'Sektor schreiben'
+		sta	sec_tble,x
+		ldx	ilv_tble+1,y	; 2. Sektor logisch --> physisch
+		sta	sec_tble,x	; Auch schreiben
+
+		lda	last_track	
+		cmp	iob_trk		; Anderer Track als der letzte ?
+		beq	readwrite
+		jsr	readwrite	; Ja
+		lda	#$FF		; Muss bei Read neu eingelesen werden,
+					; da die anderen 14 Sektoren zum
+					; letzen Track gehoeren
+		sta	last_track
+		rts
+
+readwrite:	
+
+		lda	#00
+		tay
+		tax
+interlv_2:
+		ora	#dma_4k		; Cachebereich (4k) fuer Track
+		sty	dma,x
+		inx
+		sta	dma,x
+		inx
+		clc
+		adc	#0B		; Interleave 3
+		and	#0F		; MOD 16
+		cpx	#20		; 16 Sektoren
+		bne	interlv_2
+
+		lda	#0F		; Step Rate
+		sta	iob_err
+		jsr	dsk_rw		; Disk Operation
+		lda	iob_err		; Fehlerkennzeichen
+		beq	no_err
+
+		ldy	sektor
+		ldx	ilv_tble,y
+		lda	sec_tble,x
+		beq	is_err		; Fehler im 1. Teil des Blocks ?
+		ldx	ilv_tble+1,y
+		lda	sec_tble,x
+		beq	is_err		; Fehler im 2. Teil des Blocks ?
+					; nein,
+		lda	#0
+		sta	iob_err		; Zumindest dieser Block ok
+		beq	no_err		; Always
+
+is_err:
+		lda	#$FF		; Track muss neu gelesen werden
+		db	bit_a		; Skip 2 Bytes
+no_err:		lda	iob_trk		; last_track := track
+		sta	last_track
+		jmp	unlock_bus
+
+;----------------------------------------------------------------------------
+;
+;	A N A L 6 5
+;	Eingang:	param = 1..4 (Analogschalternummer)
+;	Ausgang:	analogwert = 0..255
+;
+;---------------------------------------------------------------------------
+
+ANAL65:
+		sei
+		jsr	lock_bus
+		ldx	param		; Nummer des Analogports
+		lda	analogreset	; Timer starten
+		ldy	#00
+		nop
+		nop
+readanalog:
+		lda	analog_1,x	; Analogwert lesen
+		bpl	anaready
+		iny
+		bne	readanalog	; Bis Bit 7 auf 0
+		pagerr	readanalog
+		dey			; Maximum 255
+
+anaready:	sty	analogwert
+		cli
+		jmp	unlock_bus
+
+;
+		INCLUDE GRAFIK65.MAC
+;
+irqvec:
+	sta	Asave		; Akku retten
+	pla
+	pha
+	and	#10		; BRK -Bit ?
+	bne	brkirq
+	lda	Asave
+	jmp	irq		; Interrupt ausfuehren
+
+brkirq:
+	lda	main_ROM
+	lda	Asave
+	jmp	BREAK		; Alte BREAK-Routine
+
+resvec:
+	lda	main_ROM	; ROM einschalten
+	jmp	RESET		; Alte RESET-Routine
+
+;****************************************************************
+;
+;	B E L L
+;
+; => Akustisches Signal
+
+beep	  sei
+	  jsr	    lock_bus
+	  lda	    #$32	; Laenge
+				; Frequenz = 5000/X Hz
+
+beep1	  ldx	    param	;  3
+beep2	  ldy	    #$12	; 	 2
+beep3	  dey			; 		   2
+	  bne	    beep3	; 		 + 3
+				;		----
+				;	89 = 	   5 * 18 - 1
+	  nop			;        2
+	  nop			;        2
+	  nop			;        2
+	  dex			; 	 2
+	  bne	    beep2	; 	 3
+				;	----
+				;	102 * X * 0.9775 us
+				;     = 99.7ms (f ~ 10kHz/X)
+				; -1 (Branch)
+	  bit	    speaker	;  4
+	  sec			;  2
+	  sbc	    #1		;  2
+	  bne	    beep1	;  3
+				; -----
+				; (14 + 102 * X) * A States Dauer
+				; 0.9775 * (14 + 102 * X) * A us
+	  cli
+	  jmp	    unlock_bus
+
+;*******************************************************************
+;
+;	Zugriffskontrolle fuer 64180 auf 6502-Bus
+;
+lock_bus:
+	lda	#$FF
+	sta	bus_locked
+	ldx	SLOT180
+	lda	wait180,x
+	rts
+
+unlock_bus:
+	lda	#$00
+	sta	bus_locked
+	ldx	SLOT180
+	lda	start180,x
+	rts
+
+;*******************************************************************
+;
+;	Input-Buffer Handler
+;
+;	Der Buffer darf nicht voll sein!
+;	Interrupts bei Receive-Buffer disabled
+;	Eingang: A = Zeichen
+;		 X = Bufferdescriptor Offset
+;	Ausgang: X intakt
+;		 A veraendert
+;		 SEC, wenn Puffer voll war
+putbuf:
+	sei
+putbuf0:
+	pha
+	lda	free,x		; Test, ob Puffer voll
+	ora	free+1,x
+	beq	putbuf4
+	pla
+
+	sta	(in,x)		; Zeichen in Puffer schreiben
+
+	inc	in,x		; Schreibzeiger erhoehen
+	bne	putbuf1
+	inc	in+1,x
+
+	lda	in+1,x		; Puffer-Ende ?
+	cmp	end,x
+	bcc	putbuf1
+	lda	beg,x		; Ringpuffer, wieder auf Pufferanfang setzen
+	sta	in+1,x
+
+putbuf1:
+	dec	wait_flg	; Warten, bis update vorbei
+	inc	full,x		; Belegten Platz vergroessern
+	bne	putbuf2
+	inc	full+1,x
+
+putbuf2:			; Dieser Wert wird auch von FROUT benutzt!
+	lda	free,x		; Freiplatz verringern
+	bne	putbuf3
+	dec	free+1,x
+putbuf3:
+	dec	free,x
+	inc	wait_flg	; Update gelaufen
+	clc			; Zeichen uebernommen
+	rts
+
+putbuf4:
+	pla
+	sec
+	rts			; Puffer war voll
+	
+;*******************************************************************
+;
+;	Output-Buffer Handler
+;
+;	Interrupts bei Transmit-Buffer disabled
+;	Der Buffer darf nicht leer sein!
+;	Eingang: X = Bufferdescriptor Offset
+;	Ausgang: X intakt
+;		 A = Zeichen
+;		 SEC, wenn Puffer leer war
+getbuf:
+	sei
+getbuf0:
+	sec
+	lda	full,x
+	ora	full+1,x
+	beq	getbuf4		; Test, ob Puffer leer ist
+
+	lda	(out,x)		; Zeichen aus Puffer lesen
+	pha
+
+	inc	out,x
+	bne	getbuf1
+	inc	out+1,x		; Lesezeiger erhoehen
+
+	lda	out+1,x
+	cmp	end,x
+	bne	getbuf1
+	lda	beg,x
+	sta	out+1,x		; Ringpuffer, Zeiger wieder auf Pufferanfang
+
+getbuf1:
+	dec	wait_flg	; Warten, bis Update vorbei
+	inc	free,x
+	bne	getbuf2
+	inc	free+1,x	; Freien Platz vergroessern
+getbuf2:
+
+	lda	full,x
+	bne	getbuf3
+	dec	full+1,x
+getbuf3:
+	dec	full,x		; Belegten Platz verringern
+	inc	wait_flg	; Update vorbei
+
+	pla
+	clc
+
+getbuf4:			; A enthaelt 00, wenn Puffer leer war
+	rts
+
+;****************************************************************
+;
+; => Drucker-Spooler
+;
+;------------------------------------------------------------------
+;
+;	Zeichen aus Druckerspooler an Drucker senden
+;
+spochc:	
+	lda	prackn
+	bmi	chcend		; Printer ready ?
+
+	ldx	#pbuf		; Printer Buffer
+	jsr	getbuf0		; Ohne SEI
+	bcs	chcend		; Nichts auszugeben, fertig
+
+	sta	prport		; Zeichen ausgeben
+	jmp	spochc		; Bis nichts mehr moeglich ist
+
+chcend:
+	rts
+
+;--------------------------------------------------------------------
+;
+;	Zeichen in Druckerpuffer schreiben
+
+bufin:	
+	ldx	#pbuf		; Zeichen geht verloren, wenn Puffer voll
+	jmp	putbuf0		; Zeichen in Puffer schreiben
+
+
+;****************************************************************
+;
+; => Ausgabe Spooler fuer serielle Schnittstelle
+;
+;-----------------------------------------------------------------
+;
+;	Zeichen aus dem Transmitbuffer senden
+;
+;spsero:	
+;	LDA	serial_stat
+;	AND	#10		; Transmit Data Register empty ?
+;	BEQ	schend		; serielles Interface nicht bereit
+
+spserok:			; Einsprung fuer Transmitinterrupt
+
+	LDA	SerFlg		; Ausgabe Stop ?
+	BMI	dis_tx		; Ja -> nichts ausgeben
+
+	ldx	#tbuf		; Transmitbuffer
+	jsr	getbuf		; Zeichen aus Puffer lesen
+	bcs	dis_tx		; Transmitter disabled, wenn Puffer leer
+
+	sta	SER_DAT		; Zeichen ausgeben
+schend:
+	rts
+
+dis_tx:
+	lda	ser_com
+	and	#$F3
+	ora	#$08		; Transmit Interrupt aus
+	sta	ser_com
+	rts
+
+;---------------------------------------------------------------------
+;
+;	Zeichen in den Transmitbuffer schreiben
+sbufin:	
+	ldx	#tbuf		; Zeichen in Transmitbuffer schreiben
+	jsr	putbuf		; Zeichen geht verloren, wenn Puffer voll
+	cli			; Wird nicht in Interruptrotinen aufgerufen
+
+	lda	ser_com
+	and	#$F3
+	cmp	#$04		; War Transmitinterrupt enabled ?
+	beq	sbufin1
+
+	ora	#$04		; Enable Transmit Interrupt
+	sta	ser_com
+sbufin1:
+	rts
+
+;****************************************************************
+;
+;	Eingabe Spooler fuer serielle Schnittstelle
+;
+;-----------------------------------------------------------------
+;
+;	Zeichen in A in den Receivebuffer schreiben
+rxser:
+	bit	A_FLG		; Ausgabeflusskontrolle
+	bpl	rxser3		; XON/XOFF interpretieren ?
+
+	cmp	#XON
+	bne	rxser4
+
+	lda	#$7F
+	and	SerFlg		; Transmitter starten
+	sta	SerFlg		; Bit 7 := 0
+
+	lda	ser_com
+	and	#$F3
+	ora	#$04
+	sta	ser_com
+	rts
+
+rxser4:
+	cmp	#XOFF
+	bne	rxser3		; war weder XON noch XOFF
+
+	lda	#80
+	ora	SerFlg		; Transmit-IRQ schaltet sich selbst aus
+	sta	SerFlg		; Bit 7 := 1
+	rts
+
+rxser3:
+	ldx	#rbuf
+	jsr	putbuf		; Zeichen geht verloren, wenn Puffer voll
+	bcs	rx_rts
+
+	lda	free+1+rbuf
+	bne	rx_rts		; Noch genug Platz
+	lda	free+rbuf
+	cmp	#10
+	bne	rx_rts		; Mehr als 16 Zeichen frei
+				; Flusskontrolle durchfuehren
+	bit	E_FLG		; Eingabeflusskontrolle
+	bpl	rxser1
+				; XOFF senden
+	lda	#XOFF
+	jsr	DSerOut
+	
+rxser1:
+	bit	E_FLG
+	bvc	rx_rts
+				; DTR low legen
+	lda	ser_com
+	and	#$FE
+	sta	ser_com
+
+rx_rts:	rts
+
+
+
+;--------------------------------------------------------------------
+;
+;	Zeichen aus Receivepuffer lesen an 64180 senden
+;
+rxout:
+	lda	INTPAR1
+	bne	rxout_rts	; Letzer Interrupt noch nicht quittiert
+
+	bit	bus_locked
+	bmi	rxout_rts	; 64180 darf nicht auf den Bus
+
+	bit	IFLG		; "stop" - Zustand
+	bmi	rxout_rts	; Kein Inputinterrupt
+
+	ldx	#rbuf
+	jsr	getbuf		; Zeichen lesen
+	bcs	rxout_rts	; Puffer ist leer
+
+	ldx	#5		; Kanal 5: serielle Schnittstelle
+	ldy	err5_bits	; Fehlerbits (passen nicht zum Zeichen)
+	jsr	TO180		; Zeichen im Akku
+
+	ldy	#0
+	sty	err5_bits	; loeschen
+
+	lda	full+1+rbuf
+	bne	rxout_rts	; Noch zuviel im Puffer
+	lda	full+rbuf
+	cmp	#10
+	bne	rxout_rts	; Noch mehr als 16 Zeichen im Puffer
+
+	bit	E_FLG
+	bpl	rxout2
+
+	lda	#XON		; XON senden
+	jsr	DSerOut
+
+rxout2:
+	bit	E_FLG
+	bvc	rxout_rts
+				; DTR high legen
+	lda	ser_com
+	ora	#01
+	sta	ser_com
+
+rxout_rts:
+	rts
+
+
+;-------------------------------------------------------------------
+;
+;	Direkte Ausgabe auf der seriellen Schnittstelle
+;
+DSerOut:
+	pha
+
+	lda	ser_com
+	and	#$F3
+	ora	#08		; Transmitter on, Tx_IRQ off
+	sta	ser_com
+
+Wai_empty:
+	LDA	serial_stat
+	AND	#10		; Transmit Data Register empty ?
+	BEQ	Wai_empty	; warten bis Transmitter empty ->
+
+	pla
+	STA	SER_DAT
+
+	lda	ser_com
+	and	#$F3
+	ora	#$04
+	sta	ser_com		; Transmitter on, TX_IRQ on
+
+	RTS
+
+
+;************************************************************************
+;
+; => Interrupt: Tastatur/V24
+;
+;-------------------------------------------------------------------------
+;
+;	Interrupt-Handler
+;
+IRQ:
+	sta	ASave
+	stx	XSave
+	sty	YSave
+
+	bit	keyboard	; Taste gedrueckt ?
+	bpl	irq_1
+
+	jsr	keyIRQ
+
+irq_1:
+	lda	serial_stat
+	bpl	irqret
+
+	pha
+	and	#08		; Receive Data Register full ?
+	beq	irq_2
+
+	pla
+	pha
+	jsr	receive_irq
+
+irq_2:
+	pla
+	pha
+	and	#10		; Transmit Data Register empty ?
+	beq	irq_3
+
+	jsr	spserok		; Zeichen aus Transmitbuffer senden
+
+irq_3:
+	pla
+	pha
+	and	#18
+	bne	irq_4
+				; External Status Change IRQ
+	pla
+	pha
+	jsr	status_irq
+	
+irq_4:
+	pla
+IRQret:
+	ldy	YSave
+	ldx	XSave
+	lda	ASave
+	rti			; Pull Old Status and Return
+
+;-------------------------------------------------------------------
+;
+;	Status Change - Interrupt
+;
+;	Eingang: A = serial_stat
+;
+status_irq:
+	bit	A_FLG		; Ausgabe Flusskontrolle (DSR beachten)
+	bvc	status1
+
+	and	#40		; DSR beobachten
+	beq	status2		; -DSR low, Transmitter starten
+
+	lda	#$7F		; Bit 7 := 0
+	and	SerFlg
+	sta	SerFlg
+
+	lda	ser_com
+	and	#$F3
+	ora	#$04		; Transmitter on, Tx_IRQ on
+	sta	ser_com
+status1:
+	rts
+
+status2:			; -DSR high, Transmitter stoppen
+	lda	#80
+	ora	SerFlg		; Transmitter stoppt sich selbst
+	sta	SerFlg
+	rts
+	
+;-------------------------------------------------------------------
+;
+;	Receiver - Interrupt
+;	Eingang: Y = ser_dat
+;		 A = serial_stat
+;
+receive_irq:
+	and	#7		; Fehlerbits ausmaskieren
+	ldy	ser_dat		; Zeichen einlesen
+
+	bit	SerFlg		; Letztes Zeichen war Break
+	bvc	receive1
+
+	pha
+	lda	#2		; Break
+	ora	err5_bits
+	sta	err5_bits	; Break empfangen
+
+	lda	#$BF
+	and	SerFlg		; Break Bit 6 := 0
+	sta	SerFlg
+	pla
+
+	cpy	#2		; SV-Call
+	beq	sv_call
+	cpy	#'W'		; BREAK - W = control ('weiter') simulieren
+	beq	weiter		; WEITER
+	cpy	#'R'		; BREAK - R = RESET
+	beq	reset_sys	; RESET
+	cpy	#'S'		; BREAK - S = Shutup
+	bne	receive1	; SHUTUP
+
+	pha
+	ldx	#'S'		; Shutup-Kennzeichen
+	tay
+	jsr	TO180		; Shutup - Interrupt
+	pla
+
+receive1:
+	cmp	#2		; Framing Error ?
+	bne	receive2
+	cpy	#0		; und Zeichen 00 = Break
+	bne	receive2
+
+	lda	#$40
+	ora	SerFlg		; Break vermerken
+	sta	SerFlg
+	rts
+
+sv_call:
+	jsr	weiter
+	ldy	#0
+	ldx	#5
+	lda	#2		; CTRL-B
+	jmp	TO180
+
+weiter:
+	lda	#0
+	sta	INTPAR1		; Interrupt als quittiert ansehen
+	lda	#7F
+	and	IFLG
+	sta	IFLG
+	rts
+
+receive2:
+	tax
+	lda	errbit_tab,x	; ACIA-Fehlerbits --> EUMEL Fehlerbits
+	ora	err5_bits
+	sta	err5_bits	; Fehler vermerken
+
+	tya			; Zeichen war in Y
+	jsr	rxser		; Zeichen in Receivepuffer schreiben
+
+	jmp	rxout		; Versuchen an 64180 zu senden
+
+;-------------------------------------------------------------------------
+;
+;	Fehlerbits
+;
+errbit_tab:
+	db	0, 4, 4, 4, 1, 5, 5, 5
+	; EUMEL: Bit 0= Overrun, Bit 1= Break, Bit 2= Parity/Framing
+
+;*******************************************************************
+;
+;	Remote - Reset
+;
+reset_sys:
+	sei
+	ldx	#rescodelen-1
+resetsysa:
+	lda	rescode,x
+	sta	0,x
+	dex
+	bpl	resetsysa
+
+	ldx	SLOT180
+	lda	stop180,x
+	nop
+	lda	start180,x
+	nop
+	lda	stop180,x
+	jmp	resvec
+
+rescode:
+	db	$AF, $F3, $ED, $39, $00, $ED, $39, $00, $ED, $76
+rescodelen	equ	$-rescode
+
+	; SYSEND:
+	; XOR A
+	; DI
+	; OUT0 (CNTLA0),A
+	; OUT0 (CNTLA0),A
+	; SLP
+
+;------------------------------------------------------------------
+;
+;	Keyboard - Interrupt
+;
+keyIRQ:
+	lda	KeyBoard
+	asl	a
+
+	tax			; X = 6543 210O
+	lda	KeyExt
+	asl	a		; Carry = Bit 7
+	txa
+	ror	a
+	sta	KeyStr		; Strobe loeschen
+
+	bit	bus_locked
+	bmi	readkey0	; Nur SHUTUP/RESET erlaubt
+
+	cmp	#$C2		; F2 = SV-CALL
+	bne	readkey0a
+	jsr	readkey0b
+
+	lda	#$C2
+	ldx	#1
+	jmp	TO180
+
+readkey0a:
+	cmp	#$BC		; SHIFT CTRL F12 = HCOPY-KEY
+	bne	readkey0c
+	jmp	HCOPY
+
+readkey0c:
+	cmp	#$BD		; SHIFT CTRL F13 = WEITER-KEY
+	bne	readkey0
+readkey0b:
+	lda	#0
+	sta	INTPAR1		; Interrupt als quittiert ansehen
+	lda	#$BF		; Bit 6 loeschen
+	and	IFLG
+	sta	IFLG
+	rts
+
+readkey0:
+	cmp	#$BE		; SHIFT CTRL F14 = SHUTUP-KEY
+	bne	readkey1
+	ldx	#'S'		; Kennzeichen fuer Shutup
+	jmp	TO180		; Shutup-Interrupt
+	
+readkey1:
+	cmp	#$BF		; SHIFT CTRL F15 = RESET-KEY
+	bne	readkey2
+	jmp	reset_sys	; Keine Rueckkehr
+
+readkey2:
+	ldx	KeyIn
+	inx
+	cpx	KeyOut
+	bne	readkey3
+				; Tastaturpuffer Overflow
+	lda	err1_bits	; Kanal 1 Fehlerbits
+	ora	#1
+	sta	err1_bits	; Overrun-Error
+
+	ldx	#$0A		; Kurzer Beep: Buffer full
+	ldy	#$10
+	jmp	beep1
+
+readkey3:
+	dex
+	sta	KeyBuf,x
+	inc	KeyIn
+				; Versuchen an 64180 zu senden
+
+;----------------------------------------------------------------
+;
+;	Zeichen aus Keyboard-Buffer holen
+;
+getkey:	
+	ldx	INTPAR1		; letzter Interrupt quittiert ?
+	bne	Getret
+
+	bit	bus_locked
+	bmi	Getret
+
+	bit	IFLG		; "stop" - Zustand ?
+	bvs	Getret		; Kein Inputinterrupt
+
+	sei
+	ldx	KeyOut
+	cpx	KeyIn
+	beq	GetRet		; Puffer leer
+
+	lda	KeyBuf,x
+	inc	KeyOut
+
+	ldx	#1		; Kanal 1, Zeichen muss da sein
+	ldy	err1_bits	; Overrun Bit
+	jsr	TO180		; 64180 Interrupt
+
+	ldy	#0
+	sty	err1_bits
+
+GetRet:	
+	rts
+
+;****************************************************************
+;
+;	Texthardcopy auf Basis-Parallel
+;	(Interrupt muessen disabled sein)
+;	(Nur moeglich, wenn Druckerspooler leer, 64180 wird gestoppt)
+;
+HCOPY:
+	lda	pbuf+full
+	ora	pbuf+full+1
+	bne	getret		; Kein Hardcopy, da Spooler nicht leer ist.
+	
+	jsr	lock_bus	; 64180 vom Dienst suspendieren
+	lda	#$0D
+	jsr	bufin		; CR an Drucker
+
+	ldx	#0
+hcopy2:
+	ldy	#0		; 1. Spalte
+hcopy1:
+	txa
+	pha
+	tya
+	pha
+	jsr	bascalc		; Zeichen an der Position lesen
+	and	#$7F		; Inversbit ausblenden
+	jsr	bufin		; Zeichen an Drucker
+	pla
+	tay
+	pla
+	tax
+
+	iny
+	cpy	#$50		; 80. Spalte ?
+	bne	hcopy1
+
+	txa
+	pha
+
+	lda	#$0D		; CRLF an Drucker
+	jsr	bufin
+	lda	#$0A
+	jsr	bufin
+	jsr	spochc		; Spooler erstmal leeren
+
+	pla
+	tax
+	inx
+	cpx	#$18		; 24. Zeile ?
+	bne	hcopy2
+
+	jmp	unlock_bus	; 64180 darf wieder arbeiten
+
+;------------------------------------------------------------------------
+;
+;	Berechnet Adresse der Bildschirmposition (A,X) nach basl/bash
+;	Holt Zeichen --> A
+;	Static/Dynamic - Switch ggf. veraendert
+;
+bascalc:
+	lsr	a
+	tay			; Y DIV 2
+	sta	VIDBNK		; default even Y
+	bcc	bascalc1
+	sta	VIDBNK+1	; odd Y
+bascalc1:
+	txa
+	lsr	a
+	and	#3
+	ora	#4		; Page 0400..0BFF
+	sta	bash 		; High
+	txa
+	and	#$18
+	bcc	bascalc2
+	ora	#$80
+bascalc2:
+	sta	basl 		; Low
+	asl	a
+	asl	a
+	ora	basl 
+	sta	basl 
+	lda	(basl),y
+	rts
+
+;****************************************************************
+;
+;	Interrupts zum 64180 (Inputinterrupts)
+;	moeglich von Tastatur (Kanal 1) und seriellem Interface (Kanal 5)
+;	Shutup-Interrupt mit X = 'S'
+;	Ausgang: X veraendert
+;
+TO180:	
+	php
+	sei
+	STA	intpar2		; Zeichen
+	STY	intpar3		; Fehlerbits
+	STX	intpar1		; Kanalnr.
+	LDX	SLOT180
+	LDA	INT180,X	; 64180 Interrupt erzeugen
+	LDA	intpar2
+	plp			; Interrupt Flag
+	RTS
+
+;****************************************************************
+;
+;	Drucker Spooler loeschen
+;
+init_pbuf:
+	ldx	#initab_len
+ploop:	lda	pbuf_ini,x
+	sta	pbuf,x
+	dex
+	bpl	ploop
+	rts
+
+pbuf_ini:
+	DW	(DBUFEND - DBUFBEG) * 100H, 0
+	DW	DBUFBEG * 100H, DBUFBEG * 100H
+	DB	DBUFBEG, DBUFEND
+initab_len	EQU	*-pbuf_ini-1	; Alle gleich Lang
+
+
+;****************************************************************
+;
+;	Puffer pollen
+;
+polling:
+	jsr	spochc		; Zeichen aus Printer Spooler ?
+
+;	lda	full+tbuf
+;	ora	full+tbuf+1
+;	beq	polling2
+
+;	jsr	spsero		; Zeichen aus Transmitbuffer senden
+;	cli
+
+;polling2:
+	lda	INTPAR1		; letzter Interrupt quittiert ?
+	bne	polling1	; Puffer garnicht erst testen
+				; Polling: Interrupts an 64180
+
+	jsr	getkey		; Zeichen aus Tastatur-Buffer 
+	cli
+
+	lda	full+rbuf
+	ora	full+rbuf+1
+	beq	polling1
+
+	jsr	rxout		; Zeichen aus Receive-Buffer 
+	cli
+
+polling1:
+	rts
+
+
+;****************************************************************
+; 
+;	Hauptschleife des 6502: wartet auf Tasks
+;
+;	Task	1 : Disk R/W
+;		2 : Bell
+;		3 : Char zum Drucker(spooler)
+;		4 : Char zum seriell Spooler
+;		5 : Direktausgabe auf serieller Schnittstelle
+;		6 : Analog I/O
+;		7 : Grafik
+;
+task_end:
+;		8 : Druckerspooler loeschen
+
+	lda	#0
+	sta	task
+	sta	bus_locked	; Nicht mehr gesperrt
+
+
+task_loop:
+	cli
+	jsr	polling		; Puffer pollen
+
+	lda	task
+	beq	task_loop
+
+	cmp	#1
+	bne	task_lp1
+
+	jsr	DISKRW		; Disk I/O
+	jmp	task_end
+
+task_lp1:
+	cmp	#2
+	bne	task_lp2
+
+	jsr	Beep
+	jmp	task_end
+
+task_lp2:
+	cmp	#3
+	bne	task_lp3
+
+	lda	param
+	jsr	bufin		; in Spooler-Buffer
+	jmp	task_end
+
+task_lp3:
+	cmp	#4
+	bne	task_lp4
+
+	lda	param
+	jsr	sbufin		; Output to serial Interface
+	jmp	task_end
+
+task_lp4:
+	cmp	#5
+	bne	task_lp5
+
+	lda	param
+	jsr	DSerOut		; direkte Ausgabe auf ser. Schnittstelle
+	jmp	task_end
+
+task_lp5:
+	cmp	#6
+	bne	task_lp6
+
+	jsr	ANAL65		; Analog I/O
+	jmp	task_end
+
+task_lp6:
+	cmp	#7
+	bne	task_lp7
+
+	JSR	GRAFIK		; Grafik I/O
+	jmp	task_end
+
+task_lp7:
+	cmp	#8
+	bne	task_end
+
+	jsr	init_pbuf	; Drucker Spooler loeschen
+	jmp	task_end
+
+
+	defm	'Ende vom SHard'
+LEN65	EQU	$-start
+	IF $ GE 2000
+	   .printx '6502-Modul in Grafikseite 1!'
+	ENDIF
+	end
+

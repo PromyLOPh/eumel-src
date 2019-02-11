@@ -1,0 +1,378 @@
+ 
+PACKET real DEFINES                            (* Autor: J.Liedtke *) 
+                                               (* Stand: 30.04.80  *) 
+   text , 
+   int ,
+   real ,
+   round ,
+   floor , 
+   frac ,
+   INCR ,
+   DECR ,
+   abs , 
+   ABS , 
+   sign ,
+   SIGN ,
+   MOD ,
+   min ,
+   max ,
+   put , 
+   get , 
+   max real ,
+   small real :
+
+LET mantissa length = 13 ;
+
+TEXT VAR mantissa ;
+
+ROW 10 REAL VAR real digit ;
+ 
+INT VAR i ; REAL VAR d := 0.0 ;
+FOR i FROM 1 UPTO 10 REP
+  real digit (i) := d ;
+  d := d + 1.0
+PER ;
+ 
+REAL PROC max real : 9.999999999999e126 ENDPROC max real ;
+ 
+REAL PROC small real : 1.0e-12 ENDPROC small real ;
+ 
+PROC sld (INT CONST in, REAL VAR real, INT VAR out) :
+  EXTERNAL 96 
+ENDPROC sld ; 
+ 
+INT PROC decimal exponent (REAL CONST mantissa) : 
+  EXTERNAL 97 
+ENDPROC decimal exponent ; 
+ 
+PROC set exp (INT CONST exponent, REAL VAR number) : 
+  EXTERNAL 98 
+ENDPROC set exp ; 
+ 
+REAL PROC tenpower (INT CONST exponent) :
+  REAL VAR result := 1.0 ;
+  set exp (exponent, result) ;
+  result
+ENDPROC tenpower ;
+
+REAL PROC floor (REAL CONST real) : 
+  EXTERNAL 99 
+ENDPROC floor ; 
+ 
+REAL PROC round (REAL CONST real, INT CONST digits) : 
+ 
+  REAL VAR result := real ;
+  IF (real <> 0.0) CAND (decimal exponent (real) + digits < mantissa length)
+    THEN round result ;
+  FI ;
+  result .
+
+round result :
+  set exp (decimal exponent (result) + digits, result) ;
+  IF result >= 0.0
+    THEN result := floor (result + 0.5)
+    ELSE result := floor (result - 0.5)
+  FI ;
+  set exp (decimal exponent (result) - digits, result) .
+
+ENDPROC round ; 
+ 
+TEXT VAR result ;
+ 
+TEXT PROC text (REAL CONST real) : 
+ 
+  REAL VAR value := rounded to seven digits ; 
+  IF value = 0.0 
+    THEN "0.0" 
+    ELSE 
+      process sign ; 
+      get mantissa (value) ; 
+      INT CONST exponent := decimal exponent (value) ; 
+      get short mantissa ; 
+      IF exponent > 7 OR exponent < LENGTH short mantissa - 7 
+        THEN scientific notation 
+        ELSE short notation 
+      FI 
+    FI . 
+ 
+rounded to seven digits : 
+  round ( real * tenpower( -decimal exponent(real) ) , 6 ) 
+        * tenpower ( decimal exponent(real) ) . 
+ 
+process sign : 
+  IF value < 0.0 
+    THEN result := "-" ; 
+         value := - value 
+    ELSE result := "" 
+  FI . 
+ 
+get short mantissa : 
+  INT VAR i := 7 ; 
+  WHILE (mantissa SUB i) = "0" REP 
+    i DECR 1 
+  UNTIL i=1 END REP ; 
+  TEXT CONST short mantissa := subtext (mantissa, 1, i) . 
+ 
+scientific notation : 
+  result CAT (mantissa SUB 1) ; 
+  result CAT "." ; 
+  result CAT subtext (mantissa, 2, 7) ; 
+  result + "e" + text (exponent) . 
+ 
+short notation : 
+  result CAT subtext (short mantissa, 1, exponent+1) ; 
+  result CAT (exponent+1 - LENGTH short mantissa) * "0" ; 
+  result CAT "." ; 
+  IF exponent < 0 
+    THEN result + (-exponent-1) * "0" + short mantissa 
+    ELSE result + subtext (short mantissa, exponent+2) 
+  FI . 
+ 
+ENDPROC text ; 
+ 
+PROC get mantissa (REAL CONST number) :
+
+  REAL VAR real mantissa := number ;
+  mantissa := "" ;
+  INT VAR i , digit ;
+  FOR i FROM 1 UPTO mantissa length REP
+    sld (0, real mantissa, digit) ;
+    mantissa CAT code (digit + 48)
+  PER ;
+
+ENDPROC get mantissa ;
+
+PROC put (REAL CONST real) : 
+ 
+  put (text (real) ) 
+ 
+ENDPROC put ; 
+ 
+TEXT PROC text (REAL CONST real, INT CONST length, fracs) :
+ 
+  REAL VAR value := round (real, fracs) ;
+  INT VAR  exponent  := decimal exponent (value) ;
+           IF value = 0.0 THEN exponent := 0 FI ;
+  INT VAR  floors    := exponent + 1 ,
+           floor length := length - fracs - 1 ;
+           IF value < 0.0 THEN floor length DECR 1 FI ;
+ 
+  IF value too big
+    THEN length * "*"
+    ELSE transformed value
+  FI .
+ 
+transformed value :
+  process leading blanks and sign ;
+  get mantissa (value) ;
+  result CAT subtext (mantissa, 1, floors) ;
+  IF LENGTH mantissa < floors
+    THEN result CAT (floors - LENGTH mantissa) * "0"
+  FI ;
+  result CAT "." ;
+  IF exponent < 0
+    THEN result CAT (-floors) * "0" ;
+         result CAT subtext (mantissa, 1, length - LENGTH result)
+    ELSE result CAT subtext (mantissa, floors+1, floors + fracs)
+  FI ;
+  IF LENGTH result < length
+    THEN result CAT (length - LENGTH result) * "0"
+  FI ;
+  result .
+ 
+process leading blanks and sign :
+  result := (floor length - max(floors,0)) * " " ;
+  IF value < 0.0
+    THEN result CAT "-" ;
+         value := - value
+  FI .
+ 
+value too big :
+  floors > floor length .
+ 
+ENDPROC text ;
+ 
+REAL PROC real (TEXT CONST text) : 
+ 
+  skip leading blanks ;
+  sign ; 
+  mantissa part ; 
+  exponent ; 
+  check correct conversion ;
+  result . 
+ 
+skip leading blanks :
+  INT VAR pos := 1 ;
+  skip blanks .
+ 
+skip blanks :
+  WHILE (text SUB pos) = " " REP
+    pos INCR 1
+  PER .
+ 
+sign : 
+  BOOL VAR negative ; 
+  IF (text SUB pos) = "-" 
+    THEN negative := TRUE ; 
+         pos INCR 1
+  ELIF (text SUB pos) = "+" 
+    THEN negative := FALSE ; 
+         pos INCR 1
+  ELSE   negative := FALSE
+  FI . 
+ 
+mantissa part: 
+  REAL VAR value := 0.0 ; 
+  INT VAR exponent pos := 0 ;
+  WHILE pos <= LENGTH text REP 
+    TEXT VAR digit := text SUB pos ; 
+    IF digit <= "9" AND digit >= "0" 
+      THEN value := value * 10.0 + real digit (code (digit) - 47) ;
+           pos INCR 1 
+    ELIF digit = "." 
+      THEN pos INCR 1 ;
+           exponent pos := pos
+    ELSE LEAVE mantissa part 
+    FI 
+  END REP . 
+ 
+exponent : 
+  INT VAR exp ;
+  IF exponent pos > 0
+    THEN exp := exponent pos - pos
+    ELSE exp := 0
+  FI ;
+  IF (text SUB pos) = "e" 
+    THEN exp INCR int (subtext(text,pos+1)) 
+  FI . 
+ 
+check correct conversion :
+  skip blanks ;
+  IF pos > LENGTH text
+    THEN set conversion (TRUE)
+    ELSE set conversion (FALSE)
+  FI .
+ 
+result : 
+  value := value * tenpower (exp) ; 
+  IF negative 
+    THEN - value 
+    ELSE value 
+  FI . 
+ 
+ENDPROC real ; 
+ 
+TEXT VAR word ;
+ 
+PROC get (REAL VAR value) : 
+ 
+  get (word) ; 
+  value := real (word) 
+ 
+ENDPROC get ; 
+ 
+REAL PROC abs (REAL CONST value) : 
+ 
+  IF value >= 0.0 
+    THEN  value 
+    ELSE -value 
+  FI 
+ 
+ENDPROC abs ; 
+ 
+REAL OP ABS (REAL CONST value) : 
+ 
+  abs (value) 
+ 
+ENDOP ABS ; 
+ 
+INT PROC sign (REAL CONST value) :
+ 
+  IF   value < 0.0 THEN -1
+  ELIF value = 0.0 THEN  0
+  ELSE                   1
+  FI
+ 
+ENDPROC sign ;
+ 
+INT OP SIGN (REAL CONST value) :
+ 
+  sign (value)
+ 
+ENDOP SIGN ;
+ 
+REAL OP MOD (REAL CONST left, right) :
+ 
+  REAL VAR result := left - floor (left/right) * right ;
+  IF left < 0.0
+    THEN result + abs (right)
+    ELSE result
+  FI
+ 
+ENDOP MOD ;
+ 
+REAL PROC frac (REAL CONST value) :
+ 
+  value - floor (value)
+ 
+ENDPROC frac ;
+ 
+REAL PROC max (REAL CONST a, b) :
+ 
+  IF a > b THEN a ELSE b FI
+ 
+ENDPROC max ;
+ 
+REAL PROC min (REAL CONST a, b) :
+ 
+  IF a < b THEN a ELSE b FI
+ 
+ENDPROC min ;
+ 
+OP INCR (REAL VAR dest, REAL CONST increment) :
+ 
+  dest := dest + increment
+ 
+ENDOP INCR ;
+ 
+OP DECR (REAL VAR dest, REAL CONST decrement) : 
+ 
+  dest := dest - decrement
+ 
+ENDOP DECR ;
+ 
+INT PROC int (REAL CONST value) :
+ 
+  INT VAR result := 0, digit ,i ;
+  REAL VAR mantissa := value ;
+ 
+  FOR i FROM 0 UPTO decimal exponent (value) REP
+    sld (0, mantissa, digit) ;
+    result := result * 10 + digit 
+  PER ;
+ 
+  IF value < 0.0
+    THEN - result
+    ELSE   result
+  FI
+ 
+ENDPROC int ;
+ 
+REAL PROC real (INT CONST value) :
+ 
+  IF value < 0
+    THEN - real (-value)
+  ELIF value < 10
+    THEN real digit (value+1)
+    ELSE split value into head and last digit ;
+         real (head) * 10.0 + real digit (last digit+1)
+  FI .
+ 
+split value into head and last digit :
+  INT CONST
+  head := value DIV 10 ,
+  last digit := value - head * 10 .
+ 
+ENDPROC real ;
+ 
+ENDPACKET real ; 

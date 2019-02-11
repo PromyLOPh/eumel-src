@@ -1,0 +1,124 @@
+	TITLE	Basis 108 Console Ausgabe
+;
+	INCLUDE HD64180.LIB
+;
+	.LIST
+;
+;****************************************************************
+;
+;	C O N O U T
+;
+;	Direkte BASIS 80 Zeichen Ausgabe
+;
+;	Version 1.0 - 16. 9. 1985
+;	Version 1.1 - 28. 10. 1985 (Invers korrigiert)
+;	Version 1.2 - 30.12.86 (Zeichensatzeinstellung, Stringausgabe)
+;
+;	Teil des EUMEL SHARD fuer RUC 64180
+;
+;****************************************************************
+;
+;	Globale Adressen
+;
+	GLOBAL	CRTOUT, SWICUR, STROUT
+;
+;................................................................
+;
+;	Externe Variable
+;
+	EXTERNAL  TO6502, ZGERL, BEEPFRQ
+;
+;----------------------------------------------------------------
+;
+;	Konstanten fuer MMU
+;
+BIOSBANK EQU	0F2H		;CBAR fuer 6502 Zugriff
+AR6502	EQU	5EH		;BBR-Wert fuer 6502 Zugriff
+BASE	EQU	2000H		;6502 Adressoffset
+;
+;	6502 Softswitches
+;
+STRAM1	EQU	BASE+0C00CH	;Umschalten auf Videobank 0
+STRAM2	EQU	STRAM1+1	;Umschalten auf Videobank 1
+
+SWINV	EQU	BASE+0C000H	; > 127: Invers
+SWFLSH	EQU	SWINV+1		; > 127: Flash
+SW2OFF	EQU	SWFLSH+1	; Zeichensatzswitch 2
+SW2ON	EQU	SW2OFF+1
+SW1OFF	EQU	SW2ON+1
+SW1ON	EQU	SW1OFF+1
+SW0OFF	EQU	SW1ON+1
+SW0ON	EQU	SW0OFF+1
+;
+;	andere 6502 Adressen
+;
+SCREEN	EQU	BASE+400H	;Anfang Video RAM
+;
+;----------------------------------------------------------------
+;
+	DSEG
+;
+;	lokale Daten
+;
+GOTOCNT: DEFB	0
+GOTOX:	DEFB	0		;Reihenfolge GOTOX, GOTOY festgelegt !!
+GOTOY:	DEFB	0
+SCRADR:	DEFW	SCREEN
+SCRXY:	DEFW	0
+INVMOD:	DEFB	80H
+CURCHR:	DEFB	0
+CURINV:	DEFB	80H
+;
+OLDCBAR: DEFB	0		;Zwischenspeicher fuer CBAR
+OLDBBR:	DEFB	0		;Zwischenspeicher fuer BBR
+STKSAV:	DEFW	0		;Stackpointer Zwischenspeicher
+	DEFS	20
+STACK:
+;
+;----------------------------------------------------------------
+;
+	CSEG
+;
+
+;----------------------------------------------------------------
+;
+;	S T R O U T
+;	Zeichenkette auf Masterconsole-Bildschirm ausgeben
+;
+;	Eingang: HL = Startadresse der Zeichenkette
+;		 BC = Laenge der Zeichenkette
+;	Ausgang: HL und Akku veraendert
+;
+STROUT:
+	PUSH	BC
+	PUSH	DE
+	PUSH	IX
+
+	PUSH	HL		; Stringadresse --> IX
+	POP	IX
+
+OUTLOOP:
+	LD	A,B
+	OR	C
+	JR	Z,POPRET
+
+	PUSH	BC
+	LD	C,(IX+0)
+	CALL	CRTOUT
+	POP	BC
+	INC	IX
+	DEC	BC
+	JR	OUTLOOP
+
+POPRET:
+	POP	IX
+	POP	DE
+	POP	BC
+	RET
+	
+;-----------------------------------------------------------------
+	
+	INCLUDE	CONOUT4.INC
+;
+	END
+

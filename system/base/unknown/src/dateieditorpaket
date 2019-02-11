@@ -1,0 +1,743 @@
+ 
+PACKET  d a t e i e d i t o r  paket  DEFINES     (* Autor: P.Heyderhoff *)
+        (*******************)                     (* Stand: 19.02.82     *)
+                                                  (* Vers.: 1.6.0        *)
+        define escape ,
+        dateieditor :
+ 
+LET satzmax = 4075, dateianker = 2, left = ""8"", escape = ""27"",
+    hop = ""1"", right = ""2"", hoechstes steuerzeichen = ""31"", 
+    clear = ""1""4"", hop and mark = ""1""15"", code f = "f",
+    clear line mark = ""5""14"", bell = ""7"", freianker = 1, down = ""10"",
+    begin mark = ""15"", end mark = ""14"", escape escape = ""27""27"",
+    clear eol and mark = ""5""15"";
+ 
+LET DATEI = ROW satzmax STRUCT (INT nachfolger, vorgaenger, index,
+                                    fortsetzung, TEXT inhalt);
+FOR j FROM 1 UPTO 127 REP escapefkt (j) := "" PER;
+INT  VAR j, haltzeile :: satzmax, symboltyp, typ,
+         zahlwert, stelle, satz, marke, maxbildlaenge :: 23;
+FILE VAR sekundaerfile ;
+TEXT VAR zeichen :: "", ersatz   :: "", kommando :: "",
+         symbol  :: "", textwert :: "", lernsequenz::"";
+BOOL VAR war fehler, boolwert;
+LET op1namen = 
+";+;-;BEGIN;COL;GET;HALT;LIMIT;MARK;PUT;IF;NOT;REPEAT;WRITE;SIZE"; 
+LET b =  5, c = 11, g = 15, h = 19, l = 24, m = 30,
+    p = 35, i = 39, n = 42, r = 46, w = 53, s=59;
+LET op2namen = "&+&-&*&/&;&CHANGETO;&OR"; 
+LET plus = 1, minus = 3, mal = 5, durch = 7, semicolon = 9,
+    changecode = 11, or = 21;
+LET proznamen = ";col;row;halt;limit;mark;len;eof;";
+LET pcol =  1, prow  =  5, phalt =  9, plimit = 14, pmark = 20,
+    plen = 25, peof  = 29;
+LET void      =  0,    (* keine angabe des typs      *)
+    tag       =  1,    (* typ: lower case letter     *)
+    bold      =  2,    (* typ: upper case letter     *)
+    integer   =  3,    (* typ: digit                 *)
+    texttyp   =  4,    (* typ: quote                 *)
+    operator  =  5,    (* typ: operator +-*=<> ** := *)
+    delimiter =  6,    (* typ: delimiter ( ) , ; .   *)
+    eol       =  7,    (* typ: niltext, Zeilenende   *)
+    bool      =  8;    (* typ: boolean               *)
+LET varimax   = 10;
+INT VAR freivar :: 1;
+ROW varimax INT  VAR varzahlwert, vartyp;
+ROW varimax TEXT VAR vartextwert, varname;
+FOR j FROM 1 UPTO varimax
+REP vartextwert (j) := ""; varname (j) := "" PER;
+ 
+ROW 127 TEXT VAR escapefkt;
+ 
+ 
+(*************************  d a t e i e d i t o r  *************************)
+ 
+PROC dateieditor (DATEI VAR datei) :
+ 
+  INTERNAL 295 ;
+ 
+  REP   datei editieren
+  UNTIL (feldkommando SUB 1) <> escape
+  PER .
+ 
+datei editieren :
+  war fehler := FALSE ;
+  zeichen := feldkommando SUB 2;
+  IF   zeichen = "q" OR zeichen = "w"
+  THEN LEAVE dateieditor
+  ELIF zeichen = escape
+  THEN kommando ermitteln
+  ELSE tastenkommando ermitteln ;    (* Li 19.1.82 *)
+       abbruchtest;
+       feldkommando (subtext (feldkommando, 3))
+  FI;
+  a u s f u e h r e n .
+ 
+tastenkommando ermitteln :
+  IF zeichen > ""0"" AND zeichen < ""128""
+    THEN kommando := escapefkt (code (zeichen)) (* Li 06.01.82 *)
+    ELSE kommando := ""
+  FI .
+
+abbruchtest :
+  IF   is incharety (escape)
+  THEN fehler bearbeiten
+  FI .
+ 
+kommando ermitteln :
+  IF   (feldkommando SUB 1) = hop
+  THEN lernsequenz auf taste legen;
+       feldkommando (subtext (feldkommando, 4));
+       LEAVE datei editieren
+  FI;
+  feldkommando (subtext (feldkommando, 3));
+  kommando := ""; dialog; analysieren .
+ 
+dialog:
+  REP   kommandodialog;
+        IF   (feldzeichen SUB 1) <> escape OR kommando <> "?"
+        THEN LEAVE dialog
+        ELIF (feldzeichen SUB 2) > ""0"" THEN   (* Li 19.02.82 *)
+        kommando := escapefkt (code (feldzeichen SUB 2) MOD 128 )
+        ELSE kommando := ""
+        FI
+  PER .
+ 
+lernsequenz auf taste legen :
+  lernsequenz := feldaudit;
+  lernsequenz := subtext (lernsequenz, 1, LENGTH lernsequenz - 3);
+  INT CONST lerncode := code (feldkommando SUB 3) MOD 128 ;
+  escapefkt (lerncode) := "W""" ;
+  escapefkt (lerncode) CAT lernsequenz ;          (* Li 5.1.81 *)
+  escapefkt (lerncode) CAT """" .
+ 
+kommandodialog :
+  INT CONST feldlaenge :: max (feldende-feldanfang-21, 6) ;
+  cursor (feldrand+1, bildrand+bildzeile+1);
+  out (begin mark, "gib editor kommando: "); 
+  feldlaenge TIMESOUT "."; out(end mark);
+  bildneu (TRUE);
+  cursor (feldrand+23, bildrand+bildzeile+1); feldseparator (escape);
+  editget (kommando, 255, feldlaenge); feldseparator ("") .
+ 
+analysieren :
+  IF   (feldzeichen SUB 1) = escape AND (feldzeichen SUB 2) > ""0"" (*02.82*)
+  THEN escapefkt (code (feldzeichen SUB 2) MOD 128) := kommando; (* Li 5.1.*)
+       LEAVE datei editieren
+  ELIF kommando = ""
+  THEN LEAVE datei editieren
+  ELIF (kommando SUB 1) = "?"
+  THEN kommandos erklaeren;
+       LEAVE datei editieren
+  ELIF pos ("quit", kommando) = 1
+  THEN feldkommando (escape escape);
+       LEAVE dateieditor
+  ELSE escapefkt (code (code f)) := kommando 
+  FI .
+ 
+ausfuehren : 
+  haltzeile := satzmax;
+  IF   kommando = ""
+  THEN zeile unveraendert
+  ELSE scan (kommando); nextsymbol;
+       IF   a u s d r u c k  (datei)
+       THEN IF symboltyp <> eol THEN fehler bearbeiten FI
+       FI;
+       IF war fehler THEN inchar (zeichen)  (* warten *)  FI
+   FI .
+ 
+kommandos erklaeren : 
+  out (clear); 
+  putline ("kommandos fuer den benutzer :"); line;
+  putline ("quit      : beendet das editieren");
+  putline ("  n       : positioniert auf zeile n");
+  putline ("+ n       : blaettert n zeilen vorwaerts");
+  putline ("- n       : blaettert n zeilen rueckwaerts");
+  putline (" ""z""      : sucht angegebene zeichenkette ");
+  putline ("""muster"" CHANGETO ""ersatz"" :");
+  putline ("            muster wird durch ersatz ersetzt"); 
+  putline ("HALT   n  : sieht anhalten des suchens in zeile n vor");
+  putline ("GET   ""d"" : kopiert datei d und markiert");
+  putline ("PUT   ""d"" : schreibt markierten abschnitt in datei d");
+  putline ("LIMIT  n  : setzt schreibende auf spalte n");
+  putline ("BEGIN  n  : setzt feldanfang auf spalte n");
+  putline ("SIZE   n  : setzt bildlaenge auf n"); line;
+  putline ("?ESCx     : zeigt kommando auf escapetaste x");
+  inchar (zeichen) .
+ 
+END PROC dateieditor; 
+ 
+PROC define escape (TEXT CONST cmd char, kommando) :
+  escapefkt (code (cmd char) MOD 128) := kommando
+END PROC define escape ;
+ 
+ 
+(********************  h i l f s - p r o z e d u r e n  ********************)
+ 
+PROC fehler bearbeiten :
+  IF NOT war fehler
+  THEN war fehler := TRUE; bildneu (TRUE);
+       out (""2""2""2"  kommandofehler bei ",symbol," erkannt.");
+       out (clear line mark)
+  FI
+END PROC fehler bearbeiten;
+ 
+BOOL PROC fehler : fehler bearbeiten; FALSE END PROC fehler;
+ 
+BOOL PROC klammerzu :
+  IF   symbol = ")"
+  THEN nextsymbol; TRUE
+  ELSE fehler
+  FI
+END PROC klammerzu;
+ 
+PROC nextsymbol :
+  nextsymbol (symbol, symboltyp);
+  IF symboltyp = eol THEN symbol := "kommandoende" FI
+END PROC nextsymbol;
+ 
+PROC eof (DATEI VAR datei) :
+  boolwert := (bildstelle = dateianker); typ := void
+END PROC eof;
+ 
+PROC nachsatz (DATEI CONST datei) :
+  stelle := datei (stelle).nachfolger;
+  satz INCR 1; protokoll
+END PROC nachsatz;
+ 
+PROC vorsatz  (DATEI CONST datei) :
+  stelle := datei (stelle).vorgaenger;
+  satz DECR 1; protokoll
+END PROC vorsatz;
+ 
+ 
+PROC protokoll :
+  cout (satz) ;
+  IF   is incharety (escape)
+  THEN fehler bearbeiten
+  FI .
+END PROC protokoll;
+ 
+ 
+(*******************  s p r i n g e n  und  s u c h e n  *******************)
+ 
+PROC row (DATEI VAR datei) : 
+  IF ziel voraus THEN vorwaerts springen ELSE rueckwaerts springen FI;
+  bildsatz (satz); bildstelle (stelle); typ := void; bildneu (TRUE) .
+ 
+ziel voraus :
+  satz := bildsatz; stelle := bildstelle;
+  IF   zahlwert > satz
+  THEN TRUE
+  ELIF zahlwert <= satz DIV 2 AND bildmarke = 0
+  THEN stelle := datei (dateianker).nachfolger; satz := 1; TRUE
+  ELSE FALSE
+  FI .
+ 
+vorwaerts springen :
+  IF zahlwert <= 0
+    THEN fehler bearbeiten
+  FI ;
+  WHILE stelle <> dateianker AND satz < zahlwert
+  REP nachsatz (datei) UNTIL war fehler PER;
+  IF   stelle = dateianker AND satz > 1 
+  THEN vorsatz (datei);
+       feldstelle (LENGTH (datei (stelle).inhalt)+1)
+  FI .
+ 
+rueckwaerts springen :
+  WHILE stelle <> bildmarke  AND satz > zahlwert
+  REP vorsatz (datei) UNTIL war fehler PER .
+ 
+END PROC row;
+ 
+PROC search (DATEI VAR datei) :
+  stelle := bildstelle;
+  IF textwert <> "" THEN contextadressierung FI;
+  typ := void .
+ 
+contextadressierung : 
+  j := feldstelle - 1; satz := bildsatz;
+  WHILE noch nicht gefunden REP nachsatz (datei) UNTIL war fehler PER;
+  IF    stelle = dateianker
+  THEN  vorsatz (datei);
+        feldstelle (LENGTH (datei (stelle).inhalt)+1)
+  ELIF  j > 0
+  THEN  feldstelle ((LENGTH textwert)+j)
+  FI;
+  IF    bildstelle <> stelle
+  THEN  bildstelle (stelle); bildsatz (satz); bildneu (TRUE)
+  FI .
+ 
+noch nicht gefunden : 
+  j := pos (datei (stelle).inhalt, textwert, j+1); 
+  j = 0 AND stelle <> dateianker AND satz < haltzeile .
+ 
+END PROC search; 
+ 
+ 
+(********************  vom file holen, in file bringen  ********************)
+ 
+PROC vom file holen (DATEI VAR datei, TEXT VAR textwert) :
+  stelle := bildstelle; satz := bildsatz;
+  IF   datei eroeffnung korrekt
+  THEN IF stelle = dateianker THEN satz erzeugen (datei, stelle) FI;
+       zeile auftrennen; file kopieren; kopiertes markieren;
+       bildstelle (stelle); bildsatz (satz); bildmarke (marke)
+  FI ; textwert := "" .
+ 
+datei eroeffnung korrekt :
+  IF   textwert = ""
+  THEN sekundaerfile := sequential file (input); NOT eof (sekundaerfile)
+  ELIF exists (textwert)
+  THEN sekundaerfile := sequential file (input, textwert);
+       NOT eof (sekundaerfile) 
+  ELSE FALSE
+  FI .
+ 
+file kopieren : 
+  INT VAR altstelle;
+  FOR j FROM 0 UPTO satzmax WHILE NOT eof (sekundaerfile) 
+  REP nachsatz (datei); altstelle := stelle;
+      satz erzeugen (datei, stelle);
+      IF stelle = altstelle THEN LEAVE file kopieren FI; 
+      getline (sekundaerfile, inhalt)
+  UNTIL war fehler
+  PER .
+ 
+zeile auftrennen : 
+  marke := stelle; bildmarksatz (satz);
+  nachsatz (datei); satz erzeugen (datei, stelle);
+  inhalt := subtext (datei (marke).inhalt, feldstelle);
+  vorsatz (datei); inhalt := text (inhalt, feldstelle-1) . 
+ 
+kopiertes markieren : 
+  nachsatz (datei);
+  IF inhalt = "" THEN satz loeschen (datei, stelle) FI;
+  vorsatz (datei);
+  IF   datei (marke).inhalt = "" 
+  THEN satz loeschen (datei, marke); satz DECR 1;
+  ELSE marke := datei (marke).nachfolger; bildmarksatz (bildmarksatz+1)
+  FI; 
+  feldmarke (feldanfang); feldanfangsmarke (feldanfang);
+  feldstelle (1+LENGTH inhalt); bildneu (TRUE) .
+ 
+inhalt :
+  datei (stelle).inhalt . 
+ 
+END PROC vom file holen; 
+ 
+PROC in file bringen ( DATEI VAR datei, TEXT VAR textwert) :
+  neuen sekundaerfile erzeugen;
+  marke := bildstelle; stelle := bildmarke; satz := bildmarksatz;
+  IF   stelle = marke 
+  THEN IF   feldmarke <> feldstelle
+       THEN putline (sekundaerfile,
+                     subtext (inhalt, feldmarke, feldstelle-1)) 
+       FI
+  ELSE IF   feldanfangsmarke <= LENGTH inhalt
+       THEN putline (sekundaerfile, subtext (inhalt, feldanfangsmarke))
+       FI;  schreiben;
+       IF   feldstelle > feldanfang 
+       THEN putline (sekundaerfile, subtext (inhalt, 1, feldstelle-1)) 
+       FI
+  FI .
+ 
+schreiben: 
+  REP nachsatz (datei);
+      IF stelle = marke OR war fehler THEN LEAVE schreiben FI;
+      putline (sekundaerfile, inhalt) 
+  PER .
+ 
+neuen sekundaerfile erzeugen : 
+  IF   textwert = ""
+    THEN sekundaerfile := sequential file (output) ;
+    ELSE IF   exists (textwert) 
+         THEN forget (textwert)
+         FI;
+         IF   exists (textwert)
+         THEN LEAVE in file bringen
+         FI;
+         sekundaerfile := sequential file (output, textwert)
+  FI .
+ 
+inhalt :
+  datei (stelle).inhalt . 
+ 
+END PROC in file bringen; 
+ 
+ 
+(*************************  i n t e r p r e t e r  *************************)
+ 
+BOOL PROC primary (DATEI VAR datei) : 
+ 
+  SELECT symboltyp OF
+    CASE integer :
+         IF   LENGTH symbol <= 4            (* Li 20.01.82 *)
+         THEN zahlwert := int (symbol);
+              typ := symboltyp;
+              nextsymbol; TRUE
+         ELSE fehler
+         FI
+    CASE texttyp :
+         textwert := symbol; typ := symboltyp; nextsymbol; TRUE
+    CASE delimiter :
+         IF   symbol = "("
+         THEN nextsymbol;
+              IF ausdruck (datei) THEN klammerzu ELSE fehler FI
+         ELSE fehler
+         FI
+    CASE tag :
+         INT CONST pcode :: pos (proznamen, ";" + symbol + ";");
+         IF   pcode = 0
+         THEN is variable
+         ELSE nextsymbol; prozedurieren
+         FI
+    CASE bold, operator :
+         INT CONST op1code :: pos (op1namen, ";" + symbol);
+         IF   op1code = 0
+         THEN fehler
+         ELIF op1code = r                   (* Li 12.01.81 *)
+         THEN wiederholung (datei)
+         ELSE nextsymbol ;
+              IF primary (datei)
+              THEN operieren 
+              ELSE fehler
+              FI
+         FI
+     OTHERWISE : fehler
+   END SELECT .
+ 
+is variable : 
+  INT  VAR var :: 1;
+  WHILE varname (var) <> symbol AND var <> freivar REP var INCR 1 PER;
+  IF   var = freivar
+  THEN varname (var) := symbol; nextsymbol;
+       IF   symbol = ":="
+       THEN deklarieren
+       ELSE LEAVE is variable WITH fehler
+       FI
+  ELSE nextsymbol
+  FI;
+  IF symbol = ":=" THEN nextsymbol; assignieren ELSE dereferenzieren FI .
+ 
+dereferenzieren :
+  typ := vartyp (var); zahlwert := varzahlwert (var);
+  textwert := vartextwert (var); TRUE .
+ 
+assignieren :
+  IF   primary (datei)
+  THEN IF   typ = integer
+       THEN varzahlwert (var) := zahlwert
+       ELIF typ = texttyp
+       THEN vartextwert (var) := textwert
+       ELSE fehler bearbeiten
+       FI;
+       vartyp (var) := typ; typ := void
+  ELSE fehler bearbeiten
+  FI;
+  NOT war fehler .
+ 
+deklarieren :
+  IF   freivar = varimax
+  THEN fehler bearbeiten
+  ELSE freivar INCR 1
+  FI .
+ 
+prozedurieren :
+  typ := integer;
+  SELECT pcode OF 
+    CASE pcol   : zahlwert := feldstelle
+    CASE plen   : zahlwert := LENGTH (datei (bildstelle).inhalt)
+    CASE prow   : zahlwert := bildsatz
+    CASE phalt  : zahlwert := haltzeile
+    CASE plimit : zahlwert := feldlimit
+    CASE pmark  : zahlwert := bildmarke
+    CASE peof   : eof (datei) 
+    OTHERWISE fehler bearbeiten
+  END SELECT;
+  NOT war fehler .
+ 
+operieren :
+  SELECT op1code OF
+    CASE plus  : zahlwert INCR bildsatz; row (datei)
+    CASE minus : zahlwert := bildsatz - zahlwert; row (datei)
+    CASE b     : begin
+    CASE c     : col 
+    CASE g     : get 
+    CASE h     : halt 
+    CASE l     : limit 
+    CASE m     : mark
+    CASE p     : put
+    CASE i     : if 
+    CASE w     : write
+    CASE s     : size 
+    OTHERWISE fehler bearbeiten
+  END SELECT;
+  typ := void; TRUE .
+ 
+begin : 
+  zahlwert := zahlwert MOD 180;
+  feldende (feldende+zahlwert-feldanfang); feldanfang (zahlwert) .
+ 
+col :
+  zahlwert := zahlwert MOD 256; feldstelle (zahlwert) .
+ 
+get : 
+  IF   bildmarke <= 0 AND schreiberlaubnis
+  THEN vom file holen (datei, textwert)
+  FI .
+ 
+halt :
+  haltzeile := zahlwert .
+ 
+limit :
+  zahlwert := zahlwert MOD 256; feldlimit (zahlwert) .
+ 
+mark :
+  IF   zahlwert = 0
+  THEN bildmarke (0); feldmarke (0); bildneu (TRUE) 
+  ELSE bildmarke (bildstelle); feldmarke (feldstelle);
+       bildmarksatz (bildsatz)
+  FI .
+ 
+put : 
+  IF bildmarke > 0 THEN in file bringen (datei, textwert) FI .
+ 
+if : 
+  IF   bedingung (datei) 
+  THEN IF   boolwert 
+       THEN IF   pos ("THEN", symbol) = 1 
+            THEN nextsymbol;
+                 IF   ausdruck (datei)
+                 THEN skip elseteil
+                 ELSE fehler bearbeiten
+                 FI 
+            ELSE fehler bearbeiten
+            FI
+       ELSE skip thenteil; 
+            IF   j = 1
+            THEN elseteil
+            ELIF j <> 5
+            THEN fehler bearbeiten
+            FI
+       FI
+  ELSE fehler bearbeiten
+  FI .
+ 
+elseteil :
+  IF   ausdruck (datei)
+  THEN IF symbol = "FI" THEN nextsymbol ELSE fehler bearbeiten FI
+  FI .
+ 
+skip elseteil : 
+  WHILE symboltyp <> eol AND pos ("FI", symbol) <> 1 REP nextsymbol PER; 
+  nextsymbol .
+ 
+skip thenteil : 
+  WHILE (symboltyp <> eol) AND nicht elsefi REP nextsymbol PER; 
+  nextsymbol .
+ 
+nicht elsefi : 
+  j := pos ("ELSEFI", symbol); j = 0 . 
+ 
+write :
+  feldkommando (textwert); zeile unveraendert .
+ 
+size :
+  IF   bildlaenge > maxbildlaenge
+  THEN maxbildlaenge := bildlaenge
+  FI;
+  bildlaenge (max (1, min (zahlwert, maxbildlaenge)));
+  bildzeile  (min (bildzeile, bildlaenge)); 
+  bildrand (0); bildneu (TRUE); page .
+ 
+END PROC primary; 
+ 
+ 
+(***********  w i e d e r h o l u n g ,   b e d i n g u n g  ***************)
+ 
+BOOL PROC wiederholung (DATEI VAR datei) : 
+ 
+  fix scanner ;              (* Li 12.01.81 *)
+  wiederholt interpretieren;
+  skip endrep; typ := void;
+  NOT war fehler .
+ 
+wiederholt interpretieren :
+  REP reset scanner; nextsymbol;           (* 12.01.81 *)
+      WHILE ausdruck (datei) REP UNTIL until PER; abbruchtest
+  UNTIL ende der wiederholung
+  PER .
+ 
+until : 
+  IF   pos ("UNTIL", symbol) = 1
+  THEN nextsymbol;
+       IF   primary (datei) THEN FI;
+       IF   bedingung (datei) 
+       THEN IF   boolwert
+            THEN LEAVE wiederholt interpretieren;TRUE
+            ELSE TRUE
+            FI
+       ELSE fehler
+       FI
+  ELSE TRUE
+  FI .
+ 
+ende der wiederholung :
+  IF war fehler
+    THEN TRUE
+  ELIF datei (stelle).nachfolger = dateianker
+    THEN feldstelle > LENGTH (datei (stelle).inhalt)
+  ELSE FALSE
+  FI .
+ 
+skip endrep :
+  WHILE pos ("ENDREPEAT", symbol) <> 1 AND symboltyp <> eol 
+  REP nextsymbol PER;
+  nextsymbol .
+ 
+abbruchtest :
+  IF   is incharety (escape)
+  THEN fehler bearbeiten
+  FI .
+ 
+END PROC wiederholung; 
+ 
+BOOL PROC bedingung (DATEI VAR datei) : 
+  INT VAR relator; 
+  relator := pos ("=><<=>=<>", symbol); 
+  IF   relator = 0
+  THEN fehler
+  ELSE IF typ = texttyp THEN relator INCR 8 FI;
+       nextsymbol; 
+       INT VAR operandtyp :: typ, operandzahlwert :: zahlwert; 
+       TEXT VAR operandtextwert :: textwert; 
+       IF   primary (datei) THEN FI; 
+       IF   operandtyp <> typ
+       THEN fehler
+       ELSE boolwert := vergleich; typ := bool; TRUE 
+       FI
+  FI .
+ 
+vergleich : 
+  SELECT relator OF 
+    CASE  1 : operandzahlwert =  zahlwert 
+    CASE  2 : operandzahlwert >  zahlwert 
+    CASE  3 : operandzahlwert <  zahlwert 
+    CASE  4 : operandzahlwert <= zahlwert 
+    CASE  6 : operandzahlwert >= zahlwert 
+    CASE  8 : operandzahlwert <> zahlwert 
+    CASE  9 : operandtextwert =  textwert 
+    CASE 10 : operandtextwert >  textwert 
+    CASE 11 : operandtextwert <  textwert 
+    CASE 12 : operandtextwert <= textwert 
+    CASE 14 : operandtextwert >= textwert 
+    CASE 16 : operandtextwert <> textwert 
+    OTHERWISE fehler
+  END SELECT .
+ 
+END PROC bedingung; 
+ 
+(****************************  a u s d r u c k  ****************************)
+ 
+BOOL PROC ausdruck (DATEI VAR datei) : 
+  INT VAR opcode, operandtyp, operandzahlwert;
+  TEXT VAR operandtextwert;
+  IF   primary (datei)
+  THEN BOOL VAR war operation :: TRUE;
+       WHILE operator AND war operation
+       REP IF   primary (datei)
+           THEN war operation := operator verarbeiten
+           ELSE war operation := FALSE
+           FI
+       PER;
+       war operation
+  ELSE fehler
+  FI .
+ 
+operator :
+  IF   kommandoende
+  THEN IF   typ = integer
+       THEN row (datei)
+       ELIF typ = texttyp
+       THEN search (datei)
+       FI
+  FI;
+  opcode := pos (op2namen, "&" + symbol);
+  IF   opcode = 0
+  THEN FALSE
+  ELSE nextsymbol; operandtyp := typ;
+       operandzahlwert := zahlwert;
+       operandtextwert := textwert;
+       NOT war fehler
+  FI .
+ 
+operator verarbeiten :
+  SELECT opcode OF
+    CASE plus :
+         IF   typ = integer
+         THEN zahlwert := operandzahlwert + zahlwert
+         ELSE textwert := operandtextwert + textwert
+         FI
+    CASE minus : 
+         zahlwert := operandzahlwert - zahlwert
+    CASE mal :
+         IF   typ = integer
+         THEN zahlwert := operandzahlwert * zahlwert
+         ELSE textwert := operandzahlwert * textwert
+         FI
+    CASE durch :
+         zahlwert := operandzahlwert DIV zahlwert
+    CASE changecode : 
+         change
+    CASE semicolon : 
+    OTHERWISE fehler bearbeiten
+  END SELECT;
+  NOT war fehler .
+ 
+change : 
+  IF   bildmarke <= 0 AND schreiberlaubnis AND bildstelle <> dateianker
+  THEN ersatz := textwert; textwert := operandtextwert; search (datei);
+       INT VAR fstelle :: feldstelle;
+       IF   textwert = "" AND ersatz <> "" AND fstelle > LENGTH inhalt 
+       THEN inhalt := text (inhalt, fstelle-1)
+       FI;
+       IF   subtext (inhalt, fstelle-LENGTH textwert, fstelle-1) = textwert 
+       THEN fstelle := fstelle - LENGTH textwert; 
+            FOR j FROM 1 UPTO LENGTH ersatz 
+            REP IF   j <=  LENGTH textwert 
+                THEN replace     (inhalt, fstelle, ersatz SUB j) 
+                ELSE insert char (inhalt, ersatz SUB j, fstelle)
+                FI;
+                fstelle INCR 1
+            PER;
+            FOR j FROM 1+LENGTH ersatz UPTO LENGTH textwert 
+            REP delete char (inhalt, fstelle) PER;
+       FI;
+       feldstelle (fstelle); typ := void
+  ELSE fehler bearbeiten
+  FI .
+ 
+inhalt :
+  datei (stelle).inhalt . 
+ 
+kommandoende :
+  SELECT pos (";FIELSEENDREPEATUNTIL", symbol) OF
+    CASE 1,2,4,8,17 : TRUE
+    OTHERWISE symboltyp = eol
+  END SELECT .
+ 
+END PROC ausdruck;
+ 
+(************************** schrott ****************************************)
+ 
+PROC satz erzeugen (DATEI VAR datei, INT VAR satz): 
+  EXTERNAL 291 ;
+END  PROC satz erzeugen; 
+ 
+PROC satz loeschen (DATEI VAR datei, INT VAR satz): 
+  EXTERNAL 292 ;
+END  PROC satz loeschen; 
+ 
+END PACKET dateieditorpaket;

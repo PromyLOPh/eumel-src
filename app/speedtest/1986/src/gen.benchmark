@@ -1,0 +1,98 @@
+(***************************************************************************)
+(*                                                                         *)
+(*  Autor: A. Steinmann                        Copyright (C): HRZ - Unibi  *)
+(*                                                                         *)
+(***************************************************************************)
+
+
+LET max quantity = 99, 
+    pagelength   = 20 ;
+
+ROW max quantity TEXT VAR prog list ;
+
+INT VAR prog counter :: 0,
+        namelength :: 0,
+        counter,
+        storage size,
+        used storage ;
+
+
+
+PROC announce (TEXT CONST prog name) :
+
+  prog counter INCR 1 ;
+  prog list [prog counter] := prog name ;
+  IF NOT exists (prog name) 
+     THEN fetch (prog name, archive)
+  FI ;
+  IF LENGTH prog name > namelength
+     THEN namelength := LENGTH prog name
+  FI ;
+
+END PROC announce ;
+
+
+
+PROC execute :
+
+  INT CONST first page :: 1,
+            last page :: (prog counter DIV pagelength) + 1 ;
+
+  INT VAR pagenumber,
+          linenumber,
+          act linenumber,
+          act first line,
+          act last line ;
+
+  FOR page number FROM first page UPTO last page
+      REP act first line := (pagenumber - 1) * pagelength + 1 ;
+          act last line := min (prog counter, pagenumber * pagelength) ;
+          FOR act line number FROM act first line UPTO act last line
+              REP display (""1""4"") ;
+                  display (" Stand der Benchmark Insertierung ") ;
+                  IF last page > 1
+                     THEN display ("(" + text (pagenumber) + ". von " + text (last page) + " Seiten) :") 
+                     ELSE display (":") 
+                  FI ;
+                  display (""13""10""13""10"") ;
+                  FOR linenumber FROM act first line UPTO act last line
+                      REP IF linenumber = act linenumber
+                             THEN display ("        " + ""15""8"" + prog list [linenumber] + ""14""8""5"") 
+                             ELSE display ("        " + prog list [linenumber] + ""5"") 
+                          FI ;
+                          display (""13""10"") 
+                      PER ;
+                  display (""6"" + code (act linenumber - act first line + 2) + code (namelength + 20)) ;
+                  insert (prog list [act linenumber]) ;
+                 #forget (prog list [act linenumber], quiet)#
+          PER 
+  PER ;
+  display (""1""4"") ;
+  display ("Insertierung abgeschlossen!") ;
+  display (""13""10"") ;
+  IF yes ("Benchmark starten")
+     THEN do ("test speed")
+  FI ;
+
+END PROC execute ;
+
+
+
+check off ;
+announce ("notice") ;
+announce ("run down logic") ;
+announce ("integer operation") ;
+announce ("real operation") ;
+announce ("text operation") ;
+announce ("convert operation") ;
+announce ("speed tester") ;
+
+
+display (""1""4"") ;
+execute ;
+release (archive) ;
+#forget ("gen.benchmark", quiet) ;#
+check on ;
+
+
+

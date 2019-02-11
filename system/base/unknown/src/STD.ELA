@@ -1,0 +1,220 @@
+PACKET command dialogue DEFINES                (* Autor: J.Liedtke *)
+                                               (* Stand:  26.04.82 *)
+       command dialogue ,
+       say ,
+       yes ,
+       no ,
+       param position ,
+       last param :
+ 
+ 
+LET up      = ""3"" ,
+    right   = ""2"" ,
+    param pre  = " (""" ,
+    param post = """)"13""10"" ;
+
+TEXT VAR std param := "" ;
+ 
+BOOL VAR dialogue flag := TRUE ;
+
+INT VAR param x := 0 ;
+ 
+ 
+BOOL PROC command dialogue :
+  dialogue flag
+ENDPROC command dialogue ;
+ 
+PROC command dialogue (BOOL CONST status) :
+  dialogue flag := status
+ENDPROC command dialogue ;
+ 
+ 
+BOOL PROC yes (TEXT CONST question) :
+ 
+  IF dialogue flag
+    THEN ask question
+    ELSE TRUE
+  FI .
+ 
+ask question :
+  put (question) ;
+  skip previous input chars ;
+  put ("(j/n) ?") ;
+  get answer ;
+  IF correct answer
+    THEN putline (answer) ;
+         positive answer
+    ELSE out (""7"") ;
+         LENGTH question + 9 TIMESOUT ""8"" ;
+         yes (question)
+  FI .
+ 
+get answer :
+  TEXT VAR answer ;
+  inchar (answer) .
+ 
+correct answer :
+  pos ("jnyJNY", answer) > 0 .
+ 
+positive answer :
+  pos ("jyJY", answer) > 0 .
+
+skip previous input chars :
+  REP UNTIL incharety = "" PER .
+ 
+ENDPROC yes ;
+ 
+BOOL PROC no (TEXT CONST question) :
+ 
+  NOT yes (question)
+ 
+ENDPROC no ;
+ 
+PROC say (TEXT CONST message) :
+ 
+  IF dialogue flag
+    THEN out (message)
+  FI
+ 
+ENDPROC say ;
+ 
+PROC param position (INT CONST x) :
+ 
+  param x := x
+
+ENDPROC param position ;
+
+TEXT PROC last param :
+ 
+  IF param x > 0
+    THEN out (up) ;
+         param x TIMESOUT right ;
+         out (param pre) ;
+         out (std param) ;
+         out (param post)
+  FI ;
+  std param
+ 
+ENDPROC last param ;
+ 
+PROC last param (TEXT CONST new) :
+  std param := new
+ENDPROC last param ;
+
+ENDPACKET command dialogue ;
+
+
+PACKET input DEFINES                         (* Stand: 01.05.81 *)
+ 
+    get ,
+    getline , 
+    get secret line :
+ 
+ 
+LET cr              = ""13"" ,
+    esc             = ""27"" ,
+    rubout          = ""12"" ,
+    bell            = ""7"" ,
+    back blank back = ""8" "8"" ,
+    del line cr lf  = ""5""13""10"" ;
+
+PROC get (TEXT VAR word) : 
+ 
+  REP
+    get (word, " ")
+  UNTIL word <> "" AND word <> " " PER ;
+  delete leading blanks .
+ 
+delete leading blanks :
+  WHILE (word SUB 1) = " " REP
+    word := subtext (word,2)
+  PER .
+ 
+ENDPROC get ;
+ 
+PROC get (TEXT VAR word, TEXT CONST separator) : 
+ 
+  word := "" ;
+  feldseparator (separator) ;
+  editget (word) ;
+  feldseparator ("") ;
+  echoe last char
+ 
+ENDPROC get ;
+ 
+PROC echoe last char :
+ 
+  TEXT CONST last char := feldzeichen ;
+  IF last char = ""13""
+    THEN out (""13""10"")
+    ELSE out (last char)
+  FI
+ 
+ENDPROC echoe last char ;
+ 
+PROC get (TEXT VAR word, INT CONST length) :
+ 
+  word := "" ;
+  feldseparator ("") ;
+  editget (word, length, length) ;
+  echoe last char 
+ 
+ENDPROC get ;
+ 
+PROC getline (TEXT VAR line ) : 
+ 
+  line := "" ;
+  feldseparator ("") ;
+  editget (line) ;
+  echoe last char
+ 
+ENDPROC getline ;
+ 
+PROC get secret line (TEXT VAR line) :
+
+  TEXT VAR char ;
+  line := "" ;
+  get start cursor position ;
+  get line very secret ;
+  IF char = esc
+    THEN get line little secret
+  FI ;
+  cursor to start position ;
+  out (del line cr lf) .
+
+get line very secret :
+  REP
+    inchar (char) ;
+    IF char = esc OR char = cr
+      THEN LEAVE get line very secret
+    ELIF char = rubout
+      THEN delete last char
+    ELIF char >= " "
+      THEN line CAT char ;
+           out (".")
+    ELSE   out (bell)
+    FI
+  PER .
+
+delete last char :
+  IF LENGTH line = 0
+    THEN out (bell)
+    ELSE out (back blank back) ;
+         delete char (line, LENGTH line)
+  FI .
+
+get line little secret :
+  feldseparator ("") ;
+  cursor to start position ;
+  editget (line) .
+
+get start cursor position :
+  INT VAR x, y; 
+  get cursor (x, y) .
+
+cursor to start position :
+  cursor (x, y) .
+
+ENDPROC get secret line ;
+
+ENDPACKET input ;

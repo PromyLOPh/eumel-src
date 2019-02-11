@@ -1,0 +1,244 @@
+(* Typtabellengenerierungsprogramm, Stand : 26.11.85 *) 
+ 
+page ; 
+putline ("- Erzeugen einer .gen Datei aus einer Typtabelle -") ; 
+line ; 
+BOUND STRUCT (ALIGN space, ROW 128 INT outcodes, 
+                           ROW  64 INT outstrings,
+                           ROW  64 INT instrings) VAR x ; 
+ 
+TEXT VAR t , filename ; 
+INT VAR i , laenge , position , eumel code ; 
+FILE VAR f ; 
+put ("Name der Tabelle:") ; 
+getline (t) ; 
+IF exists (t+".gen") THEN forget (t+".gen") FI ; 
+IF exists (t+".gen") 
+THEN filename := t + ".new.gen" 
+ELSE filename := t + ".gen"
+FI ; 
+f := sequentialfile (output, filename) ; 
+putline (f, "(" + 49 * "*" + ")") ; 
+putline (f, "(* Typtabelle   : " + text (t, 30) + " *)") ; 
+putline (f, "(* Generiert am : " + text (date, 30) + " *)") ; 
+putline (f, "(" + 49 * "*" + ")") ; 
+line (f) ; 
+putline (f, "forget (""" + t + """, quiet) ;") ; 
+putline (f, "new type (""" + t + """) ;") ; 
+line (f) ; 
+x := old (t) ; 
+t := "  " ; 
+IF (x.outstrings (1) AND 255) = 2 
+   THEN putline (f, "elbit cursor ;") ; 
+        line (f) ; 
+   ELSE write (f, "cursor logic (") ; 
+        put (f, text (x.outstrings (2) AND 255) + ",") ; 
+        position := (x.outcodes (4) AND 127) + 1 ;
+        put (f, denoter (x.outstrings, position, 0) + ",") ; 
+        position INCR (laenge + 2) ; 
+        put (f, denoter (x.outstrings, position, 0) + ",") ; 
+        position INCR (laenge + 2) ; 
+        putline (f, denoter (x.outstrings, position, 0) + ") ;") ; 
+        line (f)
+FI ; 
+putline (f, "(* Ausgabe Codes : *)") ; 
+FOR i FROM 1 UPTO 128 REP 
+ cout (lineno (f)) ;
+ replace (t, 1, x.outcodes (i)) ; 
+ IF i <> 4 
+ THEN IF code (t SUB 1) <> 255 
+      THEN eumel code := (i-1) * 2 ; 
+           put (f, "enter outcode (" + text (eumel code, 3) + ",") ; 
+           IF code (t SUB 1) > 127 
+           THEN outstring (code (t SUB 1)-128) 
+           ELSE numberput (code (t SUB 1)) 
+           FI ; 
+           line (f) 
+      FI 
+ FI ; 
+ IF code (t SUB 2) <> 255 
+ THEN eumel code := (i-1) * 2 + 1 ; 
+      put (f, "enter outcode (" + text (eumel code, 3) + ",") ;
+      IF code (t SUB 2) > 127 
+      THEN outstring (code (t SUB 2) - 128) 
+      ELSE numberput (code (t SUB 2)) 
+      FI ; 
+      line (f) 
+ FI ; 
+PER ; 
+line (f) ; 
+line (f) ; 
+ 
+putline (f, "(* Eingabe Codes : *)") ; 
+i := 0 ; 
+WHILE i < 128 CAND incode (i) <> 255 REP
+ cout (lineno (f)) ; 
+ eumel code := incode (i) ; 
+ put (f, "enter incode (" + text (eumel code,3) + ",") ; 
+ write (f, denoter (x.instrings, i + 1, 255)) ; 
+ put (f, ") ; (*") ; 
+ i INCR 1 ; 
+ IF in bezeichnung (eumel code) <> "" 
+ THEN put (f, in bezeichnung (eumel code) + ":") 
+ FI ; 
+ WHILE i < 128 CAND incode (i) <> 255 REP 
+  charput (incode (i)) ; 
+  i INCR 1 
+ PER ; 
+ i INCR 1 ; 
+ putline (f, "*)") 
+PER ; 
+ 
+edit (filename) ; 
+ 
+INT PROC incode (INT CONST element) : 
+ TEXT VAR t := "  " ; 
+ replace (t, 1, x.instrings (element DIV 2 + 1)); 
+ IF (element MOD 2) = 0 THEN code (t SUB 1) 
+ ELSE code (t SUB 2) 
+ FI 
+ENDPROC incode ; 
+ 
+ 
+TEXT PROC in bezeichnung (INT CONST code) : 
+ SELECT code OF 
+  CASE 1 : "HOP         " 
+  CASE 2 : "Cursor right"
+  CASE 3 : "Cursor up   " 
+  CASE 7 : "SV - Call   " 
+  CASE 8 : "Cursor left " 
+  CASE 9 : "TAB         " 
+  CASE 10: "Cursor down " 
+  CASE 11: "RUBIN       " 
+  CASE 12: "RUBOUT      "
+  CASE 13: "CR          " 
+  CASE 16: "MARK        " 
+  CASE 17: "Stop        " 
+  CASE 23: "Weiter      " 
+  CASE 27: "Escape      "
+  CASE 214:"ae-Taste    " 
+  CASE 215:"oe-Taste    " 
+  CASE 216:"ue-Taste    "
+  CASE 217:"Ae-Taste    " 
+  CASE 218:"Oe-Taste    " 
+  CASE 219:"Ue-Taste    " 
+  CASE 220:"Trenn-k     " 
+  CASE 221:"Trennstrich " 
+  CASE 222:"Fest-#      " 
+  CASE 223:"Fest-Blank  " 
+  CASE 251:"sz-Taste    " 
+  OTHERWISE IF code < 32 THEN "Funct.-Taste" 
+                         ELSE "" 
+            FI 
+ ENDSELECT 
+ENDPROC in bezeichnung ; 
+ 
+TEXT PROC out bezeichnung (INT CONST code) : 
+ SELECT code OF 
+  CASE 1 : "Cursor Home " 
+  CASE 2 : "Cursor right"
+  CASE 3 : "Cursor up   " 
+  CASE 4 : "CLEOP       " 
+  CASE 5 : "CLEOL       " 
+  CASE 6 : "Cursor (YX) " 
+  CASE 7 : "Beep        " 
+  CASE 8 : "Cursor left " 
+  CASE 10: "Cursor down " 
+  CASE 13: "CR          " 
+  CASE 14: "END MARK    " 
+  CASE 15: "BEGIN MARK  " 
+  CASE 214:"ae          " 
+  CASE 215:"oe          " 
+  CASE 216:"ue          "
+  CASE 217:"Ae          " 
+  CASE 218:"Oe          " 
+  CASE 219:"Ue          " 
+  CASE 220:"Trenn-k     " 
+  CASE 221:"Trennstrich " 
+  CASE 222:"Fest-#      " 
+  CASE 223:"Fest-Blank  " 
+  CASE 251:"sz          " 
+  OTHERWISE ""
+ ENDSELECT 
+ENDPROC out bezeichnung ; 
+ 
+PROC charput (INT CONST nr) : 
+ IF nr = 27 THEN put (f, "<ESC>") 
+ ELIF nr = 10 THEN put (f, "<LF>") 
+ ELIF nr = 13 THEN put (f, "<CR>") 
+ ELIF nr = 32 THEN put (f, "<SPACE>") 
+ ELIF nr = 127 THEN put (f, "<DEL>") 
+ ELIF nr > 127 THEN put (f, "<" + text (nr) + ">") 
+ ELIF nr > 32 THEN put (f, code (nr))
+ ELSE put (f, "<CTRL-" + code (nr+64) + ">") 
+ FI 
+ENDPROC charput ; 
+ 
+PROC numberput (INT CONST nr) : 
+ put (f, text (nr,3 ) + ") ; (*") ;
+ IF out bezeichnung (eumel code) <> "" 
+ THEN put (f, out bezeichnung (eumel code) + ":") 
+ FI ; 
+ charput (nr) ; 
+ put (f, "*)") ; 
+ENDPROC numberput ; 
+ 
+TEXT PROC denoter (ROW 64 INT VAR y, INT CONST pos, ende) : 
+ INT VAR i := pos ; 
+ TEXT VAR t := "  " , zeile := """" ; 
+ laenge := 0 ; 
+ WHILE i < 128 AND zugriff <> ende REP 
+  IF zugriff > 31 AND zugriff < 127 THEN zeile CAT code (zugriff) 
+  ELIF zugriff = 34 THEN zeile CAT """"""
+  ELIF zugriff = 251 THEN zeile CAT "á" 
+  ELIF zugriff > 216 AND zugriff < 224 THEN zeile CAT code (zugriff) 
+  ELSE zeile CAT """" ; 
+       zeile CAT text (zugriff) ; 
+       zeile CAT """" 
+  FI ; 
+  i INCR 1 ; 
+  laenge INCR 1 
+ PER ; 
+ zeile CAT """" ; 
+ zeile. 
+ 
+ 
+zugriff : 
+ replace (t, 1, y (i DIV 2 + 1)) ;
+ IF (i MOD 2) = 0 THEN code (t SUB 1) 
+ ELSE code (t SUB 2) 
+ FI 
+ENDPROC denoter ; 
+ 
+ 
+PROC outstring (INT CONST element) : 
+ INT VAR i := element ; 
+ put (f, text (zugriff) + ",") ; 
+ put (f, denoter (x.outstrings, i + 1, 0) + ") ; (*") ; 
+ IF out bezeichnung (eumel code) <> "" 
+ THEN put (f, out bezeichnung (eumel code) + ":") 
+ FI ;
+ i INCR 1 ; 
+ WHILE zugriff <> 0 REP 
+  charput (zugriff) ; 
+  i INCR 1 
+ PER ; 
+ put (f, "*)") . 
+ 
+ 
+zugriff : 
+ TEXT VAR t := "  " ; 
+ replace (t, 1, x.outstrings (i DIV 2 + 1)) ;
+ IF (i MOD 2) = 0 THEN code (t SUB 1) 
+ ELSE code (t SUB 2) 
+ FI 
+ENDPROC outstring 
+
+
+
+
+
+
+
+
+

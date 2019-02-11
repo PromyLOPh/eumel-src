@@ -1,0 +1,607 @@
+PROC arith 16 : 
+ 
+ EXTERNAL 92
+ 
+ENDPROC arith 16 ; 
+ 
+BOOL OP ULSEQ (INT CONST left, right) : 
+ 
+ (left MINUS right) <= 0
+ 
+ENDOP ULSEQ ; 
+ 
+LET max words minus 1 = 32767 ; (* = max : 64K *) 
+ 
+TEXT VAR source name , instr, parameter , t ; 
+INT VAR addr , start addr, end addr , file nr , laenge, i , offset ;
+FILE VAR source file ; 
+
+BOUND STRUCT (ALIGN align, ROW max words minus 1 INT word) VAR space ; 
+
+TEXT VAR a, b, c;
+BOOL VAR screen mode := yes ("Bildschirmausgabe zusaetzlich") ; 
+put ("Startaddr:") ; 
+getline (a) ; 
+put ("Endaddr  :") ; 
+getline (b) ; 
+put ("Offset   :") ; 
+getline (c) ;
+resource ("eumel0", "eumel0.prt", a, b, c) ;
+edit ("eumel0.prt") ; 
+ 
+ 
+PROC resource (TEXT CONST code space name, source file name, 
+               TEXT CONST from, to, offs) : 
+ 
+ space := old (code space name) ; 
+ start addr := integer (from) ;
+ end addr   := integer (to) ; 
+ offset     := integer (offs) ; 
+ source name := source file name ; 
+ file nr := 1 ; 
+ forget (source name, quiet) ; 
+ source file := sequential file (output, source name) ; 
+ 
+ source putline ("ADDR B1 B2 B3 B4 ASCII INSTR PARAMETER  COMMENT") ; 
+ put tabs (source file, 40 * ""2"" + "^") ; 
+ addr := start addr ; 
+ line ; 
+ WHILE addr ULSEQ end addr REP 
+  IF online THEN out (hex16 (addr)) ; 
+                 out (""13"") ; 
+  FI ; 
+  source put (hex16 (addr)) ; 
+  disass ; 
+  FOR i FROM 1 UPTO laenge REP 
+   source put (hex8 (zugriff (addr PLUS (i-1)))) 
+  PER ; 
+  FOR i FROM laenge UPTO 3 REP
+   source put ("  ") 
+  PER ; 
+  t := "" ; 
+  FOR i FROM 1 UPTO laenge REP 
+   t CAT ascii (zugriff (addr PLUS (i-1))) 
+  PER ; 
+  source put (t, 5) ; 
+  source put (instr, 5) ; 
+  source put (parameter, 10) ; 
+  source line ; 
+  addr := addr PLUS laenge ; 
+ PER ; 
+ENDPROC resource ; 
+ 
+INT OP PLUS (INT CONST left, right) : 
+ arith16 ;
+ left + right  
+ENDOP PLUS ; 
+ 
+INT OP MINUS (INT CONST left, right) : 
+ arith16 ; 
+ left - right 
+ENDOP MINUS ; 
+ 
+PROC source line : 
+ check file overflow ; 
+ line (source file) ; 
+ IF screen mode AND online THEN line FI 
+ENDPROC source line ; 
+ 
+PROC source put (TEXT CONST text) : 
+ put (source file, text) ; 
+ IF screen mode AND online THEN put (text) FI
+ENDPROC source put ; 
+ 
+PROC source out (TEXT CONST text) : 
+ write (source file, text) ; 
+ IF screen mode AND online THEN write (text) FI
+ENDPROC source out ; 
+ 
+PROC source putline (TEXT CONST text) : 
+ check file overflow ;
+ putline (source file, text) ; 
+ IF screen mode AND online THEN putline (text) FI
+ENDPROC source putline ; 
+ 
+PROC source put (TEXT CONST text, INT CONST laenge) : 
+ source put (text + (laenge - length (text)) * " ") ; 
+ENDPROC source put ; 
+ 
+PROC check file overflow : 
+ TEXT VAR new name ; 
+ IF lines (source file) > 4000 THEN 
+    file nr INCR 1 ; 
+    new name := source name + "." + text (file nr) ; 
+    line (source file) ; 
+    putline (source file," - Fortsetzung in Datei """ + new name + """ -"); 
+    IF screen mode AND online THEN putline ("New FILE:" + new name) FI ; 
+    modify (source file) ; 
+    to first record (source file) ; 
+    forget (new name, quiet) ; 
+    source file := sequentialfile (output, new name) ; 
+    source putline ("ADDR B1 B2 B3 B4 ASCII INSTR PARAMETER COMMENT") ; 
+    put tabs (source file, 40 * ""2"" + "^") 
+ FI 
+ENDPROC check file overflow ; 
+ 
+TEXT PROC hex16 (INT CONST nr) : 
+ INT VAR i, var := nr ;
+ TEXT VAR result := "" ;
+ FOR i FROM 1 UPTO 4 REP
+  rotate (var, 4) ; 
+  result CAT hex4 (var AND 15) 
+ PER ; 
+ result 
+ENDPROC hex16 ; 
+ 
+TEXT PROC hex8 (INT CONST nr) : 
+ hex4 (nr DIV 16) + hex4 (nr AND 15) 
+ENDPROC hex8 ; 
+ 
+TEXT PROC hex4 (INT CONST nr) : 
+ "0123456789ABCDEF" SUB (nr+1)
+ENDPROC hex4 ; 
+ 
+TEXT PROC ascii (INT CONST nr) : 
+ IF nr < 32 OR nr > 126 THEN "." 
+ ELSE code (nr) 
+ FI 
+ENDPROC ascii ; 
+ 
+INT PROC zugriff (INT CONST adr) : 
+ TEXT VAR t := "  " ; 
+ INT VAR index := offset PLUS adr MINUS startaddr ;
+ rotate (index, -1) ; (* Signed DIV 2 *)
+ index := index AND maxint ;
+ BOOL CONST low byte :: ((adr MINUS start addr) AND 1) = 0 ; 
+ replace (t, 1, space.word (index PLUS 1)) ;
+ IF low byte THEN code (t SUB 1) 
+ ELSE code (t SUB 2) 
+ FI 
+ENDPROC zugriff ; 
+ 
+INT PROC integer (TEXT CONST hex addr) : 
+ INT VAR i, summe := 0 ; 
+ FOR i FROM 1 UPTO length (hex addr) REP 
+  rotate (summe, 4) ; 
+  summe INCR digit
+ PER ; 
+ summe . 
+ 
+digit : 
+ TEXT CONST char := hex addr SUB i ; 
+ IF char >= "a" THEN code (char) - 87 
+ ELIF char >= "A" THEN code (char) - 55 
+ ELSE code (char) - 48 
+ FI 
+ENDPROC integer ; 
+ 
+INT VAR byte, 
+        div 8, 
+        and 7, 
+        and f, 
+        div 10, 
+        int addr ; 
+ 
+TEXT VAR index, c byte ; 
+ 
+TEXT PROC arith log :
+    SELECT div 8 OF 
+       CASE 0 : "ADD" 
+       CASE 1 : "ADC" 
+       CASE 2 : "SUB" 
+       CASE 3 : "SBC" 
+       CASE 4 : "AND" 
+       CASE 5 : "XOR" 
+       CASE 6 : "OR" 
+       CASE 7 : "CP"
+    OTHERWISE "???" 
+  ENDSELECT 
+ 
+ENDPROC arith log; 
+ 
+TEXT PROC reg1 : 
+    SELECT div8 OF 
+      CASE 0 : "B" 
+      CASE 1 : "C" 
+      CASE 2 : "D" 
+      CASE 3 : "E" 
+      CASE 4 : "H" 
+      CASE 5 : "L" 
+      CASE 6 : "(HL)" 
+      CASE 7 : "A" 
+      OTHERWISE "???" 
+    ENDSELECT 
+ 
+ENDPROC reg1; 
+ 
+TEXT PROC reg2 : 
+    SELECT and7 OF 
+      CASE 0 : "B" 
+      CASE 1 : "C" 
+      CASE 2 : "D" 
+      CASE 3 : "E" 
+      CASE 4 : "H" 
+      CASE 5 : "L" 
+      CASE 6 : "(HL)" 
+      CASE 7 : "A" 
+      OTHERWISE "???" 
+    ENDSELECT 
+ 
+ENDPROC reg2; 
+ 
+TEXT PROC rp: 
+    SELECT div10 AND 3 OF 
+      CASE 0 : "BC" 
+      CASE 1 : "DE" 
+      CASE 2 : "HL" 
+      CASE 3 : IF byte > 127 THEN "AF" 
+               ELSE "SP" FI 
+      OTHERWISE "???" 
+    ENDSELECT 
+ 
+ENDPROC rp; 
+ 
+ 
+PROC bitmanipulation : 
+   parameter := text (div8) + "," + reg2 ; 
+   laenge := 2 ; 
+   SELECT byte DIV 64 OF 
+     CASE 1 : instr := "BIT" 
+     CASE 2 : instr := "RES"
+     CASE 3 : instr := "SET" 
+     OTHERWISE laenge := 1 ; 
+               parameter := "" 
+   ENDSELECT 
+ 
+ENDPROC bitmanipulation;
+ 
+ 
+PROC disass : 
+    laenge := 1 ; 
+    instr := "" ; 
+    parameter := "" ; 
+    int addr := addr ; 
+    byte := zugriff (int addr) ; 
+    c byte := code (byte) ; 
+    and 7 := byte AND 7 ; 
+    and f := byte AND 15 ; 
+    div 10:= byte DIV 16 ; 
+    div 8 := (byte DIV 8) AND 7 ; 
+    IF is special instruction 
+       THEN disass special instruction 
+    ELIF div 10 < 4 
+       THEN lower case instruction 
+    ELIF byte < 128 
+       THEN ld instruction 
+    ELIF byte < 192 
+       THEN arith log instruction 
+    ELSE higher case instruction 
+    FI. 
+ 
+is special instruction : 
+ pos (special instruction codes, c byte) > 0 . 
+ 
+special instruction codes : 
+  ""0""2""7""8""10""15""16""18""23""24""26""31""32""34""39""40""42""47""48""50
+  ""55""56""58""63""118""195""198""201""203""205""206""211""214""217""219
+  ""221""222""227""230""233""235""237""238""243""246""249""251""253""254"". 
+ 
+arith log instruction : 
+    instr := arith log ; 
+    parameter := reg 2 . 
+ 
+ld instruction : 
+  instr := "LD" ; 
+  parameter := reg 1 + "," + reg 2 . 
+ 
+condition code : 
+    SELECT div8 OF 
+      CASE 0 : "NZ" 
+      CASE 1 : "Z" 
+      CASE 2 : "NC" 
+      CASE 3 : "C" 
+      CASE 4 : "PO" 
+      CASE 5 : "PE" 
+      CASE 6 : "P" 
+      CASE 7 : "M" 
+      OTHERWISE "??" 
+    ENDSELECT. 
+ 
+lower case instruction : 
+   IF and f = 1 THEN instr := "LD" ; 
+                     parameter := rp + "," + next word ; 
+                     laenge := 3 
+ ELIF and f = 3 THEN instr := "INC" ; 
+                     parameter := rp ; 
+ ELIF and 7 = 4 THEN instr := "INC" ; 
+                     parameter := reg1
+ ELIF and 7 = 5 THEN instr := "DEC" ; 
+                     parameter := reg1 
+ ELIF and 7 = 6 THEN instr := "LD" ; 
+                     parameter := reg1 + "," + next byte ; 
+                     laenge := 2 
+ ELIF and f = 9 THEN instr := "ADD" ; 
+                     parameter := "HL," + rp ; 
+ ELIF and f =11 THEN instr := "DEC" ; 
+                     parameter := rp 
+ FI. 
+ 
+higher case instruction : 
+   SELECT and 7 OF 
+      CASE 0 : instr := "RET" ; 
+               parameter := condition code 
+      CASE 1 : instr := "POP" ; 
+               parameter := rp 
+      CASE 2 : instr := "JP" ; 
+               parameter := condition code + "," + next word ; 
+               laenge := 3 
+      CASE 4 : instr := "CALL" ; 
+               parameter := condition code + "," + next word ; 
+               laenge := 3 
+      CASE 5 : instr := "PUSH" ; 
+               parameter := rp 
+      CASE 7 : instr := "RST" ; 
+               parameter := hex8 (8 * div 8) 
+   ENDSELECT. 
+ 
+ 
+branchaddress : 
+     hex16 (addr PLUS displacement) . 
+ 
+displacement : 
+     IF zugriff (int addr PLUS 1) < 128 
+        THEN zugriff (int addr PLUS 1) + 2
+        ELSE zugriff (int addr PLUS 1) - 254 
+     FI. 
+ 
+cb instructions : 
+   byte := zugriff (addr PLUS 1) ; 
+   and 7 := byte AND 7 ; 
+   and f := byte AND 15 ; 
+   div 10:= byte DIV 16 ; 
+   div 8 := (byte DIV 8) AND 7 ; 
+   laenge := 2 ; 
+   parameter := reg 2 ; 
+   IF byte < 64 THEN 
+      SELECT div 8 OF 
+        CASE 0 : instr := "RLC" 
+        CASE 1 : instr := "RRC" 
+        CASE 2 : instr := "RL" 
+        CASE 3 : instr := "RR" 
+        CASE 4 : instr := "SLA" 
+        CASE 5 : instr := "SRA" 
+        CASE 6 : instr := "" ; parameter := "" ; laenge := 1 
+        CASE 7 : instr := "SLR" 
+        OTHERWISE laenge := 1 ; parameter := "" 
+      ENDSELECT 
+   ELSE 
+      bitmanipulation 
+   FI . 
+ 
+ 
+disass special instruction : 
+   SELECT byte OF 
+     CASE 0  : instr := "NOP" 
+     CASE 2  : instr := "LD" ; parameter := "(BC),A" 
+     CASE 7  : instr := "RLCA" 
+     CASE 8  : instr := "EX" ; parameter := "AF,AF'" 
+     CASE 10 : instr := "LD" ; parameter := "A,(BC)" 
+     CASE 15 : instr := "RRCA" 
+     CASE 16 : instr := "DJNZ" ; parameter := branchaddress ;     laenge:=2 
+     CASE 18 : instr := "LD" ; parameter := "(DE),A" 
+     CASE 23 : instr := "RLA" 
+     CASE 24 : instr := "JR" ; parameter := branchaddress ;       laenge:=2 
+     CASE 26 : instr := "LD" ; parameter := "A,(DE)" 
+     CASE 31 : instr := "RRA" 
+     CASE 32 : instr := "JR" ; parameter := "NZ," + branchaddress;laenge:=2 
+     CASE 34 : instr := "LD" ; parameter := "("+nextword+"),HL";  laenge:=3 
+     CASE 39 : instr := "DAA" 
+     CASE 40 : instr := "JR" ; parameter := "Z," + branchaddress; laenge:=2 
+     CASE 42 : instr := "LD" ; parameter := "HL,("+nextword+")";  laenge:=3 
+     CASE 47 : instr := "CPL" 
+     CASE 48 : instr := "JR" ; parameter := "NC," + branchaddress;laenge:=2 
+     CASE 50 : instr := "LD" ; parameter := "("+nextword+"),A";   laenge:=3 
+     CASE 55 : instr := "SCF" 
+     CASE 56 : instr := "JR" ; parameter := "C," + branchaddress; laenge:=2 
+     CASE 58 : instr := "LD" ; parameter := "A,("+nextword+")";   laenge:=3 
+     CASE 63 : instr := "CCF" 
+     CASE 118: instr := "HALT" 
+     CASE 195: instr := "JP" ; parameter := next word ;           laenge:=3 
+     CASE 198: instr := "ADD" ; parameter := "A,"+next byte;      laenge:=2 
+     CASE 201: instr := "RET" 
+     CASE 203: cb instructions 
+     CASE 205: instr := "CALL" ; parameter := next word; laenge := 3 
+     CASE 206: instr := "ADC" ; parameter := "A," + next byte ; laenge := 2 
+     CASE 211: instr := "OUT" ; parameter := "("+next byte+"),A";laenge:=2 
+     CASE 214: instr := "SUB" ; parameter := "A,"+next byte;laenge := 2 
+     CASE 217: instr := "EXX" 
+     CASE 219: instr := "IN" ; parameter := "A,(" + next byte+")";laenge := 2
+     CASE 221: index := "IX"; dd and fd instructions 
+     CASE 222: instr := "SBC" ; parameter := "A," + next byte ;laenge := 2 
+     CASE 227: instr := "EX"; parameter := "(SP),HL" 
+     CASE 230: instr := "AND" ; parameter := next byte; laenge := 2 
+     CASE 233: instr := "JP" ; parameter := "(HL)" 
+     CASE 235: instr := "EX" ; parameter := "DE,HL" 
+     CASE 237: ed instructions 
+     CASE 238: instr := "XOR" ; parameter := next byte ; laenge := 2 
+     CASE 243: instr := "DI" 
+     CASE 246: instr := "OR" ; parameter := next byte ; laenge := 2 
+     CASE 249: instr := "LD" ; parameter := "SP,HL" 
+     CASE 251: instr := "EI" 
+     CASE 253: index := "IY"; dd and fd instructions 
+     CASE 254: instr := "CP" ; parameter := next byte ; laenge := 2 
+   ENDSELECT. 
+ 
+ENDPROC disass ; 
+ 
+PROC dd and fd instructions : 
+   laenge := 2 ; 
+   int addr := addr PLUS 1 ; 
+   byte := zugriff (int addr) ; 
+   c byte := code (byte) ; 
+   and 7 := byte AND 7 ; 
+   and f := byte AND 15 ; 
+   div 10:= byte DIV 16 ; 
+   div 8 := (byte DIV 8) AND 7 ; 
+   SELECT byte OF 
+     CASE 33 : instr := "LD" ; parameter := index+","+next word;laenge:=4 
+     CASE 34 : instr := "LD" ; parameter:="("+next word+"),"+index;laenge:=4 
+     CASE 35 : instr := "INC" ; parameter := index 
+     CASE 42 : instr := "LD" ; parameter:=index+",("+next word+")";laenge:=4 
+     CASE 43 : instr := "DEC" ; parameter := index 
+     CASE 52 : instr := "INC";parameter:="("+index+"+"+nextbyte+")";laenge:=3
+     CASE 53 : instr := "DEC";parameter:="("+index+"+"+nextbyte+")";laenge:=3;
+     CASE 54 : instr := "LD" ; parameter :="("+index+"+"+next byte+"),"+ 
+                               hex8(zugriff (addr PLUS 3));laenge := 4 
+     CASE 203: dd and fd cb instructions
+     CASE 225: instr := "POP" ; parameter := index 
+     CASE 227: instr := "EX" ; parameter := "(SP)," + index 
+     CASE 229: instr := "PUSH" ; parameter := index 
+     CASE 233: instr := "JP" ; parameter := "(" + index + ")" 
+     CASE 249: instr := "LD" ; parameter := "SP," + index 
+   OTHERWISE calculated dd and fd instructions 
+   ENDSELECT. 
+ 
+calculated dd and fd instructions : 
+   parameter := "(" + index + "+" + next byte + ")" ; 
+   laenge := 3 ; 
+     IF andf = 9 THEN instr := "ADD" ; parameter := index+","+rp;laenge:=2 
+   ELIF and7 = 6 AND div 10 > 3 AND div 10 < 8
+      THEN instr := "LD" ; parameter := reg1 + "," + parameter 
+   ELIF div 10 = 7 AND byte <> 118 
+      THEN instr := "LD" ; parameter CAT "," + reg2 
+   ELIF and7 = 6 AND div 10 > 7 AND div 10 < 12 
+      THEN instr := arith log 
+   ELSE laenge := 1 ; 
+        parameter := ""
+   FI. 
+ 
+dd and fd cb instructions : 
+   int addr := addr PLUS 3 ; 
+   byte := zugriff (int addr) ; 
+   c byte := code (byte) ; 
+   and 7 := byte AND 7 ; 
+   and f := byte AND 15 ; 
+   div 10:= byte DIV 16 ; 
+   div 8 := (byte DIV 8) AND 7 ; 
+   IF byte < 64 AND and7 = 6 THEN 
+        laenge := 4 ; 
+        parameter := "("+index + "+" + hex8 (zugriff (addr PLUS 2)) + ")" ; 
+        SELECT div 8 OF 
+          CASE 0 : instr := "RLC"
+          CASE 1 : instr := "RRC"
+          CASE 2 : instr := "RL" 
+          CASE 3 : instr := "RR"
+          CASE 4 : instr := "SLA"
+          CASE 5 : instr := "SRA"
+          CASE 7 : instr := "SRL"
+        OTHERWISE instr := "" ; parameter := "" ;laenge := 1
+        ENDSELECT 
+   ELIF and7 = 6 THEN laenge := 4 ; parameter := "(" + index + "+" 
+                                    + hex8 (zugriff (addr PLUS 2)) + ")" ; 
+                      dd and fd bitmanipulation
+   ELSE laenge := 1 ; 
+        parameter := ""
+   FI. 
+ 
+dd and fd bitmanipulation : 
+   parameter := text (div8) + "," + parameter ;
+   SELECT byte DIV 64 OF 
+     CASE 1 : instr := "BIT"
+     CASE 2 : instr := "RES" 
+     CASE 3 : instr := "SET" 
+     OTHERWISE laenge := 1 ; 
+               parameter := "" 
+   ENDSELECT. 
+ 
+ENDPROC dd and fd instructions ; 
+ 
+PROC ed instructions : 
+   int addr := addr PLUS 1 ; 
+   byte := zugriff (int addr) ; 
+   c byte := code (byte) ; 
+   and 7 := byte AND 7 ; 
+   and f := byte AND 15 ; 
+   div 10:= byte DIV 16 ; 
+   div 8 := (byte DIV 8) AND 7 ; 
+   laenge := 2 ; 
+   SELECT byte OF 
+     CASE 52 : instr := "TST" ; parameter := "(HL)" 
+     CASE 68 : instr := "NEG" 
+     CASE 69 : instr := "RETN" 
+     CASE 70 : instr := "IM" ; parameter := "0" 
+     CASE 71 : instr := "LD" ; parameter := "I,A" 
+     CASE 77 : instr := "RETI" 
+     CASE 79 : instr := "LD" ; parameter := "R,A" 
+     CASE 86 : instr := "IM" ; parameter := "1" 
+     CASE 87 : instr := "LD" ; parameter := "A,I" 
+     CASE 94 : instr := "IM" ; parameter := "2"
+     CASE 95 : instr := "LD" ; parameter := "A,R" 
+     CASE 100: instr := "TST" ; parameter := next byte ; laenge := 3
+     CASE 103: instr := "RRD" 
+     CASE 111: instr := "RLD" 
+     CASE 116: instr := "TSTIO" ; parameter := next byte ; laenge := 3 
+     CASE 118: instr := "SLP" 
+     CASE 131: instr := "OTIM" 
+     CASE 139: instr := "OTDM" 
+     CASE 147: instr := "OTIMR" 
+     CASE 155: instr := "OTDMR" 
+     CASE 171: instr := "OUTD" 
+     CASE 163: instr := "OUTI" 
+     CASE 179: instr := "OTIR" 
+     CASE 187: instr := "OTDR" 
+   OTHERWISE calculate ed instruction 
+   ENDSELECT. 
+ 
+calculate ed instruction : 
+  IF is 40 to 7f THEN 
+        IF and7 = 0 THEN instr := "IN" ; parameter := reg1 + ",(C)" 
+      ELIF and7 = 1 THEN instr := "OUT" ; parameter := "(C)," + reg1 
+      ELIF andf = 2 THEN instr := "SBC" ; parameter := "HL," + rp 
+      ELIF andf = 3 THEN instr := "LD" ; parameter := "("+nextword+"),"+rp; 
+                         laenge := 4 
+      ELIF andf =11 THEN instr := "LD" ; parameter := rp+",("+nextword+")"; 
+                         laenge := 4
+      ELIF andf =10 THEN instr := "ADC" ; parameter := "HL," + rp 
+      ELIF andf =12 THEN instr := "MLT" ; parameter := rp 
+      ELSE laenge := 1
+      FI 
+  ELIF byte < 64 THEN 
+        IF and7 = 0 THEN instr := "IN0" ; parameter := reg1 + ",(" + next
+                         byte + ")" ; laenge := 3 
+      ELIF and7 = 1 THEN instr := "OUT0" ; parameter := "(" + next word +
+                         ")," + reg1 ; laenge := 3 
+      ELIF and7 = 4 THEN instr := "TST" ; parameter := reg1 
+      ELSE laenge := 1 
+      FI 
+  ELIF div10 = 10 OR div10 = 11 THEN 
+          IF and7 = 0 THEN instr := "LD" + modification 
+        ELIF and7 = 1 THEN instr := "CP" + modification
+        ELIF and7 = 2 THEN instr := "IN" + modification 
+        ELSE laenge := 1
+        FI 
+   ELSE laenge := 1
+   FI. 
+ 
+is 40 to 7f : 
+   div 10 < 8 AND div 10 > 3. 
+ 
+modification : 
+   SELECT div8 - 4 OF
+     CASE 0 : "I" 
+     CASE 1 : "D" 
+     CASE 2 : "IR" 
+     CASE 3 : "DR" 
+   OTHERWISE "???" 
+   ENDSELECT. 
+ 
+ENDPROC ed instructions ; 
+
+TEXT PROC next word : 
+ hex8 (zugriff (int addr PLUS 2)) + hex8 (zugriff (int addr PLUS 1))
+ENDPROC next word ;
+ 
+TEXT PROC next byte : 
+ hex8 (zugriff (int addr PLUS 1))
+ENDPROC next byte
+

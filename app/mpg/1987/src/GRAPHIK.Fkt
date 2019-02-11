@@ -1,0 +1,1378 @@
+(***************************************************************************)
+(*                                                                         *)
+(*                       FKT - Funktionenplotter                           *)
+(*                                                                         *)
+(* Grundversion : MPG, KB, KN, LP      23.05.84     | 7756 Byte Code       *)
+(* Version 6.20 : MPG, Rainer Kottmann 23.09.85     | 7196 Byte Paketdaten *)
+(* Angepasst an MPG-Turtle-Standard :  07.03.85     | 1374 Zeilen          *)
+(* Version 8.21 : MPG,Beat Jegerlehner 18.09.87     |                      *)
+(* Angepasst an MPG EUMELGRAPHIK/EUMEL Version 1.8.1|                      *)
+(*                                                                         *)
+(***************************************************************************)
+PACKET funktionen DEFINES fkt plot,   (*************************************)
+                          y grenzen,  (* Interaktives Programm             *)
+                          wertetafel, (* Einzelprozeduren fuer "do"        *)
+                          ~,          (* BOOL OP "ungefaehr gleich"        *)
+                          luecke :    (* Dummykonstante fuer "undefiniert" *)
+                                      (*************************************)
+                                      (* Autoren:    Klaus Bovermann       *)
+                                      (*             Kai Nikisch           *)
+                                      (*             Lutz Prechelt         *)
+                                      (*             Rainer Kottmann       *)
+                                      (*             Beat Jegerlehner      *)
+                                      (*************************************) 
+ 
+LET fkpos          =  1,           (* Diese LETs sind Bildschirmpositionen *)
+    inpos          =  2,
+    wpos           =  3,
+    fehlerpos      =  5,
+    eingpos        =  7,
+    textpos        = 11,
+    wahlpos        = 24,
+    xupos          = 16,
+    yupos          = 16,
+    xopos          = 32,
+    yopos          = 32,
+    stuetzpktpos   = 48,
+    endgeraetepos  = 20;
+
+LET punkte         = 512,            (* maximale Anzahl der Stuetzpunkte *) 
+    ug1            = 0.15051,        (* Hilfswerte fuer 'gauss'          *)
+    ug2            = 0.5, 
+    ug3            = 0.84948,
+    din a 4 hoehe  = 5.0,            (* Hoehe der Beschriftung  *)
+    din a 4 breite = 5.0,            (* in mm                   *)
+    ziffern        = 12,             (* Genauigkeitsangabe      *)
+    gross          = 8.888888e88,
+    epsilon        = 1.0e-11;
+
+LET wahlstring              = ""8""2"fdwsazntlLAqeb~?",
+    farbstr                 = "<CR>Standard <r>ot <b>lau <g>ruen <s>chwarz",
+    farbchars               = ""13"rbgs",
+    graphikvater            = "GRAPHIK",
+    helpfile                = "FKT.help";
+
+ROW punkte REAL VAR graph;
+
+TEXT VAR term            :: "",
+         rohterm         :: "",
+         picfilename     :: "",
+         prefix          :: "PICFILE.",
+         postfix         :: "",
+         fehlernachricht :: "",
+         proc,
+         inline;
+
+REAL VAR x min ::  -gross,  x max ::  gross,
+         y min ::  maxreal, y max :: -maxreal,
+         xstep;
+
+INT  VAR nachkomma :: 2,
+         stuetzen  :: punkte,
+         endgeraet :: 1,
+         endgeraete :: highest entry(plotters);
+
+BOOL VAR intervall definiert   :: FALSE,
+         wertebereich bestimmt :: FALSE,
+         wertetafel vorhanden  :: FALSE,
+         fehlerzustand         :: FALSE;
+
+REAL CONST luecke :: gross;
+
+PICTURE VAR dummy picture :: nilpicture;
+move (dummy picture,0.0,0.0);
+
+(***************************************************************************)
+(* Alte Prozeduren (Graphik-unabhaengig)                                   *)
+(***************************************************************************)
+
+PROC get (TEXT VAR text):    (* moeglichkeit, ueberall abzubrechen! *)
+  text := "";
+  TEXT VAR exit char;
+  editget (text,""27"","",exit char);
+  IF exit char = ""27""
+    THEN errorstop("Abgebrochen")
+  FI
+END PROC get;
+
+PROC get (INT VAR nr):
+  TEXT VAR t;
+  get(t);
+  line;
+  nr := int(t)
+END PROC get;
+
+PROC get (REAL VAR nr):
+  TEXT VAR t;
+  get(t);
+  line;
+  nr := real(t)
+END PROC get;
+
+PROC editget (TEXT VAR t):
+  TEXT VAR t2 :: t,exit char;
+  editget(t2,""27"","",exit char);
+  IF exit char = ""27""
+    THEN errorstop("Abgebrochen")
+  FI;
+  t := t2
+END PROC editget;
+
+PROC inchar (TEXT VAR a,TEXT CONST b):
+  REP
+    inchar (a)
+  UNTIL pos(b,a) <> 0 OR a = ""27"" PER;
+  IF a = ""27""
+    THEN errorstop("Abgebrochen")
+  FI
+END PROC inchar;
+
+BOOL OP ~ (REAL CONST left , right) :
+     abs (left - right) <= xstep
+END OP ~;
+
+(*******************     MAIN PROGRAMM        *****************************)
+
+PROC fkt plot:
+  auswahlbild;
+  select plotter(name(plotters,endgeraet));
+  REP
+    bild;
+    auswahl (inline)
+  UNTIL inline = "q" PER
+
+END PROC fkt plot;
+
+(******************        LAY OUT            *****************************)
+
+PROC auswahlbild:
+  page;
+  cursor (1,textpos);
+  put     ("(f)  Funktionsterm eingeben             ");
+  putline ("(?)  Hilfestellung                    ");
+  put     ("(d)  Definitionsbereich waehlen         ");
+  putline ("(q)  in die Kommandoebene zurueck     ");
+  put     ("(w)  Wertebereich ermitteln lassen      ");
+  putline ("(s)  Anzahl der Stuetzpunkte waehlen  ");
+  put     ("(z)  Zeichnung anfertigen               ");
+  putline ("(n)  Nachkommastellenzahl waehlen     ");
+  put     ("(a)  Ausgabe der Zeichnung auf Endgeraet");
+  putline ("(e)  Arbeit beenden                   ");
+  put     ("(t)  Wertetafel erstellen lassen        ");
+  putline ("(L)  Zeichnungen loeschen             "); 
+  put     ("(l)  Zeichnungen auflisten              ");
+  putline ("(A)  Zeichnungen archivieren          ");
+  put     ("                                        "); 
+  putline ("(b)  Zeichnung beschriften            ");
+  cursor (1,wahlpos);
+  put ("Ihre Wahl:")
+END PROC auswahlbild;
+
+PROC bild:
+  cursor (1,fkpos);
+  put ("f(x) = " + rohterm);
+  out (""5"");
+  cursor (1,inpos);
+  put ("Def.Bereich:  [              /               ]");
+  cursor (xupos,inpos);
+  put (text (x min,ziffern,nachkomma));
+  cursor (xopos,inpos);
+  put (text (x max,ziffern,nachkomma));
+  cursor (1,wpos);
+  put ("Wertebereich: [              /               ]");
+  cursor (yupos,wpos);
+  put (text (y min,ziffern,nachkomma));
+  cursor (yopos,wpos);
+  put (text (y max,ziffern,nachkomma));
+  cursor (1,endgeraetepos);
+  put endgeraetestring;
+  cursor (stuetzpktpos,inpos);
+  put ("Anzahl der Stuetzpunkte: " + text (stuetzen,3));
+  drei zeilen ab eingpos loeschen.
+END PROC bild;
+
+(******************       MONITOR             *****************************)
+
+PROC auswahl 1 (TEXT VAR wahl):
+  enable stop;
+  SELECT code (wahl) OF
+    CASE    8 : endgeraet := max(endgeraet-1,1);
+                select plotter(name(plotters,endgeraet))
+    CASE    2 : endgeraet := min(endgeraet+1,endgeraete);
+                select plotter(name(plotters,endgeraet))
+    CASE  102 : fkt lesen                 (*  f  *)
+    CASE  100 : defbereich waehlen        (*  d  *)
+    CASE  119 : wertebereich erstellen    (*  w  *)
+    CASE  116 : wertetafel erstellen      (*  t  *)
+    CASE  113 : LEAVE auswahl 1           (*  q  *)
+    CASE  122 : graph erstellen           (*  z  *)
+    CASE   97 : graph zeigen              (*  a  *)
+    CASE  110 : genauigkeitsangabe        (*  n  *)
+    CASE   65 : dm;                       (*  A  *)
+                auswahlbild
+    CASE  108 : dateien listen            (*  l  *)
+    CASE   76 : dateien aus task raeumen  (*  L  *)
+    CASE  101 : unterbrechung             (*  e  *)
+    CASE  126 : spezialeingabe            (* TIL *)
+    CASE   63 : hilfe                     (*  ?  *)
+    CASE  115 : stuetzpunkte setzen       (*  s  *)
+    CASE   98 : zeichnung beschriften     (*  b  *)
+  END SELECT;
+END PROC auswahl 1;
+
+PROC auswahl (TEXT VAR wahl):       (* Faengerebene *)
+  cursor (12,24);
+  out (""5"");
+  inchar (wahl,wahlstring);
+  fehlerloeschen;
+  disable stop;
+  auswahl 1 (wahl);
+  IF is error
+     THEN fehlersetzen (error message);
+          clear error
+  FI;
+  enable stop;
+  IF fehlerzustand
+     THEN fehleraus (fehlernachricht)
+  FI
+END PROC auswahl;
+
+PROC put endgeraetestring:
+  TEXT VAR s :: "Endgeraet: ";
+  INT VAR i;
+  THESAURUS CONST t :: plotters;
+  FOR i FROM 1 UPTO endgeraete REP
+    IF length(s)+length(name(t,i))+4 > 79
+      THEN putline(s+""5"");
+           s := "           "
+    FI;
+    IF i = endgeraet
+      THEN s CAT ""15"" + name(t,i) + " "14" "
+      ELSE s CAT " "+name(t,i) + "   "
+    FI
+  PER;
+  putline(s+""5"")
+
+END PROC put endgeraetestring;
+
+
+(**************************** f *******************************************)
+
+PROC fkt lesen:
+  reset wertebereich;
+  cursor (1,eingpos);
+  put ("f(x) =");
+  out (""5"");
+  cursor (1,eingpos + 1);
+  out(""5"");
+  cursor (8,eingpos);
+  editget (rohterm);
+  change int to real (rohterm,term);
+  change all (term,"X","x");
+  change all (term,"=","~");                         (* Ueberdeckung von = *)
+  change all (term,"<~","<=");                       (* ruecksetzen von <= *)
+  change all (term,">~",">=");                       (*       "         >= *)
+  term testen;
+  wertetafel vorhanden := FALSE.
+
+term testen:
+  disable stop;
+  proc := "REAL PROC f (REAL CONST x):";
+  proc CAT term;
+  proc CAT " END PROC f";
+  do ("do ("""+proc+""")");      (* komischer do-Fehler *)
+  IF is error
+     THEN fehlersetzen ("Term fehlerhaft");
+          clear error;
+          LEAVE fkt lesen
+  FI
+END PROC fkt lesen;
+
+(**************************** d *******************************************)
+
+PROC defbereich waehlen:
+  cursor (1,eingpos);
+  put ("Untergrenze  :");
+  out (""5"");
+  get (x min);
+  obergrenze lesen;
+  intervall definiert := TRUE;
+  reset wertebereich.
+
+obergrenze lesen:
+  REP
+    put ("Obergrenze   :");
+    out (""5"");
+    get (x max);
+    IF x max <= x min
+       THEN out (""7""13""3""5"")
+    FI
+  UNTIL x max > x min PER
+END PROC defbereich waehlen;
+
+(**************************** w *******************************************)
+
+PROC wertebereich erstellen:
+  IF rohterm = ""
+     THEN fehlersetzen ("Erst Fkts.Term eingeben! (f)");
+          LEAVE wertebereich erstellen
+  ELIF NOT intervall definiert
+     THEN fehlersetzen ("Erst Def.Bereich waehlen (d)");
+          LEAVE wertebereich erstellen
+  ELIF wertebereich bestimmt
+     THEN fehlersetzen ("Wertebereich ist bereits bestimmt");
+          LEAVE wertebereich erstellen
+  FI;
+  proc := "REAL PROC f (REAL CONST x):"+ term;
+  proc CAT " END PROC f; ygrenzen (PROC f)";
+  do (proc)
+END PROC wertebereich erstellen;
+
+PROC ygrenzen (REAL PROC (REAL CONST) f):
+  REAL VAR x, f von x;
+  INT  VAR i :: 1;
+  
+  disable stop;
+  xstep := (x max - x min) / real (stuetzen - 1);
+  x := x min;
+  y min :=  maxreal;
+  y max := -maxreal;
+  cursor (1,eingpos);
+  putline ("Wertebereich wird ermittelt");
+  out (""5"");
+  out ("bei Stuetzpunkt Nr.: ");
+  wertegrenzen berechnen;
+  IF is error
+     THEN fehler setzen (error message);
+          reset wertebereich;
+          LEAVE ygrenzen
+  ELIF fehlerzustand
+     THEN reset wertebereich;
+          LEAVE ygrenzen
+     ELSE wertebereich bestimmt := TRUE
+  FI;
+  IF y min = y max
+     THEN y min DECR 1.0;
+          y max INCR 1.0
+  FI.
+
+wertegrenzen berechnen:
+  FOR i FROM 1 UPTO stuetzen REP
+    x := real (i-1) * xstep + x min;
+    cout (i);
+    f von x := f (x);
+    graph [i] := f von x;
+    IF f von x <> luecke
+       THEN y min := min (y min, f von x);
+            y max := max (y max, f von x)
+    FI
+  UNTIL is error OR interrupt PER .
+
+interrupt:
+  IF incharety = ""27""
+     THEN fehlersetzen ("Abgebrochen");
+          TRUE
+     ELSE FALSE
+  FI
+END PROC ygrenzen;
+
+(**************************** t *******************************************)
+
+PROC wertetafel erstellen:
+  IF rohterm = ""
+     THEN fehleraus ("Erst Fkts.Term eingeben (f)");
+          LEAVE wertetafel erstellen
+  ELIF NOT intervall definiert
+     THEN fehleraus ("Erst Def.Bereich waehlen (d)");
+          LEAVE wertetafel erstellen
+  FI;
+  proc := "REAL PROC f (REAL CONST x):"+ term;
+  proc CAT " END PROC f; wertetafel (PROC f)";
+  do (proc)
+END PROC wertetafel erstellen;
+
+PROC wertetafel (REAL PROC (REAL CONST ) f):
+  FILE VAR g :: sequential file (output,rohterm);
+  REAL VAR x, f von x;
+  INT  VAR i :: 0;
+  
+  REP
+    schrittweite einlesen
+  UNTIL (xstep > 0.0) CAND ((x max-x min) / xstep < real (punkte)) PER;
+  x := x min;
+  evtl ueberschrift;
+  disable stop;
+  REP
+    datei erstellen
+  UNTIL x > x max OR is error PER;
+  fehleraus in tafel;
+  enable stop;
+  modify  (g);
+  edit (g);
+  line;
+  IF yes("Tafel drucken")
+     THEN print (rohterm)
+  FI;
+  line (2);
+  IF yes("Tafel loeschen")
+     THEN forget(rohterm,quiet);
+          wertetafel vorhanden := FALSE
+     ELSE wertetafel vorhanden := TRUE
+  FI;
+  auswahlbild.
+
+evtl ueberschrift:
+  IF NOT wertetafel vorhanden
+     THEN putline (g, "       W E R T E T A F E L");
+          line (g);
+          putline (g, "      x         !     " + rohterm);
+          putline (g, "----------------!----------------")
+  FI.
+
+fehleraus in tafel:
+  IF is error
+     THEN fehlernachricht := errormessage;
+          clearerror;
+          line (g,2);
+          putline (g,fehlernachricht);
+          fehlernachricht := ""
+  FI.
+
+datei erstellen:
+  i INCR 1;
+  cout (i);
+  put (g, text (x,ziffern,nachkomma));
+  put (g, "   !");
+  f von x := f (x);
+  IF f von x <> luecke
+    THEN put (g, text (f von x,ziffern,nachkomma))
+    ELSE put (g, "Definitionsluecke")
+  FI;
+  line (g);
+  x INCR xstep.
+
+schrittweite einlesen:
+  cursor (1,eingpos);
+  put ("Schrittweite:");
+  out (""5"");
+  cursor (1,eingpos + 1);
+  out (""5"");
+  cursor (15,eingpos);
+  get (xstep);
+  put ("Zwischenpunkt :");
+  IF (xstep <= 0.0) COR ((x max-x min) / xstep > real (punkte))
+     THEN fehleraus ("Schrittweite zu klein");
+          LEAVE wertetafel
+  FI
+END PROC wertetafel;
+
+(*********************************** n *************************************)
+
+PROC genauigkeitsangabe:
+  cursor (1,eingpos);
+  put ("Anzahl der Nachkommastellen : ");
+  get (nachkomma);
+  disable stop;
+  nachkomma := min (nachkomma, ziffern - 3);
+  nachkomma := max (nachkomma, 0);
+  IF is error
+     THEN fehlersetzen ("Falscher Wert");
+          clear error;
+          nachkomma := 2
+  FI
+END PROC genauigkeitsangabe;
+
+(********************************l ****************************************)
+
+PROC dateien listen:
+  th(all LIKE (prefix+"*"));
+  auswahlbild
+END PROC dateien listen;
+
+(********************************L ****************************************)
+
+PROC dateien aus task raeumen:
+  forget(some(all LIKE (prefix+"*")));
+  auswahlbild
+END PROC dateien aus task raeumen;
+
+(**************************** s *******************************************)
+
+PROC stuetzpunkte setzen:
+  cursor (1,eingpos);
+  put ("Anzahl der Stuetzpunkte :");
+  get (stuetzen);
+  disable stop;
+  IF stuetzen <= 1  OR stuetzen > punkte
+     THEN fehler setzen ("Achtung Stuetzpunkte fehlerhaft")
+  FI;
+  stuetzen := max (stuetzen, 2)  ;
+  stuetzen := min (stuetzen, punkte);
+  IF is error
+     THEN fehlersetzen ("Falscher Wert");
+          clear error;
+          stuetzen := punkte
+  FI;
+  reset wertebereich
+END PROC stuetzpunkte setzen;
+(**************************** e *******************************************)
+
+PROC unterbrechung:
+  break;
+  auswahlbild
+END PROC unterbrechung;
+
+(****************************** ? ******************************************)
+
+PROC hilfe:
+  IF NOT exists(helpfile)
+    THEN fetch(helpfile,task (graphikvater))
+  FI;
+  FILE VAR f :: sequential file(input,helpfile);
+  headline(f,"Verlassen mit <ESC> <q>");
+  open editor(f,FALSE);
+  edit (groesster editor,"q",PROC (TEXT CONST) dummy ed);
+  auswahlbild
+END PROC hilfe;
+
+PROC dummy ed (TEXT CONST t):
+  IF t = "q"
+    THEN quit
+    ELSE out(""7"")
+  FI
+END PROC dummy ed;
+
+(**************************** TILDE ****************************************)
+ 
+PROC spezialeingabe:
+  TEXT CONST termeingabename :: "Bitte Funktionsrumpf eingeben";
+  TEXT VAR t;
+  FILE VAR f :: sequential file (modify, termeingabename);
+ 
+  edit (f);
+  lese den term aus;
+  teste den term;
+  rohterm := "spezial";
+  reset wertebereich;
+  auswahlbild.
+
+lese den term aus:
+  term := "";
+  input (f);
+  WHILE NOT eof (f) REP
+    getline (f,t);
+    term CAT t;
+    term CAT " "
+  PER.
+
+teste den term:
+  disable stop;
+  proc := "REAL PROC f (REAL CONST x):";
+  proc CAT term;
+  proc CAT " END PROC f";
+  do (proc);
+  IF is error
+     THEN fehlersetzen ("Funktionsrumpf fehlerhaft");
+          clear error;
+          term := "";
+          rohterm := "";
+          reset wertebereich;
+          auswahlbild;
+          LEAVE spezialeingabe
+  FI
+END PROC spezialeingabe;
+
+(***************************************************************************)
+(*********                 Ab hier Hilfsprozeduren                 *********)
+(***************************************************************************)
+
+PROC fehleraus (TEXT CONST t):
+   cursor (1,fehlerpos);
+   out (""7"F E H L E R : ", t);
+   fehlerzustand := FALSE
+END PROC fehleraus;
+
+PROC fehlerloeschen:
+  cursor (1,fehlerpos);
+  out (""5"");
+  fehlernachricht := "";
+  fehlerzustand   := FALSE
+END PROC fehlerloeschen;
+
+PROC fehler setzen (TEXT CONST message):
+  fehlernachricht := message;
+  fehlerzustand   := TRUE;
+  clear error
+END PROC fehler setzen;
+
+REAL PROC gauss (REAL CONST z):
+  IF is integer (z)
+     THEN round (z,0)
+  ELIF sign (z) = -1
+     THEN floor (z) - 1.0
+     ELSE floor (z)
+  FI
+END PROC gauss;
+
+BOOL PROC is integer (REAL CONST x):
+  abs (x - floor (x)) < epsilon
+END PROC is integer;
+
+PROC berechnung (REAL CONST min, max,
+                 REAL VAR   sweite,
+                 INT VAR    styp):
+
+  sweite := faktor * round (10.0 ** expo,11).
+
+faktor: 
+  IF nachkomma < ug1
+       THEN styp := 1;
+            1.0
+  ELIF nachkomma < ug2
+       THEN  styp := 2;
+             2.0
+  ELIF nachkomma < ug3
+       THEN styp := 5;
+            5.0
+       ELSE styp := 1;
+            10.0
+  FI.
+
+nachkomma:
+  IF frac (logwert) < -epsilon
+     THEN 1.0 + frac (logwert)
+  ELIF frac (logwert) > epsilon
+     THEN frac (logwert)
+     ELSE 0.0
+  FI.
+
+differenz:
+  max - min.
+
+expo:
+  gauss (logwert) - 1.0.
+
+logwert:
+  round (log10 (differenz),8)
+END PROC berechnung;
+
+REAL PROC runde ab (REAL CONST was, auf):
+  auf * gauss (was / auf)
+END PROC runde ab;
+
+REAL PROC runde auf (REAL CONST was, auf):
+  REAL VAR hilf :: runde ab (was,auf);
+ 
+  IF abs (hilf - was) < epsilon
+     THEN was
+     ELSE hilf + auf 
+  FI
+END PROC runde auf;
+
+PROC loesche zeile (INT CONST zeile):
+  cursor (1,zeile);
+  out (""5"")
+END PROC loesche zeile;
+
+PROC drei zeilen ab eingpos loeschen:
+  loesche zeile (eingpos);
+  loesche zeile (eingpos + 1);
+  loesche zeile (eingpos + 2);
+END PROC drei zeilen ab eingpos loeschen;
+
+PROC change int to real (TEXT CONST term alt,TEXT VAR term neu):
+  TEXT VAR symbol :: "", presymbol :: "";
+  INT  VAR type :: 0, pretype :: 0, position;
+  LET number      = 3,
+      tag         = 1,
+      end of scan = 7,
+      pot         = "**";
+
+  term neu := "";
+  scan (term alt);
+  WHILE type <> end of scan REP
+    presymbol :=  symbol;
+    pretype   :=  type;
+    next symbol (symbol,type);
+    IF type <> number OR presymbol = pot
+       THEN term neu CAT evtl mal und symbol
+       ELSE term neu CAT changed symbol
+    FI
+  PER.
+
+evtl mal und symbol:
+  IF pretype = number AND type = tag
+     THEN "*" + symbol
+     ELSE symbol
+  FI.
+
+changed symbol:
+  position := pos (symbol,"e"); 
+  IF position <> 0 
+     THEN text (symbol,position - 1) + ".0" +
+          subtext (symbol,position,length (symbol)) 
+  ELIF pos (symbol,".") = 0
+     THEN symbol CAT ".0";
+          symbol
+     ELSE symbol
+  FI
+END PROC change int to real;
+
+PROC reset wertebereich:
+  y min := -maxreal;
+  y max :=  maxreal;
+  wertebereich bestimmt := FALSE
+END PROC reset wertebereich;
+
+TEXT PROC textreal (REAL CONST z):
+  TEXT VAR t :: text (z);
+
+  IF (t SUB length (t)) = "."
+     THEN subtext (t,1,length (t) - 1)
+  ELIF (t SUB 1) = "." 
+     THEN "0" + t
+  ELIF (t SUB 2) = "." AND sign (z) = -1
+     THEN "-0" + subtext (t,2)
+  ELIF t = "0.0" 
+     THEN "0"
+     ELSE t
+  FI
+END PROC textreal;
+
+INT PROC length (REAL CONST z):
+  length (text (z))
+END PROC length;
+
+PROC put format(INT CONST wo, REAL CONST xxmi,xxma,yymi,yyma):
+  cursor (1,wo);
+  put ("Aktuelles Format:       xmin           xmax" +
+       "           ymin           ymax");
+  cursor (19,wo + 1);
+  put (text (xx mi,ziffern,nachkomma));
+  cursor (34,wo + 1);
+  put (text (xx ma,ziffern,nachkomma));
+  cursor (49,wo + 1);
+  put (text (yy mi,ziffern,nachkomma));
+  cursor (64,wo + 1);
+  put (text (yy ma,ziffern,nachkomma))
+END PROC put format;
+ 
+PROC out (TEXT CONST a, b) :
+  out (a); out (b)
+END PROC out;
+
+(***************************************************************************)
+(* Neue Prozeduren                                                         *)
+(***************************************************************************)
+
+PROC graph erstellen:
+  PICFILE VAR funktionen;
+  PICTURE VAR funktionsgraph :: nilpicture,
+              formatpic      :: nilpicture;
+  REAL VAR xx min :: x min,
+           xx max :: x max,
+           yy min :: y min,
+           yy max :: y max;
+
+  IF rohterm = ""
+     THEN fehlersetzen ("Erst Funktionsterm waehlen (f)");
+          LEAVE graph erstellen
+  ELIF NOT wertebereich bestimmt
+     THEN fehlersetzen ("Erst Wertebereich bestimmen lassen (w)");
+          LEAVE graph erstellen
+  FI;
+
+  hole filenamen;
+  funktionen := picture file (picfilename);
+  initialisiere stifte;
+  waehle format;
+  zeichne graphen;
+  pictures ins picfile.
+
+hole filenamen:
+  TEXT VAR t :: "";
+  REP 
+    namen lesen
+  UNTIL t = "l" OR t = "e" PER. 
+
+namen lesen:
+  cursor (1,eingpos);
+  out ("Welchen Namen soll die Zeichnung haben: "+ prefix);
+  postfix:= rohterm;
+  editget (postfix);
+  line;
+  IF (postfix SUB 1) = "?"
+    THEN picfilename := one(all LIKE (prefix+"*"));
+         auswahlbild;
+         bild;
+         cursor(1,eingpos)
+    ELSE picfilename := prefix + postfix;
+         picfilename := compress (picfilename)
+  FI;
+  IF NOT exists (picfilename)
+    THEN LEAVE hole filenamen
+  FI;
+  putline ("Zeichnung gibt es schon!");
+  put ("loeschen (l), Namen neuwaehlen (n), " +
+       "alte Zeichnung ergaenzen (e):");
+  inchar (t,"lne");
+  IF t = "l"
+     THEN forget (picfilename,quiet)
+  ELIF t = "n"
+     THEN drei zeilen ab eingpos loeschen
+  FI.
+
+initialisiere stifte:
+  select pen (funktionen, 1, 1, 0, 1, TRUE); (* Standardfarbe *)
+  select pen (funktionen, 2, 2, 0, 1, TRUE); (* Rot           *)
+  select pen (funktionen, 3, 3, 0, 1, TRUE); (* Blau          *)
+  select pen (funktionen, 4, 4, 0, 1, TRUE); (* Gruen         *)
+  select pen (funktionen, 5, 5, 0, 1, TRUE). (* Schwarz       *)
+
+waehle format:
+  IF altes picfile
+    THEN ergaenze wertebereich
+  FI;
+  drei zeilen ab eingpos loeschen;
+  REAL VAR step;
+  INT VAR i dummy;
+  berechnung (yy min, yy max, step, idummy);
+  yy min := runde ab (yy min, step);
+  yy max := runde auf (yy max, step);
+  put format(eingpos, xx min, xx max, yy min, yy max);
+  pause ;
+  drei zeilen ab eingpos loeschen;
+  cursor(1,eingpos);
+  IF yes("Format aendern")
+    THEN interactive change of format (xx min,xx max,yy min,yy max)
+  FI;
+  drei zeilen ab eingpos loeschen.
+
+ergaenze wertebereich:
+  to pic (funktionen,3);             (* Formatpicture *)
+  read picture (funktionen,formatpic);
+  move (formatpic, xx min, yy min);
+  move (formatpic, xx max, yy max);
+  extrema (formatpic, xx min, xx max, yy min, yy max).
+
+altes picfile:
+  t = "e".
+
+zeichne graphen:
+  REAL VAR x              :: x min,
+           x schrittweite :: (x max - x min) / real (stuetzen - 1);
+  INT  VAR i;
+
+  cursor (1,eingpos);
+  put ("Graph bei Stuetzpunkt Nr. ");
+  FOR i FROM 1 UPTO stuetzen REP
+     cout (i);
+     IF graph[i] <> luecke
+       THEN IF zuletzt luecke
+              THEN move (funktionsgraph, x, graph[i])
+              ELSE draw (funktionsgraph, x, graph[i])
+            FI
+     FI;
+     x INCR x schrittweite
+  UNTIL abbruch PER;
+  drei zeilen ab eingpos loeschen.
+
+  abbruch:
+    IF incharety = ""27""
+      THEN errorstop("Abgebrochen");
+           TRUE
+      ELSE FALSE
+    FI.
+
+  zuletzt luecke:
+   i = 1 COR graph[i-1] = luecke.
+
+pictures ins picfile:
+  setze graphenfarbe;
+  to first pic(funktionen);
+  IF altes picfile
+    THEN down (funktionen);        (* Skip *)
+         down (funktionen)
+    ELSE put picture (funktionen, dummy picture); (* Zusaetzliche Beschr.*)
+         put picture (funktionen, dummy picture)
+  FI;
+  formatpic := nilpicture;
+  move (formatpic, xx min, yy min);
+  move (formatpic, xx max, yy max);
+  IF altes picfile
+    THEN write picture (funktionen, formatpic)
+    ELSE put picture (funktionen, formatpic)
+  FI;
+  put picture (funktionen, funktionsgraph).
+
+setze graphenfarbe:
+  cursor (1,eingpos);
+  put("Farbe des Graphen :");
+  pen (funktionsgraph, farbe).
+
+farbe :
+  TEXT VAR ff;
+  put(farbstr);
+  inchar (ff,farbchars);
+  out(ff);
+  pos (farbchars,ff).
+
+END PROC graph erstellen;
+
+PROC interactive change of format (REAL VAR x mi,x ma,y mi,y ma):
+  TEXT VAR tt;
+  REP
+    cursor (1,eingpos + 2);
+    put ("Geben Sie die neuen Koordinaten ein");
+    out (""5"");
+    pause (20);
+    loesche zeile (eingpos + 2);
+    cursor (1,eingpos + 2);
+    put ("xmin:");
+    tt := text (xmi);
+    editget (tt); 
+    xmi := real (tt);
+    cursor (1,eingpos + 2);
+    put ("xmax:"); 
+    out (""5"");
+    tt := text (xma);
+    editget (tt);
+    xma := real (tt);
+    cursor (1,eingpos + 2);
+    put ("ymin:");
+    out (""5"");
+    tt := text (ymi);
+    editget (tt);
+    ymi := real (tt);
+    cursor (1,eingpos + 2);
+    put ("ymax:");
+    out (""5"");
+    tt := text (yma);
+    editget (tt);
+    yma := real (tt);
+  UNTIL format ok PER.
+
+  format ok:
+    IF xma <= xmi OR yma <= ymi
+      THEN fehlersetzen ("Format falsch");
+           FALSE
+      ELSE TRUE
+    FI
+END PROC interactive change of format;
+
+PROC geraet waehlen:
+END PROC geraet waehlen;
+
+PROC zeichnung beschriften:
+  namen holen;
+  PICFILE VAR funktionen :: picture file(picfilename);
+  PICTURE VAR beschr;
+  to pic(funktionen,2);
+  read picture(funktionen,beschr);
+  cursor(1,eingpos);
+  put("Beschriftung (e) rgaenzen , (l) oeschen oder (a) bbruch");
+  TEXT VAR t;
+  inchar(t,"ela");
+  IF t = "l"
+    THEN to pic(funktionen,2);
+         beschr := nilpicture;
+         write picture(funktionen,beschr)
+  ELIF t = "e"
+    THEN beschrifte
+  FI;
+  cursor(1,eingpos);
+  drei zeilen ab eingpos loeschen.
+
+  beschrifte:
+    farbe holen;
+    REAL VAR rx,ry,hx,bx;
+    to pic(funktionen,3);
+    PICTURE VAR format;
+    read picture(funktionen,format);
+    extrema(format,rx,ry,hx,bx);
+    drei zeilen ab eingpos loeschen;
+    put format (eingpos,rx,ry,hx,bx);
+    pause;
+    REP
+      drei zeilen ab eingpos loeschen;
+      cursor(1,eingpos);
+      put("Text :");
+      TEXT VAR btext;
+      getline(btext);
+      put("Koordinaten in (c)m oder in (r)eal ");
+      inchar(t,"cra");
+      drei zeilen ab eingpos loeschen;
+      cursor(1,eingpos);
+      put("X-Koordinate:");
+      get(rx);
+      put("Y-Koordinate:");
+      get(ry);
+      IF t = "c"
+        THEN move cm(beschr,rx,ry)
+        ELSE move   (beschr,rx,ry)
+      FI;
+      drei zeilen ab eingpos loeschen;
+      cursor(1,eingpos);
+      put("Hoehe der Zeichen in mm :");
+      get(hx);
+      put("Breite der Zeichen in mm:");
+      get(bx);
+      draw(beschr,btext,0.0,hx,bx);
+      drei zeilen ab eingpos loeschen;
+      cursor(1,eingpos)
+    UNTIL no("Weitere Beschriftungen") PER;
+    to pic(funktionen,2);
+    write picture(funktionen,beschr).
+
+  farbe holen:
+    drei zeilen ab eingpos loeschen;
+    cursor(1,eingpos);
+    put("Farbe der Beschriftungen: ");
+    TEXT VAR ff;
+    put(farbstr);
+    inchar (ff,farbchars);
+    out(ff);
+    pen(beschr,pos (farbchars,ff)).
+
+  namen holen:
+    cursor(1,eingpos);
+    put("Wie heisst die Zeichnung:");
+    out(prefix);
+    editget(postfix);
+    picfilename := prefix + postfix;
+    IF (postfix SUB 1) = "?"
+      THEN picfilename := one(all LIKE (prefix + "*"));
+           auswahlbild;
+           bild
+    FI;
+    IF NOT exists(picfilename)
+      THEN fehlersetzen("Zeichnung gibt es nicht");
+           LEAVE zeichnung beschriften
+    FI
+
+END PROC zeichnung beschriften;
+
+PROC graph zeigen:
+  REAL VAR xx max,xx min,yy max,yy min;
+
+  cursor (1,eingpos);
+  put ("Wie heisst die Zeichnung :");
+  out(prefix);
+  editget(postfix);
+  picfilename := prefix+postfix;
+  IF (postfix SUB 1) = "?"
+    THEN picfilename := one(all LIKE (prefix+"*"));
+         postfix := subtext(picfilename,length(prefix)+1);
+         auswahlbild;
+         bild
+  ELIF NOT exists (picfilename)
+    THEN fehlersetzen ("Zeichnung gibt es nicht");
+         LEAVE graph zeigen
+  FI;
+  drei zeilen ab eingpos loeschen;
+  PICFILE VAR funktionen :: picture file (picfilename);
+  PICTURE VAR rahmen :: nilpicture;
+  hole ausschnitt;
+  hole headline;
+  erzeuge rahmen;
+  gib bild aus.
+
+  gib bild aus:
+    REAL VAR x cm,y cm; INT VAR i,j;
+    drawing area (x cm,y cm,i,j);
+    viewport (funktionen, 0.0, x cm/y cm, 0.0, 1.0);
+    erweitere bereich;  (* Rundungsfehler beim clippen vermeiden !!! *)
+    window (funktionen, xx min, xx max, yy min, yy max);
+    plot (picfilename);
+    auswahlbild.
+
+  erweitere bereich:
+    xx max := xx max + (xx max - xx min) / real(i).
+
+ erzeuge rahmen:
+   to pic (funktionen,1);
+   waehle achsenart;
+   IF achsenart = "r"
+     THEN rahmen := frame (xx min,xx max,yy min,yy max)
+     ELSE rahmen := axis  (xx min,xx max,yy min,yy max)
+   FI;
+   rahmen CAT beschriftung (xx min,xx max,yy min,yy max,headline,
+                            achsenart = "r");
+   cursor (1,eingpos);
+   put ("Farbe des");
+   IF achsenart = "k"
+     THEN put("Koordinatensystems :")
+     ELSE put("Rahmens :")
+   FI;
+   pen (rahmen,farbe);
+   drei zeilen ab eingpos loeschen;
+   write picture (funktionen,rahmen).
+
+  farbe :
+    TEXT VAR ff;
+    put(farbstr);
+    inchar (ff,farbchars);
+    out(ff);
+    pos (farbchars,ff).
+
+  waehle achsenart:
+    TEXT VAR achsenart :: "r";
+    IF koord moeglich
+      THEN frage nach achsenart
+    FI.
+
+  frage nach achsenart:
+    cursor (1,eingpos);
+    put("<k>oordinatensystem oder <r>ahmen zeichnen ?");
+    inchar (achsenart,"kr");
+    putline(achsenart);
+    drei zeilen ab eingpos loeschen.
+
+  koord moeglich:
+    NOT (xmin >= 0.0 OR xx max <= 0.0 OR yy min >= 0.0 OR yy max <= 0.0).
+
+  hole ausschnitt:
+    PICTURE VAR format;
+    to pic (funktionen,3);
+    read picture (funktionen,format);
+    extrema (format, xx min, xx max, yy min, yy max);
+    cursor (1,eingpos);
+    put format (eingpos, xx min, xx max, yy min, yy max);
+    pause;
+    drei zeilen ab eingpos loeschen;
+    cursor (1,eingpos);
+    IF yes ("Wollen Sie den Ausschnitt veraendern")
+      THEN interactive change of format (xx min,xx max,yy min,yy max)
+    FI;
+    drei zeilen ab eingpos loeschen.
+
+  hole headline:
+    cursor (1,eingpos);
+    TEXT VAR headline :: rohterm;
+    put ("Ueberschrift :");
+    editget (headline);
+    drei zeilen ab eingpos loeschen
+END PROC graph zeigen;
+
+PICTURE PROC frame (REAL CONST xx min,xx max,yy min,yy max):
+
+   PICTURE VAR rahmen :: nilpicture;
+   zeichne achsen;
+   zeichne restrahmen;
+   rahmen.
+
+  zeichne restrahmen:
+   move (rahmen,xx min,yy max);
+   draw (rahmen,xx max,yy max);
+   draw (rahmen,xx max,yy min).
+
+  zeichne achsen:
+    rahmen := axis (xx min,xx max,yy min,(yy max - yy min) / 90.0,0,0);
+    rahmen CAT axis (yy min,yy max,xx min,(xx max - xx min) / 90.0,1,0)
+
+END PROC frame;
+
+PICTURE PROC axis (REAL VAR xx min,xx max,yy min,yy max):
+  PICTURE VAR rahmen :: nilpicture;
+  rahmen := axis (xx min,xx max,0.0,(yy max - yy min) / 180.0,0,1);
+  rahmen CAT axis (yy min,yy max,0.0,(xx max - xx min) / 180.0,1,1);
+  rahmen
+END PROC axis;
+
+PICTURE PROC axis (REAL CONST min, max, pos,strich,
+                   INT CONST  dir,mode):
+  PICTURE VAR achse ::  nilpicture;
+  REAL VAR step,
+           feinstep,
+           wert;
+  INT VAR type;
+  berechnung (min,max,step,type);
+  feinstep := step / real(zwischenstriche);
+  IF min MOD feinstep <> 0.0
+    THEN wert := runde auf (min,feinstep);
+    ELSE wert := min
+  FI;
+  INT VAR zaehler :: int( wert MOD step / feinstep + 0.5);
+  WHILE wert <= max REP
+    IF wert = 0.0
+      THEN ziehe nullstrich
+    ELIF zaehler MOD zwischenstriche = 0
+      THEN ziehe normstrich
+      ELSE ziehe feinstrich
+    FI;
+    wert INCR feinstep;
+    zaehler INCR 1
+  PER;
+  zeichne achse;
+  achse.
+
+  zwischenstriche:
+    IF type = 2
+      THEN 4
+      ELSE 5
+    FI.
+
+  ziehe nullstrich:
+    REAL VAR p0 :: pos + real (mode) * strich * 3.0,
+             p1 :: pos - strich * 3.0;
+    ziehe linie.
+
+  ziehe normstrich:
+    p0 := pos + real (mode) * strich * 2.0;
+    p1 := pos - strich * 2.0;
+    ziehe linie.
+
+  ziehe feinstrich:
+    p0 := pos + real (mode) * strich;
+    p1 := pos - strich;
+    ziehe linie.
+
+  zeichne achse:
+    IF dir = 0
+      THEN move (achse,min,pos);
+           draw (achse,max,pos)
+      ELSE move (achse,pos,min);
+           draw (achse,pos,max)
+    FI.
+
+  ziehe linie:
+    IF dir = 0
+      THEN move (achse,wert,p0);
+           draw (achse,wert,p1)
+      ELSE move (achse,p0,wert);
+           draw (achse,p1,wert)
+    FI
+END PROC axis;
+
+PICTURE PROC beschriftung (REAL VAR xx min,xx max,yy min,yy max,
+                           TEXT CONST ueberschrift,
+                           BOOL CONST mode):
+ PICTURE VAR rahmen :: nilpicture;
+ beschrifte;
+ rahmen.
+
+ beschrifte :
+    REAL VAR x cm,y cm;
+    INT VAR dummy;
+    drawing area (x cm,y cm,dummy,dummy);
+    erweitere;
+    zeichne x achse;
+    zeichne y achse;
+    zeichne ueberschrift;
+    xx max := xn max;
+    xx min := xn min;
+    yy max := yn max;
+    yy min := yn min.
+
+  erweitere:
+    REAL VAR hoehe  :: din a4 hoehe  / 23.5 * y cm,   { der Zeichen }
+             breite :: din a4 breite / 30.5 * x cm;
+    INT CONST anzahl y stellen :: max (stellen (yy min),stellen (yy max)),
+              anzahl x stellen :: max (stellen (xx min),stellen (xx max));
+    REAL VAR xn min :: xx min,
+             xn max :: xx max,
+             yn min :: yy min;
+    IF mode                                      { rahmen wg clipping }
+      THEN xn min DECR (xx max - xx min) / 30.0;
+           yn min DECR (yy max - yy min) / 30.0
+    FI;
+    REAL VAR xx dif :: xx max - xn min,
+             yy dif :: yy max - yn min,
+             yn dif :: y cm / (y cm - 2.0 * hoehe / 10.0 - 0.4) * yy dif,
+             xn dif :: x cm / (x cm - x erweiterung) * xx dif,
+             y 1 mm :: yn dif / y cm / 10.0,
+             r hoch :: hoehe / y cm / 10.0 * yn dif,
+             r breit:: breite / x cm / 10.0 * xn dif,
+             yn max :: yy max + r hoch + 3.0 * y 1 mm;
+    yn min := yn min - r hoch - 2.0 * y 1 mm;
+    IF mode
+      THEN xn min := xn min - real(anzahl y stellen) * r breit
+    FI.
+
+    x erweiterung:
+      IF mode
+        THEN real(anzahl y stellen) * breite / 10.0
+        ELSE 0.0
+      FI.
+
+    zeichne x achse:
+      TEXT VAR zahl :: text (xx min, anzahl x stellen, nachkomma);
+      ersetze zahl;
+      move (rahmen, max(xn min, xx min - real(length(zahl)) * r breit / 2.0),
+                    yn min);
+      draw (rahmen, zahl, 0.0, breite, hoehe);
+      zahl := text (xx max, anzahl x stellen, nachkomma);
+      ersetze zahl;
+      move (rahmen, xx max - real(length(zahl)) * r breit, yn min);
+      draw (rahmen, zahl, 0.0, breite, hoehe).
+
+    zeichne y achse:
+      zahl := text (yy min, anzahl y stellen, nachkomma);
+      ersetze zahl;
+      move (rahmen, max (xn min, xx min - real(length(zahl)) * r breit -
+                         (xx max - xx min) / 30.0),yy min - r hoch / 2.0);
+      draw (rahmen, zahl, 0.0, breite, hoehe);
+      zahl := text (yy max,anzahl y stellen,nachkomma);
+      ersetze zahl;
+      move (rahmen, max (xn min, xx min - real(length(zahl)) * r breit -
+                          (xx max - xx min) / 30.0),yy max - r hoch / 2.0);
+      draw (rahmen, zahl, 0.0, breite, hoehe).
+
+    zeichne ueberschrift:
+      move (rahmen, (xx max + xx min - real(length(ueberschrift)) * r breit)
+                    / 2.0, yy max + y 1 mm);
+      draw (rahmen, ueberschrift, 0.0, breite, hoehe).
+
+    ersetze zahl:
+      change all (zahl, ".", ",")
+
+END PROC beschriftung;
+
+INT PROC stellen (REAL CONST r):
+  IF r = 0.0
+    THEN nachkomma + 2
+    ELSE nachkomma + 3 + max (0, int ( round(log10 (abs(r)),nachkomma)))
+  FI
+END PROC stellen
+
+END PACKET funktionen;
+
+PACKET fkt manager DEFINES fkt manager:
+ 
+LET continue code = 100, 
+    ack           = 0,
+    nack          = 1; 
+ 
+DATASPACE VAR dummy space;
+INT VAR order;
+TASK VAR order task;
+
+PROC fkt manager:
+   set autonom;
+   disable stop;
+   break (quiet);
+   REP
+      forget (dummy space);
+      wait (dummy space, order, order task);
+      IF order >= continue code AND order task = supervisor
+         THEN call (supervisor, order, dummy space, order);
+              IF order = ack
+                 THEN fkt online
+              FI;
+              set autonom;
+              command dialogue (FALSE);
+              forget (ALL myself)
+         ELSE send (order task, nack, dummy space)
+      FI
+   PER.
+
+   fkt online:
+      command dialogue (TRUE);
+      fktplot;
+      IF online
+         THEN eumel must advertise;
+              break (quiet)
+      FI
+END PROC fktmanager
+
+END PACKET fktmanager

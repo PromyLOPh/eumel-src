@@ -1,0 +1,2021 @@
+*************************************************************************** 
+***                                                                     *** 
+***                      D o k u m e n t a t i o n                      *** 
+***                          zum EUMEL-Debugger                         *** 
+***                                                                     *** 
+***                      Autor: Michael Staubermann                     *** 
+***                      Stand der Dokumentation: 03.12.86              *** 
+***                      Stand des Debuggers:     01.12.86              *** 
+***                                                                     *** 
+*************************************************************************** 
+ 
+1.     Anwendung des Debuggers 
+1.1    Code Disassembler (Decoder) 
+1.1.1  DatenreprÑsentation 
+1.1.2  Datenadressen 
+1.1.3  Codeadressen 
+ 
+1.2    Ablaufverfolgung (Tracer) 
+ 
+2.     Die EUMEL0-Instruktionen 
+2.1    ErlÑuterung der Instruktionen (Thematisch sortiert) 
+2.2    Alphabetische Liste der Instruktionen 
+ 
+3.     Beschreibung der Pakete 
+3.1    PACKET address 
+3.2    PACKET table routines 
+3.3    PACKET eumel decoder 
+3.4    PACKET tracer 
+ 
+#page# 
+#ub#1.  Anwendung des Debuggers#ue# 
+ 
+Der EUMEL-Debugger ist fÅr die Software-Entwickler und nicht fÅr die
+Anwender dieser Software gedacht. Insbesondere bei der Entwicklung
+systemnaher Software, wie z.B. Compiler, ist der Debugger hilfreich. 
+ 
+(ELAN-)Programme werden wie bisher compiliert (z.B. insertiert), ohne da·
+der Quelltext des Programmes vorher modifiziert werden mÅ·te. Um den
+Sourcetext wÑhrend der Ablaufverfolgung (Trace) beobachten zu kînnen,
+mÅ·en die Programme mit 'check on' Åbersetzt werden. 
+ 
+Die sinnvolle Anwendung des Debuggers setzt allerdings Kenntnis der
+EUMEL0-Instruktionen voraus, die im Kapitel 2 erlÑutert werden (Der Debugger
+setzt die Codierung BIT-A fÅr diese Instruktionen voraus, d.h. er lÑuft
+zumindest in der interpretativen EUMEL0-Version.).
+ 
+ 
+#ub#1.1  Code Disassembler (Decoder)#ue# 
+ 
+Der Decoder konvertiert die vom Compiler erzeugte Bitcodierung (16 Bit) in
+Mnemonics (Textdarstellung der Instruktionen), die in eine FILE geschrieben,
+bzw. optional auf dem Bildschirm ausgegeben werden kînnen. Die Bitcodierung
+kann zusÑtzlich ausgegeben werden. 
+Der Decoder wird mit 'decode' aufgerufen. WÑhrend der Dekodierung stehen
+folgende Tastenfunktionen zur VerfÅgung: 
+ 
+Taste Funktion 
+----------------------------------------------------------------------- 
+ ESC  Abbruch der Dekodierung. 
+  e   Echo. Schaltet die parallel Bildschirmausgabe ein/aus. 
+  l   Zeilennummern statt Hexadezimaladressen mitprotokollieren. 
+  a   Hexadezimaladressen statt Zeilennummern mitprotokollieren. 
+  f   Zeigt den Namen und die aktuelle Zeilennummer der Protokollfile. 
+  d   getcommand ; docommand 
+  s   storage info 
+  m   Zeigt die aktuelle Modulnummer an (sinnvoll falls kein Echo) 
+  Q,W Zeilennummern/Hexadressen mitprotokollieren (falls kein Echo) 
+  S   Keine Zeilennummern/Hexadressen ausgeben (lÑuft auch im Hintergrund) 
+ 
+ 
+#ub#1.1.1  DatenreprÑsentation#ue# 
+ 
+INT-Zahlen werden hexadezimal (xxxxH, xxH) oder dezimal dargestellt, 
+TEXTe in AnfÅhrungszeichen ("..."), 
+REALs im 20-Stellen scientific-Format, 
+TASK-Objekte durch XX-YYYY/"name" mit XX als Taskindex und YYYY als Version,
+   wenn die Stationsnummer nicht 0 ist, wird sie vor XX als SS- dargestellt. 
+DATASPACE-Objekte werden durch XX-YY reprÑsentiert (XX ist der eigene
+   Taskindex, YY ist die Datenraumnummer), 
+BOOL-Objekte durch TRUE oder FALSE. 
+Module werden durch ihre Modulnummer, optional auch durch ihre
+   Startadresse, und falls mîglich durch ihren Namen reprÑsentiert. Die
+   Parameterliste wird in den FÑllen, wo das Modul in der Permanenttabelle
+   vermerkt ist auch angegeben. 
+Nicht weiter dereferenzierbare Adressen werden durch ein vorgestelltes '@'
+gekennzeichnet (z.B. BOUND-Objekte). 
+In den FÑllen, wo es mehrere sinnvolle Darstellungen gibt, werden diese
+durch ein '|' getrennt. 
+ 
+ 
+#ub#1.1.2  Datenadressen#ue# 
+ 
+ZusÑtzlich zu den globalen Daten (statische Variablen und Denoter) kann auch
+deren Adresse ausgegeben werden. Die Daten werden in einer, ihrem Typ
+entsprechenden, Darstellung ausgegeben. Komplexe oder zusammengesetzte
+Datentypen werden auf ReprÑsentationen elementarer Datentypen (INT, REAL,
+BOOL, TEXT, DATASPACE, TASK) abgebildet. 
+ 
+Prozeduren, Operatoren und Paketinitialisierungen von Main-Packets werden
+zusammenfassend als Module bezeichnet. Einem Modul gehîrt ein eigener
+Stackbereich fÅr lokale Daten, Parameter und RÅcksprungadresse etc. In
+diesem Bereich stehen entweder die Datenobjekte selbst (z.B. lokale
+Variablen) oder lokale Referenzadressen auf beliebige Objekte (lokale,
+globale Daten, FremddatenrÑume und sogar Module). 
+Da die effektiven lokalen Adressen erst wÑhrend der Runtime bekannt sind,
+findet man im Decoder-Output nur die Adressoffsets relativ zum Stackanfang
+des Moduls. 
+ 
+Datenadressen werden in spitzen Klammern angegeben, Branch-Codeaddressen ohne
+Klammern. Alle Adressen sind Wortaddressen. Der Adresstyp wird durch einen
+Buchstaben nach '<' angezeigt: 
+'G' kennzeichnet eine globale Adresse (Denoter oder statische Variable). Die
+Representation der Daten kann immer angegeben werden (also nicht nur zur
+Runtime). 
+'L' kennzeichnet einen Adressoffset fÅr ein lokales Datenobjekt auf dem
+Stack. Da die lokale Basis, d.h. die Anfangsadresse der Daten des aktuellen
+Moduls, erst bei Runtime feststehen, kann hier weder die effektive
+Datenadresse, noch der Inhalt des Datenobjekts angegeben werden. 
+'LR' kennzeichnet eine lokale Referenzadresse, d.h. auf dem Stack steht
+eine Adresse (32 Bit), die ein Datenobjekt adressiert. éhnlich wie bei 'L'
+kann auch bei 'LR' erst zur Runtime eine Representation des adressierten
+Datenobjekts angegeben werden. Der Wert nach 'LR' bezeichnet den Offset, der
+zur lokalen Basis addiert werden mu·, um die Adresse der Referenzadresse zu
+erhalten. Die niederwertigsten 16 Bit (das erste der beiden Wîrter) kînnen
+128KB adressieren. Im hîherwertigsten Byte des zweiten Wortes steht die
+Nummer des Datenraumes der eigenen Task, der das adressierte Datenobjekt
+enthÑlt (0 entspricht dem Standarddatenraum). Das niederwertigste Byte des
+zweiten Wortes enthÑlt die Segmentnummer (128KB-Segmente) mit dem
+Wertebereich 0 bis 7 (maximal also 1MB/Datenraum). Im Standarddatenraum
+(Datenraumnummer 4) enthalten die Segmente folgene Tabellen:
+ 
+Segment Tabelle 
+------------------------------------------------- 
+   0    Paketdaten (high 120KB) und Moduladresstabelle
+   1    Stack (low 64K), Heap (high 64K) 
+   2    Codesegment
+   3    Codesegment (120KB) u.a. fÅr eigene Module 
+   4    Compilertabellen temporÑr 
+   5    Compilertabellen permanent 
+   6    nilsegment fÅr Compiler (FF's) 
+   7    Compiler: Intermediate String 
+ 
+ReprÑsentationen von Datenobjekten, die in FremddatenrÑumen residieren
+(BOUND-Objekte) kînnen zur Zeit noch nicht ausgegeben werden, statt dessen
+wird die Datenraumnummer und die Wortadresse innerhalb dieses Datenraums
+ausgegeben. 
+ 
+ 
+#ub#1.1.3  Codeadressen#ue# 
+ 
+Module werden in der Regel (Ausnahme: Parameterprozeduren) Åber ihre
+Modulnummer angesprochen, aus der dann die Adresse des Moduls berechnet
+werden kann (mithilfe der Moduladresstabelle). Die Adressen der
+Parameterprozeduren sind vom Typ 'LR' (Local-Reference), kommen nur als
+Parameter auf dem Stack vor und beeinhalten Codesegment und Codeadresse. 
+ 
+Sprungadressen (von Branch-Befehlen) adressieren immer nur das eigene
+Segment und davon auch nur eine Adresse innerhalb eines 8 KB gro·en
+Bereichs. 
+ 
+ 
+#ub#1.2  Ablaufverfolgung (Tracer)#ue# 
+ 
+Um den eigenen (!) Code im Einzelschrittbetrieb abzuarbeiten, wird der
+Tracer benutzt. Au·er den Inhalten der globalen Daten kann man sich die
+Inhalte der Stackobjekte (lokale Variablen) und der aktuellen Parameter
+eines Prozeduraufrufs (auch von Parameterprozeduren) ansehen. Es kînnen
+keine Daten verÑndert werden! 
+Man hat die Mîglichkeit 
+- die Resultate der letzten ausgefÅhrten Instruktion oder 
+- die aktuellen Parameter fÅr den nÑchsten Instruktionsaufruf 
+zu beobachten. 
+Der Inhalt des Stacks kann sequentiell durchgesehen werden, Error- und
+Disablestop-Zustand kînnen gelîscht werden. 
+Der Einzelschrittablauf kann protokolliert und die entsprechende
+Sourceline parallel zum ausgefÅhrten Code beobachtet werden. 
+Der Einzelschrittbetrieb kann, Åber Teile des Codes hinweg, ausgeschaltet
+werden, z.B. fÅr hÑufig durchlaufene Schleifen.
+FÅr die ReprÑsentation der Daten und deren Adressen gilt das unter 1.1
+gesagte. 
+Der Tracer wird mit 'trace' aufgerufen. WÑhrend der AktivitÑt des Tracers
+stehen folgende Funktionen zur VerfÅgung (Nur der erste Buchstabe wird
+getippt): 
+ 
+AbkÅrzung Funktion 
+-------------------------------------------------------------------------- 
+  Auto    Die Befehle werden im Einzelschrittbetrieb ausgefÅhrt, ohne da·
+          eine Taste gedrÅckt werden mu·. 
+  Bpnt    Der nÑchste Breakpoint wird an eine vom Benutzer festgelegte
+          Codeadrese gesetzt. Damit kînnen Teile des Codes abgearbeitet
+          werden, ohne da· der Einzelschrittmodus aktiv ist. Nach der
+          Eingabe der Adresse wird der Befehl an dieser Adresse angezeigt.
+          BestÑtigt wird die Richtigkeit mit <RETURN> oder 's'. 
+  Clrr    Ein eventuell vorliegender Fehlerzustand wird gelîscht. 
+  Dstp    'disable stop' wird fÅr das untersuchte Modul gesetzt. 
+  Estp    'enable stop' wird fÅr das untersuchte Modul gesetzt. 
+  File    Der Name der kompilierten Quelldatei wird eingestellt. 
+  Go      Der Code wird bis zum Ende abgearbeitet, ohne da· der Tracer
+          aktiviert wird. 
+  Prot    Der Name der Protokollfile wird eingestellt. Die abgearbeiteten
+          Instruktionen werden in dieser File protokolliert. 
+  Rslt    Es wird umgeschaltet, ob die angezeigte Instruktion nach <RETURN>
+          oder 's' abgearbeitet werden soll (Forward-Trace, 'F') oder ob das
+          Ergebnis der letzten ausgefÅhrten Instruktion angezeigt werden soll
+          (Result-Trace, 'R'). Der aktuelle Zustand dieses Switches wird in
+          der ersten Bildschirmzeile durch 'R' oder 'F' gekennzeichnet. 
+          Kurzzeitige Umschaltung, um das Ergebnis der letzten Operation
+          anzusehen, ist auch mîglich (zweimal 'r' tippen). 
+  Step/CR Mit <RETURN> oder 's' wird die nÑchste Instruktion ausgefÅhrt.
+          Dies ist bei Forward-Trace die angezeigte Instruktion. 
+  Term    Bis zur nÑchst 'hîheren' Prozedur der CALL-Sequence, die im
+          'disable stop'-Zustand arbeitet, werden die Module verlassen. In
+          der Regel bedeutet dies ein Programmabbruch. Alle Breakpoints sind
+          anschlie·end zurÅckgesetzt. 
+  -       Der Stackpointer auf den sichtbaren Stack (in der ersten
+          Bildschirmzeile) wird um zwei verringert. Er zeigt auf die nÑchst
+          tiefere Referenzadresse. Der EUMEL-0-Stackpointer wird nicht
+          verÑndert.
+  +       Der Stackpointer auf den sichtbaren Stack wird um zwei erhîht. 
+  <       Bei der Befehlsausgabe werden die Parameteradressen zusÑtzlich
+          ausgegeben (in spitzen Klammern).
+  >       Bei der Befehlsausgabe werden keine Parameteradressen ausgegeben,
+          sondern nur die Darstellungen der Parameter (z.B.
+          Variableninhalte) 
+ 
+#page# 
+#ub#2.  EUMEL0-Instruktionen#ue# 
+ 
+ 
+#ub#2.1  ErlÑuterung der Instruktionen (Thematisch sortiert)#ue# 
+ 
+Nach der HÑufigkeit ihres Vorkommens im Code unterscheidet man 3 Klassen von
+Instruktionen: 30 PrimÑrbefehle, 6 Spezialbefehle und z.Zt. 127
+SekundÑrbefehle. 
+Die PrimÑrbefehle enthalten im ersten Wort den Opcode (5 Bit) und 11 Bit fÅr
+die erste Parameteradresse d.h. den Wertebereich 0..2047. Liegt die
+Parameteradresse au·erhalb dieses Bereichs, dann ersetzt ein
+Umschaltprefix (LONGAddress) die Opcodebits und im lowbyte des
+ersten Wortes wird der Opcode codiert. Die erste Parameteradresse befindet
+sich dann als 16 Bit-Wert im zweiten Wort. 
+Spezialbefehle enthalten im ersten Wort au·er dem Opcode (8 Bit) noch einen
+8 Bit-Immediatewert (Bytekonstante). 
+SekundÑrebefehle enthalten im ersten Wort nur den Opcode (16 Bit), der aus
+einem Umschaltprefix (ESCape, wird im folgenden weggelassen) und im lowbyte
+dem 8 Bit SekÅndaropcode besteht. 
+ 
+Im folgenden werden Datenadressen mit 'd', Immediatewerte mit 'v' (Value),
+Codeadressen mit 'a' und Modulnummern mit 'm' bezeichnet. Die Anzahl dieser
+Buchstaben gibt die LÑnge der benîtigten Opcodebits (DIV 4) an. Ausnahmsweise
+bezeichnet .nn:dd einen 5 Bit Opcode ('nn') und eine 11 Bit Adresse ('dd'). 
+ 
+Der Adresstyp ist in den Bits 14 und 15 codiert: 
+15 14  Typ       Effektive Adresse 
+ 0  0  global    dddd + pbase (pbase wird mit PENTER eingestellt) 
+ 1  0  local     (dddd AND 7FFF) DIV 2 + lbase (lbase wird beim CALL gesetzt) 
+ 1  1  local ref  adr := ((dddd AND 7FFF) DIV 2 + lbase) ; (adr+1, adr)
+ 
+Der Wert eines Wortes an der ersten Parameteradresse wird mit <d1>
+bezeichnet. Ein Datentyp vor der spitzen Klammer gibt seinen Typ an. FÅr die 
+anderen Parameter gilt entsprechendes (<d2>, <d3>, ...). 
+ 
+ 
+#ub#2.1.1  Datentransportbefehle#ue# 
+ 
+MOV    .08:dd dddd           1 Wort (z.B. INT/BOOL) wird von der linken
+                             Adresse zur rechten Adresse transportiert. 
+                             <d2> := <d1> 
+ 
+FMOV   .34:dd dddd           4 Wîrter (z.B. REAL) von linker Adresse zur
+                             rechten Adresse tranportieren (kopiert). 
+                             <d2> := <d1> 
+ 
+TMOV   .4C:dd dddd           Kopiert einen Text von der linken Adresse zur
+                             rechten Adresse. 
+                             TEXT<d2> := TEXT<d1> 
+ 
+MOVi   FC vv dddd            Die Konstante vv (1 Byte) wird als positive
+                             16 Bit-Zahl dem Wort an der Adresse dddd
+                             zugewiesen. 
+                             <d1> := vv 
+ 
+MOVii  7F 23 vvvv dddd       Dem Wort an der Adresse dddd wird die 16-Bit
+                             Konstante vvvv zugewiesen. 
+                             <d1> := vvvv 
+ 
+MOVx   7D vv dddd dddd       Von der linken Adresse zur rechten Adresse
+                             werden vv (max. 255) Wîrter transportiert. 
+                             <d2> := <d1> (vv Wîrter) 
+ 
+MOVxx  7F 21 vvvv dddd dddd  Von der linken Adresse zur rechten Adresse
+                             werden vvvv (max. 65535) Wîrter transportiert. 
+                             <d2> := <d1> (vvvv Wîrter) 
+ 
+ 
+#ub#2.1.2  INT-Operationen#ue# 
+ 
+ARITHS 7F 5B                 Schaltet um auf vorzeichenbehaftete
+                             INT-Arithmetik (Normalfall). 
+                             ARITH := Signed 
+ 
+ARITHU 7F 5C                 Schaltet um auf vorzeichenlose 16Bit-Arithmetik
+                             (Compiler). 
+                             ARITH := Unsigned 
+ 
+CLEAR  .24:dd                Dem Wort an der Adresse dd wird 0 zugewiesen. 
+                             <d1> := 0 
+ 
+INC1   .0C:dd                Der Inhalt des Wortes an der Adresse dddd wird
+                             um eins erhîht. 
+                             <d1> := <d1> + 1 
+ 
+DEC1   .10:dd                Der Inhalt des Wortes an der Adresse dddd wird
+                             um eins verringert. 
+                             <d1> := <d1> - 1 
+ 
+INC    .14:dd dddd           Der Inhalt des Wortes an der ersten Adresse wird
+                             zum Inhalt des Wortes an der zweiten Adresse
+                             addiert. 
+                             <d2> := <d2> + <d1> 
+ 
+DEC    .18:dd dddd           Der Inhalt des Wortes an der ersten Adresse wird
+                             vom Inhalt des Wortes an der zweiten Adresse
+                             subtrahiert. 
+                             <d2> := <d2> - <d1> 
+ 
+ADD    .1C:dd dddd dddd      Der Inhalt der Worte der beiden ersten
+                             Adressen wird addiert und bei der dritten
+                             Adresse abgelegt. 
+                             <d3> := <d1> + <d2> 
+ 
+SUB    .20:dd dddd dddd      Der Inhalt des Wortes an der zweiten Adresse
+                             wird vom Inhalt des Wortes an der ersten Adresse
+                             subtrahiert und das Resultat im Wort an der
+                             dritten Adresse abgelegt. 
+                             <d3> := <d1> - <d2> 
+ 
+MUL    7F 29 dddd dddd dddd  Der Wert der Wîrter an den beiden ersten
+                             Adressen wird vorzeichenbehaftet multipliziert
+                             und im Wort an der dritten Adresse abgelegt.
+                             Ein öberlauf wird im Falle der vorzeichenlosen
+                             Arithmetik ignoriert (<d3> MOD 65536). 
+                             <d3> := <d1> * <d2> 
+ 
+IMULT  7F 28 dddd dddd dddd  Der Wert der Wîrter an den beiden ersten
+                             Adressen wird vorzeichenlos multipliziert und
+                             im Wort an der dritten Adresse abgelegt. 
+                             Falls das Resultat ein Wert grî·er 65535 wÑre,
+                             wird <d3> := FFFFH, sonst 
+                             <d3> := <d1> * <d2> 
+ 
+DIV    7F 2A dddd dddd dddd  Der Wert des Wortes an der ersten Adresse wird
+                             durch den Wert des Wortes an der zweiten
+                             Adresse dividiert und im Wort an der dritten
+                             Adresse abgelegt. Eine Division durch 0 fÅhrt
+                             zum Fehler. 
+                             <d3> := <d1> DIV <d2> 
+ 
+MOD    7F 2B dddd dddd dddd  Der Rest der Division (wie bei DIV) wird im
+                             Wort an der dritten Adresse abgelegt. Falls
+                             <d2> = 0 ist, wird ein Fehler ausgelîst. 
+                             <d3> := <d1> MOD <d2>
+ 
+NEG    7F 27 dddd            Der Wert des Wortes an der Adresse dddd wird
+                             arithmetisch negiert (Vorzeichenwechsel). 
+                             <d1> := -<d1> 
+ 
+AND    7F 7C dddd dddd dddd  Der Wert der beiden Wîrter an den beiden ersten
+                             Adressen wird bitweise UND-verknÅpft und das
+                             Resultat im Wort an der dritten Adresse
+                             abgelegt. 
+                             <d3> := <d1> AND <d2> 
+ 
+OR     7F 7D dddd dddd dddd  Der Wert der beiden Wîrter an den beiden ersten
+                             Adressen wird bitweise ODER-verknÅpft und das
+                             Resultat im Wort an der dritten Adresse
+                             abgelegt. 
+                             <d3> := <d1> OR <d2> 
+ 
+XOR    7F 79 dddd dddd dddd  Der Wert der beiden Wîrter an den beiden ersten
+                             Adressen wird bitweise Exklusiv-ODER-verknÅpft
+                             und das Resultat im Wort an der dritten Adresse
+                             abgelegt. 
+                             <d3> := <d1> XOR <d2> 
+ 
+ROTATE 7F 53 dddd dddd       Der Wert an der ersten Adresse wird um soviele
+                             Bits links oder rechts rotiert, wie es der Wert
+                             des zweiten Parameters angibt (positiv =
+                             links). 
+                             IF <d2> < 0 
+                                THEN <d1> := <d1> ROR <d2> 
+                                ELSE <d1> := <d1> ROL <d2> 
+                             FI 
+  
+ 
+#ub#2.1.3  REAL-Operationen#ue#
+ 
+FADD   .38:dd dddd dddd      Die beiden ersten REAL-Werte werden addiert und
+                             das Resultat an der dritten Adresse abgelegt. 
+                             REAL<d3> := REAL<d1> + REAL<d2> 
+ 
+FSUB   .3C:dd dddd dddd      Der zweite REAL-Wert wird vom ersten
+                             subtrahiert und das Resultat an der dritten
+                             Adresse abgelegt. 
+                             REAL<d3> := REAL<d1> + REAL<d2> 
+ 
+FMUL   .40:dd dddd dddd      Die beiden ersten REAL-Werte werden
+                             multipliziert und das Resultat an der dritten
+                             Adresse abgelegt. 
+                             REAL<d3> := REAL<d1> * REAL<d2> 
+ 
+FDIV   .44:dd dddd dddd      Der erste REAL-Wert wird durch den zweiten
+                             dividiert und das Resultat an der dritten
+                             Adresse abgelegt. 
+                             REAL<d3> := REAL<d1> / REAL<d2> 
+ 
+FNEG   7F 26 dddd            Das Vorzeichen des REAL-Wertes an der Adresse
+                             dddd wird gewechselt. 
+                             REAL<d1> := -REAL<d1> 
+ 
+FSLD   7F 60 dddd dddd dddd  Die Mantisse des REAL-Wertes an der zweiten
+                             Adresse wird um ein Digit (4 Bit BCD) nach
+                             links verschoben, Vorzeichen und Exponent
+                             bleiben unverÑndert. Das vorher hîherwertigste
+                             Digit steht danach im Wort an der dritten
+                             Adresse. Das neue niederwertigste Digit wurde
+                             aus dem Wort der ersten Adresse entnommen. 
+                             INT<d3> := digit1<d2> ; 
+                             REAL<d2> := REAL<d2> SLD 1 ; 
+                             digit13<d2> := INT<ˇ1> 
+ 
+GEXP   7F 61 dddd dddd       Der Exponent des REAL-Wertes an der ersten
+                             Adresse wird in das Wort an der zweiten Adresse
+                             gebracht. 
+                             INT<d2> := exp<d1> 
+ 
+SEXP   7F 62 dddd dddd       Der Wert des Wortes an der ersten Adresse wird
+                             in den Exponenten des REAL-Wertes an der zweiten
+                             Adresse gebracht. 
+                             exp<d2> := INT<d1> 
+ 
+FLOOR  7F 63 dddd dddd       Der REAL-Wert an der ersten Adresse wird ohne
+                             Dezimalstellen an der zweiten Adresse abgelegt. 
+                             <d2> := floor<d1> 
+   
+ 
+#ub#2.1.4  TEXT-Operationen#ue# 
+ 
+ITSUB  7F 2D dddd dddd dddd  Aus dem TEXT an der ersten Adresse wird das
+                             Wort, dessen Position durch das Wort an der
+                             zweiten Adresse beschrieben wird, im Wort an
+                             der dritten Adresse abgelegt. 
+                             INT<d3> := TEXT<d1>[INT<d2>,2] (Notation:
+                             t[n,s] bezeichnet das n. Element mit einer
+                             Grî·e von s Bytes, der Bytekette t an der
+                             Byteposition n*s+1) 
+ 
+ITRPL  7F 2E dddd dddd dddd  In dem TEXT an der ersten Adresse wird das
+                             Wort, dessen Position durch das Wort an der
+                             zweiten Adresse beschrieben wird, durch das Wort
+                             an der dritten Adresse ersetzt. 
+                             TEXT<d1>[INT<d2>,2] := INT<d3> 
+ 
+DECOD  7F 2F dddd dddd       Der dezimale ASCII-Wert des Zeichens im TEXT an
+                             der ersten Adresse wird im Wort an der zweiten
+                             Adresse abgelegt. 
+                             INT<d2> := code (TEXT<d1>) 
+ 
+ENCOD  7F 30 dddd dddd       Dem der TEXT an der zweiten Adresse wird ein
+                             Zeichen zugewiesen, das dem ASCII-Wert im Wort
+                             an der ersten Adresse entspricht. 
+                             TEXT<d2> := code (INT<d1>) 
+ 
+SUBT1  7F 31 dddd dddd dddd  Dem TEXT an der dritten Adresse wird das
+                             Zeichen des TEXTes an der ersten Adresse
+                             zugewiesen, dessen Position durch das Wort an
+                             der zweiten Adresse bestimmt ist. 
+                             TEXT<d3> := TEXT<d1>[INT<d2>, 1] 
+ 
+SUBTFT 7F 32 dddd dddd dddd dddd  Dem TEXT an der vierten Adresse wird ein
+                             Teiltext des TEXTes an der ersten Adresse
+                             zugewiesen, dessen Startposition im Wort an der
+                             zweiten Adresse steht und dessen Endposition im
+                             Wort an der dritten Adresse steht. 
+                             TEXT<d3> := subtext (TEXT<d1>, INT<d2>, INT<d3>) 
+ 
+SUBTF  7F 33 dddd dddd dddd  Dem TEXT an der dritten Adresse wird ein
+                             Teiltext des TEXTes an der ersten Adresse
+                             zugewiesen, der an der durch das Wort an der
+                             zweiten Adresse beschriebenen Position beginnt
+                             und bis zum Ende des Sourcetextes geht. 
+                             TEXT<d3> := subtext (TEXT<d1>, INT<d2>, length
+                             (TEXT<d1>)) 
+ 
+REPLAC 7F 34 dddd dddd dddd  Der TEXT an der ersten Adresse wird ab der
+                             Position, die durch das Wort an der zweiten
+                             Position bestimmt wird, durch den TEXT an der
+                             dritten Adresse ersetzt. 
+                             replace (TEXT<d1>, INT<d2>, TEXT<d3>) 
+ 
+CAT    7F 35 dddd dddd       Der TEXT an der zweiten Adresse wird an das
+                             Ende des TEXTes an der ersten Adresse angefÅgt. 
+                             TEXT<d1> := TEXT<d1> + TEXT<d2> 
+ 
+TLEN   7F 36 dddd dddd       Die LÑnge des TEXTes an der ersten Adresse wird
+                             im Wort an der zweiten Adresse abgelegt. 
+                             INT<d2> := length (TEXT<d1>) 
+ 
+POS    7F 37 dddd dddd dddd  Die Position des ersten Auftretens des TEXTes
+                             an der zweiten Adresse, innerhalb des TEXTes an
+                             der ersten Adresse, wird im Wort an der dritten
+                             Adresse abgelegt. 
+                             INT<d3> := pos (TEXT<d1>, TEXT<d2>, 1, length
+                             (TEXT<d1>))
+ 
+POSF   7F 38 dddd dddd dddd dddd 
+                             Die Position des ersten Auftretens des TEXTes
+                             an der zweiten Adresse, innerhalb des TEXTes an
+                             der ersten Adresse, ab der Position die durch
+                             den Inhalt des Wortes an der dritten Adresse
+                             bestimmt ist, wird im Wort an der vierten
+                             Adresse abgelegt. 
+                             INT<d4> := pos (TEXT<d1>, TEXT<d2>, INT<d3>,
+                             length (TEXT<d1>)) 
+ 
+POSFT  7F 39 dddd dddd dddd dddd dddd 
+                             Die Position des ersten Auftretens des TEXTes
+                             an der zweiten Adresse, innerhalb des TEXTes an
+                             der ersten Adresse, ab der Position die durch
+                             den Inhalt des Wortes an der dritten Adresse
+                             bestimmt ist, bis zur Position die durch den
+                             Inhalt des Wortes an der vierten Adresse
+                             bestimmt ist, wird im Wort an der fÅnften
+                             Adresse abgelegt. 
+                             INT<d5> := pos (TEXT<d1>, TEXT<d2>, INT<d3>,
+                             INT<d4>) 
+ 
+STRANL 7F 3A dddd dddd dddd dddd dddd dddd dddd 
+                             (ROW 256 INT CONST, INT VAR, INT CONST,
+                             TEXT CONST, INT VAR, INT CONST, INT VAR): 
+                             Vereinfachte funktionsweise: 
+                             extension := FALSE ;
+                             FOR INT<d5> FROM INT<d5> UPTO min (INT<d6>,
+                                 length (TEXT<d4>)) WHILE INT<d2> < INT<d3> 
+                             REP 
+                               IF extension 
+                                  THEN extension := FALSE
+                                  ELSE INT<d7>:=ROW<d1>[TEXT<d4>[INT<d5>,1]];
+                                       IF INT<d7> < 0 
+                                          THEN extension := TRUE ; 
+                                               INT<d2> INCR (INT<d7>-8000H)
+                                          ELSE INT<d2> INCR INT<d7> 
+                                       FI 
+                               FI 
+                             PER
+ 
+POSIF  7F 3B dddd dddd dddd dddd dddd 
+                             Die Position des ersten Auftretens des, durch
+                             die beiden Zeichen des TEXTes an der zweiten
+                             und dritten Adresse begrenzten ASCII-Bereichs
+                             (lowchar, highchar), Zeichens innerhalb des
+                             TEXTes an der ersten Adresse, wird ab der
+                             Position, die durch das Wort an der vierten
+                             Adresse beschrieben wird, im Wort an der
+                             fÅnften Adresse abgelegt. 
+                             INT<d5> := pos (TEXT<d1>, TEXT<d2>, TEXT<d3>,
+                             INT<d4>). 
+ 
+GARB   7F 5F                 Es wird eine Garbagecollection fÅr den
+                             taskeigenen TEXT-Heap durchgefÅhrt. 
+ 
+HPSIZE 7F 5E dddd            Die aktuelle Grî·e des TEXT-Heaps wird in dem
+                             Wort an der Adresse dddd abgelegt. 
+                             <d1> := heapsize 
+ 
+RTSUB  7F 64 dddd dddd dddd  Aus dem TEXT an der ersten Adresse wird der
+                             REAL-Wert, dessen Position durch das Wort an
+                             der zweiten Adresse beschrieben wird, an der
+                             dritten Adresse abgelegt. 
+                             REAL<d3> := TEXT<d1>[INT<d2>, 8] 
+ 
+RTRPL  7F 65 dddd dddd dddd  In dem TEXT an der ersten Adresse wird der
+                             REAL-Wert, dessen Position durch das Wort an der
+                             zweiten Adresse beschrieben wird, durch den
+                             REAL-Wert an der dritten Adresse ersetzt. 
+                             TEXT<d1>[INT<d2>, 8] := REAL<d3> 
+ 
+ 
+#ub#2.1.5  DATASPACE-Operationen#ue# 
+ 
+DSACC  .58:dd dddd           Die dsid an der ersten Adresse wird auf
+                             GÅltigkeit geprÅft und an der zweiten Adresse
+                             eine Referenzaddresse abgelegt, die auf das
+                             4. Wort des Datenraumes (den Anfang des
+                             Datenbereichs) zeigt. 
+                             IF valid ds (DS<d1>) 
+                                THEN REF<d2> := DATASPACE<d1>.ds base 
+                                ELSE "falscher DATASPACE-Zugriff" 
+                             FI 
+ 
+ALIAS  7F 22 vvvv dddd dddd  Dem BOUND-Objekt an der dritten Adresse wird
+                             der Datenraum an der zweiten Adresse zugewiesen
+                             (INT-Move). Zuvor wird geprÅft, ob dies der
+                             erste Zugriff auf den Datenraum ist. Falls ja,
+                             wird der Datenraumtyp auf 0 gesetzt. Falls ein
+                             Heap aufgebaut werden mu· und noch keiner
+                             angelegt wurde, wird die Anfangsadresse des
+                             Heaps auf den Wert vvvv+4 innerhalb des
+                             Datenraumes gesetzt. 
+                             IF DATASPACE<d1>.typ < 0 
+                                THEN DATASPACE<d1>.typ := 0 
+                             FI ; 
+                             IF DATASPACE<d1>.heapanfang < 0 
+                                THEN DATASPACE<d1>.heapanfang := vvvv+4 
+                             FI ;
+                             INT<d2> := INT<d1> 
+ 
+NILDS  7F 45 dddd            Dem Datenraum an der Adresse dddd wird der
+                             'nilspace' zugewiesen. 
+                             INT<d1> := 0 
+ 
+DSCOPY 7F 46 dddd dddd       Dem Datenraum an der ersten Adresse wird eine
+                             Kopie des Datenraumes an der zweiten Adresse
+                             zugewiesen (neue dsid). Es wird ein neuer
+                             Eintrag in die Datenraumverwaltung aufgenommen. 
+                             DATASPACE<d1> := DATASPACE<d2> 
+ 
+DSFORG 7F 47 dddd            Der Datenraum, dessen dsid an der Adresse dddd
+                             steht, wird aus der Datenraumverwaltung
+                             gelîscht. 
+                             forget (DATASPACE<d1>) 
+ 
+DSWTYP 7F 48 dddd dddd       Der Typ des Datenraums, dessen dsid an der
+                             ersten Adresse steht, wird auf den Wert des
+                             Wortes an der zweiten Adresse gesetzt. 
+                             DATASPACE<d1>.typ := INT<d2> ; 
+                             IF DATASPACE<d1>.heapanfang < 0 
+                                THEN DATASPACE<d1>.heapanfang := vvvv+4 
+                             FI 
+ 
+DSRTYP 7F 49 dddd dddd       Der Typ des Datenraums, dessen dsid an der
+                             ersten Adresse steht, wird in dem Wort an der
+                             zweiten Adresse abgelegt. 
+                             INT<d2> := DATASPACE<d1>.typ ;
+                             IF DATASPACE<d1>.heapanfang < 0 
+                                THEN DATASPACE<d1>.heapanfang := vvvv+4 
+                             FI 
+ 
+DSHEAP 7F 4A dddd dddd       Die Endaddresse Textheaps des Datenraums, dessen
+                             dsid an der ersten Adresse steht, in 1kB
+                             Einehiten, wird in dem Wort an der zweiten
+                             Adresse abgelegt. Falls dieser Wert = 1023 oder 
+                             < 96 ist, ist kein Heap vorhanden, anderenfalls
+                             ist seine Grî·e (in KB): <d2>-96. 
+                             INT<d2> := DATASPACE<d1>.heapende DIV 1024 
+ 
+NXTDSP 7F 4B dddd dddd dddd  FÅr den Datenraum an der ersten Adresse wird
+                             die Nummer der Seite, die auf die Nummer der
+                             Seite folgt, die in dem Wort an der zweiten Adresse
+                             steht an der zweiten Adresse abgelegt. Falls
+                             keine Seite mehr folt, wird -1 geliefert. 
+                             INT<d2> := nextdspage (DATASPACE<d1>, INT<d2>) 
+ 
+DSPAGS 7F 4C dddd dddd dddd  FÅr den Datenraum mit der Nummer, die im Wort
+                             an der ersten Adresse steht, und der Task deren
+                             Nummer im Wort an der zweiten Adresse steht,
+                             wird die Anzahl der belegten Seiten im Wort an
+                             der dritten Adresse abgelegt. 
+                             INT<d3> := ds pages (INT<d2>, INT<d1>) 
+ 
+SEND   7F 71 dddd dddd dddd dddd 
+                             Der Datenraum an der dritten Adresse wird der
+                             Task, deren id an der ersten Adresse steht, mit
+                             dem Messagecode der an der zweiten Adresse
+                             steht, gesendet. Der Antwortcode wird im Wort
+                             an der vierten Adresse abgelegt. Vereinfachte 
+                             Semantik: 
+                             send (TASK<d1>, INT<d2>, DATASPACE<d3>, INT<d4>) 
+ 
+WAIT   7F 72 dddd dddd dddd  Die eigene Task geht in einen offenen
+                             Wartezustand, bei dem sie empfangsbereit ist fÅr
+                             einen Datenraum einer anderen Task. Die id der
+                             sendenden Task wird an der ersten Adresse
+                             abgelegt, der Messagecode an der zweiten
+                             Adresse, der gesendete Datenraum an der dritten
+                             Adresse. Vereinfachte Semantik: 
+                             wait (TASK<d1>, INT<d2>, DATASPACE<d3>) 
+ 
+SWCALL 7F 73 dddd dddd dddd dddd 
+                             Der Datenraum an der dritten Adresse wird der
+                             Task, deren id an der ersten Adresse steht, mit
+                             dem Messagecode der an der zweiten Adresse
+                             steht, gesendet bis die Task empfangsbereit ist.
+                             Dann wird auf einen zurÅckgesandten Datenraum
+                             dieser Task gewartet, der an der dritten
+                             Adresse abgelegt wird. Der zurÅckgesendete
+                             Messagecode wird an der vierten Adresse
+                             abgelegt. Vereinfachte Semantik: 
+                             REP
+                              send (TASK<d1>, INT<d2>, DATASPACE<d3>,INT<d4>) 
+                             UNTIL INT<d4> <> task busy PER ; 
+                             wait (TASK<d1>, INT<d4>, DATASPACE<d3>) 
+ 
+PPCALL 7F 7A dddd dddd dddd dddd 
+                             Wirkt wie SWCALL, wartet aber nicht bis die
+                             Zieltask empfangsbereit ist, sondern liefert -2
+                             an der vierten Adresse zurÅck, wenn die Task
+                             nicht empfangsbereit ist. Vereinfachte
+                             Semantik: 
+                             send (TASK<d1>, INT<d2>, DATASPACE<d3>,INT<d4>); 
+                             IF INT<d4> <> task busy 
+                                THEN wait (TASK<d1>, INT<d4>, DATASPACE<d3>) 
+                             FI 
+ 
+SENDFT 7F 7F dddd dddd dddd dddd dddd 
+                             Der Datenraum an der vierten Adresse wird der
+                             Task, deren id an der zweiten Adresse steht,
+                             mit dem Messagecode der an der dritten Adresse
+                             steht, gesendet als ob er von der Task kÑme,
+                             deren id an der ersten Adresse steht. Der
+                             Antwortcode wird im Wort an der vierten
+                             Adresse abgelegt. Dieser Befehl setzt eine
+                             Priviligierung >= 1 voraus und ist nur wirksam,
+                             wenn die from-Task einer anderen Station
+                             angehîrt. Vereinfachte Semantik: 
+                             IF station (TASK<d1>) = station (myself)
+                                THEN send (TASK<d2>, INT<d3>, DATASPACE<d4>,
+                                           INT<d5>) 
+                                ELSE save myself := myself ;
+                                     myself := TASK<d1> ; 
+                                     send (TASK<d2>, INT<d3>, DATASPACE<d4>,
+                                           INT<d5>) ; 
+                                     myself := save myself
+                             FI 
+ 
+ 
+#ub#2.1.6  TASK-Operationen#ue# 
+ 
+TWCPU  7F 52 dddd dddd       Die CPU-Zeit der Task, deren Nummer an der
+                             ersten Adresse steht, wird auf den REAL-Wert,
+                             der an der zweiten Adresse steht gesetzt. Dieser
+                             Befehl setzt eine Privilegierung > 1 voraus
+                             (Supervisor). 
+                             pcb(INT<d1>).clock := REAL<d2> 
+ 
+TPBEGIN 7F 5F dddd dddd dddd aaaaaa 
+                             Als Sohn der Task, deren Nummer an der ersten
+                             Adresse steht, wird eine Task eingerichtet,
+                             deren Nummer an der zweiten Adresse steht. Die
+                             neue Task erhÑlt die Privilegierung, deren
+                             Nummer in dem Wort an der dritten Adresse
+                             steht und wird mit der Prozedur gestartet,
+                             deren Code bei der durch den vierten Parameter
+                             Åbergebenen Refereznadresse beginnt. Dieser
+                             Befehl  setzt eine Privilegierung > 1 voraus
+                             (Supervisor). 
+ 
+TRPCB  7F 68 dddd dddd dddd  Der Wert des Leitblockfeldes der Task
+                             deren Nummer an der ersten Adresse steht und
+                             der Nummer, die in dem Wort an der zweiten
+                             Adresse steht, wird an der dritten Adresse
+                             abgelegt. 
+                             INT<d3> := pcb(INT<d1>, INT<d2>) 
+ 
+TWPCB  7F 69 dddd dddd dddd  Der Wert an der dritten Adresse wird in das
+                             Leitblockfeld mit der Nummer an der zweiten
+                             Adresse der Task Åbertragen, deren Nummer an der
+                             ersten Adresse steht. Privilegierung: 
+                             0: Nur linenumber-Feld (0), der eigenen Task 
+                             1: linenumber-Feld der eigenen Task und
+                                prio-Feld (5) jeder Task 
+                             2: Alle Felder 
+                             FÅr den Fall, da· die Privilegierung ok ist
+                             gilt: 
+                             pcb (INT<d1>, INT<d2>) := INT<d3> 
+ 
+TCPU   7F 6A dddd dddd       Die CPU-Zeit der Task, deren Nummer an der
+                             ersten Adresse steht, wird als REAL-Wert an der
+                             zweiten Adresse abgelegt.  
+                             REAL<d2> := pcb (INT<d1>).clock 
+ 
+TSTAT  7F 6B dddd dddd       Der Status (busy, i/o, wait) der Task, deren
+                             Nummer an der ersten Adresse steht, wird im Wort
+                             an der zweiten Adresse abgelegt. 
+                             INT<d2> := pcb (INT<d1>).status 
+ 
+ACT    7F 6C dddd            Die Task mit der Nummer, die an der Adresse dddd
+                             steht wird aktiviert (entblockt). Dieser Befehl
+                             setzt eine Privilegierung >= 1 voraus. 
+                             activate (INT<d1>) 
+ 
+DEACT  7F 6D dddd            Die Task, deren Nummer an der Adresse dddd
+                             steht, wird deaktiviert (geblockt). Dieser
+                             Befehl setzt eine Privilegierung >= 1 voraus. 
+                             deactivate (INT<d1>) 
+ 
+THALT  7F 6E dddd            In der Task, deren Nummer an der Adresse dddd
+                             steht, wird ein Fehler 'halt vom Terminal' 
+                             induziert. Dieser Befehl setzt eine 
+                             Privilegierung > 1 voraus (Supervisor). 
+                             halt process (INT<d1>) 
+ 
+TBEGIN 7F 6F dddd aaaaaa     Eine neue Task wird eingerichtet, deren Nummer
+                             an der ersten Adresse steht. Die Adresse der
+                             Startprozedur wird als Referenzadresse im
+                             zweiten Parameter Åbergeben. Der Datenraum 4
+                             wird von der aufrufenden Task geerbt. Als
+                             Privilegierung wird 0 eingetragen. 
+                             Dieser Befehl setzt eine Privilegierung > 1
+                             voraus (Supervisor). 
+ 
+TEND   7F 70 dddd            Die Task, deren Nummer an der Adresse dddd
+                             steht, wird gelîscht (alle DatenrÑume) und aus
+                             der Prozessverwaltung entfernt. Dieser Befehl 
+                             setzt eine Privilegierung > 1 voraus
+                             (Supervisor). 
+ 
+PNACT  7F 76 dddd            Die Nummer der nÑchsten aktivierten Task
+                             wird aus der Aktivierungstabelle gelesen. Die
+                             Suche beginnt mit dem Wert+1 an der Adresse. Die
+                             Nummer nÑchsten aktivierten Task wird an dieser
+                             Adresse abgelegt.  
+                             INT<d1> := next active (INT<d1>) 
+ 
+DEFCOL 7F 80 dddd            Die Task an der Adresse wird als Collectortask
+                             (fÅr Datenaustausch zwischen Stationen)
+                             definiert. Dieser Befehl setzt eine
+                             Privilegierung >= 1 voraus. 
+                             TASK collector := TASK<d1> 
+ 
+ 
+#ub#2.1.7  Tests und Vergleiche#ue# 
+ 
+Alle Tests und Vergleiche liefern ein BOOL-Resultat, welches den Opcode des
+nachfolgenden Branch-Befehls bestimmt (Aus LN wird BT aus BR wird BF). 
+ 
+TEST   .28:dd                Liefert TRUE, wenn das Wort an der Adresse 0
+                             ist (Auch fÅr BOOL-Variablen gebraucht: TRUE=0,
+                             FALSE=1). 
+                             FLAG := <d1> = 0 
+ 
+EQU    .2C:dd dddd           Liefert TRUE, wenn die Wîrter der beiden
+                             Adressen gleich sind. 
+                             FLAG := <d1> = <d2> 
+ 
+LSEQ   .30:dd dddd           Liefert TRUE, wenn der Wert des Wortes an der
+                             ersten Adresse (vorzeichenbehaftet) kleiner oder
+                             gleich dem Wert des Wortes an der zweiten
+                             Adresse ist. 
+                             FLAG := INT<d1> <= INT<d2> 
+ 
+FLSEQ  .48:dd dddd           Liefert TRUE, wenn der REAL-Wert an der ersten
+                             Adresse kleiner oder gleich dem REAL-Wert an der
+                             zweiten Adresse ist. 
+                             FLAG := REAL<d1> <= REAL<d2> 
+ 
+FEQU   7F 24 dddd dddd       Liefert TRUE, wenn der REAL-Wert an der ersten
+                             Adresse gleich dem REAL-Wert an der zweiten
+                             Adresse ist. 
+                             FLAG := REAL<d1> = REAL<d2> 
+ 
+TLSEQ  7F 25 dddd dddd       Liefert TRUE, wenn der TEXT an der ersten
+                             Adresse kleiner oder gleich dem TEXT an der
+                             zweiten Adresse ist. 
+                             FLAG := TEXT<d1> <= TEXT<d2> 
+ 
+TEQU   .50:dd dddd           Liefert TRUE, wenn der TEXT an der ersten
+                             Adresse gleich dem TEXT an der zweiten Adresse
+                             ist. 
+                             FLAG := TEXT<d1> = TEXT<d2> 
+ 
+ULSEQ  .54:dd dddd           Liefert TRUE, wenn der Wert des Wortes an der
+                             ersten Adresse (vorzeichenlos) kleiner oder
+                             gleich dem Wert des Wortes an der zweiten
+                             Adresse ist. 
+                             FLAG := INT<d1> "<=" INT<d2> 
+ 
+EQUIM  7C vv dddd            Liefert TRUE, wenn der Wert des Wortes an der
+                             Adresse dddd gleich der 8 Bit Konstanten vv
+                             ist. 
+                             FLAG := INT<d1> = vv 
+ 
+ISDIG  7F 12 dddd            Liefert TRUE, wenn der ASCII-Code im Wort an
+                             der Adresse dddd einer Ziffer entspricht. 
+                             FLAG := INT<d1> >= 48 AND INT<d1> <= 57 
+ 
+ISLD   7F 13 dddd            Liefert TRUE, wenn der ASCII-Code im Wort an
+                             der Adresse dddd einer Ziffer oder einem
+                             Kleinbuchstaben entspricht. 
+                             FLAG := INT<d1> >= 48 AND INT<d1> <= 57 OR 
+                                     INT<d1> >= 97 AND INT<d1> <= 122 
+ 
+ISLCAS 7F 14 dddd            Liefert TRUE, wenn der ASCII-Code im Wort an
+                             der Adresse dddd einem Kleinbuchstaben
+                             entspricht. 
+                             FLAG := INT<d1> >= 97 AND INT<d1> <= 122 
+ 
+ISUCAS 7F 15 dddd            Liefert TRUE, wenn der ASCII-Code im Wort an
+                             der Adresse dddd einem Gro·buchstaben
+                             entspricht. 
+                             FLAG := INT<d1> >= 65 AND INT<d1> <= 90 
+ 
+ISSHA  7F 18 dddd            Liefert TRUE, wenn der Wert des Wortes an der
+                             Adresse dddd im Bereich 0..2047 liegt, d.h.
+                             eine Kurzadresse ist, die noch zusammen mit dem
+                             Opcode im ersten Wort eines PrimÑrbefehls
+                             untergebracht werden kann. 
+                             FLAG := INT<d1> < 2048 
+ 
+ISERR  7F 4E                 Liefert TRUE, wenn ein Fehlerzustand vorliegt. 
+                             FLAG := ERROR 
+ 
+EXTASK 7F 7B dddd            Liefert TRUE, wenn die Task, deren id an der
+                             Adresse dddd steht, existiert (nicht "dead" und
+                             korrekte Versionsnummer). 
+                             FLAG := TASK<d1>.version =
+                                     pcb (TASK<d1>.nr).version AND 
+                                     pcb (TASK<d1>.nr).status <> dead 
+ 
+ 
+#ub#2.1.8  I/O-Operationen#ue# 
+ 
+OUT    7F 3C dddd            Der Text an der Adresse wird ausgegeben. 
+                             out (TEXT<d1>) 
+ 
+COUT   7F 3D dddd            Falls der Kanal frei ist und die INT-Zahl an
+                             der Adresse dddd positiv ist, wird sie als
+                             Dezimalzahl ausgegeben. 
+                             IF free (channel) 
+                                THEN out (text (INT<d1>, 5) + 5 * ""8"") 
+                             FI 
+ 
+OUTF   7F 3E dddd dddd       Der Text an der ersten Adresse wird ab der
+                             Position, die durch den Wert des Wortes an der
+                             zweiten Adresse bestimmt wird, bis zum Ende
+                             ausgegeben. 
+                             out (subtext (TEXT<d1>, INT<d2>, length
+                             (TEXT<d1>))) 
+ 
+OUTFT  7F 3F dddd dddd dddd  Der Text an der ersten Adresse wird ab der
+                             Position, die durch den Wert an der zweiten
+                             Adresse bestimmt wird, bis zur Position die
+                             durch den Wert an der dritten Adresse bestimmt
+                             wird, ausgegeben. 
+                             out (subtext (TEXT<d1>, INT<d2>, INT<d3>)) 
+ 
+INCHAR 7F 40 dddd            Es wird auf ein Eingabezeichen gewartet,
+                             welches dann im TEXT an der Adresse dddd
+                             abgelegt wird. 
+                             IF zeichen da (channel) 
+                                THEN TEXT<d1> := incharety 
+                                ELSE offener wartezustand (inchar) ; 
+                                     TEXT<d1> := incharety 
+                             FI
+ 
+INCETY 7F 41 dddd            Falls kein Eingabezeichen vorhanden ist, wird
+                             im TEXT an der Adresse dddd niltext geliefert,
+                             sonst das Eingabezeichen. 
+                             IF zeichen da (channel) 
+                                THEN TEXT<d1> := incharety 
+                                ELSE TEXT<d1> := "" 
+                             FI
+ 
+PAUSE  7F 42 dddd            Der Wert an der Adresse dddd bestimmt die
+                             Wartezeit in Zehntelsekunden, die gewartet
+                             werden soll. Die Pause kann durch eine Eingabe
+                             auf dem Kanal abgebrochen werden. 
+                             IF NOT zeichen da (channel) 
+                                THEN modi := INT<d1> ;
+                                     offener wartezustand (pause) 
+                             FI
+ 
+GCPOS  7F 43 dddd dddd       Die Cursorposition wird erfragt. Die x-Position
+                             wird an der ersten Adresse abgelegt, die
+                             y-Position an der zweiten Adresse. 
+                             getcursor (INT<d1>, INT<d2>) 
+ 
+CATINP 7F 44 dddd dddd       Aus dem Eingabepuffer werden alle Zeichen
+                             gelesen und an den TEXT an der ersten Adresse
+                             gehÑngt, bis entweder der Eingabepuffer leer
+                             ist oder ein Zeichen mit einem Code < 32
+                             gefunden wurde. Im ersten Fall wird niltext an
+                             der zweiten Adresse abgelegt, im zweiten Fall
+                             das Trennzeichen. 
+                             REP 
+                              IF zeichen da (channel) 
+                                 THEN zeichen := incharety ; 
+                                      IF code (zeichen) < 32 
+                                         THEN TEXT<d2> := zeichen 
+                                         ELSE TEXT<d1> CAT zeichen 
+                                      FI 
+                                 ELSE TEXT<d2> := "" ; 
+                                      LEAVE CATINP 
+                              FI 
+                             PER 
+ 
+CONTRL 7F 54 dddd dddd dddd dddd 
+                             Der IO-Controlfunktion mit der Nummer, die
+                             an der ersten Adresse steht, werden die beiden
+                             Parameter Åbergeben, die an der zweiten und
+                             dritten Adresse stehen. Die RÅckmeldung wird
+                             an der vierten Adresse abgelegt. 
+                             IF channel > 0 
+                                THEN iocontrol (INT<d1>, INT<d2>, INT<d3>,
+                                                INT<d4>) 
+                             FI 
+ 
+BLKOUT 7F 55 dddd dddd dddd dddd dddd 
+                             Die Seite des Datenraums, dessen dsid an der
+                             ersten Adresse steht, mit der Seitennummer, die
+                             an der zweiten Adresse steht, wird auf dem
+                             aktuellen Kanal ausgegeben. Als Parameter
+                             werden die Werte an der dritten und vierten
+                             Adresse Åbergeben. Der Returncode wird an der
+                             fÅnften Adresse abgelegt. 
+                             IF channel > 0 
+                                THEN blockout (DATASPACE<d1>[INT<d2>, 512],
+                                     INT<d3>, INT<d4>, INT<d5>) 
+                             FI 
+ 
+BLKIN  7F 56 dddd dddd dddd dddd dddd 
+                             Die Seite des Datenraums, dessen dsid an der
+                             ersten Adresse steht, mit der Seitennummer, die
+                             an der zweiten Adresse steht, wird an dem
+                             aktuellen Kanal eingelesen. Als Parameter
+                             werden die Werte an der dritten und vierten
+                             Adresse Åbergeben. Der Returncode wird an der
+                             fÅnften Adresse abgelegt. 
+                             IF channel > 0 
+                                THEN blockout (DATASPACE<d1>[INT<d2>, 512],
+                                               INT<d3>, INT<d4>, INT<d5>) 
+                             FI 
+ 
+ 
+#ub#2.1.9  Ablaufsteuerung (Branch und Gosub)#ue# 
+ 
+B      .70:aa bzw. .74:aa    Unbedingter Sprung an die Adresse. 
+                             ICOUNT := aaaa (aaaa gilt nur fÅr den
+                             Debugger/Tracer, da die Adressrechung intern
+                             komplizierter ist) 
+ 
+BF     .70:aa bzw. .74:aa    Wenn der letzte Befehl FALSE lieferte, Sprung an
+                             die Adresse. 
+                             IF NOT FLAG 
+                                THEN ICOUNT := aaaa (aaaa s.o.) 
+                             FI 
+ 
+BT     .00:aa bzw. .04:aa    Wenn der letzte Befehl TRUE lieferte, Sprung an
+                             die Adresse (auch LN-Opcode). 
+                             IF FLAG 
+                                THEN ICOUNT := aaaa (aaaa s.o.) 
+                             FI 
+ 
+BRCOMP 7F 20 dddd vvvv       Wenn das Wort an der Adresse dddd kleiner als 0
+                             oder grî·er als die Konstante vvvv ist, wird mit
+                             dem auf den BRCOMP-Befehl folgenden Befehl
+                             (i.d.R. ein B-Befehl) fortgefahren. Sonst wird
+                             die AusfÅhrung an der Adresse des
+                             BRCOMP-Befehls + 2 + (dddd) (auch ein B-Befehl)
+                             fortgesetzt. 
+                             IF <d1> >= 0 AND <d1> <= vvvv 
+                                THEN ICOUNT INCR (<d1> + 1) 
+                             FI 
+ 
+GOSUB  7F 05 aaaa            Die aktuelle Codeadresse wird auf den Stack
+                             gebracht und das Programm an der Adresse aaaa
+                             fortgesetzt. 
+                             <TOP>:=(LBASE, PBASE, ICOUNT, ENSTOP, ARITH) ;
+                             LBASE := TOP ; 
+                             ICOUNT := aaaa ; 
+                             CMOD := high (ICOUNT) + 16 
+ 
+GORET  7F 07                 Das Programm wird an der oben auf dem Stack
+                             stehenden Returnadresse fortgesetzt. 
+                             TOP := LBASE ; 
+                             SP := TOP + 4 ; 
+                             (LBASE, PBASE, ICOUNT, ENSTOP, ARITH) := <TOP>
+ 
+ 
+#ub#2.1.10 Modul-Operationen#ue# 
+ 
+PPV    .68:dd                Das Wort an der Adresse wird auf den Stack
+                             gebracht. Dieser Befehl wird vom Compiler nicht
+                             generiert. 
+                             <SP> := INT<d1> ; 
+                             SP INCR 2 
+ 
+PP     .6C:dd                Die Referenzadresse des Objektes wird auf den
+                             Stack gebracht (2 Worte). 
+                             <SP> := REF d1 ; 
+                             SP INCR 2 
+ 
+PPROC  7F 1E mmmm            Die Adresse der Prozedur mit der Modulnummer
+                             mmmm wird als Referenzadresse (Codesegment,
+                             Codeadresse) auf den Stack gebracht. 
+                             <SP> := mod addr (mmmm) ; 
+                             SP INCR 2 
+ 
+HEAD   vvvv (kein Opcode)    Der Speicherplatz fÅr lokale Variablen und
+                             Parameter in diesem Modul wird vermerkt, indem
+                             der Stacktop um vvvv erhoht wird. 
+                             TOP INCR vvvv ; 
+                             SP := TOP + 4 
+ 
+PENTER FE vv                 Die Paketbasis (Basis der globalen Adressen
+                             dieses Moduls) wird auf den Wert vv*256
+                             gesetzt. 
+                             PBASE := vv * 256 
+ 
+CALL   .78:mm                Das Modul mit der Nummer mm wird aufgerufen. 
+                             <TOP>:=(LBASE, PBASE, ICOUNT, ENSTOP, ARITH) ;
+                             LBASE := TOP ; 
+                             ICOUNT := mod addr (mm) ; 
+                             CMOD := high (ICOUNT) + 16 
+ 
+PCALL  7F 1F dddd            Die (Parameter-)Prozedur, deren Startadresse
+                             als Referenzadresse auf dem Stack steht, wird
+                             aufgerufen. 
+                             <TOP>:=(LBASE, PBASE, ICOUNT, ENSTOP, ARITH) ;
+                             LBASE := TOP ; 
+                             ICOUNT := d1 ; 
+                             CMOD := high (ICOUNT) + 16 . 
+ 
+EXEC   7F 1D dddd            Das Modul dessen Nummer in dem Wort an der
+                             Adresse dddd steht, wird aufgerufen. 
+                             <TOP>:=(LBASE, PBASE, ICOUNT, ENSTOP, ARITH) ;
+                             LBASE := TOP ; 
+                             ICOUNT := <d1> ; 
+                             CMOD := high (ICOUNT) + 16 . 
+ 
+RTN    7F 00                 Das Modul wird verlassen, die
+                             ProgrammausfÅhrung setzt an der, auf dem Stack
+                             gesicherten, Adresse fort. 
+                             TOP := LBASE ; 
+                             SP := TOP + 4 ; 
+                             (LBASE, PBASE, ICOUNT, ENSTOP, ARITH) := <TOP> 
+ 
+RTNT   7F 01                 Das Modul wird verlassen und der BOOL-Wert TRUE
+                             geliefert (fÅr den dem CALL/PCALL folgenden
+                             BT/BF-Befehl). Die ProgrammausfÅhrung setzt an
+                             der, auf dem Stack gesicherten, Adresse fort. 
+                             TOP := LBASE ; 
+                             SP := TOP + 4 ; 
+                             (LBASE, PBASE, ICOUNT, ENSTOP, ARITH) := <TOP>;
+                             FLAG := TRUE 
+ 
+RTNF   7F 02                 Das Modul wird verlassen und der BOOL-Wert
+                             FALSE geliefert (fÅr den dem CALL/PCALL
+                             folgenden BT/BF-Befehl). Die ProgrammausfÅhrung setzt an
+                             der, auf dem Stack gesicherten, Adresse fort. 
+                             TOP := LBASE ; 
+                             SP := TOP + 4 ; 
+                             (LBASE, PBASE, ICOUNT, ENSTOP, ARITH) := <TOP>; 
+                             FLAG := FALSE 
+ 
+ 
+#ub#2.1.10 Datenadressrechnung#ue# 
+ 
+REF    .5C:dd dddd           An der zweiten Adresse wird die Referenzadresse 
+                             der ersten Adresse abgelegt (2 Wîrt-MOV). 
+                             REF<d2> := d1 
+ 
+SUBS   .60:vv vvvv dddd dddd dddd 
+                             Wenn der Inhalt des Wortes an der dritten
+                             Adresse (ROW-Index) grî·er oder gleich der
+                             Konstanten vvvv (limit-1) ist, wird "Subscript
+                             öberlauf" gemeldet, falls der ROW-Index kleiner
+                             als eins ist wird "Subscript önterlauf"
+                             gemeldet. Andernfalls wird der um eins
+                             verringerte ROW-Index mit der Konstanten vv
+                             (Size eines ROW-Elements) multipliziert,
+                             zur Basisaddresse (vierter Parameter) addiert
+                             und als Referenzadresse an der fÅnften Adresse
+                             abgelegt. 
+                             IF INT<d1> <= vvvv AND INT<d1> > 0
+                                THEN REF<d3> := d2 + vv * (INT<d1>-1) 
+                                ELSE "Fehler" s.o. 
+                             FI 
+ 
+SEL    .64:dd vvvv dddd      Die Konstante vvvv (Selektor-Offset einer
+                             STRUCT) wird zur Adresse dd addiert und als
+                             Referenzadresse auf dem Stack an der Adresse
+                             dddd abgelegt. 
+                             REF<d2> := vv + d1 
+ 
+CTT    7F 0C dddd dddd       Die Adresse des Strings(!) an der ersten
+                             Adresse wird an der zweiten Adresse als
+                             Referenzadresse (Segment 0, DS 4) abgelegt.
+                             CTT steht fÅr Compiler-Table-Text. 
+                             REF<d2> := REF (0004, INT<d1>) 
+ 
+ 
+#ub#2.1.12 Compiler-Spezialbefehle#ue#
+ 
+PUTW   FD v1v2 dddd dddd     Das lowbyte des Opcode besteht aus den beiden
+                             Nibbles v1 (Segment) und v2 (Wordoffset). Das
+                             Wort an der zweiten dddd-Adresse wird an die
+                             Adresse im Datenraum 4, Segment v1 geschrieben,
+                             die durch den Wert des Wortes an der ersten
+                             dddd-Adresse + v2 bestimmt ist. 
+                             <v1 * 64KW + INT<d1> + v2> := INT<d2> 
+ 
+GETW   7E v1v2 dddd dddd     Das lowbyte des Opcode besteht aus den beiden
+                             Nibble v1 (Segment) und v2 (Wordoffset). Das
+                             Wort im Datenraum 4, Segment v1 an der durch
+                             den Wert des Wortes an der ersten dddd-Adresse
+                             + v2 bestimmten Adresse wird an der zweiten
+                             dddd-Adresse abgelegt. 
+                             INT<d2> := <v1 * 64KW + INT<d1> + v2) 
+ 
+PW     7F 6F dddd dddd dddd  Das Wort an der dritten Adresse wird im
+                             Datenraum 4 an die Adresse geschrieben, die
+                             durch das Segment (erste Adresse) und die
+                             Adresse in diesem Segment (zweite Adresse)
+                             bestimmt ist. 
+                             <INT<d1> * 64KW + INT<d2>> := INT<d3> 
+ 
+GW     7F 70 dddd dddd dddd  Das Wort im Datenraum 4, das durch das Segment
+                             (erste Adresse) und die Adresse in diesem
+                             Segment (zweite Adresse) bestimmt ist, wird an
+                             der dritte Adresse abgelegt. 
+                             INT<d3> := <INT<d1> * 64KW + INT<d2>> 
+ 
+BCRD   7F 08 dddd dddd       Bereitet das Lesen einzelner Zeichen aus dem
+                             Segment 4 des Datenraumes 4 vor (Nametable).
+                             Das Wort an der ersten Adresse enthÑlt die
+                             Startadresse des Strings und zeigt auf das
+                             LÑngenbyte. Nach dem AusfÅhren des Befehls
+                             enthÑlt das Wort an der zweiten Adresse das
+                             LÑngenbyte und der Pointer an der ersten
+                             Adresse zeigt auf das erste Zeichen des Textes.
+                             Das Bit 15 des Pointers ist gesetzt, wenn das
+                             highbyte adressiert wird. 
+                             INT<d2> := length (STRING<d1>) ; 
+                             INT<d1> INCR 1/2 
+ 
+CRD    7F 09 dddd dddd       Liest ein Zeichen aus dem String, dessen Lesen
+                             mit BCRD vorbereitet wurde. Die erste Adresse
+                             enthÑlt einen Stringpointer, der nach jedem
+                             Lesen erhîht wird, die zweite Adresse enthÑlt
+                             nach dem Aufruf des Befehls den Code des 
+                             gelesenen Zeichens. 
+                             INT<d2> := code (STRING<d1>) ; 
+                             INT<d1> INCR 1/2 
+ 
+CWR    7F 0B dddd dddd dddd  Der Hashcode an der ersten Adresse wird mit dem
+                             zu schreibenden Zeichencode (dritte Adresse)
+                             verknÅpft und in den Bereich 0..1023 gemapt.
+                             Das Zeichen wird an die Position des Pointers
+                             geschrieben (Bit 15 des Pointers unterscheidet
+                             lowbyte und highbyte). Anschlie·end wird der
+                             Pointer auf die Adresse des nÑchsten Zeichens
+                             gesetzt. Der Pointer steht an der zweiten
+                             Adresse. Vor dem Schreiben des ersten Zeichens 
+                             mu· der Hashcode auf 0 gesetzt werden. 
+                             INT<d1> INCR INT<d1> ; 
+                             IF INT<d1> > 1023 THEN INT<d1> DECR 1023 FI ; 
+                             INT<d1> := (INT<d1> + INT<d3>) MOD 1024 ; 
+                             STRING<INT<d2>> := code (INT<d3>) ; 
+                             INT<d2> INCR 1/2 
+ 
+ECWR   7F 0A dddd dddd dddd  Das Schreiben eines Strings wird beendet. Dazu
+                             wird an der ersten Adresse der Stringpointer
+                             Åbergegeben, an der zweiten Adresse wird die
+                             endgÅltige StringlÑnge geliefert. An der
+                             dritten Adresse wird die Adresse des nÑchsten
+                             freien Platzes nach diesem Stringende
+                             geliefert. 
+ 
+GETC   7F 0D dddd dddd dddd  Dieser Befehl liefert ein BOOL-Result und zwar
+                             TRUE, wenn das Wort an der zweiten Adresse
+                             grî·er als 0 und kleiner als die LÑnge des
+                             TEXTes an der ersten Adresse ist. In diesem Fall
+                             wird im Wort an der dritten Adresse der Code
+                             des n. Zeichens des TEXTes geliefert. Die
+                             Position des Zeichens wird durch das Wort an
+                             der zweiten Adresse bestimmt. 
+                             FLAG := INT<d2> > 0 AND INT<d2> <= length
+                             (TEXT<d1>) ; 
+                             INT<d3> := code (TEXT<d1>[INT<d2>, 1]) 
+ 
+FNONBL 7F 0E dddd dddd dddd  Dieser Befehl liefert ein BOOL-Result.
+                             zaehler := INT<d3> ; (* Stringpointer *) 
+                             WHILE TEXT<d2>[zahler, 1] = " " REP 
+                              zaehler INCR 1 
+                             PER ;
+                             IF zaehler > length (TEXT<d2>) 
+                                THEN FLAG := FALSE 
+                                ELSE INT<d1> := code (TEXT<d2>[zaehler, 1]);
+                                     INT<d3> := zaehler + 1 
+                             FI
+ 
+DREM256 7F 0F dddd dddd      Das lowbyte des Wortes an der ersten Adresse
+                             wird in das Wort an der zweiten Adresse
+                             geschrieben, das highbyte des Wortes an der
+                             ersten Adresse ersetzt das gesamte erste Wort. 
+                             INT<d2> := INT<d1> MOD 256 ; 
+                             INT<d1> := INT<d1> DIV 256
+ 
+AMUL256 7F 10 dddd dddd      Umkerung von DREM256. 
+                             INT<d1> := INT<d1> * 256 + INT<d2> 
+ 
+GADDR   7F 16 dddd dddd dddd "Adresswort" mit Adresstyp generieren (z.B.<d1>
+                             = pbase). 
+                             IF INT<d2> >= 0 (* Global *) 
+                                THEN INT<d3> := INT<d2> - INT<d1>
+                             ELIF bit (INT<d2>, 14)    (* Local Ref *) 
+                                THEN INT<d3> := (INT<d2> AND 3FFFH)*2 + 1 
+                                ELSE INT<d3> := (INT<d2> AND 3FFFH)*2
+                                     (* Local *) 
+                             FI 
+ 
+GCADDR  7F 17 dddd dddd dddd Diese Instruktion liefert ein BOOL-Result.
+                             Mit <d2> = 0 wird sie eingesetzt, um die
+                             Zeilennummer im LN-Befehl zu generieren, mit
+                             <d2> <> 0 wird sie eingesetzt, um die Adresse im
+                             Branchbefehl zu generieren. Beide Befehle gibt
+                             es mit zwei Opcodes (00/04 bzw. 70/74). 
+                             byte := high(INT<d1>)-high(INT<d2>) ; 
+                             IF byte < 0 
+                                THEN byte INCR 16 ; (* Bit fÅr LN1 bzw. B1
+                                                    Opcode *) 
+                                     rotate (byte, right) ; 
+                             FI ; 
+                             INT<d3> := byte * 256 + low (INT<d1>) ; 
+                             FALSE, wenn irgendeins der Bits 11..14 = 1 ist 
+ 
+GETTAB  7F 1A                Kopiert den Inhalt der unteren 64KB des
+                             Segments 5 im DS 4 in das Segment 4.
+                             (permanentes Segment --> temporÑres Segment) 
+                             DS4: 50000..57FFF --> 40000..47FFF (Wortaddr) 
+ 
+PUTTAB  7F 1B                Kopiert den Inhalt der unteren 64KB des Segments
+                             4 im DS 4 in das Segment 5. (TemporÑre Daten
+                             werden permanent) 
+                             DS4: 40000..47FFF --> 50000..57FFF (Wortaddr) 
+ 
+ERTAB   7F 1C                Kopiert den Inhalt des Segments 6 im DS 4
+                             (besteht nur aus FF's) in die Segmente 4 und 7,
+                             d.h. das temporÑre Segment (u.a. Symboltabelle)
+                             und das Segment mit Compiler-Intermediatestring
+                             werden gelîscht. 
+                             DS4: 60000..6FDFF --> 40000..4FDFF ; 
+                             DS4: 60000..6FDFF --> 70000..7FDFF 
+ 
+CDBINT  7F 74 dddd dddd      Das Wort mit der Nummer <d1> wird aus dem
+                             Segment 5 gelesen und in <d2> abgelegt. 
+                             INT<d2> := <50000H + INT<d1>> 
+ 
+CDBTXT  7F 74 dddd dddd      Der String(!) an der Adresse <d1> im Segment 5
+                             wird in dem TEXT <d2> abgelegt. 
+                             TEXT<d2> := ctt (<50000H + INT<d1>>) 
+ 
+ 
+#ub#2.1.13 Instruktionen zur Programmsteuerung#ue# 
+ 
+STOP   7F 04                 Alle (aufrufenden) Module werden verlassen, bis
+                             das erste im 'disablestop'-Zustand angetroffen
+                             wird (éhnlich errorstop ("")) ; 
+                             WHILE ENSTOP REP return PER .
+ 
+                             return: 
+                              TOP := LBASE ; 
+                              SP := TOP + 4 ; 
+                              (LBASE, PBASE, ICOUNT, ENSTOP, ARITH) := <TOP> 
+ 
+ESTOP  7F 4B                 Der 'enable stop'-Zustand wird eingeschaltet. 
+                             ENSTOP := TRUE 
+ 
+DSTOP  7F 4C                 Der 'disable stop'-Zustand wird eingeschaltet. 
+                             ENSTOP := FALSE 
+ 
+SETERR 7F 4D dddd            Es wird der Fehlerzustand eingeschaltet, das
+                             Wort an der Adresse dddd wird in das pcb-Feld
+                             'error code' gebracht. Falls das Modul im
+                             'enablestop'-Zustand ist, wird das Modul
+                             verlassen.  
+                             IF NOT ERROR 
+                                THEN ERROR := TRUE ; 
+                                     pcb.error line := pcb.line ; 
+                                     pcb.error code := INT<d1> ; 
+                                     WHILE ENSTOP REP return PER 
+                             FI  
+ 
+CLRERR 7F 4F                 Falls der Fehlerzustand vorliegt, wird der
+                             Fehler gelîscht. 
+                             ERROR := FALSE 
+ 
+LN     .00:vv und .04:vv     Die Konstante vv wird in das pcb-Feld
+                             'line number' gebracht (Zur Fehlerbehandlung). 
+                             pcb.line := vv 
+ 
+RPCB   7F 50 dddd dddd       Der Inhalt des pcb-Feldes der eigenen Task mit
+                             der Nummer, die im Wort an der ersten Adresse
+                             steht, wird in das Wort an der zweiten Adresse
+                             gebracht. 
+                             INT<d2> := pcb (myself, INT[<d1>) 
+ 
+CLOCK  7F 66 dddd dddd       Die Systemuhr mit der Nummer, die durch den
+                             Wert des Wortes an der ersten Adresse
+                             spezifiziert wird, wird gelesen und deren
+                             REAL-Wert an der zweiten Adresse abgelegt. 
+                             Wenn <d1> = 0 ist, wird die CPU-Zeit der
+                             eigenen Task geliefert, anderenfalls die
+                             Systemuhr mit der Nummer 1..7 : 
+                             Nummer Funktion 
+                               1    REAL-Time
+                               2    Paging Wait
+                               3    Paging Busy
+                               4    Foreground Tasks cpu-time
+                               5    Background Tasks cpu-time 
+                               6    System cpu-time
+                               7    Reserviert
+ 
+                             IF INT<d1> = 0 
+                                THEN REAL<d2> := pcb.clock 
+                                ELSE REAL<d2> := clock (INT<d1>) 
+                             FI 
+
+ 
+#ub#2.1.14 Systemglobale Instruktionen#ue# 
+ 
+KE     7F 06                 Der EUMEL0-Debugger 'Info' wird aufgerufen,
+                             falls dies ein infofÑhiges System ist. 
+ 
+SYSG   7F 19                 Sysgen (Nur beim Sysgen-Urlader). 
+ 
+INFOPW 7F 51 dddd dddd dddd  Das bis zu 10 Zeichen lange Infopassword an der
+                             zweiten Adresse (TEXT) wird eingestellt, falls
+                             das alte Infopassword mit dem TEXT an der
+                             ersten Adresse Åbereinstimmt. In diesem Fall
+                             wird im Wort an der dritten Adresse eine 0
+                             abgelegt, andernfalls eine 1. Dies ist kein
+                             privilegierter Befehl, er funktioniert
+                             allerdings nur, wenn das alte Infopasswort
+                             bekannt ist. 
+                             IF info password = TEXT<d1> 
+                                THEN info password := TEXT<d2> ; 
+                                     INT<d3> := 0 
+                                ELSE INT<d3> := 1 
+                             FI 
+ 
+STORAGE 7F 5A dddd dddd      Die Grî·e des vorhandene Hintergrundspeichers
+                             in KB wird im Wort an der ersten Adresse
+                             abgelegt, die Grî·e des benutzten
+                             Hintergrundspeichers an der zweiten Adresse. 
+                             INT<d1> := size ; 
+                             INT<d2> := used 
+ 
+SYSOP  7F 5B dddd            Es wird eine Systemoperation mit der Nummer,
+                             die an der Adresse dddd steht, aufgerufen
+                             (1=Garbage Collection, 11=Savesystem, 4=Shutup,
+                             2=Fixpoint). Dieser Befehl setzt eine
+                             Privilegierung >= 1 voraus. 
+ 
+SETNOW 7F 67 dddd            Die Realtime-Clock (clock(1)) des Systems wird
+                             auf den REAL-Wert an der Adresse dddd gesetzt.
+                             Dieser Befehl setzt eine Privilegierung >= 1
+                             voraus. 
+                             clock (1) := REAL<d1> 
+ 
+SESSION 7F 7E dddd           Der aktuelle Wert des SystemlaufzÑhlers wird
+                             an der Adresse dddd abgelegt. 
+                             INT<d1> := systemlaufzaehler 
+ 
+ID     7F 81 dddd dddd       Der Wert des id-Feldes mit der Nummer, die an
+                             der ersten Adresse steht, wird in das Wort an
+                             der zweiten Adresse geschrieben. FÅr dei
+                             Nummern der id-Felder gilt: 
+                             Feld    Inhalt 
+                              0      Kleinste HG-Version fÅr EUMEL0 
+                              1      CPU-Type (1=Z80,3=8086,4=68000,5=80286) 
+                              2      Urlader-Version 
+                              3      Reserviert 
+                              4      Lizenznummer des Shards
+                              5      Installationsnummer 
+                              6      Frei fÅr Shard 
+                              7      Frei fÅr Shard 
+                             IF INT<d1> < 4 
+                                THEN INT<d2> := eumel0 id (INT<d1>) 
+                                ELSE INT<d2> := shard id (INT<d1>) 
+                             FI 
+ 
+ 
+#ub#2.1  Alphabetische Liste der Befehle#ue# 
+
+ACT     7F 6C dddd 
+ADD    .1C:dd dddd dddd 
+ALIAS   7F 22 vvvv dddd dddd 
+AMUL256 7F 10 dddd dddd 
+AND     7F 7C dddd dddd dddd 
+ARITHS  7F 5B 
+ARITHU  7F 5C 
+B      .70:aa bzw. .74:aa 
+BCRD    7F 08 dddd dddd 
+BF     .70:aa bzw. .74:aa 
+BLKIN   7F 56 dddd dddd dddd dddd dddd 
+BLKOUT  7F 55 dddd dddd dddd dddd dddd 
+BRCOMP  7F 20 dddd vvvv 
+BT     .00:aa bzw. .04:aa 
+CALL   .78:mm 
+CAT     7F 35 dddd dddd 
+CATINP  7F 44 dddd dddd 
+CDBINT  7F 74 dddd dddd 
+CDBTXT  7F 74 dddd dddd 
+CLEAR  .24:dd 
+CLOCK   7F 66 dddd dddd 
+CLRERR  7F 4F 
+CONTRL  7F 54 dddd dddd dddd dddd 
+COUT    7F 3D dddd 
+CRD     7F 09 dddd dddd 
+CTT     7F 0C dddd dddd 
+CWR     7F 0B dddd dddd dddd 
+DEACT   7F 6D dddd 
+DEC    .18:dd dddd 
+DEC1   .10:dd 
+DECOD   7F 2F dddd dddd 
+DEFCOL  7F 80 dddd 
+DIV     7F 2A dddd dddd dddd 
+DREM256 7F 0F dddd dddd 
+DSACC  .58:dd dddd 
+DSCOPY  7F 46 dddd dddd 
+DSFORG  7F 47 dddd 
+DSHEAP  7F 4A dddd dddd 
+DSPAGS  7F 4C dddd dddd dddd 
+DSRTYP  7F 49 dddd dddd 
+DSTOP   7F 4C 
+DSWTYP  7F 48 dddd dddd 
+ECWR    7F 0A dddd dddd dddd 
+ENCOD   7F 30 dddd dddd 
+EQU    .2C:dd dddd 
+EQUIM   7C vv dddd 
+ERTAB   7F 1C 
+ESTOP   7F 4B 
+EXEC    7F 1D dddd 
+EXTASK  7F 7B dddd 
+FADD   .38:dd dddd dddd 
+FDIV   .44:dd dddd dddd 
+FEQU    7F 24 dddd dddd 
+FLOOR   7F 63 dddd dddd 
+FLSEQ  .48:dd dddd 
+FMOV   .34:dd dddd 
+FMUL   .40:dd dddd dddd 
+FNEG    7F 26 dddd 
+FNONBL  7F 0E dddd dddd dddd 
+FSLD    7F 60 dddd dddd dddd 
+FSUB   .3C:dd dddd dddd 
+GADDR   7F 16 dddd dddd dddd 
+GARB    7F 5F 
+GCADDR  7F 17 dddd dddd dddd 
+GCPOS   7F 43 dddd dddd 
+GETC    7F 0D dddd dddd dddd 
+GETTAB  7F 1A 
+GETW    7E v1v2 dddd dddd 
+GEXP    7F 61 dddd dddd 
+GORET   7F 07 
+GOSUB   7F 05 aaaa 
+GW      7F 70 dddd dddd dddd 
+HEAD    vvvv (kein Opcode) 
+HPSIZE  7F 5E dddd 
+ID      7F 81 dddd dddd 
+IMULT   7F 28 dddd dddd dddd 
+INC    .14:dd dddd 
+INC1   .0C:dd 
+INCETY  7F 41 dddd 
+INCHAR  7F 40 dddd 
+INFOPW  7F 51 dddd dddd dddd 
+ISDIG   7F 11 dddd 
+ISERR   7F 4E 
+ISLCAS  7F 13 dddd 
+ISLD    7F 12 dddd 
+ISSHA   7F 18 dddd 
+ISUCAS  7F 14 dddd 
+ITRPL   7F 2E dddd dddd dddd 
+ITSUB   7F 2D dddd dddd dddd 
+KE      7F 06 
+LN     .00:vv und .04:vv 
+LSEQ   .30:dd dddd 
+MOD     7F 2B dddd dddd dddd 
+MOV    .08:dd dddd 
+MOVi    FC vv dddd 
+MOVii   7F 23 vvvv dddd 
+MOVx    7D vv dddd dddd 
+MOVxx   7F 21 vvvv dddd dddd 
+MUL     7F 29 dddd dddd dddd 
+NEG     7F 27 dddd 
+NILDS   7F 45 dddd 
+NXTDSP  7F 4B dddd dddd dddd 
+OR      7F 7D dddd dddd dddd 
+OUT     7F 3C dddd 
+OUTF    7F 3E dddd dddd 
+OUTFT   7F 3F dddd dddd dddd 
+PAUSE   7F 42 dddd 
+PCALL   7F 1F dddd 
+PENTER  FE vv 
+PNACT   7F 76 dddd 
+POS     7F 37 dddd dddd dddd 
+POSF    7F 38 dddd dddd dddd dddd 
+POSFT   7F 39 dddd dddd dddd dddd dddd 
+POSIF   7F 3B dddd dddd dddd dddd dddd 
+PP     .6C:dd 
+PPCALL  7F 7A dddd dddd dddd dddd 
+PPROC   7F 1E mmmm 
+PPV    .68:dd 
+PUTTAB  7F 1B 
+PUTW    FD v1v2 dddd dddd 
+PW      7F 6F dddd dddd dddd 
+REF    .5C:dd dddd 
+REPLAC  7F 34 dddd dddd dddd 
+ROTATE  7F 53 dddd dddd 
+RPCB    7F 50 dddd dddd 
+RTN     7F 00 
+RTNF    7F 02 
+RTNT    7F 01 
+RTRPL   7F 65 dddd dddd dddd 
+RTSUB   7F 64 dddd dddd dddd 
+SEL    .64:dd vvvv dddd 
+SEND    7F 71 dddd dddd dddd dddd 
+SENDFT  7F 7F dddd dddd dddd dddd dddd 
+SESSION 7F 7E dddd 
+SETERR  7F 4D dddd 
+SETNOW  7F 67 dddd 
+SEXP    7F 62 dddd dddd 
+STOP    7F 04 
+STORAGE 7F 5A dddd dddd 
+STRANL  7F 3A dddd dddd dddd dddd dddd dddd dddd 
+SUB    .20:dd dddd dddd 
+SUBS   .60:vv vvvv dddd dddd dddd 
+SUBT1   7F 31 dddd dddd dddd 
+SUBTF   7F 33 dddd dddd dddd 
+SUBTFT  7F 32 dddd dddd dddd dddd 
+SWCALL  7F 73 dddd dddd dddd dddd 
+SYSG    7F 19 
+SYSOP   7F 5B dddd 
+TBEGIN  7F 6F dddd aaaaaa 
+TCPU    7F 6A dddd dddd 
+TEND    7F 70 dddd 
+TEQU   .50:dd dddd 
+TEST   .28:dd 
+THALT   7F 6E dddd 
+TLEN    7F 36 dddd dddd 
+TLSEQ   7F 25 dddd dddd 
+TMOV   .4C:dd dddd 
+TPBEGIN 7F 5F dddd dddd dddd aaaaaa 
+TRPCB   7F 68 dddd dddd dddd 
+TSTAT   7F 6B dddd dddd 
+TWCPU   7F 52 dddd dddd 
+TWPCB   7F 69 dddd dddd dddd 
+ULSEQ  .54:dd dddd 
+WAIT    7F 72 dddd dddd dddd 
+XOR     7F 79 dddd dddd dddd 
+ 
+#page# 
+#ub#3.  Beschreibung der Pakete#ue# 
+ 
+#ub#3.1  PACKET address#ue# 
+ 
+Mit diesem Paket werden die Operationen fÅr 16 Bit Adressrechnung zur
+VerfÅgung gestellt. 
+ 
+TEXT PROC hex8 (INT CONST dez) : 
+  Der INT-Parameter (0..255) wird in eine 2-Zeichen Hexdarstellung
+  konvertiert. 
+ 
+ 
+TEXT PROC hex16 (INT CONST dez) : 
+  Der INT-Parameter (0..65535) wird in eine 4-Zeichen
+  Hexdarstellung (ohne Vorzeichen) konvertiert. 
+ 
+ 
+INT PROC integer (TEXT CONST hex) : 
+  Der TEXT-Parameter (1-4 Byte Hexdarstellung, 0..9, a..f/A..F) wird in eine
+  Dezimalzahl konvertiert. 
+ 
+ 
+INT PROC getword (INT CONST segment, address) : 
+  Das Wort an der Adresse 'address' (0..65535) im Segment 'segment' (0..7)
+  wird gelesen. 
+ 
+ 
+PROC putword (INT CONST segment, address, value) : 
+  Der Wert 'value' wird in das Wort an der Adresse 'address' (0..65535) im
+  Segment 'segment' (0..7) geschrieben. 
+ 
+ 
+INT PROC cdbint (INT CONST address) : 
+  Der Wert an der Adresse 'address' (0..32767 sinnvoll) im Segment 5
+  (permanente Compilertabellen) wird gelesen. 
+ 
+ 
+TEXT PROC cdbtext (INT CONST address) : 
+  Der String, der an der Adresse 'address' im Segment 5 (permanente
+  Compilertabellen) beginnt, wird als TEXT gelesen. 
+ 
+ 
+PROC splitword (INT VAR word, lowbyte) : 
+  Das Wort 'word' wird in den hîherwertigen und niederwertigen Teil zerlegt.
+  Das highbyte steht nach dieser Operation in 'word', das lowbyte in
+  'lowbyte'. 
+ 
+ 
+PROC makeword (INT VAR word, INT CONST lowbyte) : 
+  word := word * 256 + lowbyte 
+ 
+ 
+BOOL PROC ulseq (INT CONST left, right) : 
+  '<=' fÅr positive INT-Zahlen (0..65535). 
+ 
+ 
+OP INC (INT VAR word) : 
+  'word INCR 1' fÅr positive INT-Zahlen (0..65535), ohne da· ein öberlauf
+  auftritt. 
+ 
+ 
+OP DEC (INT VAR word) : 
+  'word DECR 1' fÅr poistive INT-Zahlen (0..65535), ohne da· ein Unterlauf
+  auftritt. 
+ 
+ 
+INT OP ADD (INT CONST left, right) : 
+  'left + right' fÅr positive INT-Zahlen (0..65535), ohne da· ein öberlauf
+  auftritt. 
+ 
+ 
+INT OP SUB (INT CONST left, right) : 
+  'left - right' fÅr positive INT-Zahlen (0..65535), ohne da· ein öberlauf
+  auftritt. 
+ 
+ 
+INT OP MUL (INT CONST left, right) : 
+  'left * right' fÅr positive INT-Zahlen (0..65535), ohne da· ein öberlauf
+  auftritt. 
+ 
+ 
+#ub#3.2  PACKET table routines#ue# 
+ 
+PROC init module table (TEXT CONST name) : 
+  Ein benannter Datenraum ('name') wird eingerichtet. Dieser enthÑlt die
+  aufbereitete Permanenttabelle fÅr schnelle Zugriffe. Die Datenstruktur
+  beschreibt drei Tabellen (PACKETTABLE, MODULETABLE, TYPETABLE), Åber die
+  zu einer Modulnummer deren Name und deren Parameter, sowie der zugehîrige
+  Paketname gefunden werden kann, wenn sie in der Permanenttabelle steht. 
+  Die TYPETABLE enthÑlt zu jedem TYPE, der in der Permanenttabelle steht,
+  seine Grî·e in Words. 
+ 
+ 
+PROC add modules : 
+  Module und Typen neu insertierter Pakete werden in die 'module table'
+  aufgenommen. 
+ 
+ 
+PROC dump tables (TEXT CONST name) : 
+  Der Inhalt der geladenen Modultabelle wird in der FILE 'name' ausgedumpt. 
+ 
+ 
+TEXT PROC module name and specifications (INT CONST module number) : 
+  Der Name und die Parameter des Moduls mit der Nummer 'module number'
+  (0..2047) wird als TEXT geliefert. Falls das Modul nicht in der
+  Permanenttabelle steht, wird niltext geliefert. 
+ 
+ 
+TEXT PROC packetname (INT CONST module number) : 
+  Der Name des Pakets, das das Modul mit der Nummer 'module number'
+  definiert, wird als TEXT geliefert. Falls das Modul nicht in der
+  Permanenttabelle steht, wird der Name des letzten vorher insertierten
+  Pakets geliefert (In manchen FÑllen also nicht der wahre Paketname). 
+ 
+ 
+INT PROC storage (TEXT CONST typename) : 
+  Aus der Modultabelle wird Grî·e des TYPEs mit dem Namen 'typname' gelesen.
+  Wenn der Typ nicht in der Permanenttabelle steht, wird 0 geliefert. 
+ 
+ 
+PROC getmodulenumber (INT VAR module number) : 
+  Erfragt eine Modulnummer am Bildschirm. Der Benutzer kann entweder eine
+  Zahl eingeben oder den Namen einer PROC/OP. Wenn mehrere Module mit diesem
+  Namen existieren, wird eine Auswahlliste angeboten. In 'module number'
+  wird die ausgewÑhlte Modulnummer Åbergeben. 
+   
+ 
+INT PROC codeaddress (INT CONST module number) : 
+  Liefert die Anfangsadresse des Moduls mit der Nummer 'module number'. 
+ 
+ 
+INT PROC codesegment (INT CONST module number) : 
+  Liefert die Nummer des Codesegments, in dem der Code des Moduls mit der
+  Nummer 'module number' steht. 
+ 
+ 
+INT PROC hash (TEXT CONST object name) : 
+  Berechnet den Hashcode des Objekts 'object name', um Åber die Hashtable,
+  Nametable, Permanenttable die Parameter eines Objekts zu suchen. 
+ 
+ 
+#ub#3.3  PACKET eumel decoder#ue# 
+ 
+#ub#3.3.1  Zugriff auf globale Parameter#ue# 
+ 
+PROC default no runtime : 
+  Bereitet den Decoder darauf vor, da· keine runtime vorliegt, d.h.
+  Stackzugriffe nicht sinnvoll sind. FÅr Parameter mit lokalen Adressen
+  werden deshalb keine Variableninhalte dargestellt. Bei fast allen
+  Decoderaufrufen mit 'decode'/'decode module' bis auf die 'decode' mit
+  mehr als zwei Parametern, wird 'default no runtime' automatisch aufgerufen. 
+ 
+ 
+PROC set parameters (INT CONST lbase, pbase, line number, c8k) : 
+PROC get parameters (INT VAR lbase, pbase, line number, c8k) : 
+  Einstell- und Informationsprozeduren (fÅr den Tracer). 'lbase' ist die
+  lokale Basis (Stackoffset fÅr dies Modul), 'pbase' ist das highbyte der
+  Paketbasis, 'line number' ist die letzte 'LN'-Zeilennummer, 'c8k' (cmod)
+  wird von EUMEL0 beim Eintritt in ein Modul auf
+  high (Modulstartaddresse + 16KB) gesetzt (fÅr Branch-Befehle). 
+ 
+ 
+PROC pbase (INT CONST pbase highbyte) : 
+INT PROC pbase : 
+  Einstell- und Informationsprozeduren, nicht nur fÅr den Tracer. Die
+  Paketbasis (Globale Daten) wird gesetzt. Dazu wird nur das Highbyte (z.B.
+  nach 'PENTER') Åbergeben. 
+ 
+ 
+PROC lbase (INT CONST local base) : 
+  Einstellprozedur fÅr den Tracer. Stellt wÑhrend der runtime die aktuelle
+  Basis ein. Wird der Decoder nicht wÑhrend runtime betrieben, sollte
+  lbase(-1) eingestellt werden. 
+ 
+ 
+INT PROC line number : 
+  Liefert die letzte, mit 'LN' eingestellte, Zeilennummer. 
+ 
+PROC list filename (TEXT CONST name) : 
+  Stellt den Namens-Prefix der Outputfiles ein. Voreingestellt ist "". An
+  den Filename wird ".n" angehÑngt, wobei n mit '0' beginnt. 
+
+PROC bool result (BOOL CONST status) : 
+BOOL PROC bool result : 
+  Einstell- und Informationsprozeduren, die fÅr den Tracer benîtigt werden.
+  Lieferte der letzte disassemblierte Befehl ein BOOL-Result ? 
+ 
+PROC with object address (BOOL CONST status) : 
+BOOL with object address :
+  Einstell- und Informationsprozeduren, nicht nur fÅr den Tracer. Sollen
+  au·er den Darstellungen der Speicherinhalte auch die Parameteradressen (in
+  spitzen Klammern) ausgegeben werden ? 
+ 
+PROC with code words (BOOL CONST status) : 
+BOOL PROC with code words : 
+  Einstell- und Informationsprozeduren, nicht fÅr den Tracer. Sollen ab der
+  80. Spalte in der Outputfile die Hexdarstellungen der dekodierten
+  Codewîrter ausgegeben werden ? 
+ 
+ 
+#ub#3.3.2  Aufruf des Disassemblers#ue# 
+ 
+PROC decode : 
+  Aufruf des Decoders. Die Modulnummer der ersten zu dekodierenden Prozedur
+  wird erfragt. Die Modultabelle wird ggf. ergÑnzt, es wird 'default no
+  runtime' eingestellt. 
+ 
+ 
+PROC decode (INT CONST first module number) : 
+  Aufruf des Decoders. Die Modulnummer der ersten zu dekodierenden Prozedur
+  wird Åbergeben. Die Modultabelle wird ggf. ergÑnzt, es wird 'default no
+  runtime' eingestellt. 
+ 
+ 
+PROC decode (INT CONST segment, address) : 
+  Aufruf des Decoders. Die Disassemblierung beginnt in dem
+  Codesegment/Adresse, das/die als Parameter Åbergeben wird. Die Modultabelle
+  wird ggf. ergÑnzt, es wird 'default no runtime' eingestellt. 
+ 
+ 
+PROC decode (INT CONST segment, INT VAR address, INT CONST to addr,
+             BOOL CONST only one module) : 
+  Dieser Decoderaufruf setzt kein 'default no runtime', erweitert aber ggf.
+  die Modultabelle. Der bei 'address' beginnende und bei 'to addr' endende
+  Adressbereich im Codesegment 'segment' wird dekodiert. Ist 'only one
+  module' TRUE, wird nur bis zum Ende des aktuellen Moduls dekodiert.
+  'address' zeigt nach dem Prozeduraufruf auf die nÑchste Instruktion nach
+  'to addr'.
+ 
+ 
+PROC decode (INT CONST segment, INT VAR address, TEXT VAR words,
+             instruction, INT PROC (INT CONST, INT VAR, TEXT VAR) next word)):
+  Diese Prozedur ist das Herz des Decoders. Sie disassembliert eine
+  Instruktion, die im Codesegment 'segment', Adresse 'address' beginnt und
+  legt die mit 'nextword' gelesenen Wîrter als Hexdarstellung in 'words' ab.
+  Die dekodierte Instruktion steht dann in 'instruction'. Vor dem Aufruf
+  dieser Prozedur sollte 'words' und 'instruction' niltext zugewiesen werden.
+  Die passende Prozedur 'nextword' wird auch vom 'eumel decoder'
+  herausgereicht. 'address' zeigt nach der AusfÅhrung des Befehls auf die
+  nÑchste Instruktion. 
+ 
+ 
+PROC decodemodule : 
+  Wie 'decode', nur wird bis nur zum Ende des gewÅnschten Moduls
+  disassembliert. 
+ 
+ 
+PROC decodemodule (INT CONST module number) : 
+  Wie 'decode', nur wird bis nur zum Ende des gewÅnschten Moduls
+  disassembliert. 
+ 
+ 
+#ub#3.3.3  Weitere Prozeduren#ue# 
+ 
+PROC nextmoduleheader (INT CONST segment, INT CONST address,
+                       INT VAR header address, module number) : 
+  Diese Prozedur findet ab der angegeben Adresse ('segment'/'address') den
+  Anfang des nÑchsten Moduls. In 'header address' wird die Startadresse des
+  gefundenen Moduls geliefert (bleibt im Segment 'segment'), in 'module
+  number' die Nummer des gefundenen Moduls. 
+ 
+ 
+INT PROC next word (INT CONST segment, INT VAR address, TEXT VAR words) : 
+ Diese Prozedur liefert das durch 'segment'/'address' angegeben Wort, hÑngt
+ die Hexdarstellung dieses Wortes an 'words' an und erhîht 'address' um
+ eins. 
+ 
+ 
+TEXT PROC data representation (INT CONST data addr, segment, address, type):
+  Diese Prozedur liefert die Darstellung des Parameters 'data addr' ggf. mit
+  Adresse (--> with object address).  'segment'/'address' bezeichnet die
+  Position, an der die Instruktion fÅr diesen Parameter steht. 'type' ist
+  ein (durch die Instruktion festgelegter) Typ des Parameters, mit dem die
+  Art der Darstellung gewÑhlt wird (TEXT, REAL, INT, ...). Im Gegensatz zu
+  'object representation' braucht bei dieser Prozedur keine Darstellung
+  vorhanden sein. In diesem Falle wird nur z.B. der Stackoffset '<L n>'
+  ausgegeben. 
+ 
+ 
+TEXT PROC object representation (INT CONST data segment, data address,
+                                           segment, address, type) : 
+  Diese Prozedur wird von 'data representation' aufgerufen und liefert die
+  Darstellung des Parameters. In 'data segment'/'data address' wird die
+  Anfangsadresse der darzustellenden Daten Åbergeben. Die anderen drei
+  Parameter verhalten sich wie bei 'data representation'. 
+ 
+ 
+TEXT PROC last actual parameter : 
+  Liefert den Wert (nach TEXT konvertiert) des letzten dekodierten aktuellen
+  Parameters (am sinnvollsten wÑhrend runtime). Diese prozedur wird vom
+  Tracer benutzt. 
+ 
+ 
+#ub#3.4  PACKET tracer#ue# 
+ 
+#ub#3.4.1  Zugriff auf globale Parameter#ue# 
+ 
+ 
+PROC prot file (TEXT CONST filename) :
+TEXT PROC prot file : 
+  Einstell- und Informationsprozeduren fÅr den Namen der Protokollfile.
+  Wird ein 'filename' ungleich niltext eingestellt, dann werden die
+  dekodierten Instruktionen wÑhrend der Ablaufverfolgung zusÑtzlich in diese
+  File geschrieben. 
+ 
+ 
+PROC source file (TEXT CONST filename) : 
+TEXT PROC source file : 
+  Einstell- und Informationsprozeduren fÅr den Namen der Quelltextdatei.
+  Wird ein 'filename' ungleich niltext eingestellt, dann wird nach dem
+  AusfÅhren eines 'LN'-Befehls (LineNumber) die Zeile mit dieser Nummer aus
+  der Quelldatei gelesen und parallel zur dekodierten EUMEL0-Instruktion
+  angezeigt. 
+ 
+ 
+PROC tracer channel (INT CONST) :
+INT PROC tracerchannel : 
+  Einstell- und Informationsprozeduren fÅr den Kanal, an dem das Programm
+  ausgefÅhrt werden soll. Die Ablaufverfolgung bleibt an dem Kanal, an dem
+  die PROC/OP aufgerufen wurde. 
+ 
+ 
+#ub#3.4.2  Aufruf des Tracers#ue# 
+ 
+  Eine PROC/OP, in der ein Breakpoint gesetzt wurde, kann zum Beispiel im
+  Monitor aufgerufen werden. Ab der Adresse, an der der Breakpoint gesetzt
+  wurde, kann die Abarbeitung des Codes verfolgt werden. Das Setzen der
+  Breakpoints geschieht mit 'set breakpoint'. 
+ 
+ 
+PROC trace : 
+  Diese Prozedur erfragt vom Benutzer die PROC/OP, bei der der die
+  Ablaufverfogung beginnen soll. Anschlie·end mu· der Aufruf der PROC/OP
+  eingegeben werden. Der Benutzer wird au·erdem nach dem Namen der
+  compilierten Quelldatei, dem Namen der Protokollfile und dem
+  Abarbeitungskanal gefragt. Nachdem alle Angaben gemacht worden sind, wird
+  der PROC/OP-Aufruf mit 'do' ausgefÅhrt. 
+ 
+ 
+PROC set breakpoint : 
+  Die Modultabelle wird ggf. erweitert, der Benutzer wird nach dem Namen
+  einer PROC/OP gefragt, deren Codeabarbeitung verfolgt werden soll. Der Code
+  dieser PROC/OP mu· im Codesegment 3 stehen (sonst erfolgt ein 'errorstop').
+  Der Protokoll- und Sourcefilename werden auf niltext gesetzt. 
+ 
+ 
+PROC set breakpoint (INT CONST breakpointnr, address) : 
+  Setzt an der Åbergebenen Codeadresse im Segment 3 einen Breakpoint der
+  beiden Breakpoints (1 oder 2 als 'breakpointnr'). Der Benuzter ist selbst
+  dafÅr verantwortlich da· 
+  - dies nicht die Einsprungsadresse eines Moduls ist (HEAD-Instruktion), 
+  - die Åbergebene Adresse das erste (Opcode-) Wort einer Instruktion ist, 
+  - vor dem Aufruf des Moduls die Paketbasis korrekt gesetzt ist, falls
+    vor der ersten Instruktion mit Parametern kein 'PENTER' ausgefÅhrt wird. 
+ 
+ 
+PROC reset breakpoints : 
+  Die Breakpoints werden zurÅckgesetzt und der (wegen des Breakpointhandler-
+  CALLs) gesicherte Code wieder an seinen Originalplatz zurÅckgeschrieben. 
+ 
+ 
+PROC reset breakpoint (INT CONST breakpointnr) : 
+  Es wird nur gezielt der eine Breakpoint mit der Nummer 'breakpointnr'
+  zurÅckgesetzt. 
+ 
+ 
+PROC list breakpoints : 
+  Der Status, die Adresse und der gesicherte Code (an dieser Adresse) werden 
+  fÅr beide Breakpoints gelistet. 

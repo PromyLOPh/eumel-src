@@ -1,0 +1,109 @@
+PACKET cluster DEFINES                       (* Copyright (C) 1986 *)
+                                             (* Frank Klapper      *)
+                                             (* 19.03.86           *)
+
+  CLUSTER, 
+  :=, 
+  text,
+  text 32,            (* typical dir entry *)
+  write text,
+  write text 32,
+  reduce cluster buffer:
+ 
+LET max cluster size = 8192;   (* 8192 * 8 = 64 KB *)
+
+TYPE CLUSTER = BOUND STRUCT (ALIGN dummy, 
+                             ROW max cluster size REAL cluster row); 
+ 
+TEXT VAR string;
+INT VAR string length;
+ 
+INT VAR sector no, eight byte pos, index;
+
+reduce cluster buffer;
+
+.reals per sector:        sector size DIV 8.
+.reals per std eu sector: 512 DIV 8.
+
+PROC reduce cluster buffer:
+  string := 32 * "*";
+  string length := 32.
+
+END PROC reduce cluster buffer;
+
+OP := (CLUSTER VAR cluster, DATASPACE VAR ds):
+  CONCR (cluster) := ds 
+ 
+END OP :=; 
+ 
+TEXT PROC text (CLUSTER CONST cluster, INT CONST from, to):
+  init string;
+  FOR sector no FROM 0 UPTO sectors per cluster - 1 REP
+    get text of sector
+  PER;
+  subtext (string, from, to).
+ 
+init string:
+  IF string length < cluster size
+    THEN string := cluster size * "*";
+         string length := cluster size
+  FI.
+
+get text of sector:
+  FOR eight byte pos FROM 1 UPTO reals per sector REP
+    replace (string, string index, cluster.cluster row [row index]) 
+  PER.
+
+string index:
+  reals per sector * sector no + eight byte pos.
+
+row index:
+  reals per std eu sector * sector no + eight byte pos.
+
+END PROC text;
+
+TEXT PROC text 32 (CLUSTER CONST cluster, INT CONST part):
+  FOR index FROM 1 UPTO 4 REP
+    replace (string, index, cluster.cluster row [index + 4 * part])
+  PER;
+  subtext (string, 1, 32).
+ 
+END PROC text 32;
+
+PROC write text (CLUSTER VAR cluster,
+                 TEXT CONST string):
+  IF LENGTH string < cluster size
+    THEN execute write text (cluster, text (string, cluster size))
+    ELSE execute write text (cluster, string)
+  FI.
+
+END PROC write text;
+
+PROC execute write text (CLUSTER VAR cluster,
+                         TEXT CONST string):
+  FOR sector no FROM 0 UPTO sectors per cluster - 1 REP
+    write text of sector
+  PER.
+
+write text of sector:
+  FOR eight byte pos FROM 1 UPTO reals per sector REP
+    cluster.cluster row [row index] := string RSUB (string index) 
+  PER.
+
+row index:
+  reals per std eu sector * sector no + eight byte pos.
+
+string index:
+  reals per sector * sector no + eight byte pos.
+
+
+END PROC execute write text;
+
+PROC write text 32 (CLUSTER VAR cluster, TEXT CONST string, INT CONST part):
+  FOR index FROM 1 UPTO 4 REP
+    cluster.cluster row [index + 4 * part] := string RSUB (index)
+  PER;
+
+END PROC write text 32;
+
+END PACKET cluster;

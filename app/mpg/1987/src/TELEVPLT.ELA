@@ -1,0 +1,176 @@
+PACKET televideo plot DEFINES drawing area,         { Autor: H. Indenbirken }
+                              begin plot,           { Stand: 31.01.85       }
+                              end plot, 
+                              clear, 
+                              pen,
+                              move, 
+                              draw, 
+                              get cursor,
+                              cursor:
+
+ 
+LET delete = 0,                         {Farbcodes}
+    std    = 1,
+    black  = 5,
+    white  = 6,
+
+    nothing          = 0,               {Linientypen}
+    durchgehend      = 1, 
+    gepunktet        = 2,
+    kurz gestrichelt = 3,
+    lang gestrichelt = 4,
+    strichpunkt      = 5,
+    mittel gestrichelt = 6,
+    punkt punkt strich = 7;
+
+INT VAR act thick :: 0;
+LET POS = STRUCT (INT x, y);
+
+POS VAR pos :: POS : (0, 0);
+
+PROC drawing area (REAL VAR x cm, y cm, INT VAR x pixel, y pixel) : 
+   x cm    := 23.0;    y cm    := 13.7; 
+   x pixel := 639;     y pixel := 239 
+END PROC drawing area;
+
+PROC begin plot : 
+  page;
+  out (""27".0")
+ENDPROC begin plot ;
+ 
+PROC end plot : 
+  out (""27".1")
+ENDPROC end plot ;
+
+PROC clear :
+  act thick := 0;
+  pos := POS : (0, 0);
+  out (""27"mCGD")
+END PROC clear;
+
+PROC pen (INT CONST background, foreground, thickness, linetype):
+  out (""27"m");
+  set background;
+  set foreground;
+  set thickness;
+  set linetype;
+  out ("D")  .
+
+set background:
+  IF background = white
+  THEN out (""27"n1")
+  ELSE out (""27"n0") FI  .
+
+set foreground:
+  IF foreground = delete
+  THEN out ("U0W1")
+  ELIF foreground < 0
+  THEN out ("U1W4")
+  ELSE out ("U1W1") FI  .
+ 
+set thickness:
+  act thick := thickness  .
+
+set linetype:
+  SELECT linetype OF
+  CASE durchgehend      : out ("T1")
+  CASE gepunktet        : out ("T3")
+  CASE kurz gestrichelt : out ("T6")
+  CASE lang gestrichelt : out ("T5")
+  CASE strichpunkt      : out ("T4")
+  CASE mittel gestrichelt : out ("T2")
+  CASE punkt punkt strich : out ("T7")
+  END SELECT  .
+
+END PROC pen;
+
+PROC move (INT CONST x, y) :
+  out (""27"mM" + text (x, y) + ";D");
+  pos := POS  : (x, y)
+END PROC move;
+ 
+PROC draw (INT CONST x, y) :
+  IF act thick <> 0
+  THEN IF horizontal line
+       THEN thick y
+       ELSE thick x FI;
+       x MOVE y
+  ELSE out (""27"mL" + text (x, y) + ";D") FI;
+  pos := POS : (x, y)   .
+
+horizontal line:
+  abs (pos.x-x) > abs (pos.y-y)  .
+
+thick y:
+  INT VAR dy, old x :: pos.x-x ausgleich, new x :: x+x ausgleich;
+  FOR dy FROM 1 UPTO act thick
+  REP old x MOVE pos.y+dy;
+      new x DRAW     y+dy;
+      old x MOVE pos.y-dy;
+      new x DRAW y-dy;
+  PER  . 
+
+x ausgleich:
+  IF pos.x <= x
+  THEN  act thick
+  ELSE -act thick FI  .
+
+thick x:
+  INT VAR dx, old y :: pos.y-y ausgleich, new y :: y+y ausgleich;
+  FOR dx FROM 1 UPTO act thick
+  REP pos.x+dx MOVE old y;
+          x+dx DRAW new y;
+      pos.x-dx MOVE old y;
+          x-dx DRAW new y;
+  PER  . 
+
+y ausgleich:
+  IF pos.y <= y
+  THEN  act thick
+  ELSE -act thick FI  .
+
+END PROC draw;
+
+PROC draw (TEXT CONST record, REAL CONST angle, height, width):
+  out (""27"m""" + record + """D")
+END PROC draw;
+
+PROC draw (TEXT CONST record) :
+  draw (record, 0.0, 0.0, 0.0)
+END PROC draw;
+ 
+PROC get cursor (TEXT VAR t, INT VAR x, y) :
+END PROC get cursor;
+
+OP MOVE (INT CONST x, y):
+  out (""27"mM" + text (x, y) + ";D") 
+END OP MOVE;
+
+OP DRAW (INT CONST x, y):
+  out (""27"mL" + text (x, y) + ";D") 
+END OP DRAW;
+
+PROC cursor (INT CONST no,x,y):
+  out (""27"m|" + text (no) + "~0H" + text (x, y) + ";D")
+END PROC cursor;
+
+TEXT PROC text (INT CONST x,y):
+  x text + "," + y text  .
+
+x text:
+  IF x < 0
+  THEN "0"
+  ELIF x > 639
+  THEN "639"
+  ELSE text (x) FI  .
+
+y text:
+  IF y < 0
+  THEN "0"
+  ELIF y > 639
+  THEN "639"
+  ELSE text (y) FI  .
+
+END PROC text;
+
+END PACKET televideo plot

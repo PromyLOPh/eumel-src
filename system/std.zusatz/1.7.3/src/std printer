@@ -1,0 +1,434 @@
+PACKET std printer DEFINES reset printer,        (* F. Klapper *)
+                           new page,             (* 21.05.84   *)
+                           start, 
+                           printer cmd, 
+                           on, 
+                           off, 
+                           material, 
+                           papersize, 
+                           limit,
+                           change type, 
+                           print text, 
+                           x pos,
+                           y pos,
+                           line: 
+
+LET begin mark cmd    = ""15"",   (* Kommandos fr 'output buffer' *)
+    end   mark cmd    = ""14"",
+    bsp        cmd    = ""8"" , 
+    printercmd cmd    = ""16"",
+    begin mark code   = 15,
+    end   mark code   = 14, 
+    bsp        code   = 8, 
+    printercmd code   = 16,
+
+    cr                = ""13"",   (* Steuerzeichen fr die Ausgabe *)
+    lf                = ""10"", 
+    underline char    = "_",
+
+    inch = 2.54,                  (* Konstanten *)
+    max printer cmds per line = 10;
+
+INT CONST std length of paper :: 12 * y factor per inch,
+          std width  of paper :: cm to x steps (13.2 * inch),
+          std limit           :: cm to x steps (12.0 * inch), 
+          std first line      :: 5, 
+          std first collumn   :: cm to x steps (inch),
+ 
+          no xpos :: - 10;       (* beliebige negative ganze Zahl *)
+
+INT VAR first collumn,
+        first line,
+        xlimit,
+        actual line,
+        x pos steps,
+        width  of paper,
+        length of paper,
+        x pos mode;
+
+BOOL VAR block mode,
+         underline on,   (* gibt durch on / off gesetzten Zustand an *)
+         underline out;  (* gibt Zustand an der bis jetzt durch output buffer
+                            ausgegebenen Stelle an                   *)
+TEXT VAR buffer,
+         x pos buffer,
+         left margin;
+ 
+ROW max printer cmds per line TEXT VAR cmd arry;
+INT VAR cmd pointer;
+
+  length of paper    := std length of paper;
+  first line         := std first line; 
+  actual line        := 0;
+  buffer             := ""; 
+  reset printer;
+ 
+INT PROC cm to x steps (REAL CONST cm): 
+  int ((abs (cm) * real (x factor per inch) / inch) + 0.5)
+END PROC cm to x steps; 
+ 
+INT PROC cm to y steps (REAL CONST cm): 
+  int ((abs (cm) * real (y factor per inch) / inch) + 0.5)
+END PROC cm to y steps; 
+ 
+PROC start (REAL CONST x, y):
+  first collumn := cm to x steps (x);
+  first line    := cm to y steps (y);
+  left margin   := first collumn * " "
+END PROC start;
+ 
+PROC papersize (REAL CONST w, l): 
+  width of paper  := cm to x steps (w);
+  length of paper := cm to y steps (l); 
+END PROC papersize;
+
+PROC limit (REAL CONST x): 
+   xlimit := cm to x steps (x);
+END PROC limit;
+ 
+PROC on (TEXT CONST attribute):
+  IF (attribute SUB 1) = "u"
+  THEN underline on := TRUE;
+       buff CAT begin mark cmd
+  FI.
+
+buff:
+  IF xpos steps >= 0
+  THEN x pos buffer
+  ELSE buffer
+  FI.
+END PROC on;
+
+PROC off (TEXT CONST attribute):
+  IF (attribute SUB 1) = "u"
+  THEN underline on := FALSE;
+       buff CAT end mark cmd
+  FI.
+
+buff:
+  IF xpos steps >= 0
+  THEN x pos buffer
+  ELSE buffer
+  FI.
+END PROC off;
+
+PROC printer cmd (TEXT CONST cmd): 
+  IF cmd pointer < max printer cmds per line
+  THEN cmd pointer INCR 1;
+       cmd arry (cmd pointer) := cmd;
+       buff CAT printercmd cmd
+  FI.
+
+buff:
+  IF xpos steps >= 0
+  THEN x pos buffer
+  ELSE buffer
+  FI.
+END PROC printer cmd; 
+ 
+PROC material (TEXT CONST name of material):
+END PROC material;
+ 
+PROC change type (TEXT CONST name of type): 
+ENDPROC change type; 
+
+PROC reset printer :
+  new page;                                   (* actual line := 0 *)
+  width  of paper    := std width  of paper;
+  length of paper    := std length of paper;
+  first line         := std first line; 
+  first collumn      := std first collumn;
+  xlimit             := std limit;
+  xpos mode          := 0;
+  cmd pointer        := 0;
+  x pos steps        := no x pos;
+  buffer             := ""; 
+  xpos buffer        := "";
+  left margin        := first collumn * " ";
+  block mode         := FALSE;
+  underline on       := FALSE;
+  underline out      := FALSE;
+ENDPROC reset printer;
+ 
+PROC print text (TEXT CONST content, INT CONST mode):
+  IF x pos steps >= 0
+  THEN x pos buffer CAT content;
+       x pos mode := mode MOD 4;
+       block mode := FALSE
+  ELSE buffer CAT content ;
+       block mode := (mode MOD 4) = 3
+  FI.
+END PROC print text;
+
+PROC tab and print:
+  SELECT x pos mode OF
+  CASE 0: fill (buffer, " ", x pos steps);
+  CASE 1: fill (buffer, " ", x pos steps - outputlength (x pos buffer));
+  CASE 2: fill (buffer, " ", 
+                x pos steps - outputlength (xpos buffer) DIV 2);
+  CASE 3: fill (buffer, " ", x pos steps);
+          block (x pos buffer, xlimit - x pos steps);
+  OTHERWISE
+  END SELECT;
+  buffer CAT x pos buffer;
+  x pos buffer := "";
+  x pos steps := no x pos.
+END PROC tab and print;
+ 
+INT PROC outputlength (TEXT CONST buff):
+  length (buff) - chars (buff, printercmd cmd) - chars (buff, begin mark cmd)
+                - chars (buff, end mark cmd) - chars (buff, bsp cmd) * 2 
+END PROC outputlength;
+
+PROC x pos (REAL CONST cm):
+  IF x pos steps >= 0
+  THEN tab and print
+  FI;
+  IF underline on
+  THEN       buffer CAT end   mark cmd;
+       x pos buffer CAT begin mark cmd
+  FI;
+  x pos steps := cm to x steps (cm)
+END PROC x pos;
+
+PROC y pos (REAL CONST cm):
+  IF actual line = 0
+  THEN output linefeed (first line - actual line); 
+       actual line := first line 
+  FI;
+  output buffer;
+  INT VAR y lf steps := cm to y steps (cm);
+  output linefeed (y lf steps + first line - actual line);
+  actual line := first line + y lf steps. 
+END PROC y pos;
+
+PROC line (REAL CONST proposed lf) :
+  IF actual line = 0
+  THEN output linefeed (first line - actual line); 
+       actual line := first line 
+  FI;
+  output buffer;
+  INT VAR done lf;
+  convert into min y steps (proposed lf, done lf);
+  output line feed (done lf);
+  actual line INCR done lf;
+END PROC line;
+
+PROC convert into min y steps (REAL CONST in, INT VAR out): 
+  IF in < 0.001
+  THEN out := 0
+  ELSE out := int (in);
+       IF out < 1 THEN out := 1 FI
+  FI; 
+ENDPROC convert into min y steps;
+
+PROC new page:
+  IF buffer <> ""
+  THEN line (1.0)
+  FI;
+  actual line := actual line MOD length of paper;
+  IF actual line > first line 
+  THEN output pagefeed (length of paper - actual line);
+       actual line := 0 
+  FI;
+END PROC new page;
+
+PROC output buffer:
+  IF x pos steps >= 0
+  THEN tab and print
+  ELIF block mode
+  THEN block (buffer, xlimit)
+  FI ;
+  TEXT VAR bsp buffer := "",
+           underline buffer := "";
+  INT VAR cmd pos := pos (buffer, ""1"", ""31"", 1),
+          akt cmd pointer := 0,
+          soon out := 0;
+  out (left margin);
+  put leading blanks not underlined;
+  WHILE cmd pos > 0
+  REP analyze cmd;
+      cmd pos := pos (buffer, ""1"", ""31"", cmd pos)
+  PER;
+  IF underline out
+  THEN fill (underline buffer, underline char, LENGTH buffer)
+  FI;
+  out buffer;
+  out bsp buffer;
+  out underline buffer;
+  buffer := "";
+  cmd pointer := 0.
+
+put leading blanks not underlined:
+  IF underline out
+  THEN INT VAR first non blank pos := pos (buffer, ""33"", ""254"", 1);
+       IF cmd pos > 0 CAND first non blank pos > 0
+       THEN fill (underline buffer, " ", 
+                  min (first non blank pos, cmd pos) - 1)
+       ELIF cmd pos > 0
+       THEN fill (underline buffer, " ", cmd pos - 1)
+       ELSE fill (underline buffer, " ", first non blank pos -1)
+       FI;
+  FI.
+
+analyze cmd:
+  SELECT code (buffer SUB cmd pos) OF 
+  CASE bsp code        : do bsp cmd
+  CASE begin mark code : do begin mark cmd
+  CASE end mark code   : do end   mark cmd
+  CASE printercmd code : do printercmd cmd
+  OTHERWISE 
+  END SELECT.
+
+do bsp cmd:
+  fill (bsp buffer, " ", cmd pos - 2);
+  cmd pos DECR 1;
+  bsp buffer CAT (buffer SUB cmd pos);
+  delete char (buffer, cmd pos);
+  delete char (buffer, cmd pos).
+
+do begin mark cmd:
+  IF NOT underline out
+  THEN underline out := TRUE;
+       fill (underline buffer, " ", cmd pos -1);
+       delete char (buffer, cmd pos)
+  FI.
+
+do end mark cmd:
+  IF underline out
+  THEN underline out := FALSE;
+       fill (underline buffer, underline char, cmd pos - 1);
+       delete char (buffer, cmd pos)
+  FI.
+
+do printercmd cmd:
+  IF akt cmd pointer < cmd pointer
+  THEN akt cmd pointer INCR 1;
+       out subtext (buffer, soon out + 1, cmd pos - 1);
+       soon out := cmd pos - 1;
+       delete char (buffer, cmd pos);
+       out (cmd arry (akt cmd pointer))
+  FI.
+
+out buffer:
+  (* out (left margin) steht schon weiter oben *)
+  outsubtext (buffer, soon out + 1).
+
+out bsp buffer:
+  IF bsp buffer <> ""
+  THEN out (cr);
+       out (left margin);
+       out (bsp buffer)
+  FI.
+
+out underline buffer:
+  IF underline buffer <> ""
+  THEN out (cr);
+       out (left margin);
+       out (underline buffer)
+  FI.
+END PROC output buffer;
+
+PROC fill (TEXT VAR buff, TEXT CONST char, INT CONST len):
+  buff CAT (len - outputlength (buff)) * char
+END PROC fill;
+
+PROC output linefeed (INT CONST min y steps):
+  IF min y steps > 0
+    THEN out (cr);
+         out (min y steps * lf)
+  FI
+ENDPROC output linefeed ;
+
+PROC output pagefeed (INT CONST rest) :
+  out (cr) ;
+  rest TIMESOUT lf
+ENDPROC output pagefeed ;
+
+(********************* B L O C K **********************************)
+LET blank = " " ,
+    enumeration list = "-).:" ;
+
+INT VAR to insert,
+        nr of blanks ,
+        nr of big spaces ,
+        begin ;
+
+TEXT VAR small space ,
+         big space ;
+
+BOOL VAR right := TRUE ;
+
+PROC block (TEXT VAR blockline, INT CONST len):
+  to insert := len - outputlength (blockline);
+  nr of blanks := 0; begin:=0;
+  IF to insert <= 0 THEN LEAVE block FI;
+  IF to insert > (xlimit DIV 3 ) THEN LEAVE block FI;
+  mark the variable blanks;
+  IF nr of blanks <= 0 THEN LEAVE block FI;
+  right := NOT right;
+  compute spaces;
+  insert spaces.
+
+mark the variable blanks:
+  skip blanks ;
+  begin := pos(blockline,blank,begin+1);
+  IF (pos (enumeration  list, (blockline SUB (begin-1))) > 0 )
+    THEN skip blanks ;
+         begin := pos(blockline,blank,begin+1);
+  FI;
+  WHILE begin > 0 REP
+     IF single blank gap
+       THEN change (blockline,begin,begin,""0""); 
+            nr of blanks INCR 1;
+       ELSE skip blanks
+     FI;
+     begin := pos(blockline,blank,begin+1);
+  ENDREP.
+
+single  blank gap :
+  ((blockline SUB (begin+1)) <> blank).
+
+skip blanks :
+  begin := pos (blockline, ""33"", ""254"", begin+1) .
+
+compute spaces:
+  INT VAR steps :=  to insert ;
+  INT VAR small :=  steps DIV nr of blanks;
+  nr of big spaces  :=  steps MOD nr of blanks;
+  small space := (small+1) * blank ;
+  big space := small space ;
+  big space CAT blank .
+
+insert spaces:
+  IF right THEN insert big spaces on right side
+           ELSE insert big spaces on left side
+  FI.
+
+insert big spaces on right side:
+  INT VAR nr of small spaces := nr of blanks - nr of big spaces;
+  INT VAR i;
+  FOR i FROM 1 UPTO nr of small spaces REP
+      change (blockline, ""0"",small space)
+  ENDREP;
+  changeall (blockline,""0"",big space).
+
+insert big spaces on left side:
+  INT VAR j;
+  FOR j FROM 1 UPTO nr of big spaces REP
+     change (blockline,""0"",big space)
+  ENDREP;
+  changeall (blockline,""0"",small space).
+ENDPROC block;
+
+INT PROC chars (TEXT CONST text, char) :
+  INT VAR how many := 0 ,
+  cmd pos := pos (text, char) ;
+  WHILE cmd pos > 0 REP
+    how many INCR 1 ;
+    cmd pos := pos (text, char, cmd pos+1)
+  PER ;
+  how many
+ENDPROC chars ;
+
+ENDPACKET std printer ;

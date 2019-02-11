@@ -1,0 +1,438 @@
+PACKET at plot DEFINES                            (* at plot              *)
+                                                  (* Datum    : 14:05:86  *) 
+                  begin plot,                     (* Geaendert: 30.05:86  *) 
+                  end plot,                       (* Autoren  : BJ & CW   *) 
+                  clear,                          (* MPG Bielefeld        *) 
+ 
+                  pen, 
+                  background, 
+                  foreground, 
+                  thickness, 
+                  linetype, 
+ 
+                  move, 
+                  draw, 
+                  bar, circle,
+                  drawing area, 
+                  range, set range:
+ 
+LET     max x   = 719, 
+        max y   = 347, 
+        x pixel = 720, 
+        y pixel = 348, 
+        x cm    = 24.5, 
+        y cm    = 18.5; 
+ 
+INT VAR thick :: 0,  (* Normale Linien *) 
+        ltype :: 1,
+        x max :: max x, (* Zeichenfenster *) 
+        y max :: max y,
+        x min :: 0, 
+        y min :: 0,
+        old x :: 0, 
+        old y :: 0; 
+ 
+ROW 5 ROW 4 INT CONST nibble :: ROW 5 ROW 4 INT: (* Bitmuster fuer Linien*) 
+   (ROW 4 INT : ( 4369, 4369, 4369, 4369),       (* durchgezogen  *) 
+    ROW 4 INT : (   17,   17,   17,   17),       (* gepunktet     *) 
+    ROW 4 INT : ( 4369,    0, 4369,    0),       (* kurz gestrichelt *) 
+    ROW 4 INT : ( 4369, 4369,    0,    0),       (* lang gestrichelt *) 
+    ROW 4 INT : ( 4369, 4369, 4096,    1));      (* gestrichpunktet  *) 
+ 
+PROC begin plot: 
+  INT VAR return; 
+  REP                              (* Fehler? Ab und zu versagt der *)
+    control (-5,512+0,0,return);   (* Graphik-Aufruf !!!!!!         *)
+  UNTIL return <> -1 PER;
+  IF return <> 0 
+    THEN errorstop ("Graphik nicht ansprechbar") 
+  FI 
+END PROC begin plot; 
+ 
+PROC end plot: 
+  INT VAR return; 
+  pause;
+  control (-5,2,0,return); 
+END PROC end plot;
+
+PROC clear: 
+  begin plot 
+END PROC clear; 
+ 
+PROC pen (INT CONST backgr, foregr, thickn, linety): 
+  INT VAR dummy; 
+  background (backgr, dummy); 
+  thickness  (thickn, dummy); 
+  linetype   (linety, dummy);
+  foreground (foregr, dummy)
+END PROC pen; 
+ 
+PROC background (INT CONST desired, INT VAR realized): 
+  realized := 0 
+END PROC background; 
+ 
+PROC foreground (INT CONST desired, INT VAR realized): 
+  IF desired < 2 OR desired = 5  (* 0 = loeschen, 1 = setzen, 5 = schwarz *)
+    THEN realized := desired 
+    ELSE realized := 1 
+  FI; 
+  IF realized = 0
+    THEN INT VAR return;
+                 control ( -9,0,0,return); 
+                 control (-10,0,0,return) 
+    ELSE linetype (ltype,return)           (* Alten Typ wiederherstellen *) 
+  FI
+END PROC foreground; 
+ 
+PROC linetype (INT CONST desired, INT VAR realized): 
+  IF desired > 5 
+    THEN realized := 1 
+    ELSE realized := desired 
+  FI; 
+  INT VAR return;
+  ltype := realized;
+  control ( -9,nibble [realized][2], nibble [realized][1], return); 
+  control (-10,nibble [realized][4], nibble [realized][3], return); 
+  IF realized = 1
+    THEN control (-11,0,0,return) 
+    ELSE control (-11,1,0,return)
+  FI
+END PROC linetype; 
+ 
+PROC thickness (INT CONST desired, INT VAR realized): 
+  thick := int ( real (desired) / 200.0 *    (* Angabe in 1/10 mm *)
+                 real (x pixel) / x cm);     (* Unrechnung in X Punkte *)
+  realized := thick * 2 + 1                  (* Rueckgabe in Punkten *)
+END PROC thickness; 
+ 
+PROC move (INT CONST x,y): 
+  old x := x;                 (* Kein direktes move, da clipping ! *)
+  old y := y 
+END PROC move;
+
+PROC draw (INT CONST x,y): 
+  draw (old x,old y,x,y); 
+END PROC draw; 
+ 
+PROC draw (INT CONST x0,y0,x1,y1): 
+  IF thick = 0 
+    THEN line (x0,y0,x1,y1) 
+    ELSE draw thick line (x0,y0,x1,y1) 
+  FI; 
+  move (x1,y1) 
+END PROC draw; 
+ 
+PROC draw thick line (INT CONST x1,y1,x2,y2): 
+  INT VAR x0 :: x1,
+          y0 :: y1,
+          x  :: x2,
+          y  :: y2;
+  swap if neccessary;
+  REAL VAR xr0 :: real(x0),                            (* Unwandlung in *)
+           yr0 :: real(y0) / (x cm * real(y pixel)) *  (* 1:1-Koordinaten*)
+                             (y cm * real(x pixel)),  
+           xr1 :: real(x), 
+           yr1 :: real(y) / (x cm * real(y pixel)) * 
+                             (y cm * real(x pixel)); 
+  INT VAR  line counter;
+  control(-11,1,0,line counter);
+  IF is vertical line
+    THEN draw vertical line 
+    ELSE draw line 
+  FI;
+  move(x1,y1).
+ 
+  swap if neccessary: 
+    IF x < x0 OR (x = x0 AND y < y0) 
+      THEN INT VAR dummy :: x0; 
+           x0 := x; 
+           x := dummy; 
+           dummy := y0; 
+           y0 := y; 
+           y := dummy 
+    FI.
+
+  is vertical line: 
+    x = x0.
+ 
+  draw vertical line: 
+    INT VAR i;
+    FOR i FROM - thick UPTO thick REP 
+      INT VAR return;
+      control(-11, 1,line counter,return);  (* Einheitliches Muster ! *)
+      line (xr0+real(i),yr0-real(thick),xr0+real(i),yr1+real(thick)) 
+    PER. 
+
+  draw line: 
+    REAL VAR m :: (yr1 - yr0) / (xr1 - xr0),
+             dx :: real(thick)/sqrt(1.0+m**2), 
+             dy :: m * dx,
+             xn, 
+             yn, 
+             diff,
+             dsx :: dy,
+             dsy :: -dx,
+             x incr :: -real(sign(dsx)), 
+             y incr :: -real(sign(dsy)); 
+  xr0 INCR -dx; 
+  yr0 INCR -dy; 
+  xr1 INCR  dx; 
+  yr1 INCR  dy;
+  xn := xr0 + dsx; 
+  yn := yr0 + dsy; 
+  REP
+    control (-11, 1,line counter,return);
+    line(xn,yn,xr1 - xr0 + xn,yr1 - yr0 + yn); 
+    diff := (2.0*dsy *(xn - (xr0 - dy)) - 2.0 * dsx * (yn - (yr0 + dx))) 
+             * real(sign(m));
+    IF diff < 0.0
+      THEN xn INCR x incr 
+    ELIF diff > 0.0
+      THEN yn INCR y incr 
+      ELSE xn INCR x incr; 
+           yn INCR y incr 
+    FI 
+  UNTIL int(xn - xr0 + dy) = 0 AND int(yn - yr0 - dx) = 0 PER
+
+END PROC draw thick line; 
+
+PROC line (REAL CONST x0,y0,x1,y1):   (* 1:1-Koordinaten -> Geraetek. *)
+  line (int(x0),int(y0 * (x cm * real(y pixel)) / (y cm * real(x pixel))),
+        int(x1),int(y1 * (x cm * real(y pixel)) / (y cm * real(x pixel))))
+END PROC line ;
+ 
+PROC line (INT CONST x0,y0,x1,y1):      (* Normale Linie mit clipping *)
+  REAL VAR dx :: real(xmax - xmin) / 2.0, 
+           dy :: real(ymax - ymin) / 2.0, 
+           rx0 :: real(x0-x min) - dx, 
+           ry0 :: real(y0-y min) - dy, 
+           rx1 :: real(x1-x min) - dx, 
+           ry1 :: real(y1-y min) - dy; 
+  INT VAR  cx0, 
+           cy0, 
+           cx1, 
+           cy1; 
+  calculate cells; 
+  IF (cx0*cx1 = 1) OR (cy0 * cy1 = 1)
+    THEN                                  (* Linie ausserhalb *)
+    ELSE do clipping           
+  FI.
+ 
+  do clipping: 
+    IF cx0 <> 0 
+      THEN REAL VAR next x :: real(cx0) * dx; 
+           ry0 := (ry1 - ry0) / (rx1 - rx0) * (next x - rx0) + ry0;
+           rx0 := next x 
+    FI; 
+    calculate cells; 
+    IF cy0 <> 0 
+      THEN REAL VAR next y :: real(cy0) * dy; 
+           rx0 := (rx1 - rx0) / (ry1 - ry0) * (next y - ry0) + rx0; 
+           ry0 := next y 
+    FI; 
+    IF cx1 <> 0 
+      THEN next x := real(cx1) * dx; 
+           ry1 := (ry1 - ry0) / (rx1 - rx0) * (next x - rx1) + ry1;
+           rx1 := next x 
+    FI; 
+    calculate cells; 
+    IF cy1 <> 0 
+      THEN next y := real(cy1) * dy; 
+           rx1 := (rx1 - rx0) / (ry1 - ry0) * (next y - ry1) + rx1; 
+           ry1 := next y 
+    FI; 
+    IF (rx1 = rx0) AND (ry1 = ry0) 
+      THEN LEAVE line 
+    FI; 
+    draw std line (int (rx0+dx) + x min,int (ry0+dy) + y min, 
+                   int (rx1+dx) + x min,int (ry1+dy) + y min).
+     
+    calculate cells: 
+      cx0 := 0; 
+      cy0 := 0; 
+      cx1 := 0; 
+      cy1 := 0; 
+      IF abs(rx0) > dx 
+        THEN cx0 := sign(rx0) 
+      FI;
+      IF abs(rx1) > dx 
+        THEN cx1 := sign(rx1) 
+      FI;
+      IF abs(ry0) > dy 
+        THEN cy0 := sign(ry0) 
+      FI;
+      IF abs(ry1) > dy 
+        THEN cy1 := sign(ry1) 
+      FI 
+  
+END PROC line; 
+ 
+PROC draw std line (INT CONST x0,y0,x1,y1):   (* Terminallinie ziehen *) 
+  INT VAR return; 
+  control(-7,x0,max y - y0,return);  (* move *) 
+  control(-6,x1,max y - y1,return)   (* draw *)
+END PROC draw std line; 
+ 
+PROC drawing area (REAL VAR x c, y c, INT VAR x pix, y pix):
+  x pix := x pixel; 
+  y pix := y pixel; 
+  x c   := x cm; 
+  y c   := y cm 
+END PROC drawing area; 
+ 
+PROC range (INT CONST hmin,hmax,vmin,vmax):    (* Zeichenflaeche setzen *)
+  x min := max (0, min (max x,h min)); 
+  x max := max (0, min (max x,h max)); 
+  y min := max (0, min (max y,v min)); 
+  y max := max (0, min (max y,v max)) 
+END PROC range;
+ 
+PROC set range ( INT CONST hmin, hmax, vmin, vmax): 
+    range( hmin, hmax, vmin, vmax ) 
+ENDPROC set range; 
+
+(* Textausgabe von C. Indenbirken *)
+(* Erweitert um stufenlose Rotierbarkeit der Zeichen *)
+ 
+LET ZEICHENSATZ = ROW 255 TEXT;
+ZEICHENSATZ VAR zeichen;
+INT CONST char x :: 6, char y :: 10;
+
+zeichensatz ("ZEICHENSATZ");
+
+PROC zeichensatz (TEXT CONST name):
+  IF exists (name)
+  THEN BOUND ZEICHENSATZ VAR new zeichen :: old (name);
+       zeichen := new zeichen;
+  ELSE errorstop ("Der Zeichensatz """ + name + """ existiert nicht") FI
+END PROC zeichensatz;
+
+PROC draw char (INT CONST char no,REAL CONST x, y,REAL CONST x size, 
+                y size, direction):
+  TEXT CONST character :: zeichen [char no];
+  INT VAR n :: 1, x0, y0, x1, y1;
+  INT CONST len :: length (character);
+  REAL CONST sindir :: sind(direction),
+             cosdir :: cosd(direction);
+  WHILE n < len
+  REP value (character, n, x0, y0, x1, y1);
+  REAL VAR xr0 :: real(x0),
+           yr0 :: real(y0),
+           xr1 :: real(x1), 
+           yr1 :: real(y1);
+      transform (xr0, yr0, x, y, x size, y size, sindir,cosdir);
+      transform (xr1, yr1, x, y, x size, y size, sindir,cosdir);
+      draw (int(xr0),int(yr0 * (x cm * real(y pixel)) / 
+                     (y cm * real(x pixel))),
+            int(xr1),int(yr1 * (x cm * real(y pixel)) / 
+                     (y cm * real(x pixel))));
+       n INCR 4 
+  PER  .
+
+END PROC draw char;
+
+PROC value (TEXT CONST char, INT CONST n, INT VAR x0, y0, x1, y1):
+  x0 := val (code (char SUB n));    y0 := val (code (char SUB n+1));
+  x1 := val (code (char SUB n+2));  y1 := val (code (char SUB n+3));
+END PROC value;
+
+INT PROC val (INT CONST n):
+  IF n > 127
+  THEN -256 OR n
+  ELSE n FI
+END PROC val;
+
+PROC transform (REAL VAR x, y,REAL CONST x0, y0,REAL CONST x size, y size, 
+                sindir,cosdir):
+  REAL CONST old x :: x, old y :: y;
+  REAL CONST dx :: x size / real(char x) * old x * cosdir - 
+                   y size / real(char y) * old y * sindir, 
+             dy :: y size / real(char y) * old y * cosdir + 
+                   x size / real(char x) * old x * sindir;
+
+  x := x0 + dx; 
+  y := y0 + dy
+END PROC transform; 
+
+PROC draw text (REAL CONST x pos, y pos,TEXT CONST msg, REAL CONST angle, 
+                REAL CONST height, width): 
+  INT VAR i;
+  REAL VAR x :: x pos, y :: y pos,
+           x step :: cosd (angle)*width,
+           y step :: sind (angle)*width;
+  FOR i FROM 1 UPTO length (msg)
+  REP IF control char
+      THEN execute control char
+      ELSE execute normal char FI
+  PER  .
+
+control char:
+  akt char < ""32""  .
+
+execute control char:
+  SELECT code (akt char) OF
+  CASE  1: home
+  CASE  2: right
+  CASE  3: up
+  CASE  7: out (""7"")
+  CASE  8: left
+  CASE 10: down
+  CASE 13: return
+  ENDSELECT  .
+
+home:
+  x := x pos;
+  y := y pos  .
+
+right:
+  x INCR x step;  y INCR y step  . 
+
+up:
+  x INCR y step;  y INCR x step  . 
+
+left:
+  x DECR x step;  y DECR y step  .
+
+down:
+  x DECR y step;  y DECR x step  . 
+
+return:
+  x := x pos  .
+
+execute normal char:
+  draw char (code (akt char), x, y, height, width,
+             angle);
+  x INCR x step;
+  y INCR y step  .
+
+akt char:
+  msg SUB i  .
+
+END PROC draw text; 
+ 
+PROC draw (TEXT CONST msg):
+   draw (msg,0.0,5.0,5.0)
+END PROC draw;
+ 
+PROC draw (TEXT CONST msg,REAL CONST angle,REAL CONST heigth,width):
+    REAL CONST  xr :: real(old x), 
+                yr :: real(old y) / (x cm * real(y pixel)) * 
+                                    (y cm * real(x pixel)); 
+    draw text (xr,yr,msg,angle,heigth * real(x pixel) / x cm / 10.0, 
+                               width  * real(x pixel) / x cm / 10.0)
+                                    (* heigth  mm --> x punkte *)
+END PROC draw; 
+ 
+PROC draw (TEXT CONST msg , REAL CONST winkel, INT CONST hoehe, breite): 
+      draw ( msg, winkel, real(hoehe), real(breite) )
+ENDPROC draw; 
+ 
+PROC bar ( INT CONST xmin, ymin, xmax, ymax, pattern ) : 
+     (* zur Zeit leer *) 
+ENDPROC bar; 
+ 
+PROC circle ( INT CONST x,y, rad, REAL CONST from, to, INT CONST pattern):
+     (* zur Zeit leer *) 
+ENDPROC circle; 
+ 
+END PACKET at plot

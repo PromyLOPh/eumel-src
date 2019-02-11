@@ -1,0 +1,387 @@
+(***Assembler fuer 8080,8085,Z80***) 
+
+PROC regh:
+  IF pos(in,"A",4) = (pos(in,",")+1) THEN out(printer,"F");
+ELIF pos(in,"B",4) = (pos(in,",")+1) THEN out(printer,"8");
+ELIF pos(in,"C",4) = (pos(in,",")+1) THEN out(printer,"9");
+ELIF pos(in,"D",4) = (pos(in,",")+1) THEN out(printer,"A");
+ELIF pos(in,"E",4) = (pos(in,",")+1) THEN out(printer,"B");
+ELIF pos(in,"H",4) = (pos(in,",")+1) THEN out(printer,"C");
+ELIF pos(in,"L",4) = (pos(in,",")+1) THEN out(printer,"D");
+ELIF pos(in,"M",4) = (pos(in,",")+1) OR pos(in,"m") = (pos(in,",")+1)
+                                     THEN out(printer,"E") FI
+ENDPROC regh. 
+
+PROC regl:
+  IF pos(in,"A",4) > (pos(in,",")+0) THEN out(printer,"7");
+ELIF pos(in,"B",4) > (pos(in,",")+0) THEN out(printer,"0");
+ELIF pos(in,"C",4) > (pos(in,",")+0) THEN out(printer,"1");
+ELIF pos(in,"D",4) > (pos(in,",")+0) THEN out(printer,"2");
+ELIF pos(in,"E",4) > (pos(in,",")+0) THEN out(printer,"3");
+ELIF pos(in,"H",4) > (pos(in,",")+0) THEN out(printer,"4");
+ELIF pos(in,"L",4) > (pos(in,",")+0) THEN out(printer,"5");
+ELIF pos(in,"M",4) > (pos(in,",")+0) OR pos(in,"m") > (pos(in,",")+0)
+                                     THEN out(printer,"6") FI 
+ENDPROC regl. 
+                                                (*************************)
+                                                (*Autor:M.Staubermann    *)
+BOOL VAR ad,number,falsch;                      (*Version:1.2.2          *)
+ad:=FALSE;                                      (*Datum:7.12.82          *)
+number:=FALSE;                                  (*************************)
+falsch:=FALSE;
+INT VAR count,fehler;
+TEXT VAR hilf,in,startaddresse::"0000";
+hilf:=" ";
+count:=0;
+fehler:=0;
+hilf:=" ";
+commanddialogue(FALSE);
+forget("maschinencode");
+FILE VAR printer:=sequentialfile(output,"maschinencode");
+forget("assemb");
+FILE VAR ass:=sequentialfile(modify,"assemb");
+forget("errors");
+FILE VAR fehlerliste:=sequentialfile(output,"errors");
+commanddialogue(TRUE);
+line;
+putline("        gib assembler kommando :");
+putline("        edit");
+pause(10);
+edit("assemb");
+tofirstrecord(ass);
+putline("        gib assembler kommando :");
+putline("        debug");
+pause(10);
+line;
+put    ("       ");
+put(printer,"Line:  Add:  Code:");
+line(printer);
+hexbeginn;
+
+      REPEAT
+  fehler:=fehler+1;
+  out(printer,text(fehler,4));
+  cout(fehler);
+  out(printer,"  ");
+  hex;
+  readrecord(ass,in);
+  forward(ass);
+  out(printer,"  ");
+  IF pos(in,"NOP") > 0 THEN out(printer,"00");
+ELIF pos(in,"HLT") > 0 THEN out(printer,"76");
+ELIF compress(in)="DI" THEN out(printer,"F3");
+ELIF pos(in,"EI")  > 0 THEN out(printer,"FB");
+ELIF pos(in,"CMC") > 0 THEN out(printer,"3F");
+ELIF pos(in,"CMA") > 0 THEN out(printer,"2F");
+ELIF pos(in,"STC") > 0 THEN out(printer,"37");
+ELIF pos(in,"DAA") > 0 THEN out(printer,"27");
+ELIF pos(in,"RRC") > 0 THEN out(printer,"0F");
+ELIF pos(in,"RLC") > 0 THEN out(printer,"07");
+ELIF pos(in,"RAL") > 0 THEN out(printer,"17");
+ELIF pos(in,"RAR") > 0 THEN out(printer,"1F");
+ELIF pos(in,"XCHG")> 0 THEN out(printer,"EB");
+ELIF pos(in,"XTHL")> 0 THEN out(printer,"E3");
+ELIF pos(in,"SPHL")> 0 THEN out(printer,"F9"); 
+ELIF pos(in,"ADI") > 0 THEN out(printer,"C6");number:=TRUE;
+ELIF pos(in,"ACI") > 0 THEN out(printer,"CE");number:=TRUE;
+ELIF pos(in,"SUI") > 0 THEN out(printer,"D6");number:=TRUE;
+ELIF pos(in,"SBI") > 0 THEN out(printer,"DE");number:=TRUE;
+ELIF pos(in,"ANI") > 0 THEN out(printer,"E6");number:=TRUE;
+ELIF pos(in,"XRI") > 0 THEN out(printer,"EE");number:=TRUE;
+ELIF pos(in,"ORI") > 0 THEN out(printer,"F6");number:=TRUE;
+ELIF pos(in,"CPI") > 0 THEN out(printer,"FE");number:=TRUE;
+ELIF compress(in)="STA"THEN out(printer,"32");ad:=TRUE;
+ELIF compress(in)="LDA"THEN out(printer,"3A");ad:=TRUE;
+ELIF pos(in,"SHLD")> 0 THEN out(printer,"22");ad:=TRUE;
+ELIF pos(in,"LHLD")> 0 THEN out(printer,"2A");ad:=TRUE;
+ELIF pos(in,"PCHL")> 0 THEN out(printer,"E9");
+ELIF pos(in,"JMP") > 0 THEN out(printer,"C3");ad:=TRUE;
+ELIF pos(in,"JC")  > 0 THEN out(printer,"DA");ad:=TRUE;
+ELIF pos(in,"JNC") > 0 THEN out(printer,"D2");ad:=TRUE;
+ELIF pos(in,"JZ")  > 0 THEN out(printer,"CA");ad:=TRUE;
+ELIF pos(in,"JNZ") > 0 THEN out(printer,"C2");ad:=TRUE;
+ELIF compress(in)="JM" THEN out(printer,"FA");ad:=TRUE;
+ELIF compress(in)="JP" THEN out(printer,"F2");ad:=TRUE;
+ELIF pos(in,"JPE") > 0 THEN out(printer,"EA");ad:=TRUE;
+ELIF pos(in,"JPO") > 0 THEN out(printer,"E2");ad:=TRUE;
+ELIF pos(in,"CALL")> 0 THEN out(printer,"CD");ad:=TRUE;
+ELIF pos(in,"OUT") > 0 THEN out(printer,"D3");number:=TRUE; 
+ELIF pos(in,"CC")  > 0 THEN out(printer,"DC");ad:=TRUE;
+ELIF pos(in,"CNC") > 0 THEN out(printer,"D4");ad:=TRUE;
+ELIF pos(in,"CZ")  > 0 THEN out(printer,"CC");ad:=TRUE;
+ELIF pos(in,"CNZ") > 0 THEN out(printer,"C4");ad:=TRUE;
+ELIF pos(in,"CM")  > 0 THEN out(printer,"FC");ad:=TRUE;
+ELIF compress(in)="CP" THEN out(printer,"F4");ad:=TRUE;
+ELIF pos(in,"CPE") > 0 THEN out(printer,"EC");ad:=TRUE;
+ELIF pos(in,"CPO") > 0 THEN out(printer,"E4");ad:=TRUE;
+ELIF pos(in,"RET") > 0 THEN out(printer,"C9");
+ELIF pos(in,"RC")  > 0 THEN out(printer,"D8");
+ELIF pos(in,"RNC") > 0 THEN out(printer,"D0");
+ELIF pos(in,"RZ")  > 0 THEN out(printer,"C8");
+ELIF pos(in,"RNZ") > 0 THEN out(printer,"C0");
+ELIF pos(in,"RM")  > 0 THEN out(printer,"F8");
+ELIF compress(in)="RP" THEN out(printer,"F0");
+ELIF pos(in,"RPE") > 0 THEN out(printer,"E8");
+ELIF pos(in,"RPO") > 0 THEN out(printer,"E0");
+ELIF pos(in,"RST") > 0 AND pos(in,"0") > 3 THEN out(printer,"C7");
+ELIF pos(in,"RST") > 0 AND pos(in,"1") > 3 THEN out(printer,"CF");
+ELIF pos(in,"RST") > 0 AND pos(in,"2") > 3 THEN out(printer,"D7");
+ELIF pos(in,"RST") > 0 AND pos(in,"3") > 3 THEN out(printer,"DF");
+ELIF pos(in,"RST") > 0 AND pos(in,"4") > 3 THEN out(printer,"E7");
+ELIF pos(in,"RST") > 0 AND pos(in,"5") > 3 THEN out(printer,"EF");
+ELIF pos(in,"RST") > 0 AND pos(in,"6") > 3 THEN out(printer,"F7");
+ELIF pos(in,"RST") > 0 AND pos(in,"7") > 3 THEN out(printer,"FF");
+ELIF pos(in,"MOV") > 0 THEN 
+       IF pos(in,"A")   = (pos(in,",")-1) THEN out(printer,"7");regh;
+     ELIF pos(in,"B")   = (pos(in,",")-1) THEN out(printer,"4");regl;
+     ELIF pos(in,"C")   = (pos(in,",")-1) THEN out(printer,"4");regh;
+     ELIF pos(in,"D")   = (pos(in,",")-1) THEN out(printer,"5");regl;
+     ELIF pos(in,"E")   = (pos(in,",")-1) THEN out(printer,"5");regh;
+     ELIF pos(in,"H")   = (pos(in,",")-1) THEN out(printer,"6");regl;
+     ELIF pos(in,"L")   = (pos(in,",")-1) THEN out(printer,"6");regh;
+     ELIF pos(in,"M",4) = (pos(in,",")-1) OR pos(in,"m") = (pos(in,",")-1)
+                                          THEN out(printer,"4");regl FI;
+ELIF pos(in,"MVI") > 0 THEN 
+       IF pos(in,"A")   = (pos(in,",")-1) THEN out(printer,"3E");
+     ELIF pos(in,"B")   = (pos(in,",")-1) THEN out(printer,"06");
+     ELIF pos(in,"C")   = (pos(in,",")-1) THEN out(printer,"0E");
+     ELIF pos(in,"D")   = (pos(in,",")-1) THEN out(printer,"16");
+     ELIF pos(in,"E")   = (pos(in,",")-1) THEN out(printer,"1E");
+     ELIF pos(in,"H")   = (pos(in,",")-1) THEN out(printer,"26");
+     ELIF pos(in,"L")   = (pos(in,",")-1) THEN out(printer,"2E");
+     ELIF pos(in,"M",4) = (pos(in,",")-1) OR pos(in,"m") = (pos(in,",")-1)
+                                          THEN out(printer,"36") FI;
+ELIF pos(in,"LXI")    > 0 THEN ad:=TRUE;
+     IF pos(in,"B")   > 4 THEN out(printer,"01");ad:=TRUE; 
+     ELIF pos(in,"D") > 4 THEN out(printer,"11");ad:=TRUE;
+     ELIF pos(in,"H") > 4 THEN out(printer,"21");ad:=TRUE;
+     ELIF pos(in,"SP")> 4 THEN out(printer,"31");ad:=TRUE FI;
+ELIF pos(in,"PUSH")   > 0 THEN 
+     IF pos(in,"B")   > 4 THEN out(printer,"C5");
+     ELIF pos(in,"D") > 4 THEN out(printer,"D5");
+     ELIF pos(in,"H",5) > 4 THEN out(printer,"E5");
+     ELIF pos(in,"A") > 4 OR   pos(in,"PSW")> 4 THEN out(printer,"F5") FI;
+ ELIF pos(in,"POP")   > 0 THEN 
+     IF pos(in,"B")   > 4 THEN out(printer,"C1");
+     ELIF pos(in,"D") > 4 THEN out(printer,"D1");
+     ELIF pos(in,"H") > 4 THEN out(printer,"E1");
+     ELIF pos(in,"A") > 4 OR   pos(in,"PSW")> 4 THEN out(printer,"F1") FI;
+ELIF pos(in,"LDAX")   > 0 THEN 
+     IF pos(in,"B")   > 4 THEN out(printer,"0A");
+     ELIF pos(in,"D",5) > 4 THEN out(printer,"1A") FI;
+ELIF pos(in,"STAX")   > 0 THEN 
+     IF pos(in,"B")   > 4 THEN out(printer,"02");
+     ELIF pos(in,"D") > 4 THEN out(printer,"12") FI;
+ELIF pos(in,"INX")    > 0 THEN 
+     IF pos(in,"B")   > 4 THEN out(printer,"03");
+     ELIF pos(in,"D") > 4 THEN out(printer,"13");
+     ELIF pos(in,"H") > 4 THEN out(printer,"2A");
+     ELIF pos(in,"SP")> 4 THEN out(printer,"3A") FI;
+ELIF pos(in,"DCX")    > 0 THEN 
+     IF pos(in,"B")   > 4 THEN out(printer,"0B");
+     ELIF pos(in,"D",4)>4 THEN out(printer,"1B");
+     ELIF pos(in,"H") > 4 THEN out(printer,"2B");
+     ELIF pos(in,"SP")> 4 THEN out(printer,"3B") FI;
+ELIF pos(in,"DAD")    > 0 THEN 
+     IF pos(in,"B")   > 4 THEN out(printer,"09");
+     ELIF pos(in,"D",4)>4 THEN out(printer,"19");
+     ELIF pos(in,"H") > 4 THEN out(printer,"29");
+     ELIF pos(in,"SP")> 4 THEN out(printer,"39") FI;
+ELIF pos(in,"ADD")    > 0 THEN out(printer,"8");regl;
+ELIF pos(in,"ADC")    > 0 THEN out(printer,"8");regl;
+ELIF pos(in,"SUB")    > 0 THEN out(printer,"9");regl;
+ELIF pos(in,"SBB")    > 0 THEN out(printer,"9");regl;
+ELIF pos(in,"ANA")    > 0 THEN out(printer,"A");regl;
+ELIF pos(in,"XRA")    > 0 THEN out(printer,"A");regl;
+ELIF pos(in,"ORA")    > 0 THEN out(printer,"B");regl;
+ELIF pos(in,"CMP")    > 0 THEN out(printer,"B");regl;
+ELIF pos(in,"INR")    > 0 THEN 
+     IFpos(in,"A")    > 4 THEN out(printer,"3C") FI;
+ELIF pos(in,"INR")    > 0 THEN 
+     IFpos(in,"B")    > 4 THEN out(printer,"04") FI;
+ELIF pos(in,"INR")    > 0 THEN 
+     IFpos(in,"C")    > 4 THEN out(printer,"0C") FI;
+ELIF pos(in,"INR")    > 0 THEN 
+     IFpos(in,"D")    > 4 THEN out(printer,"14") FI;
+ELIF pos(in,"INR")    > 0 THEN 
+     IFpos(in,"E")    > 4 THEN out(printer,"1C") FI;
+ELIF pos(in,"INR")    > 0 THEN 
+     IFpos(in,"H")    > 4 THEN out(printer,"24") FI;
+ELIF pos(in,"INR")    > 0 THEN 
+     IFpos(in,"L")    > 4 THEN out(printer,"2C") FI;
+ELIF pos(in,"INR")    > 0 THEN 
+     IFpos(in,"M")    > 4 OR pos(in,"m") > 4 THEN out(printer,"34") FI;
+ELIF pos(in, "IN")    > 0 THEN out(printer,"DB"); number:=TRUE;
+ELIF pos(in,"DCR")    > 0 THEN 
+     IFpos(in,"A")    > 4 THEN out(printer,"3D") FI;
+ELIF pos(in,"DCR")    > 0 THEN 
+     IFpos(in,"B")    > 4 THEN out(printer,"05") FI;
+ELIF pos(in,"DCR")    > 0 THEN 
+     IFpos(in,"C",4)  > 4 THEN out(printer,"0D") FI;
+ELIF pos(in,"DCR")    > 0 THEN 
+     IFpos(in,"D",4)  > 4 THEN out(printer,"15") FI;
+ELIF pos(in,"DCR")    > 0 THEN 
+     IFpos(in,"E")    > 4 THEN out(printer,"1D") FI;
+ELIF pos(in,"DCR")    > 0 THEN 
+     IFpos(in,"H")    > 4 THEN out(printer,"25") FI;
+ELIF pos(in,"DCR")    > 0 THEN 
+     IFpos(in,"L")    > 4 THEN out(printer,"2D") FI;
+ELIF pos(in,"DCR")    > 0 THEN 
+     IFpos(in,"M")    > 4 OR pos(in,"m") > 4 THEN out(printer,"35") FI;
+ELIF pos(in,"ORG")    > 0 THEN hilf:=compress(subtext(in,4,7));
+                         putline(printer,hilf);
+                         startaddresse:=hilf;
+                         hexbeginn;
+ELIF pos(in,"TITL")   > 0 THEN putline(printer,subtext(in,6));
+ELIF pos(in,"#")      > 0 THEN hilf:=subtext(in,pos(in,"#")+1);
+     out(printer,hilf) ;
+ELSE putline("Fehler erkannt in Zeile "+text(fehler)+" bei '"+in+"' !");
+     out(printer,in);
+     putline(fehlerliste,"Fehler in Zeile "+text(fehler)+" bei: "+in); 
+     count:=count+1;
+     falsch:=TRUE 
+FI;
+line(printer); 
+IF ad THEN ad:=FALSE;
+   fehler:=fehler+1;
+   out(printer,text(fehler,4));
+   cout(fehler);
+   out(printer,"  ");
+   hex;
+   out(printer,"  ");
+   IF pos(in,",") > 3 THEN hilf:=subtext(in,(pos(in,",")+1),(pos(in,",")+4));
+                           fehler:=fehler+1;
+                           out(printer,text(fehler,4));
+                           cout(fehler);
+                           out(printer,"  ");
+                           hex;
+                           out(printer,"  ");
+                           line(printer)
+                      ELSE hilf:=compress(subtext(in,10,15)) FI;
+                            fehler:=fehler+1;
+                            out(printer,text(fehler,4));
+                            cout(fehler);
+                            out(printer,"  ");
+                            hex;
+                            out(printer,"  ");
+                            out(printer,subtext(hilf,3,4));
+                            fehler:=fehler+1;
+                            out(printer,text(fehler,4));
+                            cout(fehler);
+                            out(printer,"  ");
+                            hex;
+                            out(printer,"  ");
+                            out(printer,subtext(hilf,1,2));
+                            line(printer);
+
+ELIF number THEN number:=FALSE;
+                 fehler:=fehler+1;
+                 out(printer,text(fehler,4));
+                 cout(fehler);
+                 out(printer,"  ");
+                 hex;
+                 out(printer,"  ");
+                 IF pos(in,",") > 2 THEN hilf:= subtext(in,
+                                         (pos(in,",") +1),(pos(in,",")+2));
+                                         out(printer,hilf);
+                                         line(printer)
+                 ELSE out(printer,compress(subtext(in,14,21)));
+                      line(printer) FI 
+FI ;
+
+UNTIL compress(in) = "END" OR compress(in) = "end" OR eof(ass) ENDREPEAT;
+
+  IF count<> 0 THEN putline(text(count)+" Fehler erkannt.");
+     falsch:=TRUE
+ELSE putline("  Keine Fehler, "+text(fehler)+" Zeilen.") ;
+     falsch:=FALSE 
+FI;
+putline(8*" "+7*"*"+"  ENDE DER UEBERSETZUNG  "+7*"*"+8*" ");
+pause(20);
+IF falsch THEN edit("errors","assemb") ELSE 
+edit("maschinencode") FI;
+IF yes("Maschinencodelisting") THEN print("maschinencode") FI;
+IF yes("runagain") THEN runagain FI.
+ 
+hexbeginn:
+(*Hexadezimalzaehler*)
+INT VAR a1,a2,a3,a4,subi;
+TEXT VAR a1t,a2t,a3t,a4t,subt,counter;
+a1t:=subtext(startaddresse,1,1);
+a2t:=subtext(startaddresse,2,2);
+a3t:=subtext(startaddresse,3,3);
+a4t:=subtext(startaddresse,4,4).
+
+hex:
+subt:=a1t;
+decoder; 
+a1:=subi;
+
+subt:=a2t;
+decoder;
+a2:=subi;
+ 
+subt:=a3t;
+decoder;
+a3:=subi;
+
+ 
+decoder;
+a4:=subi;
+
+zaehl;
+
+IF a4 = 16 THEN a4:=0;
+   a3:=a3+1 FI;
+
+IF a3 = 16 THEN a3:=0;
+   a2:=a2+1 FI;
+
+IF a2 = 16 THEN a2:=0;
+   a1:=a1+1 FI;
+
+IF a1 = 16 THEN a1:=0;
+   put(printer,"Storageoverflow !") FI;
+
+subi:=a1;
+encode;
+a1t:=subt;
+
+subi:=a2;
+encode;
+a2t:=subt;
+
+subi:=a3;
+encode;
+a3t:=subt;
+
+subi:=a4;
+encode;
+a4t:=subt;
+
+counter:=a1t;
+counter CAT a2t;
+counter CAT a3t;
+counter CAT a4t;
+put(printer,counter). 
+
+zaehl:
+a4:=a4+1.
+
+decoder:
+IF subt ="A" THEN subi:=10;
+ELIF subt ="B" THEN subi:=11;
+ELIF subt ="C" THEN subi:=12;
+ELIF subt ="D" THEN subi:=13;
+ELIF subt ="E" THEN subi:=14;
+ELIF subt ="F" THEN subi:=15 
+ELSE subi:=int(subt) FI.
+
+encode:
+IF subi = 10 THEN subt:="A";
+ELIF subi = 11 THEN subt:="B";
+ELIF subi = 12 THEN subt:="C";
+ELIF subi = 13 THEN subt:="D";
+ELIF subi = 14 THEN subt:="E";
+ELIF subi = 15 THEN subt:="F" 
+ELSE subt:=text(subi) FI.

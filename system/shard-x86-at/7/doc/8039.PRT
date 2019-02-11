@@ -1,0 +1,569 @@
+0.ope ("12")##limit (15.5)# 
+#right#20.01.88 
+ 
+#center##ub#Beschreibung der Single-Chip-uP 8031/5/9/40/8/9/50#ue# 
+ 
+1.) Pinning MCS-48, UPI-41, UPI-42 
+ 
+                          +----__----+ 
+              T0          |  1    40 | Vcc +5V
+              Xtal1       |  2    39 | T1 (In) 
+              Xtal2       |  3    38 | P27       -DACK =8x41/2
+              -Reset (In) |  4    37 | P26       DRQ   =8x41/2
+              -SS (In)    |  5    36 | P25       -IBF  =8x41/2
+              -Int (In)   |  6    35 | P24       -OBF  =8x41/2
+              EA (In)     |  7    34 | P17 
+              -RD (Out)   |  8    33 | P16 
+ 8x41/2=A0    -PSEN (Out) |  9    32 | P15 
+              -WR (Out)   | 10    31 | P14 
+ 8x41/2=SYNC  ALE (Out)   | 11    30 | P13 
+              D0          | 12    29 | P12 
+              D1          | 13    28 | P11 
+              D2          | 14    27 | P10 
+              D3          | 15    26 | Vdd/Vpp +5V/+21V bzw. 25V         
+              D4          | 16    25 | PROG (O=8243 ioExpander,I=pulse)  
+              D5          | 17    24 | P23 
+              D6          | 18    23 | P22 
+              D7          | 19    22 | P21 
+              GND         | 20    21 | P20 
+                          +----------+ 
+-SS   : Single Step (zusammen mit ALE-Output) 
+-RESET: 10uF Kondensator nach GND
+-INT  : muss mind. 3 Zyklen lang low sein 
+PROG  : Programmierpuls (+18V, +23V) bzw. 
+        bzw. Output fuer 8243 I/O Expander 
+SYNC  : Output Clock wie ALE 
+A0    : Input from Host: 0 = Datatransfer, 1 = Commandtransfer (kann in F1 
+        gelesen werden) 
+-IBF  : Input buffer full 
+OBF   : Outputbuffer full 
+-DACK : DMA Acknowledge 
+DRQ   : DMA request 
+ 
+ 
+- Pinning MCS-51 
+ 
+                          +----__----+ 
+8x32/52=T2    P10         |  1    40 | Vcc +5V
+8x32/52=T2EX  P11         |  2    39 | P00/AD0 
+              P12         |  3    38 | P01/AD1
+              P13         |  4    37 | P02/AD2
+              P14         |  5    36 | P03/AD3
+              P15         |  6    35 | P04/AD4
+              P16         |  7    34 | P05/AD5
+              P17         |  8    33 | P06/AD6
+              Reset/Vpd   |  9    32 | P07/AD7
+              P30/RXD     | 10    31 | -EA 
+              P31/TXD     | 11    30 | ALE 
+              P32/-INT0   | 12    29 | -PSEN
+              P33/-INT1   | 13    28 | P27/A15
+              P34/T0      | 14    27 | P26/A14
+              P35/T1      | 15    26 | P25/A13                           
+              P36/-WR     | 16    25 | P24/A12                           
+              P37/-RD     | 17    24 | P23/A11
+              Xtal2       | 18    23 | P22/A10
+              Xtal1       | 19    22 | P21/A9
+              GND         | 20    21 | P20/A8
+                          +----------+ 
+ 
+T2 = Timer 2 counter trigger input 
+T2EX = Timer 2 external input clock 
+
+-Vdd     : +5V im Betrieb, 
+           0V fuer Low Power Standby 
+           +21V/+25V fuer Programmierspannung 
+-T0      : Test Input 0 bzw. 
+           Clock-Output des Timers falls ENT0 CLK Befehl gegeben wurde. 
+-T1      : Test Input 1 bzw. 
+           Counter/Timer Input if STRT CNT Befehl gegeben wurde 
+XTAL1    : Quartz, bzw. CLock Input 
+XTAL2    : Quartz 
+ALE      : Adresse Latch enable output (einmal pro Zyklus aktiviert, d.h.
+           als Clockoutput zu gebrauchen) 
+           Negative Flanke uebernimmt Adressen auf dem Bus in ext. Latch 
+-RD      : Output-Strobe to read Data from the BUS into the CPU 
+-WR      : Output-Strobe indicating a write into external Memory 
+-PSEN    : Low if a fetch to external memory occurs (ROM -CE)
+P10..P17 : I/O Port 1 quasi-bidirektional 
+P20..P27 : I/O Port 2 " 
+           P20..P23 dienen als A8..A11 bei Programstore fetches bzw. 
+           mit PROG & 8243 als 4Bit I/O Expander Adresse 
+EA       : External Access input, If high, all internal Programm Memory 
+           fetches reference external memory (debugging mode) 
+D0..D7   : Datenbus, I/O zus. mit -RD, -WR, ALE 
+           Enthaelt A0..A7 zusammen mit PSEN fuer ext. Prog.mem.References  
+            "       A0..A7 "       mit ALE, -RD, -WR fuer ext.RAM-References 
+ 
+ 
+2.) Vergleich der Single-Chip-CPUs 
+ 
+UPI-41      : 8041, 8641, 8741 
+UPI-42      : 8042, 8742 
+MCS-48 Serie: 8035, 8039, 8040, 8048, 8049, 8050, 8748, 8749, (8243) 
+MCS-51 Serie: 8031, 8032, 8044, 8344, 8744, 8051, 8052 
+ 
+E = EPROM - Version 
+R = (Mask)-ROM Version 
+- = Kein ROM 
+X = External PROM 
+Buf=Buffered Port, Buffer-Full Åber Pins rausgefÅhrt. 
+ 
+ CPU  | RAM | ROM |E|Ports|Serial |Timer |INTs| Sonstiges 
+------+-----+-----+-+-----+-------+------+----+-------------------------- 
+ 8031 |  64 |  -  |-| 4(3)|1 Async| 2x16 | 2  | 128k ext.mem., boolean-cpu 
+ 8032 | 256 |  -  |-| 4(3)|1 Async| 3x16 | 2  | 128k ext.mem., boolean-cpu 
+ 8035 |  64 |  -  |-| 2   |   -   | 1x 8 | 1  | Timer/Counter 
+ 8039 | 128 |  -  |-| 2   |   -   | 1x 8 | 1  | " 
+ 8040 | 256 |  -  |-| 2   |   -   | 1x 8 | 1  | " 
+ 8041 |  64 | 1k  |R|2xBuf|  DMA  | 1x 8 | -  | 4 I/O Bits gempxt. 
+ 8042 | 128 | 2k  |R|2xBuf|  DMA  | 1x 8 | -  | 4 I/O Bits gempxt. 
+ 8044 | 192 | 4k  |R| 4(3)|H/SDLC | 2x16 | 2  | 128k ext.,b-cpu,375kbaud-pll 
+ 8048 |  64 | 1k  |R| 2   |   -   | 1x 8 | 1  | Timer/Counter 
+ 8049 | 128 | 2k  |R| 2   |   -   | 1x 8 | 1  | " 
+ 8050 | 256 | 4k  |R| 2   |   -   | 1x 8 | 1  | " 
+ 8051 | 128 | 4k  |R| 4(3)|1 Async| 2x16 | 2  | 128k ext., boolean-cpu 
+ 8052 | 256 | 8k  |R| 4(3)|1 Async| 3x16 | 2  | 128k ext., boolean-cpu 
+ 8243 |   - |  -  |-|4x4B |   -   |  -   | -  | I/O Expander f.MCS-48 Serie 
+ 8344 | 192 | 4k  |X| 4(3)|H/SDLC | 2x16 | 2  | 128k ext.,b-cpu,375kbaud-pll 
+ 8741 |  64 | 1k  |E|2xBuf|  DMA  | 1x 8 | -  | 4 I/O Bits gempxt. 
+ 8742 | 128 | 2k  |E|2xBuf|  DMA  | 1x 8 | -  | 4 I/O Bits gempxt. 
+ 8744 ! 192 | 4k  |E| 4(3)|H/SDLC | 2x16 | 2  | 128k ext.,b-cpu,375kbaud-pll 
+ 8748 |  64 | 1k  |E| 2   |   -   | 1x 8 | 1  | Timer/Counter 
+ 8749 | 128 | 2k  |E| 2   |   -   | 1x 8 | 1  | " 
+ 8751 | 128 | 4k  |E| 4(3)|1 Async| 2x16 | 2  | 128k ext., boolean-cpu 
+ 8752 | 256 | 4k  |E| 4(3)|1 Async| 3x16 | 2  | 128k ext., boolean-cpu 
+ 
+ 
+- Programmieren des 8748: 
+ 
+ 1.) Vdd = 5V, XTAL angeschlossen, -RESET = 0V, T0=5V, EA=5V 
+ 2.) 8748 in Sockel setzen 
+ 3.) T0=0V (* Program Mode select *) 
+ 4.) EA=23V (* Program Mode activate *) 
+ 5.) BUS (0..7) und P2.0..P2.3 (8..B) mit Adresse belegen 
+ 6.) -RESET=5V (* Latch Adress *) 
+ 7.) BUS := Databyte 
+ 8.) Vdd=25V (* Programmierspannung *) 
+ 9.) PROG=0V, dann 50ms PROG=23V (* Programmieren *) 
+10.) Vdd=5V (* Programmierspannung weg *) 
+11.) T0=5V (* Verify mode *) 
+12.) Read Data on BUS and compare (* Verify *) 
+13.) T0=0V (* Select Program Mode *) 
+14.) -RESET=0V, GOTO Step 5 (* Floating BUS *) 
+15.) Vdd=5V, -RESET=0V, EA=5V, 8748 aus Sockel nehmen 
+ 
+3.) Memory-Map des 8039 
+ 
+RAM 
+Adresse  Funktion 
+00..07   Registerbank 0 (r0..r7) 
+08..17   Stack (8 Ebenen) 
+18..1F   Registerbank 1 (r0..r7) 
+20..7F   Frei belegbar 
+ 
+ROM 
+Adresse 
+000..0FF ROM-Page 0, Bank 0 (Bank 0 ist mb0) 
+... 
+700..7FF ROM-Page 7, Bank 0 
+800..8FF ROM Page 0, Bank 1 (Adressen 800..FFF treten im Code nur 
+...                          als 000..7FF auf!) 
+F00..FFF ROM Page 7, Bank 1 (Bank 1 ist mb1) 
+ 
+Bei Reset erfolgt ein Sprung nach 000 
+Bei (Timer-)Interrupt erfolgt ein Sprung nach 007 
+ 
+Register 
+Bezeichn. Name 
+a         Akkumulator (8 Bit) 
+r0..r7    Register 0 bis 7 (Im internen RAM) (je 8 Bit) 
+t         Timer (8 Bit) 
+p1        Port 1 (8 Bit) 
+p2        Port 2 (8 Bit) 
+ 
+Bits 
+i         Interrupt-Leitung INT (1 Bit) 
+t0        Test-Eingang T0 (1 Bit) 
+t1        Test-Eingang T1 (91 Bit) 
+f0        Internes Flag 0 
+f1        Internes Flag 1 
+ 
+Jump-Conditions 
+jtf        Jump if Timer finished (Nulldurchgang) 
+jntf       Jump if Timer not finished (zÑhlt noch) 
+jb0..jb7   Jump if Bit 0..7 in a is set 
+jt0        Jump if T0-Input is high 
+jnt0       Jump if T0-Input is low 
+jt1        Jump if T1-Input is high 
+jnt1       Jump if T1-Input is low 
+jf0        Jump if Flag 0 is set 
+jnf0       Jump if Flag 0 is cleared 
+jf1        Jump if Flag 1 is set 
+jnf1       Jump if Flag 1 is cleared 
+jz         Jump if a is zero 
+jnz        Jump if a is not zero 
+jc         Jump if carry is set 
+jnc        Jump if carry is cleared 
+jni        Jump if Interrupt-Pin INT is low 
+ 
+4.) Befehlssatz nach Opcode sortiert 
+ 
+Symbolik (Beispiele) 
+ 
+@r0   Inhalt der Speicherstelle, deren Adresse in Register 0 steht. 
+#xx   Die (Byte-)Konstante xx 
+2xx   Die Adressen 200..2FF (je nach xx), xx ist ein Offset zur Seite 2. 
+mb1   ROM-Bank 1 ('800..FFF') 
+ 
+00             nop 
+01 
+02 
+03 xx          add  a,#xx 
+04 xx          jmp  0xx 
+05 
+06 xx          jntf xx 
+07             dec  a 
+08 
+09             in   a,p1 
+0A             in   a,p2 
+0B 
+0C 
+0D 
+0E 
+0F 
+ 
+10             inc  @r0       Memoryvalue incrementieren 
+11             inc  @r1 
+12 xx          jb0  xx        Jump if Bit 0 in a is high 
+13 
+14 xx          call 0xx 
+15             dis  i         Disable Interrupts 
+16 xx          jtf  xx 
+17             inc  a 
+18             inc  r0 
+19             inc  r1 
+1A             inc  r2 
+1B             inc  r3 
+1C             inc  r4 
+1D             inc  r5 
+1E             inc  r6 
+1F             inc  r7 
+ 
+20             xch  a,@r0     a und Memoryinhalt bei @r0 austauschen 
+21             xch  a,@r1 
+22 
+23 xx          mov  a,#xx     a mit Konstante laden 
+24 xx          jmp  1xx 
+25             en   tcnti     Enable Timer/Counter Interrupt 
+26 xx          jnt0 xx 
+27             clr  a         a := 0 
+28             xch  a,r0      a und Register vertauschen 
+29             xch  a,r1 
+2A             xch  a,r2 
+2B             xch  a,r3 
+2C             xch  a,r4 
+2D             xch  a,r5 
+2E             xch  a,r6 
+2F             xch  a,r7 
+ 
+30 
+31 
+32 xx          jb1  xx 
+33 
+34 xx          call 1xx 
+35             dis  tcnti     Disable Timer/Counter Interrupt 
+36 xx          jt0  xx 
+37             cpl  a         a := NOT a 
+38 
+39 
+3A 
+3B 
+3C 
+3D 
+3E 
+3F 
+ 
+40             orl  a,@r0 
+41             orl  a,@r1 
+42             mov  a,t       Timervalue lesen nach a 
+43 xx          orl  a,#xx     Logisches Oder 
+44 xx          jmp  2xx 
+45             strt cnt       Counter starten, Timer aus 
+46 xx          jnt1 xx 
+47 
+48             orl  a,r0 
+49             orl  a,r1 
+4A             orl  a,r2 
+4B             orl  a,r3 
+4C             orl  a,r4 
+4D             orl  a,r5 
+4E             orl  a,r6 
+4F             orl  a,r7 
+ 
+50             anl  a,@r0 
+51             anl  a,@r1 
+52 xx          jb2  xx 
+53 xx          anl  a,#xx     Logisches Und 
+54 xx          call 2xx 
+55             strt t         Timer starten, Counter aus 
+56 xx          jt1  xx 
+57 
+58             anl  a,r0 
+59             anl  a,r1 
+5A             anl  a,r2 
+5B             anl  a,r3 
+5C             anl  a,r4 
+5D             anl  a,r5 
+5E             anl  a,r6 
+5F             anl  a,r7 
+ 
+60             add  a,@r0 
+61             add  a,@r1 
+62             mov  t,a       Timervalue mit a laden 
+63 
+64 xx          jmp  3xx 
+65             stop tcnt      Timer/Counter stoppen 
+66 xx          jnf1 xx 
+67             rrc  a         a rechts rotieren (durchs Carry) 
+68             add  a,r0      a := a + r0 
+69             add  a,r1 
+6A             add  a,r2 
+6B             add  a,r3 
+6C             add  a,r4 
+6D             add  a,r5 
+6E             add  a,r6 
+6F             add  a,r7 
+ 
+70 
+71 
+72 xx          jb3  xx 
+73 
+74 xx          call 3xx 
+75 
+76 xx          jf1  xx 
+77             rr   a         a rechts rotieren (ohne Carry) 
+78 
+79 
+7A 
+7B 
+7C 
+7D 
+7E 
+7F 
+ 
+80                  
+81 
+82 
+83             ret            Unterprogrammruecksprung 
+84 xx          jmp  4xx 
+85             clr  f0        Flag 0 loeschen 
+86 xx          jni  xx 
+87 
+88 
+89 xx          orl  p1,#xx    Bits im Outputport 1 setzen 
+8A xx          orl  p2,#xx    dto. Port 2 
+8B 
+8C 
+8D 
+8E 
+8F 
+ 
+90             movx @r0,a     Port (@r0) mit a beschreiben 
+91             movx @r1,a 
+92 xx          jb4  xx 
+93             retr           Return from Interrupt
+94 xx          call 4xx 
+95             cpl  f0        Flag 0 umdrehen 
+96 xx          jnz  xx 
+97             clr  c         Carry loeschen 
+98 
+99 xx          anl  p1,#xx    Bit im Outputport 1 loeschen (mit NOT xx) 
+9A xx          anl  p2,#xx    dto. Port 2 
+9B 
+9C 
+9D 
+9E 
+9F 
+ 
+A0             mov  @r0,a     Memory mit a beschreiben 
+A1             mov  @r1,a 
+A2 
+A3             movp a,@a      a mit ROMinhalt (a) laden (aktuelle Page) 
+A4 xx          jmp  5xx 
+A5             clr  f1 
+A6 
+A7             cpl  c         Carry umdrehen 
+A8             mov  r0,a 
+A9             mov  r1,a 
+AA             mov  r2,a 
+AB             mov  r3,a 
+AC             mov  r4,a 
+AD             mov  r5,a 
+AE             mov  r6,a 
+AF             mov  r7,a 
+ 
+B0 xx          mov  @r0,#xx   Memoryzelle mit Konstante laden 
+B1 xx          mov  @r1,#xx 
+B2 xx          jb5  xx 
+B3 
+B4 xx          call 5xx 
+B5             cpl  f1 
+B6 
+B7 
+B8 xx          mov  r0,#xx    Register mit Konstante laden 
+B9 xx          mov  r1,#xx 
+BA xx          mov  r2,#xx 
+BB xx          mov  r3,#xx 
+BC xx          mov  r4,#xx 
+BD xx          mov  r5,#xx 
+BE xx          mov  r6,#xx 
+BF xx          mov  r7,#xx 
+ 
+C0             dec  @r0 
+C1             dec  @r1 
+C2 
+C3 
+C4 xx          jmp  6xx 
+C5             sel  rb0       Registerbank 0 waehlen (RAM 00..07) 
+C6 xx          jz   xx 
+C7 
+C8             dec  r0 
+C9             dec  r1 
+CA             dec  r2 
+CB             dec  r3 
+CC             dec  r4 
+CD             dec  r5 
+CE             dec  r6 
+CF             dec  r7 
+  
+D0             xrl  a,@r0 
+D1             xrl  a,@r1 
+D2 xx          jb6  xx 
+D3 xx          xrl  a,#xx     Logisches Exklusiv-Oder 
+D4 xx          call 6xx 
+D5             sel  rb1       Registerbank 1 waehlen (RAM 18..1F) 
+D6 
+D7 
+D8             xrl  a,r0 
+D9             xrl  a,r1 
+DA             xrl  a,r2 
+DB             xrl  a,r3 
+DC             xrl  a,r4 
+DD             xrl  a,r5 
+DE             xrl  a,r6 
+DF             xrl  a,r7 
+ 
+E0 xx          djnz @r0,xx    
+E1 xx          djnz @r1,xx 
+E2 
+E3             movp3 a,@a     a mit Inhalt von (3aa) laden, aa = (a)
+E4 xx          jmp  7xx 
+E5             sel  mb0       Memorybank 0 (ROM 000..7FF) waehlen 
+E6 xx          jnc  xx 
+E7             rl   a         a nicht durch c links rotieren 
+E8 xx          djnz r0,xx     Decrement r0, jump to xx if r0 is not zero 
+E9 xx          djnz r1,xx 
+EA xx          djnz r2,xx 
+EB xx          djnz r3,xx 
+EC xx          djnz r4,xx 
+ED xx          djnz r5,xx 
+EE xx          djnz r6,xx 
+EF xx          djnz r7,xx 
+ 
+F0             mov  a,@r0 
+F1             mov  a,@r1 
+F2 xx          jb7  xx 
+F3 
+F4 xx          call 7xx 
+F5             sel  mb1       Memorybank 1 (ROM 800..FFF) waehlen 
+F6 xx          jc   x 
+F7             rlc  a         a durch carry links rotieren 
+F8             mov  a,r0 
+F9             mov  a,r1 
+FA             mov  a,r2 
+FB             mov  a,r3 
+FC             mov  a,r4 
+FD             mov  a,r5 
+FE             mov  a,r6 
+FF             mov  a,r7 
+ 
+5.) Befehlssatz nach Funktionsgruppen 
+ 
+- Arithmetik 
+            @r0 @r1 -   #xx -   -   -   a   r0..r7 
+dec         c0  c1      -               07  C8..CF 
+inc         10  11      -               17  18..1F 
+clr         -   -       -               27  - 
+cpl         -   -       -               37  - 
+orl a,..    40  41      43              -   48..4F 
+anl a,..    50  51      53              -   58..5F 
+add a,..    60  61      03              -   68..6F 
+rrc         -   -       -               67  - 
+rr          -   -       -               77  - 
+xrl a,..    D0  D1      D3              -   D8..DF 
+rl          -   -       -               E7  - 
+rlc         -   -       -               F7  - 
+ 
+- Flags 
+                                f0  f1  c 
+clr                             85  A5  97 
+cpl                             95  B5  A7 
+ 
+- Transfer 
+            @r0 @r1 -   #xx -   -   -   a   r0..r7 
+xch a,..    20  21      -                   28..2F 
+mov a,..    F0  F1      23                  F8..FF 
+mov ..,a    A0  A1      -                   A8..AF 
+mov ..,#xx  B0  B1      23                  B8..BF 
+ 
+swap a
+movp a,@a               A3  
+movp3 a,@a              E3 
+ 
+ 
+- I/O 
+                                                  i= 1   2 
+in   a,pi                                            09   0A 
+orl  pi,#xx                                          89   8A 
+anl  pi,#xx                                          99   9A 
+outl pi,a 
+ 
+movx ..,a   90  91 
+movx a,xx 
+ 
+ 
+- Timer 
+                                i  tcnti 
+en                              05  25 
+dis                             15  35 
+ 
+                                cnt t 
+strt                            45  55 
+stop                              65 
+ 
+mov a,t             42 
+mov t,a             62 
+ 
+ 
+- Programmsteuerung 
+ 
+ret                     83 
+retr                    93 
+ 
+     rr=   @r0 @r1                          r0..r7 
+djnz rr,xx (E0  E1)                         E8..EF 
+ 
+      i=   0   1   2   3   4   5   6   7 
+jmp  $ixx  04  24  44  64  84  A4  C4  E4 
+call $ixx  14  34  54  74  94  B4  D4  F4 
+ 
+      i=   0   1   2   3   4   5   6   7 
+jbi,xx     12  32  52  72  92  B2  D2  F2 
+ 
+      cc=  ntf tf  nt0 t0  nt1 t1  nf1 f1  ni  nz  z   nc  c 
+jcc,xx     06  16  26  36  46  56  66  76  86  96  C6  E6  F6 
+ 
+- Sonstiges 
+                                rb0 rb1 mb0 mb1 
+sel                             C5  D5  E5  F5 
+nop        00 

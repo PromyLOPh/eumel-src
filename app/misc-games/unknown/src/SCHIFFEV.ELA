@@ -1,0 +1,424 @@
+                                                (* M.Staubermann,15.03.83 *)
+ 
+PACKET schiffe versenken DEFINES schiffe versenken :
+ 
+
+(* D E K L A R A T I O N S T E I L *)
+
+
+TEXT VAR eingabe, mitteilung := "";
+INT VAR x pos, y pos, reply;
+BOOL VAR spieler 1, dran;
+ROW 5 INT VAR count := ROW 5 INT : (0,0,0,0,0);
+DATASPACE VAR ds;
+forget(ds);
+ds := nilspace;
+BOUND TEXT VAR msg := ds;
+CONCR(msg) := "";
+TASK VAR gegner,source;
+forget(ds);
+ds:=nilspace;
+BOUND STRUCT (INT x , y) VAR schuss := ds;
+forget(ds);
+CONCR(schuss).x:= 1;
+CONCR(schuss).y := 1;
+ROW 11 ROW 17 TEXT VAR spielfeld;
+LET mark begin = ""15"",
+    mark end   = ""14"",
+    return     = ""13"",
+    down       = ""10"",
+    back       = ""8"",
+    bell       = ""7"",
+    up         = ""3"",
+    vor        = ""2"",
+    blank      = " ",
+    nil        = "", 
+    schiffstypen= "5:F4:K3:S2:V1:P";
+
+(* Ende des Deklarationsteils *)
+
+
+
+PROC schiffe versenken :
+     command dialogue(TRUE);
+     REP
+        IF no("Sind die Spielregeln bekannt") THEN page;
+           gib die spielregeln aus;
+           pause(200);
+        FI;
+        page;
+        line(6);
+        putline("  ABCDEFGH");
+        putline(" +--------+");
+        putline("1|        |");
+        putline("2|        |");
+        putline("3|        |");
+        putline("4|        |");
+        putline("5|        |");
+        putline("6|        |");
+        putline("7|        |");
+        putline("8|        |");
+        putline(" +--------+");
+        putline("  Spielfeld");
+        cursor(20,1);
+        putline("S c h i f f e   v e r s e n k e n : ");
+        spiel ausfuehren;page
+     UNTIL no("Noch ein Spiel") PER
+END PROC schiffe versenken;
+
+
+
+PROC gib die spielregeln aus:
+   cursor(15,2);
+   putline("DIE SPIELREGELN :");
+   cursor(15,3);
+   putline("Es gibt fuenf Schiffstypen mit verschieden Laengen, die beim");
+   cursor(15,4);
+   putline("""Gegner"" versenkt werden muessen.Er versenkt sie hier.Dazu");
+   cursor(15,5);
+   putline("geht man mit dem Cursor an die entsprechende Stelle im Spiel -");
+   cursor(15,6);
+   putline("feld und gibt zuerst die Position der Schiffe(waagerecht und ");
+   cursor(15,7);
+   putline("senkrecht) ein und waehrend des Spiels die Position, an der ");
+   cursor(15,8);
+   putline("ein gegnerisches Schiff vermutet wird. Ein Signal ertoent, ");
+   cursor(15,9);
+   putline("wenn man getroffen hat.Von jedem Schiffstyp ist nur ein Schiff");
+   cursor(15,10);
+   putline("erlaubt.Beenden des Spiels mit 'E'. Schiessen mit <RETURN>.");
+   cursor(3,9);
+END PROC gib die spielregeln aus;
+
+
+
+
+PROC botschaft (TEXT CONST message , TEXT CONST darstellen):
+     forget(ds);
+     ds := nilspace;
+     msg := ds;
+     CONCR(msg) := message;
+     REP send(gegner,0,ds,reply) UNTIL reply = 0 PER;
+     IF NOT (darstellen = "") THEN cursor(1,21);
+                                 putline(darstellen);
+                                 pause(100);
+                                 cursor(1,21);
+                                 leerzeile;
+                                 cursor(3,9) 
+     FI
+END PROC botschaft;
+
+
+
+PROC empfang (TEXT VAR message , BOOL CONST darstellen) :
+     forget(ds);
+     ds := nilspace;
+     REP wait (ds,reply,source) UNTIL (reply = 0) AND (source=gegner)
+     PER;
+     msg := ds;
+     message := CONCR(msg);
+     forget(ds);
+     IF darstellen THEN cursor(1,21);
+                        putline(message);
+                        pause(100);
+                        cursor(1,21);
+                        leerzeile;
+                        cursor(3,9) 
+     FI
+END PROC empfang;
+
+
+
+PROC darstellen (TEXT CONST message) :
+     cursor(1,21);
+     putline(message);
+     pause(100);
+     cursor(1,21);
+     leerzeile;
+     cursor(3,9);
+END PROC darstellen;
+
+
+
+PROC spiel ausfuehren :
+     forget(ds); 
+     ds := nilspace;
+     msg := ds; 
+     forget(ds); 
+     ds := nilspace; 
+     schuss := ds; 
+     forget(ds); 
+     cursor(1,20);
+     putline(mark begin + 28 * blank + "Info an den Spieler" + 28 * blank +
+             mark end);
+     cursor(1,21);
+     put("Task - Name des Mitspielers : ");
+     getline(eingabe);
+     IF exists(task(eingabe)) AND NOT (task (eingabe) 
+        = myself) AND NOT (channel(task(eingabe)) < 0)
+     THEN gegner := task(eingabe);
+          putline("Er sitzt an Terminal " + text (channel(gegner)));
+          pause(100);
+          cursor(1,22);
+          leerzeile;
+          cursor(1,21);
+          leerzeile;
+     ELSE putline("Unerlaubter Task - Name !");
+          pause(100); 
+          LEAVE spiel ausfuehren
+     FI;
+     darstellen("Mit dem Partner vereinbaren , wer beginnt.");
+     cursor(1,21);
+     spieler 1 := yes("Faengt der Spieler an, der an diesem Terminal sitzt");
+     cursor(1,21);
+     pause(10);
+     leerzeile;
+     IF spieler 1 THEN botschaft (name(myself) + " faengt an !","");
+                  ELSE empfang(mitteilung, TRUE)
+     FI; 
+     dran := spieler 1;
+     cursor(15,14);
+     putline("Schiffstypen sind :");
+     cursor(15,15);
+     putline("Flugzeugtraeger : FFFFF");
+     cursor(15,16);
+     putline("Kreuzer         : KKKK");
+     cursor(15,17);
+     putline("Schnellboote    : SSS");
+     cursor(15,18);
+     putline("Versorger       : VV");
+     cursor(15,19);
+     putline("Paddelboote     : P");
+     cursor(3,9);
+     eingabe der schiffe;
+     spiele eine runde;
+END PROC spiel ausfuehren;
+
+
+
+PROC eingabe der schiffe :
+     count := ROW 5 INT : (0,0,0,0,0);
+     FOR y pos FROM 8 UPTO 17 REP
+         FOR x pos FROM 2 UPTO 11 REP
+             spielfeld[ x pos] [y pos] := ""
+         PER
+     PER;
+     darstellen("Positionieren Sie den Cursor auf die entsprechende Position innerhalb des"); 
+     darstellen("Spielfeldes und druecken Sie (mit <SHIFT>) die Buchstaben , so dass alle");
+     darstellen("Schiffe auf dem Spielfeld sind.");
+     REP
+        inchar(eingabe);
+        getcursor(x pos , y pos);
+        IF NOT randbegrenzung ueberschritten THEN
+           IF eingabe = "E" THEN IF spieler 1 THEN
+                        botschaft(name(myself) + "hoert auf","Spiel beendet"); 
+                            ELSE darstellen("Spiel beendet.") 
+                              FI;
+           LEAVE eingabe der schiffe
+           ELIF eingabe = "F" THEN wenn moeglich vergroessere("F") 
+           ELIF eingabe = "K" THEN wenn moeglich vergroessere("K") 
+           ELIF eingabe = "S" THEN wenn moeglich vergroessere("S")
+           ELIF eingabe = "V" THEN wenn moeglich vergroessere("V")
+           ELIF eingabe = "P" THEN wenn moeglich vergroessere("P")
+           ELIF eingabe = " " THEN loesche position
+           ELIF eingabe = "?" THEN gib die spielregeln aus
+           ELIF (eingabe = back) OR (eingabe = vor) OR (eingabe = down)
+                                 OR (eingabe = up)  THEN out(eingabe)
+           ELSE out(bell)
+           FI
+        ELSE out(bell)
+        FI
+     UNTIL alle schiffe eingegeben PER.
+
+
+     loesche position :
+       out(" ");out(""8"");
+       IF NOT (spielfeld [x pos] [y pos] = "") THEN count[int(schiffstypen
+              SUB (pos(schiffstypen,spielfeld[x pos][y pos])-2))] DECR 1
+       FI;
+       spielfeld [x pos] [y pos] := "".
+
+
+
+
+     alle schiffe eingegeben :
+       (count [5] = 5) CAND (count [4] = 4) CAND (count [3] = 3) CAND
+       (count [2] = 2) CAND (count [1] = 1).
+
+
+END PROC eingabe der schiffe;
+
+
+
+ BOOL PROC randbegrenzung ueberschritten :
+     ((eingabe = back) CAND (x pos <= 3)) COR ((eingabe = vor) CAND (x pos >=
+      10)) COR ((eingabe = down) CAND (y pos >= 16)) COR ((eingabe = up) CAND
+      (y pos <= 9))
+
+END PROC randbegrenzung ueberschritten;
+
+
+
+PROC wenn moeglich vergroessere (TEXT CONST schiff) :
+     IF ((schiff = "F") AND (count [5] < 5)) COR ((schiff = "K") AND
+        (count [4] < 4)) COR ((schiff = "S") AND (count [3] < 3)) COR
+        ((schiff = "V") AND (count [2] < 2)) COR ((schiff = "P") AND
+        (count [1] = 0))
+     THEN IF waagerechter oder senkrechter nachbar AND NOT diagonaler nachbar
+          OR(count [int(schiffstypen SUB (pos(schiffstypen, schiff) - 2))]=0)
+          AND noch kein schiff da
+          THEN count [int(schiffstypen SUB (pos(schiffstypen, schiff) - 2))]
+               INCR 1;
+               out(schiff + ""8"");
+               spielfeld [x pos] [y pos] :=schiff
+          FI
+     FI.
+
+ 
+
+     waagerechter oder senkrechter nachbar :
+     ((spielfeld [sub x(x pos - 1)] [y pos] = schiff)  OR
+      (spielfeld [sub x(x pos + 1)] [y pos] = schiff))XOR
+     ((spielfeld [x pos] [sub y(y pos - 1)] = schiff)  OR
+      (spielfeld [x pos] [sub y(y pos + 1)] = schiff)).
+
+
+
+     diagonaler nachbar :
+     (spielfeld [sub x(x pos + 1)] [sub y(y pos + 1)] = schiff) OR
+     (spielfeld [sub x(x pos + 1)] [sub y(y pos - 1)] = schiff) OR
+     (spielfeld [sub x(x pos - 1)] [sub y(y pos + 1)] = schiff) OR
+     (spielfeld [sub x(x pos - 1)] [sub y(y pos - 1)] = schiff) .
+
+
+
+     noch kein schiff da :
+     IF spielfeld[x pos] [y pos] <> "" THEN out(bell);FALSE ELSE TRUE FI.
+
+END PROC wenn moeglich vergroessere;
+
+ 
+
+INT PROC sub x(INT CONST subscription):
+    IF subscription > 11 THEN 11
+    ELIF subscription < 2 THEN 2
+    ELSE subscription
+    FI
+
+END PROC sub x;
+ 
+ 
+ 
+INT PROC sub y(INT CONST subscription):
+    IF subscription > 17 THEN 17
+    ELIF subscription < 8 THEN 8
+    ELSE subscription
+    FI
+
+END PROC sub y;
+ 
+
+
+PROC spiele eine runde :
+     IF spieler 1 THEN botschaft(name(myself)+" hat alle Schiffe eingegeben."
+                       , "Eingabe der Schiffe beendet.")
+                  ELSE empfang(mitteilung , TRUE) 
+     FI;
+     REP
+        IF dran THEN darstellen("Jetzt schiessen !");
+                     abschiessen
+                ELSE rufe gegner
+        FI;
+        dran := NOT dran;
+     UNTIL kein schiff mehr da PER;
+     gegner hat verloren .
+
+
+
+     kein schiff mehr da :
+        (count [5] = 0) CAND (count [4] = 0) CAND (count [3] = 0) CAND
+        (count [2] = 0) CAND (count [1] = 0).
+
+
+
+     abschiessen :
+       REP 
+           inchar(eingabe);
+           getcursor(x pos, y pos);
+           IF NOT randbegrenzung ueberschritten THEN
+              IF eingabe = "E" THEN IF spieler 1 THEN 
+                          botschaft(name(myself)+" hoert auf.","Spiel beendet.");
+                          ELSE darstellen ("Spiel beendet.") FI;
+                                    LEAVE spiele eine runde
+              ELIF eingabe =  return THEN schuss gegner;
+                                          forget(ds);
+                                          ds := nilspace;
+                                          CONCR(schuss).x := x pos;
+                                          CONCR(schuss).y := y pos;
+                                          schuss := ds;
+                                          REP send (gegner,0,ds,reply)
+                                          UNTIL reply = 0 PER;
+                                          empfang(mitteilung,TRUE);
+              ELIF eingabe = "?"     THEN gib die spielregeln aus
+              ELIF (eingabe = back) OR (eingabe = vor) OR (eingabe = up)
+                   OR (eingabe = down) THEN out(eingabe)
+              ELSE out(bell)
+              FI
+           ELSE out(bell)
+           FI
+         UNTIL eingabe = return PER.
+
+
+
+         elem :
+         spielfeld [sub x(CONCR(schuss).x)] [sub y(CONCR(schuss).y)].
+
+
+
+         gegner hat verloren :
+         botschaft("gegner hat verloren","Sie haben gewonnen.Herzlichen Glueckwunsch meinerseits !"). 
+
+
+         schuss gegner :
+         botschaft("gegner schiesst","").
+
+
+
+        rufe gegner :
+        empfang(mitteilung,FALSE);
+        IF mitteilung = "gegner schiesst" THEN forget(ds);
+                                               ds := nilspace;
+                                               REP wait(ds,reply,source)
+                                               UNTIL (reply = 0) AND (source 
+                                                      = gegner) PER;
+                                               schuss := ds;
+                                               IF elem <> "" THEN
+                                                   count[int(schiffstypen SUB 
+                                                   (pos(schiffstypen,elem)- 2 
+                                                   ))] DECR 1;
+                                                   cursor(CONCR(schuss).x,
+                                                   CONCR(schuss).y);
+                                                   out(" ");
+                                      IF count[int(schiffstypen SUB (pos(schiff
+                                         stypen,elem) - 2))] = 0
+                                      THEN botschaft(elem + " versenkt" +
+                                           bell, "")
+                                      ELSE botschaft(elem + " getroffen" +
+                                           bell,"")
+                                      FI;
+                                      elem := ""
+                                  ELSE botschaft("nicht getroffen","")
+                                  FI;forget(ds)
+                            ELIF mitteilung = "gegner hat verloren" THEN
+                                 botschaft("Spiel beendet",
+                                 "Sie haben verloren.Tut mir leid.");
+                                 LEAVE spiele eine runde
+                            ELSE darstellen(mitteilung)
+                            FI
+END PROC spiele eine runde.
+
+
+leerzeile :
+  77 TIMESOUT blank
+
+END PACKET schiffe versenken

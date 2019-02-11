@@ -1,0 +1,714 @@
+
+;---------------------------------------------------------------------------
+;
+;	SHard 1.8.0 - Schneller Boot von Floppy
+;	===========
+;
+;	(C) Copyright 1987, Michael Staubermann (ruc)
+;
+;	Version 0.2, 22.01.87
+;
+;---------------------------------------------------------------------------
+;
+		.6502
+		.RADIX	16
+		SUBTTL	Floppyboot
+
+slot      equ      6
+load_sec  equ	   $C65C
+p_data    equ      27
+sector    equ      3D
+ROM       equ      slot*100+0C000
+
+vpoint		EQU	$10		; Zeigt auf Volumetabelle
+VOLTAB		EQU	$B800
+
+DMA       equ	50		; 50..6F
+sec_tble  equ	70		; 70..7F
+task	  equ	80		; 80
+param	  equ	81
+def_byte  equ	82
+disk_no   equ	83
+iob_trk   equ	84
+sec_cnt   equ	85
+iob_err   equ	86
+
+; work space
+
+wait_Cnt   equ	87
+user_data equ	89
+dest_phase equ	8B
+chk_in_hdr equ	8C
+sec_in_hdr equ	8D
+trk_in_hdr equ	8E
+vol_in_hdr equ	8F
+slot10z   equ	90          ; slot #: s0
+iob_drv   equ	91
+phase     equ	92
+iob_sec   equ	93
+chk_sum   equ	94
+temp2     equ	95
+head_pos  equ	96
+tktry_cnt equ	97
+hdtry_cnt equ	98
+recal_cnt equ	99
+
+; Floppy Hardware
+
+phase0    equ      0C080
+phase1    equ      0C082
+phase2    equ      0C084
+phase3    equ      0C086
+mtroff    equ      0C088
+mtron     equ      0C089
+drive0    equ      0C08A
+Q6off     equ      0C08C
+Q6on      equ      0C08D
+Rstate    equ      0C08E
+Wstate    equ      0C08F
+
+bit_z     equ      24
+
+fast_step equ	$0E	; etwas weniger als 3 ms Track-Wechselzeit
+
+start180	EQU	$C087		; 64180 startet bei 0000
+
+;----------------------------------------------------------------------------
+
+pagerr	  macro	    adr
+	  if high(*-start) ne high(adr-start)
+	  .printx 'Page-Error'
+	  endif
+	  endm
+
+		.phase 0800
+
+start:
+nible1:
+
+		DB	0		; Nur einen Sektor
+		cpx	#60
+		beq	slotok
+		jmp	booterr
+slotok:
+		lda	sector
+		cmp	#8		; Alle Sektoren gewesen ?
+		beq	loader
+		cmp	#$0F
+		bne	next_sec
+		lda	#8
+		sta	p_data
+		lda	#0
+		sta	sector		; Mit Sektor 1 nach 0900 weiter
+next_sec:
+		inc	p_data
+		inc	sector
+		jmp	load_sec	; Sector laden und --> 0801 springen
+
+loader:
+		lda	$03F3
+		sta	$03F4		; Reboot
+
+		lda	def
+		sta	def_byte
+
+		jmp	load_shard
+
+booterr:
+		jsr	$FE84
+		jsr	$FB2F
+		jsr	$FE93
+		jsr	$FE89
+		jsr	$FC58		; Init Video, KBD, CLRSCR...
+		ldy	#0
+err1:		lda	errtxt,y
+		eor	#$80
+		jsr	$FDED		; Auf Bildschirm ausgeben
+		iny
+		cmp	#$8D		; RETURN als Abschluss
+		bne	err1
+		jmp	$FF65		; Sprung in Monitor
+		
+
+errtxt:		DB	'Boot error!', 0D
+
+
+          ds        $FF-(*-start)
+
+def:	  db	    $E0
+
+ 	  include NIBLE.INC
+
+write_data
+          SEC
+          LDA       Q6on,X
+          LDA       Rstate,X
+          BMI       wrdat99
+          LDA       nible2
+          STA       temp2
+          LDA       #0FF
+          STA       Wstate,X    ;  5
+          ORA       Q6off,X     ;  4
+          PHA                   ;  3
+          PLA                   ;  4     [sta..sta[
+          NOP                   ;  2
+          LDY       #04         ;  2
+wrdat1    PHA                   ;  3             3
+          PLA                   ;  4             4
+          JSR       wrt_nibl1   ;+13        15  13
+          DEY                   ;---         2
+          BNE       wrdat1      ; 40       + 3
+                                ;          --- ---
+                                ;           20+ 20 = 40
+
+	  pagerr    wrdat1
+
+                                ;           -1
+          LDA       #0D5        ;            2
+          JSR       wrt_nibl     ; 15       +15
+          LDA       #0AA        ;  2       ---
+          JSR       wrt_nibl     ;+15        36
+          LDA       #0AD        ;---
+          JSR       wrt_nibl     ; 32        15
+          TYA                   ;            2
+          LDY       #56         ;            2
+wrdat11   BNE       wrdat3      ;            3
+wrdat2    LDA       nible2,Y    ;            0    4
+wrdat3    EOR       nible2-1,Y  ;            5    5
+          TAX                   ;            2    2
+          LDA       to_nibble,X ;            4    4
+          LDX       slot10z     ;            3    3
+                                       ;   ---  ---
+                                       ;    36   18
+
+          STA       Q6on,X             ;     5
+          LDA       Q6off,X            ;     4
+          DEY                          ;     2
+          BNE       wrdat2             ;     3
+                                       ;   ---
+                                       ;    14 + 18 = 32
+                                       ;    -1
+          LDA       temp2              ;     3
+          NOP                          ;     2
+wrdat4    EOR       nible1,Y           ;     4    4
+          TAX                          ;     2    2
+          LDA       to_nibble,X        ;     4    4
+          LDX       slot10             ;     4    4
+                                       ;   ---  ---
+                                       ;    32   14
+
+          STA       Q6on,X             ;     5
+          LDA       Q6off,X            ;     4
+          LDA       nible1,Y           ;     4
+          INY                          ;     2
+          BNE       wrdat4             ;     3
+                                       ;   ---
+                                       ;    18+ 14 = 32
+
+	  pagerr	    wrdat11
+
+          TAX                          ;     2
+          LDA       to_nibble,X        ;     4
+          LDX       slot10z            ;     3
+          JSR       wrt_nibl2          ;     6  15
+          LDA       #0DE               ;   ---   2
+          JSR       wrt_nibl            ;    32  15
+          LDA       #0AA               ;       ---
+          JSR       wrt_nibl            ;        32
+          LDA       #0EB
+          JSR       wrt_nibl
+          LDA       #0FF
+          JSR       wrt_nibl
+          LDA       Rstate,X
+wrdat99
+          LDA       Q6off,X
+wrdat999
+	  dey
+	  bne	   wrdat999		; PostErase-Delay 1 ms
+
+          RTS
+
+read_hdr
+          sei
+          LDY       #0FC
+          STY       temp2
+rdhdr0
+          INY
+          BNE       rdhdr1
+          INC       temp2
+          BEQ       fail
+rdhdr1
+          LDA       Q6off,X
+          BPL       rdhdr1
+rdhdr11   CMP       #0D5
+          BNE       rdhdr0
+
+          NOP
+rdhdr2    LDA       Q6off,X
+          BPL       rdhdr2
+          CMP       #0AA
+          BNE       rdhdr11
+
+          LDY       #03
+rdhdr3    LDA       Q6off,X
+          BPL       rdhdr3
+          CMP       #96
+          BNE       rdhdr11
+          
+	  pagerr    rdhdr1
+
+          
+          LDA       #00
+nxthByte  STA       chk_sum
+rdhdr4    LDA       Q6off,X
+          BPL       rdhdr4
+	  ROL	    A
+          STA       temp2
+rdhdr5    LDA       Q6off,X
+          BPL       rdhdr5
+          AND       temp2
+          STA       chk_in_hdr,Y
+          EOR       chk_sum
+          DEY
+          BPL       nxthbyte
+
+          TAY
+          BNE       fail
+
+rdhdr6    LDA       Q6off,X
+          bpl       rdhdr6
+          cmp       #0DE
+          BNE       fail
+
+          NOP
+rdhdr7    LDA       Q6off,X
+          BPL       rdhdr7
+          CMP       #0AA
+          BNE       fail
+
+          CLC
+          RTS
+fail
+          SEC
+          RTS
+
+moving
+          LDY       #0
+mov0      LDA       Q6off,X
+	  JSR	    mov1
+	  PHA			;  3
+ 	  PLA			;  4
+	  CMP	    Q6off,X	;  4
+	  BNE	    mov1	;----
+	  DEY			; 21 uS
+	  BNE	    mov0
+mov1	  RTS
+
+
+read_data
+	  TXA
+	  ORA	    #8C
+	  STA	    ld1+1
+	  STA	    ld2+1
+	  STA	    ld3+1
+	  STA	    ld4+1
+	  STA	    ld5+1
+	  LDA	    user_data
+	  LDY	    user_data+1
+	  STA	    st5+1
+	  STY	    st5+2
+	  SEC
+	  SBC	    #54
+	  BCS	    rddat1
+	  DEY
+	  SEC
+rddat1
+	  STA	    st3+1
+	  STY	    st3+2
+          SBC       #57
+          BCS       rddat2
+          DEY
+rddat2
+          STA       st2+1
+          STY       st2+2
+
+          LDY       #20
+nxt_begin
+          DEY
+          BEQ       fail
+wait_begin
+waitb0    LDA       Q6off,X
+          BPL       waitb0
+waitb00   EOR       #0D5
+          BNE       nxt_begin
+          NOP
+waitb1    LDA       Q6off,X
+          BPL       waitb1
+          CMP       #0AA
+          BNE       waitb00
+          NOP
+waitb2    LDA       Q6off,X
+          BPL       waitb2
+          CMP       #0AD
+          BNE       waitb00
+
+          LDY       #0AA
+          LDA       #0
+rloop1    STA       temp2
+ld1       LDX       Q6off+60  ; addr modified by read init !
+          BPL       ld1
+          LDA       to_bits-96,X
+          STA       nible2-0AA,Y
+          EOR       temp2
+          INY
+          BNE       rloop1
+          
+;
+; read nible from disk and convert to user data
+;
+          LDY       #0AA
+          BNE       ld2
+rloop2
+st2       STA       1000,Y
+ld2       LDX       Q6off+60  ; modified by read init
+          BPL       ld2
+          EOR       to_bits-96,X
+          LDX       nible2-0AA,Y
+          EOR       to_bytes+0,X
+          INY
+          BNE       rloop2
+
+          PHA
+          AND       #0FC
+          LDY       #0AA
+ld3       LDX       Q6off+60  ; modified by read init
+          BPL       ld3
+          EOR       to_bits-96,X
+          LDX       nible2-0AA,Y
+          EOR       to_bytes+1,X
+st3       STA       1000,Y
+          INY
+          BNE       ld3
+
+ld4       LDX       Q6off+60  ; modified by read init
+          BPL       ld4
+          AND       #0FC
+          LDY       #0AC
+rloop5    EOR       to_bits-96,X
+          LDX       nible2-0AC,Y
+          EOR       to_bytes+2,X
+st5       STA       1000,Y
+ld5       LDX       Q6off+60  ; modified by read init
+          BPL       ld5
+          INY
+          BNE       rloop5
+          AND       #0FC
+          EOR       to_bits-96,X
+          LDX       slot10z
+          TAY
+          BNE       chk_fail
+rloop6    LDA       Q6off,X
+          BPL       rloop6
+          CMP       #0DE
+          BEQ       read_ok
+
+          pagerr      wait_begin
+chk_fail
+          SEC
+          db     bit_z
+read_ok
+          clc
+          PLA
+          LDY       #55
+          STA       (user_data),Y
+          RTS
+
+seekT	  lda	    iob_trk          
+seekL
+	  jsr	    trk_to_ph
+          cmp       phase0,X
+          cmp       phase1,X
+          cmp       phase2,X
+          cmp       phase3,X
+          LDY       disk_no
+          LDA       head_table,y	; da steht der Kopf jetzt
+          STA       head_pos
+	  lda	    dest_phase
+	  sta	    head_table,y	; da soll er nachher stehen
+          
+seekH
+          cmp       head_pos
+          BEQ       seek_rts
+          LDA       #0
+          STA       temp2
+seekh0    LDA       head_pos
+          STA       phase
+          SEC
+          SBC       dest_phase
+          BEQ       seekh5
+          BCS       seekh1
+          EOR       #0FF
+          INC       head_pos
+          BCC       seekh2
+seekh1    ADC       #0FE
+          DEC       head_pos
+seekh2    CMP       temp2
+          BCC       seekh3
+          LDA       temp2
+seekh3    CMP       #8
+          BCS       seekh4
+          TAY
+seekh4    SEC
+          JSR       step
+          LDA       time0,Y
+          JSR       step_wait
+          LDA       phase
+          CLC
+          JSR       step1
+          LDA       time1,Y
+          JSR       step_wait
+          INC       temp2
+          BNE       seekh0
+
+seekh5    JSR       step_wait
+          CLC
+step      LDA       head_pos
+step1     AND       #3
+          ROL       A
+          ORA       slot10z
+          TAX
+          LDA       phase0,X
+          LDX       slot10z
+seek_rts  RTS
+
+;-------------------------------;
+
+make_nibl
+          LDY       #56
+          LDA       #0
+maken0    STA       nible2-1,Y
+          DEY
+          BNE       maken0
+maken1    LDX       #55
+maken2    LDA       (user_data),Y
+          AND       #0FC
+          STA       nible1,Y
+          EOR       (user_data),Y
+          INY
+          CMP       #02
+          ORA       nible2,X
+          ROR       A
+          ROR       A
+          STA       nible2,X
+          DEX
+          BPL       maken2
+          CPY       #02
+          BNE       maken1
+          RTS
+
+;	ds	10
+          
+Dsk_RW 
+	  ldx	    #0A9	; LDA #xx
+	  lda	    def_byte
+	  and	    #$20	; Bit 5 ?
+	  bne	    rw_0	; Fast Step - use abs. value
+
+				; Slow Step - use MotorOn/Off-Tables
+	  ldx	    #0C9	; CMP #xx
+rw_0:	  stx	    step_wait
+	
+	  lda	    #fast_step	; Set Step Rate
+	  bit	    def_byte
+	  bmi	    rw_1	; Bit7: Controller-Typ
+				; Bit7=0 => Ehring
+	  lsr	    a		; bei Ehring 2-fache Phases => halbe Steprate
+
+rw_1:	  sta	    step_wait+1		; Steprate
+
+          lda       disk_no
+          LSR       A
+          TAY
+          LDA       slotn,Y
+          STA       slot10
+          sta       slot10z
+          adc       #0
+          STA       iob_drv
+          
+ 	  include TRACK.INC 
+
+trk_to_ph:			; IN: A = track / OUT: A,dest_phase = phase
+	sta	dest_phase
+
+; Select Side 0
+
+	bit	def_byte	; Bit7: 1=Erphi-Controller
+				; Bit6: 1=Erphi-Format
+
+	bvc	ehring_format	; Bit6 = 0 => Ehring-Format
+
+	lsr	dest_phase	; Erphi-Format
+	bcc	side0
+
+; Select Side 1
+; Erphi:  mtroff, Q6on, mtron
+; Ehring: mtroff,mtron
+
+side1:	lda	mtroff,x
+	bit	def_byte
+	bpl	side1_2
+				; Erphi-Side-1-Select
+	lda	Q6on,x
+side1_2:
+	lda	mtron,x
+	jmp	ph_mult
+
+ehring_format:
+	cmp	#$50		; Track >= 80 ?
+	bcc	side0		; nein: Select Side 0
+
+	sbc	#$50
+	sta	dest_phase
+	jmp	side1
+
+; Select Side 0
+; Ehring: lda cn00,x
+; Erphi : mtroff, Q6off, mtron
+
+side0:	bit	def_byte
+	bmi	erphi_s0	; Bit7 = 1 => Erphi-Controller
+
+	txa			; Ehring-Side-0-Select
+	lsr	a
+	lsr	a
+	lsr	a
+	lsr	a
+	ora	#$C0
+	sta	ehr_sel+2
+
+ehr_sel:lda	$C600
+	jmp	ph_mult
+
+erphi_s0:			; Erphi-Side-0-Select
+	cmp	mtroff,x
+	cmp	Q6off,x
+	cmp	mtron,x
+
+ph_mult:
+	lda	def_byte	; Bit 0..1: 0 = 1 Step/Track
+	and	#03		;           1 = 2 Steps/Track
+	tay			;           2 = 4 Steps/Track
+	beq	ph_mult2
+
+ph_mult1:
+	asl	dest_phase
+	dey
+	bne	ph_mult1
+
+ph_mult2:
+	lda	dest_phase
+	rts
+
+load_shard:
+
+load_0:		lda	#$10
+		ldx	#1		; Track 1
+		jsr	loadtrack
+		bne	load_0
+
+load_1:		lda	#$20
+		ldx	#2		; Track 2
+		jsr	loadtrack
+		bne	load_1
+
+load_2:		lda	#$30
+		ldx	#3		; Track 3
+		jsr	loadtrack
+		bne	load_2
+
+load_3:		lda	#$40
+		ldx	#4		; Track 4
+		jsr	loadtrack
+		bne	load_3
+
+
+		lda	#HIGH VOLTAB
+		sta	vpoint+1
+		lda	#LOW VOLTAB
+		sta	vpoint
+		ldx	#8
+loop2:		lda	eumel_vol,x
+		sta	VOLTAB,x
+		dex
+		bpl	loop2
+
+		lda	#$C3
+		sta	0
+		lda	#$00
+		sta	1
+		lda	#$10
+		sta	2		; JP $1000 - 64180
+		lda	#0
+		sta	task
+		sei
+		ldx	#leng1-1
+lp1:
+		lda	codp,x
+		sta	8000,x
+		dex
+		bpl	lp1
+		jmp	8000
+
+codp:
+		ldx	#$70		; Karte in Slot 7
+		stx	$04F8
+		lda	start180,x	; Start 64180
+loop:
+		lda	task
+		cmp	#4
+		bne	loop		; Auf Adress-Task warten
+
+		jmp	(1)		; Neue Taskloop anspringen
+leng1	equ	$-codp
+	
+loadtrack:
+	stx	iob_trk
+	tax
+	dex
+	txa
+	ldx	#0
+	ldy	#0
+boot31:	pha
+	lda	#0
+	sta	sec_tble,y
+	sta	DMA,x
+	pla
+	clc
+	adc	#1
+	sta	DMA+1,x
+	inx
+	inx
+	iny
+	cpy	#10
+	bne	boot31
+;
+;	Steprate einstellen und andere Disk Voreinstellungen
+;          
+	sty	sec_cnt     ; := 10     read track, sector 0..F
+	ldx	#0f
+	stx	iob_err     ; StepRate
+	ldx	#0
+	stx	disk_no  	; :=  0
+        dex
+        stx	param    	; := FF (read)
+	jsr	dsk_rw
+	lda	iob_err
+	rts
+
+
+eumel_vol:
+		40H, 00H, 4AH, 60H, 00H, 00H, 0B3H, 00H, 0FFH
+		; Default, ggf. Aendern
+
+		END
+

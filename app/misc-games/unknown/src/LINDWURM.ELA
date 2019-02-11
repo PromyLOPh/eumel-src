@@ -1,0 +1,337 @@
+PACKET lind wurm DEFINES lindwurm:
+deklaration; 
+LET max = 500,zeilen = 23,spalten = 77;
+ 
+PROC kriech :
+  speicher := stelle;
+  REP
+   putline(""1"Punkte:"+text(punkte + bonus) + ""6""0""30"Zeit:" + zeit);
+   IF punkte <> 0 
+      THEN ende INCR 1;
+           IF ende > max THEN ende := 1 FI;
+           laenge := laenge + 1 - zaehler;
+           IF laenge > max THEN laenge := 1 FI;
+           wurm(ende) := speicher;
+           IF zaehler = 0 AND wurm(laenge) >= basis AND wurm(laenge) < (basis+(spalten*zeilen)) 
+              THEN poke(wurm(laenge),leerzeichen) 
+           FI;
+           IF speicher >= basis AND speicher < (basis+(spalten*zeilen)) THEN 
+              poke(speicher,char1)
+           FI
+      ELSE IF speicher >= basis AND speicher < (basis+(spalten*zeilen)) 
+              THEN poke (speicher,leerzeichen)
+           FI;
+   FI;
+   zaehler := 0;
+   speicher INCR richtung;
+   IF peek(speicher) <> leerzeichen THEN nahrung oder gift FI; 
+   IF speicher >= basis AND speicher < (basis+(spalten*zeilen)) THEN poke(speicher,char2) FI;
+   tastaturabfrage;
+   IF punkte > begrenzung THEN x := int(zeit); index := 1 FI;
+   IF zeit > stopzeit THEN index := 2 FI;
+  UNTIL index <> 0 PER
+ENDPROC kriech;
+
+PROC nahrung oder gift :
+     IF peek(speicher) <> char 3 THEN index := 3 
+       ELSE punkte INCR 10; zaehler := 1
+     FI;
+ENDPROC nahrung oder gift;
+
+PROC tastaturabfrage :
+    taste := incharety(9 DIV geschwindigkeit);
+    feuer := taste = ""13"";
+    IF feuer THEN richtung := 0
+    ELIF taste = ""10"" THEN richtung INCR spalten
+    ELIF taste = ""8""  THEN richtung DECR 1 
+    ELIF taste = ""2""  THEN richtung INCR 1
+    ELIF taste = ""3""  THEN richtung DECR spalten
+    FI
+ENDPROC tastatur abfrage;
+
+PROC bonus erreicht :
+     x := (int(stopzeit)-x) * schwierigkeit;
+     cspalte := 10;
+     czeile  := 10;
+     cursorpositionieren;
+     putline("B O N U S ! ! !");
+     line;
+     putline(""15"          "+text(x)+" Punkte !!!"14"");
+     bonus := bonus + punkte + x;
+ENDPROC bonus erreicht;
+
+PROC poke (INT CONST stelle,wert) :
+     INT VAR x pos := 1 + ((stelle - basis) MOD spalten),
+             y pos := 1 + ((stelle - basis) DIV spalten); 
+     cursor(x pos,y pos);
+     IF wert = 126 THEN out(""15""8""14"") ELSE
+        out(code(wert));
+     FI;
+     bildschirm (x pos)(y pos) := wert;
+ENDPROC poke;
+
+INT PROC peek (INT CONST stelle) :
+    INT VAR x pos := 1 + ((stelle - basis) MOD spalten),
+            y pos := 1 + ((stelle - basis) DIV spalten);
+    bildschirm (x pos)(y pos)
+ENDPROC peek;
+
+PROC cursorpositionieren :
+     bildschirm zeile := basis + spalten*czeile;
+     cursor(cspalte+1,czeile+1);
+ENDPROC cursor positionieren;
+
+PROC highscore und platznummer :
+     punkte := punkte + bonus;
+     bonus := 0;
+     IF punkte > highscore THEN highscore := punkte FI;
+     player counter INCR 1;
+     q := player counter + 1;
+     spieler punkte(playercounter) := punkte;
+     FOR i FROM 1 UPTO playercounter REP
+         IF punkte > spielerpunkte (i) THEN q DECR 1 FI;
+     PER;
+     c spalte :=10;
+     czeile := 10;
+     cursorpositionieren;
+     putline("Hoechstpunktzahl "+text(highscore));line;
+     putline("           Punkte :"+text(punkte));
+     putline("           Platznr.:"+text(q-1));
+     IF q-1 >= 10 THEN inchar(hilf)
+        ELSE put("Name des Gewinners:");
+        getline(hilf);
+        disablestop;
+        FOR i FROM playercounter DOWNTO q REP
+            spielername(i+1) := spielername(i);
+            IF iserror THEN clearerror; spielername(i+1) := "" FI;
+        PER;
+        enablestop;
+        spielername(q-1) := "(" +text(punkte) + " Punkte: " + hilf+")";
+     FI;
+     page;
+     putline("Die ersten 10 Gewinner :");
+     disablestop;
+     FOR i FROM 1 UPTO min(playercounter,10) REP
+         putline(text(i)+"."+spielername(i));
+         IF iserror THEN clearerror;spielername(i) := "" FI
+     PER;
+     enablestop;
+     putline("Druecken Sie eine Taste");
+     inchar(hilf);
+ENDPROC highscore und platznummer;
+
+PROC explosion :
+   out(""7"");
+   FOR i FROM ende DOWNTO laenge +1REP
+       IF wurm (i) >= basis AND wurm(i) < (basis+spalten*zeilen) THEN poke(wurm(i),leerzeichen);
+       FI;
+   PER;
+   highscore und platznummer
+ENDPROC explosion;
+
+PROC lindwurm :
+   bonus := 0;
+
+   REP
+    clearscreen;
+    out(""14""1""4"");
+    IF bonus = 0 THEN neues spiel FI;
+    IF bonus > 0 THEN bonusspiel FI;
+    page;
+    rahmen;
+    lebensraum generieren;
+    lindwurm kopf setzen;
+    reset time;
+    kriech;
+    SELECT index OF 
+       CASE 1 : bonus erreicht
+       CASE 2 : highscore und platznummer
+       CASE 3 : explosion
+    ENDSELECT
+  UNTIL bonus<= 0 COR no(""1""4""10""10"Noch ein Spiel") PER
+
+ENDPROC lindwurm;
+
+PROC neues spiel :
+     basis := 0;
+     stelle := basis + spalten*zeilen DIV 2;
+     schwierigkeit := 4;
+     geschwindigkeit :=9;
+     char 1:= 126;
+     char 2:= 79;
+     char 3:= 42;
+     char 4:= 124;
+     leerzeichen := 32;
+     index := 0;
+     ende := 0;
+     laenge := 0;
+     richtung := 0;
+     zaehler := 0;
+     bonus := 0;
+     punkte := 0;
+     stopzeit :="3:00";
+     vorwahl;
+     begrenzung := 120 * schwierigkeit;
+ENDPROC neues spiel;
+
+PROC liste aller spieler :
+     page;
+     FOR i FROM 1 UPTO playercounter REP
+        putline(text(i)+"."+spielername(i));
+        IF i > 24 THEN pause(20) FI;
+     PER;
+     putline("ENDE");
+     inchar(hilf);
+     page;
+ENDPROC liste aller spieler;
+
+
+PROC vorwahl :
+     spielregeln;
+     page;
+     REP
+       out(""1"");
+       putline(""142"                                    Lindwurm                               "143"");
+       czeile :=12;
+       cspalte:=3;
+       cursorpositionieren;
+       putline("Schwierigkeitsgrad (1/2) "+ text(schwierigkeit,3));
+       czeile :=14;
+       cspalte:=3;
+       cursorpositionieren;
+       putline("Geschwindigkeit    (3/4) "+ text(geschwindigkeit,3));
+       czeile :=16;
+       cspalte:=3;
+       cursorpositionieren;
+       putline("Liste aller Spieler (5)  ");
+       czeile :=18;
+       cspalte:=3;
+       cursorpositionieren;
+       putline("Start mit RETURN");
+       x := 0;
+       inchar(hilf);
+       IF hilf = ""13""THEN LEAVE vorwahl
+       ELIF hilf = "1" THEN schwierigkeit INCR 1
+       ELIF hilf = "2" THEN schwierigkeit DECR 1
+       ELIF hilf = "3" THEN geschwindigkeit INCR 1
+       ELIF hilf = "4" THEN geschwindigkeit DECR 1
+       ELIF hilf = "5" THEN liste aller spieler 
+       ELSE out(""7"") 
+       FI;
+       IF schwierigkeit > 26 THEN schwierigkeit := 1 
+       ELIF schwierigkeit < 1 THEN schwierigkeit := 26 FI; 
+       IF geschwindigkeit > 9 THEN geschwindigkeit := 1 
+       ELIF geschwindigkeit < 1 THEN geschwindigkeit := 9 FI; 
+     PER
+
+ENDPROC vorwahl;
+
+PROC spielregeln :
+     putline(code(char1)+" = Rahmen (Mauer)");
+     line;
+     putline(code(char2)+" = Lindwurmkopf");
+     line;
+     putline(code(char3)+" = Nahrung");
+     line;
+     putline(""15""8""14" = Lindwurm"); 
+     line;
+     putline(". = Gift");
+     line;
+     putline ("Ziel des Spiels ist es, den Wurm mit Nahrung zu versorgen. Gift ist t”dlich.");
+     line;
+     putline ("Der Wurm kann mit den Pfeiltasten gesteuert werden. Wird eine Taste mehrmals");
+     line;
+     putline ("gedrckt, wird der Wurm schneller. Vorsicht: Der Wurm darf nicht auf eine");
+     line;
+     putline ("Mauer treffen. Mit jedem gefressenen Nahrungsteilchen wird der Wurm etwas");
+     line;
+     putline ("l„nger. Du hast 3 Minuten Zeit, den Wurm zu fttern.");
+     line;
+     putline ("Viel Erfolg. Bitte drcke jetzt eine Taste.");
+     pause(6000);
+ENDPROC spielregeln;
+
+PROC bonusspiel :
+    stelle := basis+zeilen*spaltenDIV2;
+    index := 0;
+    punkte := 0;
+    richtung := 0;
+    zaehler := 0;
+    ende := 0;
+    laenge := 0;
+    schwierigkeit INCR 1;
+    IF schwierigkeit > 26 THEN schwierigkeit := 26 FI;
+    begrenzung := 120 * schwierigkeit 
+
+ENDPROC bonusspiel;
+
+PROC lebensraum generieren :
+    FOR i FROM 1 UPTO 16 * schwierigkeit REP
+        REP
+           x := int(random * real((zeilen-2)*spalten) + real(spalten));
+        UNTIL peek(basis+x) = leerzeichen PER;
+        poke(basis+x,char3)
+    PER;
+    FOR i FROM 1 UPTO schwierigkeit REP
+        REP
+           x := int(random * real((zeilen-2)*spalten) + real(spalten));
+        UNTIL peek(basis+x) = leerzeichen PER;
+        poke(basis+x,46)
+    PER;
+ENDPROC lebensraum generieren;
+
+PROC lindwurmkopf setzen :
+    WHILE peek(stelle) <> leerzeichen REP stelle INCR 1 PER;
+    poke(stelle,char2);
+    out(""7"");
+
+ENDPROC lindwurmkopf setzen;
+
+PROC rahmen :
+   FOR i FROM basis UPTO basis + spalten-1 REP
+       poke(i,char4);
+       poke(i+(zeilen-1)*spalten,char4);
+   PER;
+   i := basis + spalten;
+   REP poke(i ,char4); 
+       poke(i+spalten-1,char4);
+       i INCR spalten
+   UNTIL i >( basis + (zeilen-1)*spalten )PER
+
+ENDPROC rahmen;
+
+PROC clearscreen :
+   INT VAR x,y;
+       putline ("Nun markiert der Wurm sein Revier.");
+       line ;
+       put("Es ist");put(spalten);put("qm gross.");line;
+       FOR x FROM 1 UPTO spalten REP
+           cout(x);
+           FOR y FROM 1 UPTO zeilen REP
+               bildschirm(x)(y) := leerzeichen
+           PER
+       PER
+ENDPROC clearscreen;
+
+TEXT PROC zeit :
+     subtext(time(clock(1)-uhr),5,8)
+ENDPROC zeit;
+
+PROC reset time :
+     uhr := clock(1)
+ENDPROC reset time;.
+
+deklaration :
+   ROW spalten ROW zeilen INT VAR bildschirm;
+   ROW 300 INT VAR spielerpunkte;
+   ROW 300 TEXT VAR spielername;
+   ROW max INT VAR wurm;
+   TEXT VAR hilf,taste,stopzeit;
+   INT VAR basis:=0,playercounter:=0,highscore:=0,q:=0,i:=0,x:=0,y:=0,stelle:=1000,richtung,
+           punkte:=0,bonus:=0,index:=0,cspalte,czeile,bildschirmzeile,zaehler:=0,ende:=0,
+           laenge:=0,speicher:=1,leerzeichen:=32,begrenzung:=480,schwierigkeit:=4,
+           geschwindigkeit:=9,c:=90,char1:=90,char2:=90,char3:=90,char4:=90;
+
+   REAL VAR uhr;
+   BOOL VAR feuer;
+ENDPACKET lindwurm

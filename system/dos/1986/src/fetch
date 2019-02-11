@@ -1,0 +1,333 @@
+PACKET fetch DEFINES                   (* Copyright (C) 1985 *)
+                                       (* Frank Klapper      *)
+                                       (* 07.05.86           *) 
+  fetch filemode, 
+  fetch rowtextmode,
+  fetch dsmode, 
+  check file:
+
+LET       ascii        = 1,
+          ascii german = 2,
+          transparent  = 3,
+          ebcdic       = 4,
+          atari st     = 10;
+
+LET row text mode length = 4000,
+    row text type        = 1000,
+
+    ctrl z         = ""26"", 
+    tab            = ""9"",
+    page cmd       = "#page#";
+
+CLUSTER VAR cluster;
+
+DATASPACE VAR cluster space;
+
+BOUND STRUCT (INT size,
+              ROW row text mode length TEXT cluster row) VAR cluster struct;
+
+INT VAR next cluster no;
+REAL VAR file rest;
+
+FILE VAR file;
+
+PROC fetch filemode (DATASPACE VAR file space, 
+                     TEXT CONST name, INT CONST code type):
+  disable stop;
+  cluster space := nilspace;
+  cluster := cluster space;
+  enabled fetch filemode (file space, name, code type);
+  forget (cluster space).
+ 
+END PROC fetch filemode; 
+ 
+PROC enabled fetch filemode (DATASPACE VAR file space, 
+                             TEXT CONST name,
+                             INT CONST code type):
+  enable stop;
+  initialize fetch filemode;
+  open fetch (name, file rest, next cluster no);
+  WHILE (next cluster no >= 0) AND (file rest > 0.0) REP
+    get text of act cluster;
+    write lines;
+(***************************************)
+    IF lines (file) > 3950
+      THEN putline (file, ">>> FREMDDATEI FUER EUMEL ZU LANG. ES K™NNEN DATEN FEHLEN <<<");
+           LEAVE enabled fetch filemode
+    FI;
+(***************************************)
+  PER;
+  write last line if necessary. 
+ 
+initialize fetch filemode:
+  REAL VAR real cluster size := real (cluster size);
+  TEXT VAR buffer := "";
+  forget (file space);
+  file space := nilspace;
+  file := sequential file (output, file space);
+  init cr lf ff const.
+ 
+init cr lf ff const:
+  TEXT VAR cr, lf, ff;
+  SELECT codetype OF 
+    CASE ascii, ascii german, atari st: cr := ""13""; lf := ""10""; ff := ""12""
+    CASE transparent: cr := ""13""; lf := ""10""; ff := ""12""
+    CASE ebcdic: cr := ""13""; lf := "%"; ff := ""12""
+  END SELECT;
+  TEXT CONST select buffer := cr + lf + ff;
+  TEXT CONST min line end char := code (min (code (cr), min (code (lf), code (ff)))),
+             max line end char := code (max (code (cr), max (code (lf), code (ff)))).
+
+get text of act cluster:
+  fetch next cluster (cluster space, first non dummy ds page);
+  buffer CAT text (cluster, 1, valid buffer length);
+  file rest DECR real cluster size;
+  IF seven bit code
+    THEN cancel bit 8
+  FI;
+  IF ctrl z end
+    THEN test ctrl z
+  FI;
+  INT CONST bufferlength := LENGTH buffer.
+
+ctrl z end:
+  (code type = ascii) OR (code type = ascii german).
+
+seven bit code:
+  code type = ascii OR code type = ascii german.
+
+valid buffer length:
+  int (min (file rest, real cluster size)).
+
+cancel bit 8:
+  INT VAR set pos := pos (buffer, "€", ""255"", 1);
+  WHILE set pos > 0 REP
+    replace (buffer, set pos, seven bit char);
+    set pos := pos (buffer, "€", ""255"", set pos + 1)
+  PER.
+
+seven bit char:
+  code (code (buffer SUB set pos) AND 127).
+
+test ctrl z:
+  IF pos (buffer, ctrl z) > 0
+    THEN file rest := 0.0;
+         buffer := subtext (buffer, 1, pos (buffer, ctrl z) - 1)
+  FI.
+
+write lines:
+  INT VAR begin pos := 1, end pos;
+  next cr lf ff pos;
+  WHILE end pos > 0 REP
+    execute char and get new pos pointer;
+    next cr lf ff pos
+  PER;
+  compress buffer.
+
+next cr lf ff pos:
+  end pos := pos (buffer, min line end char, max line end char, begin pos);
+  WHILE no line end char REP
+    end pos := pos (buffer, min line end char, max line end char, end pos + 1)
+  PER.
+
+no line end char:
+  (end pos > 0) AND (pos (select buffer, buffer SUB end pos) = 0).
+
+compress buffer:
+  buffer := subtext (buffer, begin pos).
+
+execute char and get new pos pointer:
+  SELECT pos (select buffer, buffer SUB end pos) OF
+    CASE 1: execute cr
+    CASE 2: execute lf
+    CASE 3: execute ff
+  END SELECT.
+
+execute cr: 
+  IF (end pos = bufferlength) AND (file rest > 0.0)
+    THEN compress buffer;
+         LEAVE write lines
+  FI;
+  write line (subtext (buffer, begin pos, end pos - 1), code type);
+  IF (buffer SUB (end pos + 1)) = lf 
+    THEN begin pos := end pos + 2
+    ELSE begin pos := end pos + 1
+  FI.
+ 
+execute ff:
+  write line (subtext (buffer, begin pos, end pos - 1), code type);
+  putline (file, page cmd);
+  begin pos := end pos + 1.
+
+execute lf: 
+  IF (end pos = bufferlength) AND (file rest > 0.0)
+    THEN compress buffer;
+         LEAVE write lines
+  FI;
+  write line (subtext (buffer, begin pos, end pos - 1), code type);
+  IF (buffer SUB (end pos + 1)) = cr 
+    THEN begin pos := end pos + 2
+    ELSE begin pos := end pos + 1
+  FI.
+ 
+write last line if necessary:
+  IF buffer <> ""
+    THEN end pos := LENGTH buffer + 1;
+         write line (subtext (buffer, begin pos, end pos - 1), code type)
+  FI.
+
+END PROC enabled fetch filemode;
+
+PROC write line (TEXT CONST line, INT CONST code type):
+  TEXT VAR result;
+  SELECT code type OF
+    CASE ascii: ascii conversion
+    CASE ascii german: ascii german conversion
+    CASE atari st: atari st conversion
+    CASE transparent: putline (file, line)
+    CASE ebcdic: ebcdic conversion
+  END SELECT.
+
+ascii conversion:
+  expand tabs;
+  replace steuerzeichen;
+  putline (file, result).
+
+ascii german conversion:
+  expand tabs;
+  replace steuerzeichen;
+  replace ascii german umlaute;
+  putline (file, result).
+
+atari st conversion:
+  expand tabs;
+  replace steuerzeichen;
+  replace atari st umlaute;
+  putline (file, result).
+
+replace ascii german umlaute:
+  change all (result, "[", "Ž");
+  change all (result, "\", "™");
+  change all (result, "]", "š");
+  change all (result, "{", "„");
+  change all (result, "|", "”");
+  change all (result, "}", "");
+  change all (result, "~", "á").
+
+replace atari st umlaute:
+  change all (result, ""142"", "Ž");
+  change all (result, ""153"", "™");
+  change all (result, ""154"", "š");
+  change all (result, ""132"", "„");
+  change all (result, ""148"", "”");
+  change all (result, ""129"", "");
+  change all (result, ""158"", "á").
+
+expand tabs:
+  result := line;
+  INT VAR tab pos := pos (result, tab);
+  WHILE tab pos > 0 REP
+    expand tab;
+    tab pos := pos (result, tab)
+  PER.
+
+expand tab:
+  result := subtext (result, 1, tab pos - 1) + (8 - ((tab pos - 1)) MOD 8) * " "
+          + subtext (result, tab pos + 1).
+
+replace steuerzeichen:
+  INT VAR position := pos (result, ""0"", ""31"", 1);
+  WHILE position > 0 REP
+    TEXT VAR char := result SUB position;
+    change all (result, char, "#" + int code + "#");
+    position := pos (result, ""0"", ""31"", position)
+  PER.
+
+ebcdic conversion:
+  result := line;
+  ebcdic to eumel with substitution (result);
+  putline (file, result).
+ 
+int code: 
+  (3 - LENGTH text (code (char))) * "0" + text (code (char)).
+
+END PROC write line;
+
+PROC fetch rowtextmode (DATASPACE VAR file space,
+                        TEXT CONST name):
+  disable stop;
+  cluster space := nilspace;
+  cluster := cluster space;
+  enabled fetch rowtextmode (file space, name);
+  forget (cluster space).
+ 
+END PROC fetch rowtextmode;
+ 
+PROC enabled fetch rowtextmode (DATASPACE VAR file space,
+                               TEXT CONST name):
+  enable stop; 
+  open fetch (name, file rest, next cluster no);
+  initialize fetch rowtext mode;
+  WHILE next cluster no >= 0 REP
+    fetch next cluster (cluster space, first non dummy ds page);
+    cluster struct.size INCR 1;
+    IF file rest < real cluster size
+     THEN cluster struct.cluster row [cluster struct.size]
+                         := text (cluster, 1, int (file rest));
+          file rest := 0.0
+     ELSE cluster struct.cluster row [cluster struct.size] := text (cluster, 1, cluster size); 
+          file rest DECR real cluster size
+     FI
+  PER. 
+ 
+initialize fetch row text mode:
+  forget (file space);
+  file space := nilspace;
+  cluster struct := file space;
+  type (file space, row text type);
+  REAL VAR real cluster size := real (cluster size);
+  cluster struct.size := 0.
+
+END PROC enabled fetch rowtext mode;
+
+PROC fetch ds mode (DATASPACE VAR ds, TEXT CONST name):
+  enable stop;
+  open fetch (name, file rest, next cluster no);
+  init fetch dsmode;
+  WHILE next cluster no >= 0 REP
+    fetch next cluster (ds, ds block no);
+     ds block no INCR sectors per cluster;
+  PER. 
+ 
+init fetch dsmode:
+  forget (ds);
+  ds := nilspace;
+  INT VAR ds block no := 2.
+
+END PROC fetch ds mode;
+
+PROC check file (TEXT CONST name):
+  disable stop;
+  cluster space := nilspace;
+  cluster := cluster space;
+  enabled check file (name);
+  forget (cluster space).
+ 
+END PROC check file;
+ 
+PROC enabled check file (TEXT CONST name):
+  enable stop;
+  open fetch (name, file rest, next cluster no);
+  WHILE next cluster no >= 0 REP
+    fetch next cluster (cluster space, first non dummy ds page)
+  PER. 
+ 
+END PROC enabled check file;
+
+PROC fetch next cluster (DATASPACE VAR fetch space, INT CONST first page):
+  read disk cluster (fetch space, first page, next cluster no);
+  next cluster no := next fetch cluster no.
+
+END PROC fetch next cluster;
+
+END PACKET fetch;

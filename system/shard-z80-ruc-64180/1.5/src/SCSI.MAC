@@ -1,0 +1,1478 @@
+
+	TITLE	SCSI Interface fuer RUC 180 Karte
+
+	INCLUDE	HD64180.LIB
+
+	.LIST
+
+;****************************************************************
+;
+;	S C S I
+;
+;	Elementare Ein- und Ausgaben auf dem SCSI Interface
+;
+;	Version 0.7, R. Ellerbrake
+;	Version 0.8 vom 31.12.86, M.Staubermann
+;
+;	Copyright (C) 1985 by R. Ellerbrake
+;
+;	Vers. 0.2: Kommando Transfer per DMA wieder eingebaut
+;	Vers. 0.3: Reset Signal implementiert
+;	Vers. 0.4: automatische Erkennung 40/80 Spuren Archiv
+;
+;****************************************************************
+
+;	Conditional Switches
+
+FALSE	EQU	0
+TRUE	EQU	NOT FALSE
+
+DMA	EQU	TRUE		;-1 = Daten nur per DMA ausgeben
+EUMEL	EQU	TRUE		;EUMEL Version
+SEC8	EQU	FALSE		;-1 = 8 Sektor Floppy
+TRK40	EQU	FALSE		;-1 = Voreinst. 2x40 Spuren
+DEBUG	EQU	FALSE		; Retries bei DMA/Hardwarefehler
+
+;----------------------------------------------------------------
+
+;	Globale Adressen
+
+	GLOBAL	SCSIIO, PHYSADR, INITS
+	GLOBAL	HDIO, FDIO, INIFLP, INITS1, PARKHD
+;
+;----------------------------------------------------------------
+
+;	Externe Adressen
+
+	IF	EUMEL
+
+	EXTERNAL WARTE
+
+	ENDIF
+
+;----------------------------------------------------------------
+
+;	Port-Adressen
+
+CIOAD	EQU	52H		;Z8536 (CIO) Kanal A Daten
+CIOCD	EQU	50H		;Z8536 (CIO) Kanal C Daten
+CIOCTL	EQU	53H		;Z8536 (CIO) Control Register
+
+SCSIP	EQU	80H		;SCSI I/O Port
+
+;................................................................
+
+;	Masken und Bits fuer CIO
+
+MBUSY	EQU	08H		;BUSY-Signal von SCSI Schnittstelle
+MMSG	EQU	10H		;Message-Signal von SCSI Schnittstelle
+MDC	EQU	20H		;Data(0)/Command(1) Sig. von SCSI
+MREQ	EQU	80H		;REQ-Signal vom SCSI-Controller
+MIO	EQU	04H		;I/O Signal von SCSI (0=Tr. Host -> SCSI)
+MSELS	EQU	02H		;Select Signal zum SCSI Interface
+
+BSELS	EQU	1		;Bitnummern
+BIO	EQU	2
+BBUSY	EQU	3
+BMSG	EQU	4
+BDC	EQU	5
+BREQ	EQU	7
+
+BRESS	EQU	3		;Reset-Signal fuer SCSI Controller
+MRESS	EQU	78H		;Maske zum Bit setzen (Bit 3)
+
+PCOMA	EQU	8		;Port A Command and Status
+
+;................................................................
+
+;	SCSI-Kommandos
+
+TST_RDY		EQU	0	;Drive Ready pruefen
+RECALIBR	EQU	1	;Drive recalibrieren
+REQ_STAT	EQU	3	;Fehlerstatus holen
+FORMAT		EQU	4	;Diskette oder Harddisk formatieren
+CHK_FORM	EQU	5	;Harddisk Format kontrollieren
+FRM_TRKS	EQU	6	;Spuren formatieren
+SREAD		EQU	8	;Sektoren lesen (1 od. mehrere)
+SVREAD		EQU	9	;Read Verify
+SWRITE		EQU	10	;Sektoren schreiben (")
+SEEK		EQU	11	;Auf Block positionieren
+WBUFFER		EQU	15	;Write Controller Buffer
+INITDRV		EQU	17	;Disk Parameter setzen
+RINIT		EQU	18	;Disk Parameter lesen
+FD48TPI		EQU	6*32+4	;Floppy im Doppelstepmodus betreiben
+FD96TPI		EQU	6*32+3	;Floppy im Singlestepmodus betreiben
+
+FDDRIV		EQU	0	;Floppy Laufwerk Nr.
+
+;................................................................
+
+;	Werte fuer SCSIIO-Aufruf
+
+DMATRA	EQU	4000H		;Datentransfer per DMA
+;DMATRA	EQU	0		;** TEST **
+RDDAT	EQU	8000H		;Lesen vom Controller
+
+;................................................................
+
+;	DMA-Controller Werte
+
+ENABDMA	EQU	90H		;Enable Kanal 1 DMA (keine Interrupts)
+DISDMA	EQU	10H		;Disable Kanal 1 DMA (-> DSTAT)
+DE1	EQU	7		;Bitnummer in DSTAT
+
+CH1MSK	EQU	0F4H		;Nicht fuer Kanal 1 wichtige Bits maskieren
+CHGDIR	EQU	2		;Aenderung der Transferrichtung (-> DCNTL)
+
+;................................................................
+
+;	Fehlernummern
+
+WPROTE	EQU	13H		; Diskette Schreibgeschuetzt
+TSNF	EQU	14H		; Target Sector not found
+
+HARD	EQU	0F0H		;Kennung Hardware bzw. Kommandofehler
+
+NOCONT	EQU	0		;SCSI-Controller nicht angeschlossen
+TIMOUT	EQU	1		;Timeout Fehler bei SCSI I/O
+ENDERR	EQU	2		;Falsches Kommandoende
+ILLD	EQU	3		;Falsche Datenrichtung
+EARLYE	EQU	4		;vorzeitiges Kommandoende
+ILLCOM	EQU	5		;Fehler bei Kommandoausgabe
+STRERR	EQU	6		;Fehler beim Status lesen
+DMAERR	EQU	7		;Fehler beim DMA Transfer
+UNKNOWN	EQU	8		;undefinierte Fehlerfaelle
+MULCNT	EQU	10		; Reset nach 10 hardwarefehlern
+
+;----------------------------------------------------------------
+
+;	Lokale Daten
+
+	DSEG
+
+SCSIST:	DEFS	4		;4 Byte Stati
+CODALN:	DEFW	0		;Datenlaenge
+SEMA:	DEFB	0		;Zugriffs-Semaphor
+TOFLG:	DEFB	0		;Timeoutflag
+
+	IF DEBUG
+RETRCN:	DEFB	4		;Retry Flag
+HERCNT:	DEFB	10		;Hardwarefehlerzaehler
+	ENDIF
+
+	CSEG
+
+;****************************************************************
+;
+;	SCSIIO
+;
+;	Elementare Ausgabe auf SCSI-Interface
+;
+;	Entry:	HL = Zeiger auf Datenbereich (falls vorhanden)
+;		DE = Zeiger auf Kommandobereich (immer 6 Byte)
+;		BC = Groesse des Datenbereichs (0=nicht vorhanden)
+;		B Bit 7: 1 = Lesen vom SCSI-Controller
+;			 0 = Schreiben auf SCSI-Controller
+;		B Bit 6: 1 = Datentransfer per DMA
+;		         0 = Datentransfer per Programm
+;
+;	Exit:	A  = Status (0 = ok, <>0 = Fehlercode)
+;		alle anderen Register (ausser AF) unveraendert
+;
+SCSIIO:
+	IF DEBUG
+	LD	A,3		;Retries bei Unknown Error
+	ENDIF
+
+NRETSC:
+	IF DEBUG
+	LD	(RETRCN),A
+	ENDIF
+
+	PUSH	HL
+	PUSH	BC
+	PUSH	DE
+
+	CALL	SCSI2		;Kommando ausfuehren
+	LD	L,A
+	AND	9FH		;Drive Code ausmaskieren
+	JR	Z,EOCOM		;Kein Fehler ->
+
+	CP	2		;SCSI-Fehler ?
+	LD	A,L
+	JR	NZ,EOCOM	;Nein -> fertig
+
+	POP	HL		;Kommandotab.-Adr.
+	PUSH	HL
+	LD	A,(HL)		;altes Kommando retten
+	PUSH	AF
+	LD	A,HARD+STRERR	;Fehler beim Status lesen annehmen
+	LD	(SCSIST),A
+	LD	(HL),REQ_STAT	;Kommando 3: Request Status
+	EX	DE,HL
+	LD	BC,4+RDDAT	;4 Byte Status Informationen
+	LD	HL,SCSIST	;Statusbereich
+	CALL	SCSI2
+	POP	AF
+	POP	HL
+	LD	(HL),A		;altes Kommando zurueckschreiben
+	PUSH	HL
+	LD	A,(SCSIST)
+	RES	7,A
+	AND	A		;Meldung: kein Fehler ?
+	JR	NZ,EOCOM
+
+;	kein Fehler: falsche Meldung da vorher einer aufgetreten war !!
+
+	LD	A,HARD+UNKNOWN	;unbekannnter Fehler melden
+
+EOCOM:
+	POP	DE
+	POP	BC
+	POP	HL
+
+	IF DEBUG
+	CP	HARD+ENDERR
+	JR	C,RETSCSI
+
+	LD	A,(RETRCN)
+	DEC	A
+	JR	NZ,NRETSC	;Retries bei "Unknown Error"
+
+	LD	A,HARD+UNKNOWN
+RETSCSI:
+	PUSH	HL
+	LD	HL,HERCNT	;Hardware Fehler Zaehler
+	CP	HARD		;Hardware Fehler ?
+	JR	C,NOHER		;Nein ->
+
+	DEC	(HL)
+	JR	NZ,EOHER	;nicht mehrere Hardwarefehler hintereinander
+
+	LD	(HL),MULCNT
+	PUSH	AF
+	PUSH	DE
+	PUSH	BC
+	CALL	INITS1		;Schnittstelle neu initialisieren
+	POP	BC
+	POP	DE
+	POP	AF
+	JR	EOHER
+
+NOHER:
+	LD	(HL),MULCNT
+
+EOHER:
+	POP	HL
+	ENDIF
+
+	AND	A
+	RET
+
+;................................................................
+;
+;	SCSI2
+;
+;	Kommandoausgabe auf dem SCSI-Interface
+;
+;	Entry-Parameter wie SCSIIO
+;
+;	Exit:	A = 0: alles ok
+;		A = 2: Fehler ist aufgetreten
+;		A >= F0H: Hardware oder Bedienungsfehler
+;
+SCSI2:
+	PUSH	BC		;Laenge retten
+
+;	Pruefen ob letzter DMA beendet wurde
+
+	IN0	A,(DSTAT)	;DMA beendet ?
+	BIT	DE1,A
+	JR	Z,DMAOK		;Ja ->
+
+	LD	A,DISDMA	;Reset Kanal 1 DMA
+	OUT0	(DSTAT),A
+
+DMAOK:
+ 	LD	BC,CIOAD	;B=0 !
+	JR	TENDLP
+
+;	"Bus free", Controller selektieren
+
+BUSYOK:
+	IN	A,(C)
+	SET	BSELS,A		;Select Leitung aktivieren
+	OUT	(C),A
+	RES	BSELS,A		;und wieder zuruecknehmen
+	OUT	(C),A
+
+;	"Command Phase"
+
+	XOR	A
+
+WAIREQ:
+	PUSH	AF		;Auf Kommandoanforderung warten
+	IN	A,(C)
+	AND	MDC+MREQ+MIO+MMSG
+	CP	MDC+MREQ
+	JR	Z,RDYCOM	;Ok ->
+
+	POP	AF
+	DEC	A
+	JR	NZ,WAIREQ
+
+;	keine Reaktion der Schnittstelle: Versuchen Restbytes einzulesen  falls
+;	dies nicht der 2. Timeout ist.
+
+	LD	A,(TOFLG)	;Timeoutflag gesetzt ?
+	AND	A
+	LD	A,HARD+TIMOUT	;Timeout Fehler
+	JP	NZ,POPRET	;bereits gesetzt ->
+
+	LD	(TOFLG),A	;Timeoutflag setzen
+
+;	ggf. letztes Kommando abschliessen
+
+TENDLP:
+	IN0	A,(CIOAD)	;"Bus free" ?
+	BIT	BBUSY,A
+	JR	Z,BUSYOK	;Ja -> neu selektieren
+
+	CALL	CHKREQ
+	BIT	BIO,A
+	JR	NZ,INPU
+
+	XOR	A
+	OUT0	(SCSIP),A
+	JR	TENDLP
+
+INPU:
+	IN0	A,(SCSIP)
+	JR	TENDLP
+
+ILLMOD:
+	LD	A,HARD+ILLCOM	;Fehler bei Kommandoausgabe
+	JP	POPRET
+
+;	Kommando Ausgabe
+
+RDYCOM:
+	POP	AF		;Clear Stack
+	LD	BC,SCSIP+6*256	;6 Bytes ausgeben
+	EX	DE,HL
+
+CMNON:
+	CALL	CHKREQ
+	CP	MDC
+	JR	NZ,ILLMOD	;keine Kommandoausgabe -> Fehler
+
+	DI
+	OTIM			;Kommando ausgeben
+	EI
+	JR	NZ,CMNON	;Nicht fertig ->
+
+;	"Data Phase"
+
+	POP	HL		;B=0!
+	PUSH	HL
+	LD	A,H		;Datenlaenge = 0 ?
+	AND	3FH		;Bit 6 und 7 ausblenden
+	OR	L
+	JP	Z,NODAT		;Ja -> keine Datenphase
+
+	IF	NOT DMA
+
+	BIT	6,H		;Datentransfer per DMA ?
+	JR	Z,DTAPROG	;Nein -> per Programm
+
+	ENDIF
+
+;	CIO Pattern Match Logik aktivieren
+
+	DI
+	LD	C,CIOCTL	;CIO Control Register
+	LD	A,PCOMA		;Port A Command Register
+	OUT	(C),A
+	LD	A,20H		;Clear IP & IUS
+	OUT	(C),A
+	EI
+
+;*	IF	DMA AND EUMEL
+
+;*	BIT	7,H		;schreiben ?
+;*	JR	Z,POLWRIT
+
+;*	ENDIF
+
+;	DMA-Kanal 1 initialisieren (I/O Adresse wird in SCINIT gesetzt)
+
+	CALL	DMASTUP		;DMA-Adressen eintragen
+
+;*	IF	NOT EUMEL
+
+	BIT	7,H		;lesen ?
+	JR	Z,ISWRITE	;Nein ->
+
+;*	ENDIF
+
+	OR	CHGDIR		;Richtung aendern (I/O -> Memory)
+
+ISWRITE:
+	OUT0	(DCNTL),A
+	LD	A,ENABDMA	;DMA aktivieren
+	OUT0	(DSTAT),A
+
+;	Auf Kommandoende warten
+;	Die CIO ist so initialisiert dass der SCSI-Status "Status lesen"
+;	einen Pattern Match Zustand erzeugt
+
+WEND2:
+	LD	C,CIOCTL	;auf Pattern Match warten
+
+WAIEND:
+
+	IN0	L,(DSTAT)	;DMA Status pruefen
+	DI
+	LD	A,PCOMA		;Port A Command Register
+	OUT	(C),A
+	IN	A,(C)		;CIO Status lesen (Port A Statusregister)
+	BIT	5,A		;Interrupt pending ?
+	JR	NZ,DATRDY	;Ja -> Datentransfer beendet
+
+	EI
+	IN0	A,(CIOAD)
+	BIT	BBUSY,A		;steht Busy noch an ?
+	JR	Z,ILLEND
+
+	BIT	DE1,L		;DMA beendet ?
+	JR	Z,DMAEND
+
+NOEND:
+	IF	EUMEL
+	CALL	WARTE		;andere Tasks zulassen
+	ENDIF
+
+	JR	WAIEND
+
+;	Pruefen ob ein DMA-Fehler aufgetreten ist
+
+DMAEND:
+	IN0	A,(CIOAD)
+
+	BIT	BREQ,A		;Anforderung ?
+	JR	Z,NOEND		;Nein -> warten
+
+	AND	MDC+MIO+MMSG
+	CP	MDC+MIO		;Statusanforderung ?
+	JR	Z,CMNST		;Ja -> alles in Ordnung
+
+;	Fehler beim DMA-Transfer
+
+	LD	L,HARD+DMAERR
+	JR	WENDLP
+
+DATRDY:
+	IN	A,(C)		;Pattern match testen
+	EI
+	BIT	1,A
+	JR	Z,ENDKL		;Nein -> DMA hat Status geklaut
+
+CMNST:
+
+	IN0	L,(SCSIP)	;Status holen
+
+;	Letztes Statusbyte holen (Kommandoende)
+
+	CALL	CHKREQ
+	IN0	H,(SCSIP)	;letzten Status einlesen (Dummy Read)
+	CP	MDC+MIO+MMSG	;wirklich letzter Status ?
+	JR	Z,ENDOK		;Ja ->
+
+ILLEND:
+	LD	L,HARD+ENDERR
+
+ENDOK:
+	LD	A,L		;Status in A
+
+POPRET:
+	POP	BC
+
+;	Interrupt Daisy Chain der CIO freigeben
+
+	DI
+	LD	L,PCOMA		;Port A Command
+	OUT0	(CIOCTL),L
+	LD	L,20H		;Clear IP & IUS
+	OUT0	(CIOCTL),L
+	EI
+	RET
+
+ENDKL:
+
+;	DMA anhalten falls dieser nicht beendet wurde
+
+	LD	L,DISDMA	;Reset Kanal 1 DMA
+	OUT0	(DSTAT),L
+	LD	L,2		;Error Status
+
+WENDLP:
+	IN0	A,(CIOAD)	;"Bus free" ?
+	BIT	BBUSY,A
+	JR	Z,ENDOK		;Ja -> fertig
+
+	CALL	CHKREQ
+	BIT	BIO,A
+	JR	NZ,INPU2
+
+	XOR	A
+	OUT0	(SCSIP),A
+	JR	WENDLP
+
+INPU2:
+	IN0	A,(SCSIP)	;Dummy Read
+	JR	WENDLP
+
+	IF	NOT DMA
+
+;	Datentransfer bei Schreiben per Programm
+
+POLWRIT:
+	CALL	CHKREQ
+	JR	NZ,NODAT	;Kein Datentransfer -> Fehler
+
+	BIT	BIO,A		;Lesen von SCSI ?
+	JR	NZ,DIRERR	;Ja -> falsche Richtung
+
+	LD	A,(DE)		;Daten holen
+	OUT0	(SCSIP),A	;und ausgeben
+
+	INC	DE		;Datenadresse inkrementieren
+	DEC	HL		;Datenlaenge dekrementieren
+	LD	A,H		;Fertig ?
+	AND	3FH
+	OR	L
+	JR	NZ,POLWRIT	;Nein -> naechstes Byte holen
+
+	JP	WEND2
+
+;	Falsche Datenrichtung (falsches Kommando)
+
+DIRERR:
+	LD	A,HARD+ILLD
+	JR	POPRET
+
+;	Datentransfer per Programm
+
+DTAPROG:
+	CALL	CHKREQ
+	JR	NZ,NODAT	;Kein Datentransfer -> Fehler
+
+	BIT	BIO,A		;Lesen von SCSI ?
+	JR	NZ,RDSCSI	;Ja ->
+
+	BIT	7,H		;Schreiben definiert ?
+	JR	NZ,DIRERR	;Nein -> falsche Richtung !!
+
+	LD	A,(DE)		;Daten holen
+	OUT0	(SCSIP),A	;und ausgeben
+
+	JR	CMDIO
+
+RDSCSI:
+	BIT	7,H		;Lesen definiert ?
+	JR	NZ,RDSOK	;Ja ->
+
+;	Falsche Datenrichtung (falsches Kommando)
+
+DIRERR:
+	LD	A,HARD+ILLD
+	JR	POPRET
+
+RDSOK:
+	IN0	A,(SCSIP)	;Daten holen
+	LD	(DE),A
+
+CMDIO:
+	INC	DE		;Datenadresse inkrementieren
+	DEC	HL		;Datenlaenge dekrementieren
+	LD	A,H		;Fertig ?
+	AND	3FH
+	OR	L
+	JR	NZ,DTAPROG	;Nein -> naechstes Byte holen
+
+	ENDIF
+
+;	Status lesen
+
+NODAT:
+	CALL	CHKREQ
+	CP	MDC+MIO		;Status Anforderung ?
+	JR	NZ,ILLEND	;Nein -> Fehler
+	JR	CMNST
+
+;................................................................
+;
+;	Pruefen ob Busy und Request anstehen
+;
+;	Exit:	A = CIO Port A SCSI-Status Leitungen (ohne BUSY und REQ)
+;		F = Z: Datentransfer
+;
+CHKREQ:
+	IN0	A,(CIOAD)
+	BIT	BBUSY,A		;Busy aktiv ?
+	JR	Z,INCOMPL	;Nein -> vorzeitiges Kommandoende
+
+	BIT	BREQ,A		;Anforderung ?
+	JR	Z,CHKREQ	;Nein -> warten
+
+	AND	MDC+MIO+MMSG
+	BIT	BDC,A
+	RET
+
+INCOMPL:
+	POP	HL		;Skip Return Adresse
+	LD	A,HARD+EARLYE	;vorzeitiges Ende
+	JR	POPRET
+
+;................................................................
+;
+;	DMASTUP
+;
+;	Adressen des DMA-Kanals 1 eintragen
+;
+;	Entry:	DE = log. Adresse
+;		DE = 0: auf 6502 Bereich FC00 schalten
+;
+;	Exit:	A = (DCNTL) Kanal 1
+;
+DMASTUP:
+	DI
+	LD	A,D
+	OR	E
+	JR	NZ,DOCHG
+
+	LD	A,6
+	LD	D,0FDH		; 6FD00..6FEFF ist SCSI-Puffer
+	JR	NOCHG
+
+DOCHG:
+	CALL	PHYSADR		;Physikalische Adresse bestimmen (in ADE)
+
+NOCHG:
+	LD	C,MAR1L		;Adressen eintragen
+	OUT	(C),E		;Speicheradresse eintragen (LSB)
+	INC	C
+	OUT	(C),D		;mittleres Byte
+	INC	C
+	OUT	(C),A		;upper Byte
+	LD	C,BCR1L
+	OUT	(C),L		;Byte Zaehler (LSB)
+	INC	C
+	LD	A,H
+	AND	3FH
+	OUT	(C),A		;MSB
+
+	IN0	A,(DCNTL)	;DMA-Richtung setzen
+	AND	CH1MSK		;nur DMA-Kanal 1 Bits veraendern !
+	EI
+	RET
+
+;................................................................
+;
+;	P H Y S A D R
+;
+;	Umrechnung der logischen in eine physikalische Adresse
+;
+;	Entry:	DE = logische Adresse im 64K Adressraum
+;
+;	Exit:	DE = niederwertiger Teil der phys. Adr. im 512K Adr.-raum
+;		A  = hoechstwertiges Nibble der phys. Adr.
+;		alle anderen Register bleiben unveraendert
+;
+PHYSADR:
+	INC	D		;Fuer Vergleiche
+	IN0	A,(CBAR)	;Common Bank Area Register
+	PUSH	AF
+	AND	0F0H		;Common Area Teil ausmaskieren
+	CP	D		;D >= Common Area 1 Anfang ?
+	JR	C,COMA1		;Ja -> (Stack!!)
+
+	POP	AF
+	AND	0FH		;Bank Area Teil ausmaskieren
+	RLCA
+	RLCA
+	RLCA
+	RLCA			;und ins MSN schieben
+	CP	D		;D >= Bank Area Anfang ?
+	JR	C,BAR		;Ja ->
+
+;	Common Area 0 (unveraenderte Adresse)
+
+	DEC	D		;D wieder korrigieren
+	XOR	A
+	RET
+
+;	Bank Area
+
+BAR:
+	DEC	D
+	IN0	A,(BBR)		;Bank Base Register
+
+CMND:
+	PUSH	BC
+	LD	B,0
+	SLA	A
+	RL	B
+	SLA	A
+	RL	B
+	SLA	A
+	RL	B
+	SLA	A
+	RL	B		;B = MSN Phys. Adr., A = mittleres MSB
+
+	ADD	A,D		;+ Offset zum Area Anfang
+	LD	D,A		;wieder in D (mittleres MSB der phys. Adr.)
+	LD	A,B		;A = MSN
+	ADC	A,0		;ggf. 64K-Uebertrag beruecksichtigen
+	POP	BC
+	RET
+
+;	Common Area 1
+
+COMA1:
+	DEC	D		;D wieder korrigieren
+	POP	AF		;Clear Stack
+	IN0	A,(CBR)
+	JR	CMND
+
+	IF	EUMEL
+
+;................................................................
+;
+;	C H K A C C
+;
+;	Auf Freiwerden des SCSI-Controllers warten
+;
+CHKACC:
+	LD	A,(SEMA)	;SCSI-Zugriffssemaphor
+	AND	A		;0=frei
+	JR	Z,ISFREE	;Ja ->
+	CALL	WARTE
+	JR	CHKACC
+
+ISFREE:
+	DEC	A
+	LD	(SEMA),A	;Semaphor sperren
+	RET
+
+	ENDIF
+
+;................................................................
+;
+;	I N I T S
+;
+;	Initialisierung der SCSI-Schnittstelle
+;
+;	CIO und DMA Kanal 1 werden initialisiert
+;	Floppy Parameter werden gesetzt
+;
+;	Exit:	AF', BC, DE und HL werden veraendert
+;		AF = Status des Floppy Parameters setzens
+;
+INITS1:
+	IF 	NOT EUMEL
+	CALL	INICIO
+	ENDIF
+
+INITS:
+	IF	EUMEL
+	XOR	A
+	LD	(SEMA),A	;Semaphor initialisieren
+	ENDIF
+
+	LD	C,DISDMA
+	OUT0	(DSTAT),C	;Kanal 1 stoppen, beide Kanaele keine
+				; Interrupts zulassen
+
+;	DMA - Kanal 0 intialisieren (Memory <--> Memory Transfer)
+
+	LD	C,2		; Memory <--> Memory im Burst Mode
+	OUT0	(DMODE),C
+
+;	DMA - Kanal 1 initialisieren (Memory <--> SCSI I/O - Transfer)
+
+	LD	BC,SCSIP	;DMA-Kanal 1 I/O Adresse auf SCSI setzen
+	OUT0	(IAR1L),C
+	OUT0	(IAR1H),B
+
+;	Warten bis Harddisk hochgelaufen ist
+
+	IF NOT EUMEL
+WRTHRD:
+	LD	DE,TESTRD
+	LD	BC,0
+	CALL	SCSIIO
+	AND	A		;Drive not Ready ?
+	JR	NZ,WRTHRD	;Ja -> warten
+
+	ENDIF
+
+;	Teil der bei Controller RESET neu initialisert werden muss
+
+SCINIT:
+
+;	Floppy Parameter setzen
+
+	LD	DE,FLPINI	;Initialize Kommando
+	LD	HL,FLPDAT	;Parameter
+	LD	BC,PARALNG	;Anzahl der Parameter Bytes
+	CALL	SCSIIO
+
+	LD	L,A
+	LD	A,(FLPTRKS)
+	CP	40		;40 Tracks ?
+	LD	A,L
+	LD	BC,0
+	LD	DE,SGLSTEP	; Floppy im Doppelstep Modus
+	JR	NZ,NODBLS	;Nein -> kein Double Step
+	LD	DE,DBLSTEP
+NODBLS:
+	JP	SCSIIO
+
+;................................................................
+;
+;	I N I C I O
+;
+	IF NOT EUMEL
+INICIO:
+	DI
+
+;	CIO initialisieren
+
+	IN0	C,(CIOCTL)	;Dummy Read
+	LD	B,INILNG
+	LD	HL,INITAB	;CIO Initialisierungstabelle
+
+INILOP:
+	LD	C,(HL)		;Wert holen
+	OUT0	(CIOCTL),C	;und ausgeben
+	INC	HL
+	DJNZ	INILOP
+	RET
+	ENDIF
+
+;................................................................
+;
+;	P A R K H D
+;
+;	Harddisk in Parkposition fahren
+;
+PARKHD:
+
+	LD	BC,0
+	LD	DE,PARSEK	; seek (0)
+	CALL	SCSIIO
+	LD	DE,RECAL	; Recalibrate
+	JP	SCSIIO
+
+	IF	0
+	LD	HL,INIHDT
+	LD	DE,RDINI
+	LD	BC,RDDAT+PARALNG
+
+	CALL	SCSIIO		;Harddisk Konfiguration lesen
+
+	LD	HL,(INIHDT)	;Spuranzahl (H=LSB!)
+	PUSH	HL
+	INC	H		;um 1 erhoehen
+	JR	NZ,INCOK
+
+	INC	L
+INCOK:
+	LD	(INIHDT),HL
+	LD	HL,RDINI
+	LD	DE,INIHDT
+	LD	(HL),INITDRV	;Init-Schreibkommando eintragen
+	EX	DE,HL
+	LD	BC,PARALNG
+
+	CALL	SCSIIO		;neue, groessere, Konfiguration setzen
+
+	POP	HL
+
+	LD	D,L
+	LD	L,H
+	LD	H,D		;Spuranzahl richtig
+	LD	A,(INIHDT+2)	;Kopfanzahl
+	LD	E,L
+
+HDLOP:
+	DEC	A
+	JR	Z,HDAOK
+
+	ADD	HL,DE
+	JR	HDLOP
+
+HDAOK:
+	XOR	A
+	ADC	HL,HL
+	RLCA
+	ADC	HL,HL		;*4
+	RLCA
+	ADC	HL,HL		;*8
+	RLCA
+	ADC	HL,HL		;*16
+	RLCA
+	ADC	HL,HL		;*32
+	RLCA
+
+;	max. Blocknr. in AHL
+
+	DEC	HL		;-1: 1.Block hinter formatiertem Bereich
+
+	LD	(BKNR),A
+	LD	A,L
+	LD	L,H
+	LD	H,A
+
+	LD	(BKNR+1),HL	;Blocknr. eintragen
+	LD	BC,0		;keine Daten
+	LD	DE,PARSEK
+
+	JP	SCSIIO		;Drive parken
+
+	ENDIF
+
+;................................................................
+;
+;	H D I O
+;
+;	Lesen / Schreiben eines Blocks (512 Byte) auf der Harddisk
+;
+;	Entry:	A  = Kommandocode (0 = Lesen, 1 = Schreiben)
+;		HL = Hauptspeicheradresse 	
+;		BC = Pointer auf Drive und Offset (256 Byte Bloecke)
+;		DE = (512 Byte-) Blocknummer (ohne Offset)
+;
+;		BC + 2 -> Low (Block Offset)
+;		BC + 1 -> Middle (Block Offset)
+;		BC + 0 -> High (BLock Offset) + Drive * 32 
+;
+;	Exit:	A  = Status (0=ok, sonst SCSIIO-Fehlercode)
+;		BC, DE, HL, AF' = veraendert
+;
+FDIO:
+HDIO:
+	PUSH	AF
+	XOR	A
+	LD	(TOFLG),A	;Timeoutflag ruecksetzen
+
+	IF	EUMEL
+
+	CALL	CHKACC		;Pruefen ob SCSI-Controller bereits belegt ist
+
+	ENDIF
+
+	LD	A,(BC)
+	BIT	6,A		;Floppy Drive ?
+	JP	NZ,FDIO1	;Ja ->
+
+	POP	AF
+
+	CP	2
+	JR	C,COMOK1
+
+	LD	A,20H		;illegal Command Code
+	RET
+
+COMOK1:
+	PUSH	HL
+	PUSH	BC
+	CALL	CMSCOM		;Kommandonr. umrechnen
+	LD	(HDIOTB),A	;Kommando eintragen
+	POP	BC
+	LD	HL,(CODALN)	;Datenlaenge
+	PUSH	HL
+	LD	HL,HDIOTB+3	;Harddisk Read Command
+
+	SLA	E		;Blocknummer * 2 (256 Byte Bloecke)
+	RL	D
+
+CMFDIO:
+	INC	BC
+	INC	BC
+	LD	A,(BC)		;Low Offset
+	ADD	A,E		;+ Low Block No.
+	LD	(HL),A		;eintragen
+	DEC	HL
+	DEC	BC
+	LD	A,(BC)		;Middle Offset
+	ADC	A,D		;+ Block No.
+	LD	(HL),A
+	DEC	HL
+	DEC	BC
+	LD	A,(BC)
+	LD	(HL),A		;Drive + High Blocknr.
+	DEC	HL
+	EX	DE,HL		;DE = Read Command Adresse
+	POP	BC		;Datenlaenge
+	POP	HL		;Hauptspeicheradresse
+	CALL	SCSIIO
+
+	IF	EUMEL
+
+	PUSH	AF
+	XOR	A
+	LD	(SEMA),A	;Semaphor freigeben
+	POP	AF
+
+	ENDIF
+
+	RET
+
+;................................................................
+;
+;	I N I F L P
+;
+;	Blockanzahl der Floppy ermitteln (nur BC, A und HL veraendern !!)
+;
+;	Eingang:A = Anzahl Spuren, Voreinstellung (40 oder 80)
+;	Exit:	BC = Blockanzahl der Floppy (in 512 Byte Bloecken)
+;		A  = 0 = ok, <> 0 = SCSI-Fehlercode
+;
+INIFLP:
+	PUSH	AF		; Anzahl Spuren Voreinstellung (40, 80)
+
+	IF	EUMEL
+	CALL	CHKACC		;keine Doppelzugriffe !!
+	ENDIF
+
+	XOR	A
+	LD	(TOFLG),A	;Timeoutflag ruecksetzen
+	POP	AF
+
+	PUSH	HL
+	PUSH	DE
+
+	LD	(FLPTRKS),A	;Spuren eintragen
+	CALL	SCINIT		;Floppy Parameter setzen
+
+	LD	A,2		;Retry-Anzahl
+RETR1:
+	PUSH	AF
+
+	LD	DE,SEK18	; Auf Block 18 (Track 2)
+	LD	BC,RDDAT+512
+	LD	HL,0
+	LD	A,1
+	CALL	NRETSC		;Read ohne Retries 
+
+	AND	7FH
+	LD	C,A
+	JR	Z,OKA		; Format ok
+
+	CP	TSNF		; Target Sector not found ?
+	CALL	Z,TOB		; anderes Format (B) versuchen
+
+	POP	AF		; Anderer Floppy Fehler, Retries
+	DEC	A
+	JR	NZ,RETR1
+
+	XOR	A
+	LD	(SEMA),A
+
+	LD	A,C		; permanenter Fehler
+
+	LD	BC,0
+	POP	DE
+	POP	HL
+	RET
+
+;	auf B Spuren umschalten
+
+TOB:
+	LD	A,(FLPTRKS)
+	XOR	01111000B	; aus 40 wird 80, aus 80 wird 40
+	LD	(FLPTRKS),A
+	CALL	SCINIT		;Floppy Parameter setzen
+	LD	C,TSNF
+	RET
+
+OKA:
+	POP	AF
+	POP	DE
+	POP	HL
+
+	LD	BC,(FLPTRKS)
+
+	IF	SEC8
+	LD	B,8
+	ELSE
+	LD	B,9
+	ENDIF
+
+	MLT	BC
+	SLA	C		;*2: 2 Seiten
+	RL	B
+	XOR	A
+
+	IF	EUMEL
+	LD	(SEMA),A	;Sempahor wieder freigeben
+	ENDIF
+
+	RET	
+
+;................................................................
+;
+;	F D I O
+;
+;	Lesen oder Schreiben eines Blocks (512 Byte) auf der Floppy Disk
+;
+;	Entry:	A  = Kommandocode (0=Lesen, 1=Schreiben, 2=Formatieren)
+;		HL = Hauptspeicheradresse 	
+;		BC = Pointer auf Drive und Offset (512 Byte Bloecke)
+;		DE = (512 Byte-) Blocknummer (ohne Offset)
+;
+;		BC + 2 -> Low (Block Offset)
+;		BC + 1 -> Middle (Block Offset)
+;		BC + 0 -> High (BLock Offset) + Drive * 32 
+;
+;	Exit:	A  = Status (0=ok, sonst SCSIIO-Fehlercode)
+;		BC, DE, HL, AF' = veraendert
+;
+FDIO1:
+	POP	AF
+	CP	3
+	JR	C,COMOK
+
+	LD	A,20H		;illegal Command Code
+	RET
+
+COMOK:
+	PUSH	HL
+	PUSH	BC
+	CP	2
+
+	CALL	Z,SW80		;Beim Formatieren immer 2x80 Spuren 
+
+	CALL	CMSCOM		;Kommando und Datenlaenge best.
+	LD	(FDIOTB),A	;Kommandocode eintragen
+
+	LD	A,C
+	LD	(FDIOTB+4),A	;Block Count / Skew Faktor eintragen
+
+;	DE enthaelt Blocknummer x aus EUMEL-Sicht. 
+;	Block x meint die 512 Bytes ab 512*x auf Floppy.
+;
+;	Aus Blocknummer: Spur, Sector, Seite berechnen
+;
+;	EUMEL behandelt, im Gegensatz zum SCSI-Controller,
+;	zunaechst die Oberseite der Floppy und erst dann die Unterseite.
+ 
+	LD	H,D
+	LD	L,E
+	XOR	A
+
+	IF	SEC8
+	LD	DE,8
+	ELSE
+	LD	DE,9		;Anzahl der Sektoren pro Spur
+	ENDIF
+
+DIVLOP:
+	AND	A
+	SBC	HL,DE
+	JR	C,DIVDON
+	INC	A
+	JR	DIVLOP 
+
+DIVDON:
+	ADD	HL,DE
+
+;	A = Spurnummer; HL = sector/seite
+
+	LD	BC,(FLPTRKS)	;Spuren pro Seite (B undefiniert !)
+	CP	C		;Rueckseite ?
+	JR	C,NOBACK	;Nein -> alles ok
+
+;	Rueckseite: Spurnummer := Spurnummer - Spuranzahl
+;		    Sektornummer := Sektornummer + Sektoranzahl (9)
+
+	SUB	C		;tatsaechliche Spurnummer
+	ADD	HL,DE		;HL = sector (cylinder)
+
+;	SCSI Blocknummer aus Spur und Sektor ausrechnen
+
+NOBACK:
+	LD	D,A
+
+	IF	SEC8
+	LD	E,16
+	ELSE
+	LD	E,18
+	ENDIF
+
+	MLT	DE		;DE = Spur * 18
+	ADD	HL,DE		;HL = Spur * 18 + Sektor (cylinder)
+	EX	DE,HL
+
+;	SCSI Blocknummer in DE
+
+	POP	BC		;Offsetadresse wiederherstellen
+
+	LD	HL,(CODALN)
+	PUSH	HL
+	LD	HL,FDIOTB+3	;Floppy Read Command
+	JP	CMFDIO
+
+SW80:
+	PUSH	AF
+	PUSH	BC
+	PUSH	DE
+	PUSH	HL
+
+	LD	A,80		; 80 Tracks
+	LD	(FLPTRKS),A
+	CALL	SCINIT
+
+	POP	HL
+	POP	DE
+	POP	BC
+	POP	AF
+	RET
+
+;................................................................
+;
+;	C M S C O M
+;
+;	Entry:	A  = Funktionsnr.
+;
+;	Exit:	A  = SCSI-Kommandonr.
+;		C  = Block Count / Skew Faktor
+;		HL = veraendert
+;		B  = veraendert
+;		(CODALN) = Datenlaenge
+;
+CMSCOM:
+	LD	BC,LGTAB	;Datenlaenge ermitteln
+	LD	L,A
+	LD	H,0
+	ADD	HL,HL		;16 Bit Werte
+	ADD	HL,BC
+	LD	C,(HL)
+	INC	HL
+	LD	B,(HL)
+	LD	(CODALN),BC
+
+	LD	HL,COMTB	;Kommandonr. umrechnen
+	ADD	A,L
+	LD	L,A
+	LD	A,H
+	ADC	A,0
+	LD	H,A
+	LD	A,(HL)		;SCSI-Kommando holen
+
+	LD	BC,BCSKTB-COMTB
+	ADD	HL,BC
+	LD	C,(HL)		;Block Count ./. Skew Faktor holen
+
+	RET
+
+;****************************************************************
+;
+;	SCSI-Kommandotabellen
+;
+;	Achtung: Die Schreib- und Lesetabellen werden vom Programm
+;	         geaendert (muessen im RAM stehen)
+;
+COMTB:
+	DEFB	SREAD		;Lesekommando
+	DEFB	SWRITE		;Schreibkommando
+	DEFB	FORMAT		;Formatierkommando
+
+LGTAB:
+	DEFW	512+DMATRA+RDDAT ;Datenlaenge Lesen
+	DEFW	512+DMATRA	;Datenlaenge schreiben
+	DEFW	0		;Datenlaenge formatieren
+
+BCSKTB:
+	DEFB	1		;1 Block lesen (nur Floppy)
+	DEFB	1		;1 Block schreiben (")
+	DEFB	4		;Skew 4 (nur Floppy)
+
+;................................................................
+;
+	IF NOT EUMEL
+TESTRD:
+	DEFB	0,0,0,0,0,0	;Test Ready (Harddisk)
+	ENDIF
+
+
+FDIOTB:				;Lesen / Schreiben auf Floppy Disk
+	DEFB	SREAD		;Lesekommando (wird ueberschrieben)
+	DEFB	FDDRIV*32+40H	;Floppy Drive (wird ueberschrieben)
+	DEFB	0, 0		;Block Middle und Low (")
+	DEFB	1		;Block Count / Interleave (Format)
+	DEFB	80H		;keine Retries
+
+
+HDIOTB:				;Lesen / Schreiben auf Harddisk
+	DEFB	SREAD		;Lesekommando (wird ueberschrieben)
+	DEFB	0		;Harddisk Drive (wird ueberschrieben)
+	DEFB	0, 0		;Block Middle und Low (")
+	DEFB	2		;Block Count
+	DEFB	0H		;Retries
+
+	IF 0
+RDINI:
+	DEFB	RINIT		;Harddisk Konfiguration lesen
+	DEFB	0		;Harddisk Drive
+	DEFB	0,0,0,0
+INIHDT:
+	DEFB	0,0,0,0,0
+	DEFB	0,0,0,0,0
+	ENDIF
+
+
+RECAL:
+	DEFB	RECALIBR	;Drive recalibrieren
+	DEFB	0		; Harddisk
+	DEFB	0,0,0,80H	; keine Retries
+
+
+PARSEK:
+	DEFB	SEEK
+	DEFB	0		;Harddisk
+	DEFB	0,0,0
+	DEFB	80H		;keine Retries
+
+
+FLPINI:				;Setze Floppy Parameter
+	DEFB	INITDRV		;Initialize Kommando
+	DEFB	FDDRIV*32+40H	;Floppy Drive
+	DEFB	0, 0, 0, 0	;nicht benutzt
+FLPDAT:				;Floppy Disk Parameter zu INIFLP
+	DEFB	0
+FLPTRKS:
+	IF	TRK40
+	DEFB	40		;Spuranzahl
+	ELSE
+	DEFB	80
+	ENDIF
+
+	DEFB	2		;2 Koepfe (doppelseitig)
+	DEFB	1*16+3		;4 ms Steprate, MFM
+	DEFB	3		;512 Byte/Sektor
+	DEFB	15		;Head Unload Time (240ms)
+	DEFB	10		;Motor Start Time (0.1 s)
+	DEFB	23		;Head Load Time (46 ms)
+	DEFB	3		;Motor off time (3 s)
+	IF SEC8
+	DEFB	0		;8 Sektoren/Spur
+	ELSE
+	DEFB	1		;9 Sektoren/Spur
+	ENDIF
+
+PARALNG	EQU	$-FLPDAT
+
+
+DBLSTEP:
+	DEFB	FD48TPI		;Doppel Step aktivieren
+	DEFB	FDDRIV*32+40H	;Floppy Drive
+	DEFB	0, 0, 0, 0	;nicht benutzt
+
+
+SGLSTEP:
+	DEFB	FD96TPI		;auf Single Step zurueckschalten
+	DEFB	FDDRIV*32+40H
+	DEFB	0, 0, 0, 0	;nicht benutzt
+
+
+SEK18:
+	DEFB	SREAD		;auf Block positionieren
+	DEFB	FDDRIV*32+40H	;Floppy Drive
+	DEFB	0,18,1,80H	;Track 2, ein Block, keine Retries
+
+
+;...........................................................................
+;
+;	CIO Initialisierungs Tabelle
+;
+
+	IF	NOT EUMEL
+
+INITAB:
+;*	DEFB	0,1		;Set Reset Bit
+	DEFB	0,0		;Reset Reset Bit
+	DEFB	1,0		;Master configuration control
+
+;	SCSI-Interface-Leitungen
+
+	DEFB    20H,00000010B	;Port A Mode Reg.
+	DEFB	22H,01000010B	;Port A Data Path Polarity Reg.
+	DEFB	23H,10111101B	;Port A Data Direction Reg.
+	DEFB	24H,0		;Port A Special I/O Control
+	DEFB	25H,10101100B	;Port A Pattern Polarity
+	DEFB	26H,0		;Port A Pattern Transition
+	DEFB	27H,10101100B	;Port A Pattern Mask
+	DEFB	0DH,0		;Port A Data
+	DEFB	02H,18H		;Port A Interrupt Vector (** TEST **)
+	DEFB	PCOMA,11100000B	;Port A Command: Clear IE
+	DEFB	PCOMA,00100000B	;Port A Command: Clear IUS & IP
+
+;	General Purpose Port (Centronics, SCSI, 6502-IRQ-Maske)
+
+	DEFB	06H,00000001B	;Port C Data Direction Reg.
+	DEFB	05H,00001000B	;Port C Data Path Polarity Reg.
+	DEFB	07H,0		;Port C Special I/O Control
+	DEFB	0FH,4		;Port C Data Register
+
+;	Centronics Interface
+
+	DEFB	28H,10010000B	;Port B Mode
+	DEFB	29H,01000000B	;Port B Handshake: Strobed
+	DEFB	09H,00100000B	;Port B Command: Clear IUS & IP
+	DEFB	2AH,0		;Port B Data Path Polarity
+	DEFB	2CH,0		;Port B Special I/O Control
+	DEFB	03H,30H		;Port B Interrupt Vektor
+
+;	Deskew Timer
+
+	IF 0
+	DEFB	1EH,00000010B	;Counter 3 Mode Specification
+	DEFB	0CH,00100000B	;Counter 3 Command and Status
+	DEFB	1AH,0		;Counter 3 Time Constant MSB
+	DEFB	1BH,7		;Counter 3 Time Constant LSB (2,268 us)
+	DEFB	0CH,11100100B	;Counter 3 Gate Enable
+	ENDIF
+
+;	Timer
+
+	DEFB	1CH,10000000B	;Counter/Timer 1 Mode Spec. Reg.
+	DEFB	1DH,10000000B   ;Counter/Timer 2 Mode Spec. Reg.
+	DEFB	0AH,00100000B	;Counter/Timer 1 Command: Clear IP & IUS
+	DEFB	0BH,00100000B	;Counter/Timer 2 Command: Clear IP & IUS
+	DEFB	16H,HIGH 38400  ;Time Constant 1 MSB
+	DEFB	17H,LOW 38400   ;Time Constant 1 LSB
+	DEFB	18H,0		;Time Constant 2 MSB, mit Timer 1 zus. 50ms
+	DEFB	19H,4		;Time Constant 2 LSB
+	DEFB	04H,18H		;Interrupt Vector Counters
+
+;	CIO-Interrupts freigeben
+
+	DEFB	01H,11110111B	;Master Config. Register
+	DEFB	00H,10000010B	;Master Interrupt Enable
+
+	DEFB	09H,11000000B	;Port B Command: Set IE
+
+	DEFB	0BH,11000110B	;Counter/Timer 2 Command: Set IE
+ 	DEFB	0AH,11100110B	;Counter/Timer 1 Command: Clear IE
+
+INILNG	EQU	$-INITAB
+	ENDIF
+
+
+;****************************************************************
+
+	END
+

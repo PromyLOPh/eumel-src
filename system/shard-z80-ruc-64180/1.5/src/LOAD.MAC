@@ -1,0 +1,170 @@
+	TITLE	LOADER - SHARD Loader fuer EUMEL System
+;
+	INCLUDE	HD64180.LIB
+;
+	.LIST
+;
+;****************************************************************
+;
+;	Lader fuer SHARD, wird vom Harddisk Boot aufgerufen
+;
+;	Version 1.0 - 22. 10. 1985 - R. Ellerbrake
+;	Version 1.2 - 09.01.1987 - M. Staubermann, Konfigurationsblock
+;
+;****************************************************************
+;
+
+;	Konstanten
+;
+BASE	EQU	1000H		;Lader-Startadresse
+	.PHASE	BASE
+DEST	EQU	8000H		;Zieladresse fuer SHARD
+BOTLNG	EQU	40H
+SHARD	EQU	100H		;SHARD Anfangsadresse
+;
+;
+;	Lader wird ab Adresse 1000H im Apple Speicher gestartet
+;	und kopiert den SHard in den 64180 Speicher
+;
+
+LOAD:
+	LD	A,080H		;0..7FFF:Apple, 8000..FFFF:64180 RAM
+	OUT0	(CBAR),A
+;
+;	Speicherverwaltung umschalten, log. Adr. 0..7FFFH im unteren
+;	Bereich des Apple Speichers liegen lassen, Adresse 8000..FFFFH
+;	auf phys. Adresse 00000H..07FFFH abbilden
+;
+	LD	A,0F8H
+	OUT0	(CBR),A		;F8+8=0! (00000... Phys. = 8000H log.)
+;
+	LD	A,60H		; Jetzt offiziell 60000... = 0000H log.
+	OUT0	(BBR),A		; Wird beim ersten Zugriff auf 180-Memory aktiv
+;
+;	Umschaltroutine kopieren
+;
+	LD	HL,UMSCH-LOAD+BASE
+	LD	DE,DEST
+	LD	BC,CONFLG	 ; Page bis zum Ende uebertragen
+	LDIR
+;
+	LD	A,2		; Burst Mode, Memory <--> Memory Transfer
+	OUT0	(DMODE),A
+
+	LD	BC,8*0100H+SAR0L; 8 Bytes in DMA-Register transportieren
+	LD	HL,DMATAB
+	OTIMR
+
+	LD	A,01000011B	; DMA Kanal 0 starten
+	OUT0	(DSTAT),A
+
+	JP	DEST		; im 64180-Memory starten (noch 8000H)
+
+DMATAB:	
+	DEFW	SHARD+BASE	; SHard liegt noch ab 1100H
+	DEFB	6		; im Basis-Speicher
+	DEFW	SHARD		; soll nach 0100H
+	DEFB	0		; im 64180-Speicher
+	DEFW	(BOTLNG-1)*100H	; Bis auf LOAD-Modul (dieses) alles kopieren
+;
+;	Programmstueck zur RAM-Umschaltung phys. 0 = log. 0
+;
+UMSCH:
+	XOR	A
+	OUT0	(BBR),A		; 0000.7FFF log. = 8000..FFFF log = 00000 phys.
+	JP	SHARD		; von 81xx --> 01xx springen 
+	NOP
+
+CONF:				; Konfigurationsblock
+
+;--------------------------------------------------------------------------
+NOVTST	EQU	200H		; Kein Vortest, kein Speichertest
+NOSTST	EQU	100H		; Vortest, aber kein Speichertest
+FREEU0	EQU	1		; EUMEL0 auf HG freigeben (loeschen!)
+VORTST	EQU	0		; Vortest, Speichertest, (Normalfall)
+
+BLINKP:	
+	DEFB	8		; Blinkdauer des Cursors
+BEEPFRQ:
+	DEFB	10		; Tonfrequenz bei Bell (f = 10kHz/beepfrq)
+ARC31:	
+	DEFB	40H, 0, 0	; LUN der SCSI-Floppy
+MODECONF:
+	DEFW	VORTST
+ID4:
+	DEFW	0		; Lizenznummer des SHards
+ID5:
+	DEFW	0		; Installationsnummer des SHards
+ID6:
+	DEFW	0		; reserviert
+URLK1:
+	DEFB	31		; Archiv
+URLK2:
+	DEFB	0		; HG
+
+	DEFS	1		; free
+
+;--------------------------------------------------------------------------
+
+	DEFS	40H		; Interrupttabelle
+	;ORG	BASE+UMSCH-LOAD+58H	; Nach der Interrupttabelle weiter
+
+
+IKANTAB:			; Zuordnungstabelle fuer phys. --> log.
+				; Kanaele mit Inputinterrupt
+	DEFB	0, 1, 2, 3, 4, 5, 6, 7
+
+KANTAB:				; Zuordnungstabelle fuer log. --> phys.
+				; fuer alle Kanaele
+	DEFB	0, 1, 2, 3, 4, 5, 6, 0FFH, 0FFH, 0FFH, 0FFH, 0FFH, 0FFH, 0FFH
+	DEFB	0FFH, 0FFH, 0FFH, 0FFH, 0FFH, 0FFH, 0FFH, 0FFH, 0FFH, 0FFH
+	DEFB	0FFH, 0FFH, 0FFH, 0FFH, 28, 29, 30, 31, 32
+
+IOFTB:				; Kan. def.Funktionen	 Beschreibung
+	DEFB	0CH		;  0  blockin/out	 Hintergrund
+	; Stream I/O & Block I/O
+	DEFB	0FH		;  1  blockin/out,iint/outvar Konsole-Terminal
+	DEFB	03H		;  2  iint/outvar	 SCCB-Terminal
+	DEFB	03H		;  3  iint/outvar	 SCCA-Terminal
+	DEFB	02H		;  4  outvar     	 Drucker 180-Card
+	DEFB	03H		;  5  iint/outvar	 Terminal Motherb.
+	DEFB	02H		;  6  outvar     	 Drucker Motherb.
+	DEFB	00H		;  7  -----------	 nicht definiert
+	DEFB	00H		;  8  -----------	 nicht definiert
+	DEFB	00H		;  9  -----------	 nicht definiert
+	DEFB	00H		; 10  -----------	 nicht definiert
+	DEFB	00H		; 11  -----------	 nicht definiert
+	DEFB	00H		; 12  -----------	 nicht definiert
+	DEFB	00H		; 13  -----------	 nicht definiert
+	DEFB	00H		; 14  -----------	 nicht definiert
+	DEFB	00H		; 15  -----------	 nicht definiert
+	DEFB	00H		; 16  -----------	 nicht definiert
+	; Block I/O
+	DEFB	00H		; 17  -----------	 nicht definiert
+	DEFB	00H		; 18  -----------	 nicht definiert
+	DEFB	00H		; 19  -----------	 nicht definiert
+	DEFB	00H		; 20  -----------	 nicht definiert
+	DEFB	00H		; 21  -----------	 nicht definiert
+	DEFB	00H		; 22  -----------	 nicht definiert
+	DEFB	00H		; 23  -----------	 nicht definiert
+	; Privilegierte Block I/O
+	DEFB	00H		; 24  -----------	 nicht definiert
+	DEFB	00H		; 25  -----------	 nicht definiert
+	DEFB	00H		; 26  -----------	 nicht definiert
+	DEFB	00H		; 27  -----------	 nicht definiert
+	DEFB	0CH		; 28  blockin/blockout	 CP/M-Harddisk-Volume
+	DEFB	0CH		; 29  blockin/blockout	 Apple-Drive 1
+	DEFB	0CH		; 30  blockin/blockout	 Apple-Drive 0
+	DEFB	1CH		; 31  format,blockin/out SCSI-Floppy
+
+CPMOFS:	DEFB	00H, 0AH, 60H	; Anfang eines CP/M Volumes
+CPMLAST:DEFB	00H, 2AH, 60H	; Ende+1 des CP/M Volumes
+
+CONFLG	EQU	$-UMSCH
+	.DEPHASE
+;
+;****************************************************************
+;
+	END
+
+

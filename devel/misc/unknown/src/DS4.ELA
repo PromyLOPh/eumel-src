@@ -1,0 +1,268 @@
+PACKET ds 4 access DEFINES ds 4 : 
+ 
+PROC ds 4 : 
+ INT VAR segment, block nr , i , adr , byte ; 
+ TEXT VAR key , eingabe ; 
+ BOOL VAR new headline ; 
+ page ; 
+ put ("Segment:") ; 
+ get (segment) ; 
+ ROW 256 INT VAR space ; 
+ block nr := 0 ; 
+ new headline := FALSE ; 
+ REP 
+  IF new headline THEN out (""1""5"") 
+  ELSE page 
+  FI ; 
+  put (" Segment:") ; put (text(segment,5)) ; (* Cursor 1-16 *) 
+  put (", Block:") ; put (text(block nr,5)) ; (* Cursor 17-31 *) 
+  put (", Wortaddr:") ; out (hex8 (segment)) ; 
+                        put (text(hex16((""0""+code(blocknr))ISUB1),5)) ; 
+  put ("Wahl : + - e s b w a h d o") ; (* ^ Cursor 32 - 51 *) 
+  IF NOT new headline THEN 
+     line ; (* ^ 52 - 77 *)
+     adr := (""0"" + code (block nr)) ISUB 1 ; 
+     FOR i FROM 0 UPTO 255 REP 
+       space (i+1) := get word (segment, i + adr) 
+     PER ; 
+     dump (space) 
+  FI ; 
+  out (""1"") ; 
+  new headline := FALSE ; 
+  inchar (key) ; 
+  out (key) ; 
+  IF key = "+" THEN IF block nr = 255 
+                       THEN block nr := 0 ; 
+                            segment INCR 1 
+                       ELSE block nr INCR 1 
+                    FI
+  ELIF key = "-" THEN IF block nr = 0 AND segment > 0
+                         THEN block nr := 255 ; 
+                              segment DECR 1 
+                      ELIF block nr > 0 THEN block nr DECR 1 
+                      FI
+  ELIF key = "s" THEN cursor (11,1) ;
+                      eingabe := text (segment) ;
+                      editget (eingabe, 1000, 5) ; 
+                      segment := int (eingabe) 
+  ELIF key = "b" THEN cursor (26,1) ; 
+                      eingabe := hex8 (block nr) ;
+                      editget (eingabe, 1000, 5) ; 
+                      block nr := integer (eingabe) 
+  ELIF key = "w" THEN cursor (44,1) ; 
+                      eingabe := hex16 (adr) ; 
+                      edit get (eingabe, 1000, 5) ; 
+                      adr := integer (eingabe) ; 
+                      eingabe := hex16 (get word (segment, adr)) ; 
+                      cursor (32,1) ; 
+                      put (",NeuesWort:") ; 
+                      editget (eingabe, 1000,5) ; 
+                      put word (segment, adr, integer (eingabe)) ; 
+  ELIF key = "d" THEN cursor (32,1) ; 
+                      new headline := TRUE ; 
+                      put (", Dez->Hex:") ; 
+                      REAL VAR r ; 
+                      get (r) ; 
+                      cursor (32,1) ; 
+                      put (", - Taste - Hex:") ; 
+                      IF r < 256.0 AND r >= 0.0 THEN put (hex8 (int(r))) 
+                      ELIF r < 0.0 THEN put (hex16 (int (r))) 
+                      ELIF r < 32768.0 THEN put (hex16 (int(r))) 
+                      ELSE put (hex16 (int (r - 65536.0))) 
+                      FI ; pause
+  ELIF key = "h" THEN cursor (32,1) ; 
+                      new headline := TRUE ; 
+                      put (", Hex->Dez:") ; 
+                      getline (eingabe) ; 
+                      cursor (32,1) ; 
+                      put (", - Taste - Dez:") ; 
+                      put (integer (eingabe)) ; 
+                      IF integer (eingabe) < 0 THEN put (",  Positiv:") ; 
+                         put (positiv (eingabe)) 
+                      FI ; pause 
+  ELIF key = "a" THEN cursor (32,1) ; 
+                      new headline := TRUE ; 
+                      put (", ASCII->Hex (Taste)"5"") ; 
+                      inchar (eingabe) ; 
+                      put (" = ") ; put (hex8 (code (eingabe))) ; 
+                      put ("- Taste -") ; 
+                      pause 
+  ELIF key = "o" THEN cursor (32,1) ; 
+                      new headline := TRUE ; 
+                      put (", Hex->0Opcde:") ; 
+                      getline (eingabe) ; 
+                      cursor (32,1) ; 
+                      put (", - Taste - :") ; 
+                      put (eumel0 opcode (integer (eingabe))) ; 
+                      pause 
+ FI ; 
+ UNTIL key = "e" PER ; 
+ 
+ENDPROC ds 4 ; 
+ 
+PROC dump (ROW 256 INT CONST page) : 
+ INT VAR i,j ,k ;
+ TEXT VAR t := "                        " ;
+ k := 1 ; j := 1 ; 
+ put ("00:") ; 
+ FOR i FROM 1 UPTO 256 WHILE incharety <> ""27""REP
+   put hex16 (page (i)) ; 
+   replace (t, j, ascii (page (i))) ; 
+   j := j + 2 ; 
+   IF ((j-1) MOD 8) = 0 THEN out (" ") FI ;
+   IF k = 22 AND j = 9 THEN j := 25 ; 34 TIMESOUT " " FI ; 
+   IF j = 25 THEN 
+      out (" ") ; out (t) ; 
+      replace (t, 1, "                        ") ;
+      IF k < 22 THEN 
+         line ;
+         out(hex8 (i)); put (":") 
+      FI ;
+      k := k + 1 ; 
+      j := 1 
+  FI ;
+PER ; 
+ENDPROC dump ; 
+ 
+ 
+TEXT PROC ascii (INT CONST wert) : 
+ TEXT VAR t := "  " ; 
+ replace (t, 1, wert) ; 
+ IF (t SUB 1) < " " OR (t SUB 1) > ""126"" THEN replace (t, 1, ".") FI ; 
+ IF (t SUB 2) < " " OR (t SUB 2) > ""126"" THEN replace (t, 2, ".") FI ;
+ t 
+ENDPROC ascii ; 
+ 
+PROC put hex16 (INT CONST wert) :
+ TEXT VAR t := "  " ; 
+ replace (t, 1, wert) ; 
+ out hex digit (code (t SUB 1) DIV 16) ; 
+ out hex digit (code (t SUB 1) AND 15) ;
+ out hex digit (code (t SUB 2) DIV 16) ; 
+ out hex digit (code (t SUB 2) AND 15) ; 
+ENDPROC put hex16 ;
+ 
+PROC out hex9 (INT CONST wert) : 
+ out hex digit (wert DIV 256) ; 
+ out hex digit (wert DIV 16 AND 15) ; 
+ out hex digit (wert AND 15) 
+ENDPROC out hex9 ; 
+ 
+TEXT PROC hex8 (INT CONST wert) : 
+ hex digit (wert DIV 16) + 
+ hex digit (wert AND 15) 
+ENDPROC hex8 ; 
+ 
+TEXT PROC hex16 (INT CONST wert) :
+ TEXT VAR t := "  " ; 
+ replace (t, 1, wert) ; 
+ hex digit (code (t SUB 2) DIV 16) + 
+ hex digit (code (t SUB 2) AND 15) + 
+ hex digit (code (t SUB 1) DIV 16) + 
+ hex digit (code (t SUB 1) AND 15) 
+ENDPROC hex16 ;
+ 
+TEXT PROC hex digit (INT CONST wert) : 
+ IF wert < 10 THEN code (wert + 48) 
+ ELSE code (wert + 55) 
+ FI 
+ENDPROC hex digit ; 
+ 
+PROC out hex digit (INT CONST wert) : 
+ IF wert < 10 THEN out (code (wert + 48)) 
+ ELSE out (code (wert + 55)) 
+ FI 
+ENDPROC out hex digit ; 
+ 
+INT PROC integer (TEXT CONST hex addr) : 
+ INT VAR i ; 
+ REAL VAR summe := 0.0 ; 
+ FOR i FROM 1 UPTO length (hex addr) REP 
+  summe := summe * 16.0 ; 
+  summe INCR real (digit) 
+ PER ; 
+ IF summe > 32767.0 THEN int (summe - 65536.0)
+ ELSE int (summe) 
+ FI. 
+ 
+digit : 
+ TEXT CONST char := hex addr SUB i ; 
+ IF char >= "a" THEN code (char) - 87 
+ ELIF char >= "A" THEN code (char) - 55 
+ ELSE code (char) - 48 
+ FI 
+ENDPROC integer ; 
+ 
+REAL PROC positiv (TEXT CONST wert) : 
+ INT VAR i ; 
+ REAL VAR summe := 0.0 ; 
+ FOR i FROM 1 UPTO length (wert) REP 
+  summe := summe * 16.0 ; 
+  summe INCR real (digit) 
+ PER ; 
+ summe . 
+ 
+digit : 
+ TEXT CONST char := wert SUB i ; 
+ IF char >= "a" THEN code (char) - 87 
+ ELIF char >= "A" THEN code (char) - 55 
+ ELSE code (char) - 48 
+ FI 
+ENDPROC positiv ; 
+ 
+TEXT PROC eumel0 opcode (INT CONST word) : 
+ INT VAR op1 := (word AND 31744) DIV 1024 , 
+         op2 := (word AND 768) DIV 128 , 
+         low := word AND 255 , 
+         long data := (word AND 768) * 2 + (word AND 255) ;
+ IF word < 0 THEN op2 INCR 1 ; long data INCR 256 FI ; 
+ SELECT op1 OF 
+  CASE 0 : "LN " + text (low) 
+  CASE 1 : "LN " + text (long data) 
+  CASE 2 : "MOV " 
+  CASE 3 : "INC1 " 
+  CASE 4 : "DEC1 " 
+  CASE 5 : "INC " 
+  CASE 6 : "DEC " 
+  CASE 7 : "ADD " 
+  CASE 8 : "SUB " 
+  CASE 9 : "CLEAR " 
+  CASE 10 : "TEST " 
+  CASE 11 : "EQU " 
+  CASE 12 : "LSEQ " 
+  CASE 13 : "FMOV " 
+  CASE 14 : "FADD " 
+  CASE 15 : "FSUB " 
+  CASE 16 : "FMULT " 
+  CASE 17 : "FDIV " 
+  CASE 18 : "FLSEQ " 
+  CASE 19 : "TMOV " 
+  CASE 20 : "TEQU "
+  CASE 21 : "LSEQU " 
+  CASE 22 : "ACCDS " 
+  CASE 23 : "REF " 
+  CASE 24 : "SUBS " 
+  CASE 25 : "SEL " 
+  CASE 26 : "PPV " 
+  CASE 27 : "PP " 
+  CASE 28 : "BR " + hex8 (low) 
+  CASE 29 : "BR " + hex16 (long data) 
+  CASE 30 : "CALL " 
+  OTHERWISE op 31 
+ ENDSELECT. 
+ 
+op31 : 
+SELECT op 2 OF 
+ CASE 0 : "IS """ + code (low) + """" 
+ CASE 1 : "STIM " + hex8 (low) 
+ CASE 2 : "MOVX " 
+ CASE 3 : "PW " 
+ CASE 4 : "GW " 
+ CASE 5 : "PENTER " + hex8 (low) 
+ CASE 6 : "ESC " + text (low) 
+ CASE 7 : "LONGA " + eumel 0 opcode ((low AND 124) * 256) 
+ OTHERWISE "?????" 
+ENDSELECT 
+ENDPROC eumel 0 opcode 
+ 
+ENDPACKET ds 4 access 

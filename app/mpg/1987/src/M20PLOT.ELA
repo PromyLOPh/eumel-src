@@ -1,0 +1,419 @@
+PACKET m20 plot DEFINES drawing area,             (*Autor: H. Indenbirken*)
+                        begin plot,               (*Stand: 18.11.84      *)
+                        end plot, 
+                        clear, 
+                        pen,
+                        move, 
+                        draw, 
+
+                        cursor on, cursor off,
+                        get cursor,
+
+                        zeichensatz,
+                        get screen, put screen: 
+ 
+LET hor faktor   = 22.21739,                 (****** x pixel / x cm ******)
+    vert faktor  = 18.61314,                 (****** y pixel / y cm ******)
+
+    delete = 0,                                              (*Farbcodes *)
+    std    = 1,
+    black  = 5,
+    white  = 6,
+
+    nothing          = 0,                                  (*Linientypen *)
+    durchgehend      = 1, 
+    gepunktet        = 2,
+    kurz gestrichelt = 3,
+    lang gestrichelt = 4,
+    strichpunkt      = 5,
+
+    bit 14           = 16384;
+
+TYPE SCREEN = ROW 32 ROW 256 INT;
+LET POS = STRUCT (INT x, y);
+LET ZEICHENSATZ = STRUCT (ROW 255 TEXT char, INT width, height);
+
+ZEICHENSATZ VAR zeichen;
+BOOL VAR character defined :: FALSE;
+TEXT VAR act pen :: "P"1"L"255""255"",
+         cursor pos  :: ""0"M"0""0""0""0""0"D"0""0""0""0""0"M"0""0""0""0""0"D"0""0""0""0"", 
+         cursor line :: ""0"M"0""0""0""0""0"D"0""0""0""0""0"D"0""0""0""0"";
+INT VAR act thick :: 0, i;
+POS VAR pos :: POS : (0, 0);
+out (""16"" + act pen + ""9"");
+
+PROC zeichensatz (TEXT CONST name):
+  IF exists (name)                                     (* H”he:   0.64 cm*)
+  THEN BOUND ZEICHENSATZ VAR new zeichen :: old (name);(* Breite: 0.40 cm*)
+       zeichen := new zeichen;
+       character defined := TRUE
+  ELSE errorstop ("Der Zeichensatz """ + name + """ existiert nicht") FI
+END PROC zeichensatz;
+
+PROC drawing area (REAL VAR x cm, y cm, INT VAR x pixel, y pixel) : 
+   x cm    := 22.0;    y cm    := 13.7; 
+   x pixel := 511;     y pixel := 255 
+END PROC drawing area;
+
+PROC begin plot : 
+  out (""9""16"");
+ENDPROC begin plot ;
+ 
+PROC end plot : 
+  out (""9"");
+ENDPROC end plot ;
+
+PROC clear :
+  pos := POS : (0, 0);
+  act thick := 0;
+  act pen := "P"1"L"255""255"";
+  out ("CP"1"L"255""255"M"0""0""0""0"")
+
+END PROC clear;
+
+PROC pen (INT CONST background, foreground, thickness, linetype):
+  set foreground;
+  set thickness;
+  set linetype;
+  out (act pen)  .
+
+set foreground:
+  IF foreground = delete
+  THEN act pen := "P"0""
+  ELIF foreground < 0
+  THEN act pen := "P"2""
+  ELSE act pen := "P"1"" FI  .
+ 
+set thickness:
+  act thick := thickness  .
+
+set linetype:
+  SELECT linetype OF
+  CASE nothing          : act pen CAT "L"0""0""
+  CASE durchgehend      : act pen CAT "L"255""255""
+  CASE gepunktet        : act pen CAT "L"85""85""
+  CASE kurz gestrichelt : act pen CAT "L"15""15""
+  CASE lang gestrichelt : act pen CAT "L"255""0""
+  CASE strichpunkt      : act pen CAT "L"255""16""
+  OTHERWISE act pen CAT "L" + intern (linetype) END SELECT  .
+
+END PROC pen;
+
+PROC move (INT CONST x, y) :
+  replace (vektor, 1, x);
+  replace (vektor, 2, y);
+
+  out ("M");
+  out (vektor); 
+  pos := POS  : (x, y)
+END PROC move;
+ 
+PROC draw (INT CONST x, y) :
+  IF act thick <> 0
+  THEN IF horizontal line
+       THEN thick y
+       ELSE thick x FI;
+       x MOVE y
+  ELSE replace (vektor, 1, x);
+       replace (vektor, 2, y);
+       out ("D");
+       out (vektor)
+  FI;
+  pos := POS : (x, y)   .
+
+horizontal line:
+  abs (pos.x-x) > abs (pos.y-y)  .
+
+thick y:
+  INT VAR dy, old x :: pos.x-x ausgleich, new x :: x+x ausgleich;
+  old x MOVE pos.y;
+  new x DRAW     y;
+  FOR dy FROM 1 UPTO act thick
+  REP old x MOVE pos.y+dy;
+      new x DRAW     y+dy;
+      old x MOVE pos.y-dy;
+      new x DRAW y-dy;
+  PER  . 
+
+x ausgleich:
+  IF pos.x <= x
+  THEN  act thick
+  ELSE -act thick FI  .
+
+thick x:
+  INT VAR dx, old y :: pos.y-y ausgleich, new y :: y+y ausgleich;
+  pos.x MOVE old y;
+      x DRAW new y; 
+  FOR dx FROM 1 UPTO act thick
+  REP pos.x+dx MOVE old y;
+          x+dx DRAW new y;
+      pos.x-dx MOVE old y;
+          x-dx DRAW new y;
+  PER  . 
+
+y ausgleich:
+  IF pos.y <= y
+  THEN  act thick
+  ELSE -act thick FI  .
+
+END PROC draw;
+
+INT VAR x fak :: zeichen.width,
+        y fak :: zeichen.height;
+PROC draw (TEXT CONST record, REAL CONST angle, height, width):
+  IF act pen = "L"0""0""
+  THEN
+  ELIF character defined
+  THEN draw graphic character
+  ELSE out (""9"");
+       pos cursor (pos.x, pos.y);
+       get cursor (x pos, y pos);
+       outsubtext (record, 1, 79-y pos); 
+       out (""16"")
+  FI  .
+
+draw graphic character:
+(**** Hier werden Texte mit dem Winkel 'angle',der H”he 'height' und ****)
+(**** der Breite 'width' gezeichnet. Die Form der Zeichen ist in der ****)
+(**** Datei 'STD Zeichensatz' enthalten.                             ****)
+  INT CONST x step :: character x step, y step :: character y step;
+  INT VAR x pos :: pos.x, y pos :: pos.y, i, n, x, y;
+  BOOL VAR move order;
+ 
+  set character height and width;
+  out ("L"255""255"");
+
+  FOR i FROM 1 UPTO length (record)
+  REP draw character i PER;
+  out (act pen);
+  pos.x MOVE pos.y .
+
+set character height and width:
+  IF width = 0.0 AND height = 0.0
+  THEN x fak := zeichen.width;
+       y fak := zeichen.height
+  ELSE x fak := int (hor faktor * width+0.5);
+       y fak := int (vert faktor * height+0.5)
+  FI  .
+
+character x step:
+  IF width <> 0.0
+  THEN int (cosd (angle) * hor faktor * width+0.5)
+  ELSE int (cosd (angle) * real (zeichen.width)+0.5) FI  .
+
+character y step:
+  IF height <> 0.0
+  THEN int (sind (angle) * vert faktor * height+0.5)
+  ELSE int (sind (angle) * real (zeichen.height)+0.5) FI  .
+
+draw character i:
+  IF code (record SUB i) < 32
+  THEN steuerzeichen
+  ELSE normale zeichen FI  .
+
+steuerzeichen:
+  SELECT code (record SUB i) OF
+  CASE  1: x pos := 0;
+           y pos := 255-y fak
+  CASE  2: x pos INCR x fak 
+  CASE  3: y pos INCR y fak 
+  CASE  4: out (""9""); pos cursor (x pos, y pos); out (""4""16"")
+  CASE  5: out (""9""); pos cursor (x pos, y pos); out (""5""16"")
+  CASE  7: out (""9""7""16"")
+  CASE  8: x pos DECR x fak 
+  CASE 10: y pos DECR y fak 
+  CASE 13: x pos := pos.x
+  END SELECT  .
+
+normale zeichen:
+  TEXT CONST char :: zeichen.char [code (record SUB i)];
+  FOR n FROM 1 UPTO length (char) DIV 4
+  REP value (char, n, x, y, move order);
+      IF move order
+      THEN x pos+x MOVE y pos+y
+      ELSE x pos+x DRAW y pos+y FI
+  PER;
+  x pos INCR x step;
+  y pos INCR y step  .
+
+END PROC draw;
+
+PROC draw (TEXT CONST record) :
+  draw (record, 0.0, 0.0, 0.0)
+END PROC draw;
+ 
+PROC value (TEXT CONST char, INT CONST n, INT VAR x, y, BOOL VAR move):
+  x := char ISUB n+n-1;
+  y := char ISUB n+n;
+  IF x < 0
+  THEN IF (x AND bit 14) <> 0
+       THEN move := FALSE
+       ELSE move := TRUE;
+            x := x XOR bit 14
+       FI
+  ELSE IF (x AND bit 14) <> 0
+       THEN move := TRUE;
+            x := x XOR bit 14
+       ELSE move := FALSE FI
+  FI;
+  x := (x*x fak) DIV zeichen.width;
+  y := (y*y fak) DIV zeichen.height
+
+END PROC value;
+
+PROC get cursor (TEXT VAR t, INT VAR x, y) :
+  get cursor (t, x, y, -1, -1, -1, -1)
+END PROC get cursor;
+
+PROC get cursor (TEXT VAR t, INT VAR x, y, INT CONST x0, y0, x1, y1):
+  init cursor;
+  out ("P"2""); 
+  REP set cursor;
+      get step;
+      out (cursor pos);
+      out (cursor line);
+      move cursor
+  PER  .
+
+init cursor:
+  INT VAR delta :: 1;
+  x := pos.x;
+  y := pos.y;
+
+  IF x0 >= 0 AND x0 <= 511 AND y0 >= 0 AND y0 <= 255
+  THEN replace (cursor line, 2, "M");
+       replace (cursor line, 2, x0);
+       replace (cursor line, 3, y0);
+       replace (cursor line, 8, "D")
+  ELSE replace (cursor line, 2, ""0""0""0""0""0""0"M") FI; 
+
+  IF x1 >= 0 AND x1 <= 511 AND y1 >= 0 AND y1 <= 255
+  THEN replace (cursor line,14, "D");
+       replace (cursor line, 8, x1);
+       replace (cursor line, 9, y1);
+  ELSE replace (cursor line,14, ""0""0""0""0""0"") FI  .
+
+get step:
+  t := incharety (1);
+  IF t <> ""
+  THEN IF delta < 10
+       THEN delta INCR delta
+       ELSE delta INCR 1 FI
+  ELSE delta := 1;
+       inchar (t)
+  FI  .
+
+move cursor:
+  SELECT code (t) OF
+  CASE 2 : x INCR delta                            (*normaler Zehnerblock*) 
+  CASE 19: x INCR delta; y INCR delta
+  CASE 3 : y INCR delta
+  CASE 18: x DECR delta; y INCR delta
+  CASE 8 : x DECR delta
+  CASE 14: x DECR delta; y DECR delta
+  CASE 10: y DECR delta
+  CASE 15: x INCR delta; y DECR delta
+  OTHERWISE leave get cursor ENDSELECT;
+  check  .
+
+set cursor:
+  replace (cursor pos, 2, x-4); replace (cursor pos, 3, y);
+  replace (cursor pos, 5, x+4); replace (cursor pos, 6, y);
+  replace (cursor pos, 8, x);   replace (cursor pos, 9, y-4);
+  replace (cursor pos,11, x);   replace (cursor pos,12, y+4);
+  out (cursor pos);
+
+  replace (cursor line, 5, x);  replace (cursor line, 6, y);
+  out (cursor line)  .
+
+leave get cursor:
+  out (act pen);
+  pos.x MOVE pos.y;
+
+  LEAVE get cursor  .
+
+check :
+  IF x < 0
+  THEN x := 0;
+       out (""9""7""16"")
+  ELIF x > 511
+  THEN x := 511;
+       out (""9""7""16"")
+  FI; 
+  IF y < 0
+  THEN y := 0;
+       out (""9""7""16"")
+  ELIF y > 255
+  THEN y := 255;
+       out (""9""7""16"")
+  FI  .
+
+END PROC get cursor;
+
+PROC cursor on (INT CONST x, y):
+  out ("P"2""); 
+  replace (cursor pos, 2, x-4); replace (cursor pos, 3, y);
+  replace (cursor pos, 5, x+4); replace (cursor pos, 6, y);
+  replace (cursor pos, 8, x);   replace (cursor pos, 9, y-4);
+  replace (cursor pos,11, x);   replace (cursor pos,12, y+4);
+  out (cursor pos)
+
+END PROC cursor on;
+
+PROC cursor off:
+  out ("P"2"");
+  out (cursor pos);
+  out (act pen);
+  pos.x MOVE pos.y
+END PROC cursor off;
+
+(* Bildwiederholspeicheraufbau der M20:                                  *)
+(* 32 Bl”cke (0...31) enthalten jeweils 8 Microzeilen. Die Bitbelegung   *)
+(* eines Blocks von 256 INT ist 7654321FEDCBA98.                         *)
+
+PROC get screen (DATASPACE VAR ds, INT CONST page):
+  INT VAR i, n, begin :: 32*page;
+  FOR i FROM 0 UPTO 31
+  REP block in (ds, begin+i, -1, i, n) PER
+END PROC get screen;
+
+PROC put screen (DATASPACE CONST ds, INT CONST page):
+  INT VAR i, n, begin :: 32*page;
+  FOR i FROM 0 UPTO 31
+  REP block out (ds, begin+i, -1, i, n) PER
+END PROC put screen;
+
+TEXT VAR conv :: ""0""0"";
+TEXT PROC intern (INT CONST n):
+   replace (conv, 1, n);
+   conv
+END PROC intern;
+
+TEXT VAR vektor :: ""0""0""0""0"";
+OP MOVE (INT CONST x, y):
+  replace (vektor, 1, x);
+  replace (vektor, 2, y);
+
+  out ("M");
+  out (vektor)
+END OP MOVE;
+
+OP DRAW (INT CONST x, y):
+  replace (vektor, 1, x);
+  replace (vektor, 2, y);
+
+  out ("D");
+  out (vektor)
+END OP DRAW;
+
+PROC pos cursor (INT CONST x, y):
+  cursor ((x-10) DIV 6, (237-y) DIV 10)
+END PROC pos cursor;
+
+END PACKET m20 plot
+
+IF exists ("ZEICHEN 6*10")
+THEN zeichensatz ("ZEICHEN 6*10")
+ELIF exists ("ZEICHEN 9*12")
+THEN zeichensatz ("ZEICHEN 9*12")
+ELSE put line ("Warnung: Zeichensatz fehlt") FI

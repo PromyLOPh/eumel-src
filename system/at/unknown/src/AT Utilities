@@ -1,0 +1,601 @@
+(*************************************************************************)
+(*** AT-spezifische Software, die zum Lesen der Hardwareuhr und        ***)
+(*** Booten in anderen Partitionen ben杯igt wird.                      ***)
+(***                                                                   ***)
+(*** Zusammengestellt und ge�ndert : Werner Sauerwein, GMD             ***)
+(***                         Stand : 17.07.86                          ***)
+(*************************************************************************)
+
+PACKET splitting DEFINES  low byte,     (* Copyright (C) 1985       *)
+                          high byte,    (* Martin Sch馬beck, Spenge *)
+                          low word,     (* Stand: 13.09.85          *)
+                          high word: 
+ 
+INT PROC high byte (INT CONST value):
+ 
+    TEXT VAR x := "  ";
+    replace (x, 1, value);
+    code (x SUB 2)
+
+END PROC high byte;
+
+INT PROC low byte (INT CONST value):
+ 
+    TEXT VAR x := "  ";
+    replace (x, 1, value);
+    code (x SUB 1)
+
+END PROC low byte; 
+ 
+INT PROC high word (REAL CONST double precission int):
+
+    int (double precission int / 65536.0)
+
+END PROC high word;
+
+INT PROC low word (REAL CONST double precission int): 
+ 
+    string of low bytes ISUB 1.
+
+string of low bytes:
+    code (int (double precission int MOD 256.0)) +
+    code (int ((double precission int MOD 65536.0) / 256.0)). 
+ 
+END PROC low word; 
+END PACKET splitting;
+
+PACKET basic block io DEFINES
+ 
+  read block,
+  write block:
+
+PROC read block (DATASPACE VAR ds,
+                 INT CONST ds page no, 
+                 INT CONST block no,
+                 INT VAR return code):
+  read block; 
+  retry if read error.
+ 
+read block: 
+  block in (ds, ds page no, 0, block no, return code).
+ 
+retry if read error: 
+  INT VAR retry;
+  FOR retry FROM 1 UPTO 10 WHILE return code = 2 REP 
+    reset to block 0 if fifth try; 
+    read block 
+  PER. 
+ 
+reset to block 0 if fifth try: 
+  IF retry = 5 
+    THEN block in (ds, ds page no, 0, 0, return code) 
+  FI. 
+ 
+END PROC read block;
+ 
+PROC write block (DATASPACE CONST ds,
+                 INT CONST ds page no, 
+                 INT CONST block no,
+                 INT VAR return code):
+  write block; 
+  retry if write error. 
+ 
+write block: 
+  block out (ds, ds page no, 0, block no, return code).
+ 
+retry if write error: 
+  INT VAR retry;
+  FOR retry FROM 1 UPTO 10 WHILE return code = 2 REP 
+    reset to block 0 if fifth try; 
+    write block 
+  PER. 
+ 
+reset to block 0 if fifth try: 
+  IF retry = 5 
+    THEN disable stop;
+         DATASPACE VAR dummy ds := nilspace;
+         block in (dummy ds, 2, 0, 0, return code);
+         forget (dummy ds);
+         enable stop
+  FI. 
+ 
+END PROC write block; 
+
+PROC read block (DATASPACE VAR ds, INT CONST ds page,
+                 REAL CONST archive block):
+
+   enable stop;
+   read block (ds, ds page, archive block, error);
+   INT VAR error;
+   SELECT error OF
+      CASE 0:
+      CASE 1: error stop ("Platte kann nicht gelesen werden");
+      CASE 2: error stop ("Lesefehler bei Block "+ text (archive block));
+      CASE 3: error stop ("Versorgungsfehler Archiv");
+      OTHERWISE error stop ("unbekannter Fehler auf Platte");
+   END SELECT;
+
+END PROC read block;
+
+PROC write block (DATASPACE CONST ds, INT CONST ds page,
+                  REAL CONST archive block):
+
+   enable stop;
+   write block (ds, ds page, archive block, error);
+   INT VAR error;
+   SELECT error OF
+      CASE 0:
+      CASE 1: error stop ("Platte kann nicht geschrieben werden");
+      CASE 2: error stop ("Schreibfehler bei Block "+ text (archive block));
+      CASE 3: error stop ("Versorgungsfehler Archiv");
+      OTHERWISE error stop ("unbekannter Fehler auf Platte");
+   END SELECT;
+
+END PROC write block;
+
+PROC read block (DATASPACE VAR ds,
+                 INT CONST ds page no, 
+                 REAL CONST block no,
+                 INT VAR return code):
+  read block; 
+  retry if read error.
+ 
+read block: 
+  block in (ds, ds page no, high word (block no),
+                             low word (block no), return code).
+ 
+retry if read error: 
+  INT VAR retry;
+  FOR retry FROM 1 UPTO 10 WHILE return code = 2 REP 
+    reset to block 0 if fifth try; 
+    read block 
+  PER. 
+ 
+reset to block 0 if fifth try: 
+  IF retry = 5 
+    THEN block in (ds, ds page no, 0, 0, return code) 
+  FI. 
+ 
+END PROC read block;
+ 
+PROC write block (DATASPACE CONST ds,
+                 INT CONST ds page no, 
+                 REAL CONST block no,
+                 INT VAR return code):
+  write block; 
+  retry if write error. 
+ 
+write block: 
+  block out (ds, ds page no, high word (block no),
+                              low word (block no), return code).
+ 
+retry if write error: 
+  INT VAR retry;
+  FOR retry FROM 1 UPTO 10 WHILE return code = 2 REP 
+    reset to block 0 if fifth try; 
+    write block 
+  PER. 
+ 
+reset to block 0 if fifth try: 
+  IF retry = 5 
+    THEN disable stop;
+         DATASPACE VAR dummy ds := nilspace;
+         block in (dummy ds, 2, 0, 0, return code);
+         forget (dummy ds);
+         enable stop
+  FI. 
+ 
+END PROC write block; 
+END PACKET basic block io;
+
+(**************************************************************************)
+
+PACKET part DEFINES activate :             (* Copyright (C) 1985       *)
+                                           (* Martin Sch馬beck, Spenge *)
+                                           (* Stand      : 02.02.86    *)
+                                           (* Changed by : W.Sauerwein *)
+                                           (* Stand      : 04.07.86    *)
+    LET fd channel           = 28;
+
+ROW 256 INT VAR boot block;
+INT VAR boot block session := session - 1;
+
+PROC get boot block:
+ 
+    IF boot block session <> session
+       THEN hole aktuellen boot block
+    FI.
+
+hole aktuellen boot block:
+    disable stop;
+    DATASPACE VAR dummy ds := nilspace;
+    BOUND STRUCT (ALIGN dummy, 
+                  ROW 256 INT block) VAR partition table := dummy ds; 
+    get external block (dummy ds, 2, 0, fd channel); 
+    IF NOT is error
+        THEN transfer data to boot block
+    FI; 
+    forget (dummy ds). 
+ 
+transfer data to boot block:
+    IF not valid boot block
+        THEN try to get valid boot block from file
+    FI;
+    boot block := partition table. block;
+    boot block session := session.
+
+not valid boot block:
+    partition table. block [256] <> boot indicator OR
+    it is an old boot block of eumel.
+
+boot indicator: -21931.
+
+it is an old boot block of eumel:
+    partition table. block [1] = 1514.
+
+try to get valid boot block from file:
+    forget (dummy ds);
+    partition table := old ("bootblock");
+    IF is error THEN LEAVE transfer data to boot block FI.
+ 
+END PROC get boot block;
+
+PROC put boot block:
+ 
+    IF boot block ist uptodate
+        THEN schreibe block auf platte
+        ELSE errorstop ("boot block nicht uptodate")
+    FI.
+
+boot block ist uptodate:
+    boot block session = session.
+
+schreibe block auf platte:
+    disable stop;
+    DATASPACE VAR dummy ds := nilspace;
+    BOUND STRUCT (ALIGN dummy, 
+                  ROW 256 INT block) VAR partition table := dummy ds; 
+    transfer data to dataspace;
+    put external block (dummy ds, 2, 0, fd channel); 
+    forget (dummy ds). 
+ 
+transfer data to dataspace:
+    partition table. block := boot block.
+
+END PROC put boot block;
+
+INT PROC partition type (INT CONST partition):
+
+    low byte (boot block [entry (partition) + 2])
+
+END PROC partition type;
+
+PROC activate (INT CONST part type):
+
+    IF partition type exists AND is possible type
+         THEN deactivate all partitions and
+              activate desired partition
+         ELSE errorstop ("Gew］schte Partitionart gibt es nicht")
+    FI.
+
+is possible type:
+   part type > 0 AND
+   part type < 256.
+
+partition type exists:
+    INT VAR partition;
+    FOR partition FROM 1 UPTO 4 REP
+         IF partition type (partition) = part type 
+             THEN LEAVE partition type exists WITH TRUE
+         FI;
+    PER;
+    FALSE.
+
+deactivate all partitions and activate desired partition:
+    FOR partition FROM 1 UPTO 4 REP
+         deactivate this partition;
+         IF partition type (partition) = part type
+              THEN activate partition
+         FI
+    PER;
+    put boot block.
+
+deactivate this partition:
+    set bit (boot block [entry (partition)], 7);
+    (* first setting needed, because reset bit does xor *)
+    reset bit (boot block [entry (partition)], 7).
+
+activate partition:
+    set bit (boot block [entry (partition)], 7)
+
+END PROC activate;
+
+INT PROC entry (INT CONST partition):
+
+    get boot block;
+    256 - 5 * 8 + (partition * 8)
+
+END PROC entry;
+
+PROC get external block (DATASPACE VAR ds, INT CONST ds page,
+                                             archive block, get channel):
+
+   INT VAR old channel := channel; 
+   continue (get channel);
+   disable stop;
+   read block (ds, ds page, archive block, error);
+   INT VAR error;
+   SELECT error OF
+      CASE 0:
+      CASE 1: error stop ("Platte kann nicht gelesen werden");
+      CASE 2: error stop ("Lesefehler bei Block "+ text (archive block));
+      CASE 3: error stop ("Versorgungsfehler Archiv");
+      OTHERWISE error stop ("unbekannter Fehler auf Platte");
+   END SELECT;
+   continue (old channel).
+
+END PROC get external block;
+
+PROC put external block (DATASPACE CONST ds, INT CONST ds page,
+                                             archive block, get channel):
+
+   INT VAR old channel := channel; 
+   continue (get channel);
+   disable stop;
+   write block (ds, ds page, archive block, error);
+   INT VAR error;
+   SELECT error OF
+      CASE 0:
+      CASE 1: error stop ("Platte kann nicht geschrieben werden");
+      CASE 2: error stop ("Schreibfehler bei Block "+ text (archive block));
+      CASE 3: error stop ("Versorgungsfehler Archiv");
+      OTHERWISE error stop ("unbekannter Fehler auf Platte");
+   END SELECT;
+   continue (old channel).
+
+END PROC put external block;
+END PACKET part;
+ 
+(**************************************************************************)
+
+PACKET hw clock DEFINES hw clock:        (* Copyright (C) 1985       *)
+                                         (* Martin Sch馬beck, Spenge *)
+LET clock length  = 7,                   (* Stand: 06.11.85          *)
+    clock command = 4;
+
+BOUND STRUCT (ALIGN dummy,
+              ROW clock length INT clock field) VAR clock data;
+
+REAL PROC hw clock:
+ 
+    disable stop;
+    get clock;
+    hw date + hw time.
+
+get clock:
+    DATASPACE VAR ds := nilspace;
+    clock data := ds;
+    INT VAR return code, actual channel := channel;
+    go to shard channel;
+    blockin (ds, 2, -clock command, 0, return code);
+    IF actual channel = 0 THEN break (quiet)
+                          ELSE continue (actual channel)
+    FI;
+    IF return code <> 0 
+        THEN errorstop ("Keine Hardware Uhr vorhanden");
+    FI;
+    put clock into text;
+    forget (ds).
+
+put clock into text:
+    TEXT VAR clock text := clock length * "  ";
+    INT VAR i;
+    FOR i FROM 1 UPTO clock length REP
+         replace (clock text, i, clock data. clock field [i]);
+    PER.
+
+go to shard channel:
+    INT VAR retry;
+    FOR retry FROM 1 UPTO 20 REP
+        continue (32);
+        IF is error
+            THEN clear error;
+                 pause (30)
+        FI;
+    UNTIL channel = 32 PER.
+
+hw date:
+    date (day + "." + month + "." + year).
+
+day:    subtext (clock text, 7, 8).
+
+month:  subtext (clock text, 5, 6).
+
+year:   subtext (clock text, 1, 4).
+
+hw time:
+    time (hour + ":" + minute + ":" + second).
+
+hour:   subtext (clock text, 9, 10).
+
+minute: subtext (clock text, 11, 12).
+
+second: subtext (clock text, 13, 14).
+
+END PROC hw clock;
+END PACKET hw clock
+
+(**************************************************************************)
+
+PACKET old shutup DEFINES old shutup,       (* Copyright (C) 1985       *)
+                          old save system:  (* Martin Sch馬beck, Spenge *)
+                                            (* Stand: 06.11.85          *)
+PROC old shutup : shutup END PROC old shutup;
+
+PROC old save system : save system END PROC old save system;
+END PACKET old shutup;
+
+PACKET new shutup DEFINES shutup,
+                          ms dos,
+                          save system,
+                          generate ms dos manager,
+                          generate shutup manager:
+
+LET ack = 0;
+
+PROC shutup:
+ 
+    system down (PROC old shutup)
+
+END PROC shutup;
+
+PROC shutup (INT CONST new system):
+ 
+    IF new system <> 0
+         THEN prepare for new system
+    FI;
+    system down (PROC old shutup).
+
+prepare for new system:
+    activate (new system);
+    prepare for rebooting.
+
+prepare for rebooting:
+    INT VAR old channel := channel;
+    continue (32);
+    INT VAR dummy;
+    control (-5, 0, 0, dummy);
+    break (quiet);
+    continue (old channel).
+
+END PROC shutup;
+
+PROC ms dos:
+
+    shutup (1)
+
+END PROC ms dos;
+
+PROC save system:
+ 
+    IF yes ("Leere Floppy eingelegt")
+       THEN system down (PROC old save system)
+    FI
+
+END PROC save system;
+
+PROC system down (PROC operation):
+
+   BOOL VAR dialogue :: command dialogue;
+   command dialogue (FALSE);
+   operation;
+   command dialogue (dialogue);
+   IF command dialogue
+      THEN wait for configurator;
+           show date;
+   FI.
+
+show date:
+   page;
+   line (2); 
+   put ("      Heute ist der"); putline (date);
+   put ("      Es ist"); put (time of day); putline ("Uhr");
+   line (2).
+
+END PROC system down;
+
+DATASPACE VAR ds := nilspace;
+
+PROC wait for configurator:
+
+   INT VAR i, receipt;
+   FOR i FROM 1 UPTO 20 WHILE configurator exists REP
+      pause (30);
+      forget (ds);
+      ds := nilspace;
+      ping pong (configurator, ack, ds, receipt)
+   UNTIL receipt >= 0 PER.
+
+configurator exists:
+   disable stop;
+   TASK VAR configurator := task ("configurator");
+   clear error;
+   NOT is niltask (configurator).
+
+END PROC wait for configurator;
+
+PROC generate shutup manager:
+ 
+     generate shutup manager ("shutup", 0);
+
+END PROC generate shutup manager;
+
+PROC generate ms dos manager:
+ 
+     generate shutup manager ("ms dos", 1);
+
+END PROC generate ms dos manager;
+
+PROC generate shutup manager (TEXT CONST name, INT CONST new system):
+ 
+     TASK VAR son;
+     shutup question := name;
+     new system for manager := new system;
+     begin (name, PROC shutup manager, son)
+
+END PROC generate shutup manager;
+
+INT VAR new system for manager;
+TEXT VAR shutup question;
+
+PROC shutup manager:
+
+     disable stop;
+     command dialogue (TRUE);
+     REP 
+        break;
+        line ;
+        IF yes (shutup question)
+            THEN clear error;
+                 shutup (new system for manager);
+                 pause (300);
+        FI;
+     PER
+
+END PROC shutup manager;
+END PACKET new shutup
+
+(**************************************************************************)
+
+PACKET config manager with time DEFINES configuration manager ,
+                                        configuration manager with time :
+                                      (* Copyright (C) 1985       *)
+INT VAR old session := 0;             (* Martin Sch馬beck, Spenge *)
+                                      (* Stand: 06.11.85          *)
+PROC configuration manager: 
+ 
+   configurate;
+   break;
+   global manager (PROC (DATASPACE VAR, INT CONST, INT CONST, TASK CONST) 
+                      configuration manager with time) 
+ 
+END PROC configuration manager; 
+ 
+PROC configuration manager with time (DATASPACE VAR ds, INT CONST order, 
+                                      phase, TASK CONST order task): 
+ 
+    IF old session <> session
+      THEN
+        disable stop;
+        set clock (hw clock); 
+        set clock (hw clock); (* twice, to avoid all paging delay *) 
+        IF is error THEN IF online THEN put error; clear error; pause (100)
+                                   ELSE errorstop (error message)
+        FI FI;
+        old session := session;
+        set autonom;
+    FI; 
+    configuration manager (ds, order, phase, order task); 
+
+END PROC configuration manager with time; 
+END PACKET config manager with time;

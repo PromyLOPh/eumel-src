@@ -1,0 +1,144 @@
+(* Uebertragungsparameter fuer Kanal 2 und 3 (SCC) setzen *) 
+(* Vers. 1.2 : 'setup'-Prozedur / 03.02.86, M.Staubermann *) 
+ 
+PACKET scc DEFINES baudrate, 
+                   setup ,
+ 
+                   channel a, 
+                   channel b, 
+                   no parity, 
+                   even parity, 
+                   odd parity, 
+ 
+                   read port, 
+                   write port, 
+                   register, 
+                   quartz :
+ 
+BOOL CONSTchannel a   :: TRUE , 
+          channel b   :: FALSE ; 
+INT CONST no parity   :: 0, 
+          even parity :: 3, 
+          odd parity  :: 1; 
+ 
+REAL VAR clk frequency := 12288000.0 ; (* Oszillatorfrequenz *) 
+LET offset        = 0 ; 
+ 
+PROC quartz (REAL CONST wert) : 
+ clk frequency := wert 
+ENDPROC quartz ; 
+ 
+REAL PROC quartz : 
+ clk frequency 
+ENDPROC quartz ; 
+ 
+PROC setup (BOOL CONST channel, INT CONST parity, 
+            REAL CONST stopbits, INT CONST bits, 
+            BOOL CONST dtr, rts, auto dtr, auto cts) :
+ 
+(* Parameter mÅssen zusammen gesetzt werden, da die Register keine 
+   Read-Register sind. Alte Werte mÅssen ausserhalb des SCC's gespeichert 
+   werden. *) 
+ 
+ INT VAR value := 64 ; 
+ value INCR parity value ; 
+ value INCR stopbit value ; 
+ 
+ register (channel, 3, 0) ; 
+ register (channel, 5, 32 * bits value) ;
+ register (channel,14, 2) ; 
+ 
+ register (channel, 4, value) ; 
+ register (channel, 5, 8 + dtr value + rts value + 32 * bits value) ;
+ register (channel,14, 3 + auto dtr value) ;
+ register (channel, 3, 1 + 64 * bits value + auto cts value) .
+ 
+bits value : 
+ IF bits <= 5 THEN 0 
+ ELIF bits >= 8 THEN 3 
+ ELIF bits = 6 THEN 2 
+ ELSE 1
+ FI .
+ 
+parity value : 
+ IF parity >= 0 AND parity <= 3 THEN parity ELSE 0 FI . 
+ 
+stopbit value : 
+ IF stopbits = 1.0 THEN 4 
+ ELIF stopbits = 1.5 THEN 8 
+ ELIF stopbits = 2.0 THEN 12 
+ ELSE 4 
+ FI . 
+ 
+dtr value : 
+ IF dtr THEN 128 ELSE 0 FI . 
+ 
+rts value : 
+ IF rts THEN 2 ELSE 0 FI . 
+ 
+auto cts value :
+ IF auto cts THEN 32 ELSE 0 FI . 
+ 
+auto dtr value : 
+ IF auto dtr THEN 4 ELSE 0 FI . 
+ 
+ENDPROC setup ;
+ 
+PROC baudrate (BOOL CONST channel, REAL CONST rate) :
+ INT CONST time constant :: int (clk frequency / (64.0 * rate) + 0.5) - 2 ;
+ register (channel, 13, time constant DIV 256) ; 
+ register (channel, 12, time constant AND 255)
+ENDPROC baudrate ; 
+ 
+REAL PROC baudrate (BOOL CONST channel) : 
+ INT CONST time constant :: 
+     register (channel, 12) + 256 * register (channel, 13) ;
+ round (clk frequency / (real (time constant + 2) * 64.0), 1)
+ENDPROC baudrate ; 
+ 
+ 
+(*********************************************************************) 
+(********* S C C    -     Z u g r i f f s p r o z e d u r e n ********)
+(*********************************************************************) 
+ 
+ 
+INT PROC read port (INT CONST port) : 
+ INT VAR value ; 
+ control (-1, offset + port, -1, value) ; 
+ IF value = -1 THEN errorstop ("SCC - Read failed") ; 0 
+ ELSE value 
+FI . 
+ 
+ENDPROC read port ;
+ 
+PROC write port (INT CONST port, value) : 
+ INT VAR rcode, my channel := channel ; 
+ continue (32) ; 
+ control (-1, offset + port, value, r code) ; 
+ continue (my channel) ; 
+ IF r code = -1 THEN errorstop ("SCC - Write failed") FI 
+ENDPROC write port ; 
+ 
+INT PROC register (BOOL CONST is channel a, INT CONST register x) : 
+ INT VAR value ; 
+ IF is channel a 
+    THEN write port (1, registerx) ; 
+         read port (1) 
+    ELSE write port (0, registerx) ; 
+         read port (0) 
+ FI 
+ENDPROC register ; 
+ 
+ 
+PROC register (BOOL CONST is channel a, INT CONST register x, wert): 
+ IF is channel a 
+    THEN write port (1, register x) ;
+         write port (1, wert) 
+    ELSE write port (0, register x) ;
+         write port (0, wert)
+ FI 
+ENDPROC register ; 
+ 
+ENDPACKET scc ; 
+ 
+

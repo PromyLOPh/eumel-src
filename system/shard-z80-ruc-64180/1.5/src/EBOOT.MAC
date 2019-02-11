@@ -1,0 +1,339 @@
+	TITLE	EBOOT - Eumel Bootstrap Schreibprogramm
+;
+;****************************************************************
+;
+;	E B O O T
+;
+;	Version 1.3 - 29.12.1986
+;
+;	Copyright (C) 1985 by R. Ellerbrake
+;
+;****************************************************************
+;
+	INCLUDE	HD64180.LIB
+;
+	.LIST
+;
+BDOS	EQU	5
+EUMEL	EQU	6		;Volume Directory Typ
+BOTLNG	EQU	3FH		; Nicht 40H
+BOTPA1	EQU	10H
+BOTPA2	EQU	10H
+DEFFCB	EQU	5CH
+;
+	EXTERNAL INITS, HDIO, FDIO, SCSIIO
+	GLOBAL	EBOOT
+;
+	CSEG
+;
+;****************************************************************
+;
+;	Meldungen
+;
+STARTUP:
+	DEFB	0DH, 0AH
+	DEFM	'**** E U M E L  Harddisk Bootstrap Installationsprogramm ****'
+	DEFB	0DH, 0AH
+	DEFM	'   Version 1.3 - 29.12.1986 - (C) by R. Ellerbrake (RUC)$'
+;
+NOBOOT:
+	DEFB	0DH, 0AH, 7
+	DEFM	'Datei EUMEL.COM nicht gefunden, leer oder fehlerhaft!$'
+; 
+ERRSTR:
+	DEFB	0DH, 0AH, 7
+	DEFM	'Harddisk E/A Fehler: '
+ERRNR:	DEFM	'00$'
+;
+ENDMSG:
+	DEFB	0DH, 0AH, 7
+	DEFM	'Kein (weiteres) EUMEL Volume vorhanden!$'
+;
+QSTR:
+	DEFB	0DH, 0AH
+	DEFM	'EUMEL Bootstrap Lader auf Harddisk Volume '
+QSTRN:
+	DEFM	'                $'
+;
+LSTR:
+	DEFB	' installieren (J/N): $'
+;
+ILLSTR:
+	DEFB	0DH, 0AH, 7
+	DEFM	'Unzulaessige Eingabe !!!$'
+;
+RDYSTR:
+	DEFB	0DH, 0AH
+	DEFM	'EUMEL Bootstraplader erfolgreich installiert.$'
+;
+;****************************************************************
+;
+EBOOT::
+	LD	SP,STACK
+;
+	LD	DE,STARTUP
+	LD	C,9
+	CALL	BDOS
+;
+	LD	A,(DEFFCB)
+	LD	DE,EUMELFI
+	LD	(DE),A		;ggf. Drive aus Kommandozeile verwenden
+	LD	C,15		;Open File
+	CALL	BDOS
+	INC	A		;Fehler ?
+	JR	NZ,FIOK		;Nein ->
+;
+ILLFI:
+	LD	DE,NOBOOT	;Bootstrap Lader Datei nicht gefunden
+	LD	C,9
+	CALL	BDOS
+	JP	0
+;
+FIOK:
+	LD	A,(EUMELFI+16)	;1. BLock vorhanden ?
+	AND	A
+	JR	Z,ILLFI		;Nein -> Fehler
+;
+	CALL	INITS
+	CALL	INITS
+;
+;	Warten bis Harddisk hochgelaufen ist
+;
+WRTHRD:
+	LD	DE,TESTRD
+	LD	BC,0
+	CALL	SCSIIO
+	CP	4		;Drive not Ready ?
+	JR	Z,WRTHRD	;Ja -> warten
+;
+	LD	HL,DATAR
+	LD	BC,PARBLK
+	LD	A,0		;Superdirectory lesen
+	LD	DE,0
+	CALL	HDIO
+	AND	A
+	JR	Z,SDOK
+;
+HDIOER:
+	LD	DE,ERRNR	; Fehlernummer in A
+	CALL	HEX1
+	LD	DE,ERRSTR
+	LD	C,9
+	CALL	BDOS
+	JP	0
+
+HEX1:
+	PUSH	AF
+	RRCA
+	RRCA
+	RRCA
+	RRCA
+	CALL	HEX2
+	POP	AF
+HEX2:
+	AND	0FH
+	CP	0AH
+	JR	C,HEX3
+	ADD	7
+HEX3:
+	ADD	30H
+	LD	(DE),A
+	INC	DE
+	RET
+;
+;	64180 Bootvolume mit EUMEL Kennung suchen
+;
+SDOK:
+	LD	HL,DATAR
+	LD	E,(HL)		;Byte 0 = Anfangsoffset
+	LD	D,0		;DE = Volume Eintrag Laenge
+	ADD	HL,DE
+	LD	A,(DATAR+20H)	;Volume Anzahl
+	LD	B,A
+;
+SRCLOP:
+	PUSH	HL
+	POP	IX
+	LD	A,(IX+23H)	;Directory Typ
+	CP	EUMEL		;EUMEL Diretory ?
+	JR	Z,ISEDIR	;Ja ->
+;
+NXVOL:
+	ADD	HL,DE
+	DJNZ	SRCLOP
+;
+;	Alle Volumes durchsucht
+;
+	LD	DE,ENDMSG
+	LD	C,9
+	CALL	BDOS
+	JP	0
+;
+;	EUMEL Volume gefunden
+;
+ISEDIR:
+	PUSH	HL
+	PUSH	DE
+	PUSH	BC
+	PUSH	IX
+	LD	B,0
+	LD	C,(IX+10H)	;Laenge des Volumenamens
+	LD	DE,11H
+	ADD	HL,DE		;auf Volumename
+	LD	DE,QSTRN
+	LDIR
+	LD	A,'$'
+	LD	(DE),A		;Stringende eintragen
+;
+	LD	DE,QSTR
+	LD	C,9
+	CALL	BDOS		;anfragen
+	LD	DE,LSTR
+	LD	C,9
+	CALL	BDOS
+;
+	LD	C,1		;1 Zeichen einlesen
+	CALL	BDOS
+	AND	05FH
+;
+	CP	'Y'		;Ja ->
+	JR	Z,PUTBOT
+;
+	CP	'J'		;Ja ->
+	JR	Z,PUTBOT
+;
+	CP	'N'		;Nein ->
+	JR	Z,NOBOT
+;
+;	Falsche Eingabe: nochmal anfragen
+;
+	LD	DE,ILLSTR
+	LD	C,9
+	CALL	BDOS
+;
+	POP	IX
+	POP	BC
+	POP	DE
+	POP	HL
+	JR	ISEDIR
+;
+NOBOT:
+	POP	IX
+	POP	BC
+	POP	DE
+	POP	HL
+	JR	NXVOL
+;
+;	Bootstrap installieren
+;
+
+PUTBOT:
+	XOR	A
+	LD	HL,BOTBUF
+	LD	(HL),A
+	LD	DE,BOTBUF+1
+	LD	B,BOTLNG
+	LD	C,0
+	LDIR			; Bereich loeschen
+
+	LD	HL,BOTBUF	;EUMEL Bootstrap Datei einlesen
+	LD	B,BOTLNG*2	;max. Recordanzahl
+	LD	DE,EUMELFI
+;
+RDLOP:
+	PUSH	BC
+	PUSH	DE
+	LD	C,26
+	EX	DE,HL
+	PUSH	DE
+	CALL	BDOS		;DMA-Adresse setzen
+	POP	HL
+	LD	DE,128		;und hochzaehlen
+	ADD	HL,DE
+	POP	DE
+	PUSH	HL
+	PUSH	DE
+	LD	C,20		;Read sequential
+	CALL	BDOS		;Record lesen
+	POP	DE
+	POP	HL
+	POP	BC
+	CP	1
+	JR	Z,READY
+	DJNZ	RDLOP		;Nicht fertig ->
+;
+;	Bootstrap Lader im Speicher
+;
+READY:
+	POP	IX
+	POP	BC
+	POP	DE
+	POP	HL
+
+	LD	(HL),40H	;EUMEL Bootkennung eintragen
+	LD	(IX+20H),BOTPA1	;EUMEL Bootparameter eintragen
+	LD	(IX+21H),BOTPA2
+	LD	(IX+22H),BOTLNG
+	INC	HL
+	PUSH	HL		;Bootvolume
+;
+	LD	HL,DATAR
+	LD	BC,PARBLK
+	LD	A,1		;Superdirectory schreiben
+	LD	DE,0
+	CALL	HDIO
+;
+;	Bootstrap Lader schreiben
+;
+	LD	HL,BOTBUF	;Datenbereich
+	LD	DE,0		;Blocknummer
+;
+WRLOP:
+	POP	BC
+	PUSH	BC
+	PUSH	DE
+	PUSH	HL
+	LD	A,1
+	CALL	HDIO
+;
+	JP	NZ,HDIOER
+;
+	POP	HL
+	LD	DE,512		;Adresse hochzaehlen
+	ADD	HL,DE
+	POP	DE
+	INC	DE
+	LD	A,E
+	CP	BOTLNG/2	;fertig ?
+	JR	NZ,WRLOP	;Nein ->
+;
+	POP	BC
+	LD	DE,RDYSTR
+	LD	C,9
+	CALL	BDOS
+	JP	0
+;
+;****************************************************************
+;
+EUMELFI:
+	DEFB	0		;auf Default Drive
+	DEFM	'EUMEL   COM'
+	DEFB	0,0,0,0,0
+	DEFB	0,0,0,0,0,0,0,0
+	DEFB	0,0,0,0,0,0,0,0,0
+;
+PARBLK:
+	DEFB	0,0,2,0
+;
+TESTRD:
+	DEFB	0,0,0,0,0,0	;Test Ready
+;
+	DEFS	200
+STACK:	DEFW	0
+;
+DATAR:	DEFS	512
+;
+BOTBUF:
+;
+	END
+

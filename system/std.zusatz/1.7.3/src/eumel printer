@@ -1,0 +1,369 @@
+PACKET eumel printer DEFINES 
+(***************************************************************************
+*****  EUMEL - DRUCKER                      ** Author: A. Reichpietch     **
+*****                                       **         R. Nolting         **
+*****                                       ** Date:   30.09.81 Vers. 0   **
+*****                                       **         15.03.82 Vers. 1.0 **
+*****                                       **         22.07.82 Vers. 1.1 **
+*****                                       **         01.10.82 Vers. 1.2 **
+***** reelle Werte fuer limit etc.          **         15.01.83 Vers. 2.0 **
+***** direkte Druckerkommandos (Hardware)   **         15.08.83 Vers. 2.1 **
+*****                                       **         15.12.83 Vers. 2.2 **
+***** alle Zeilen-/Spaltenprocs entfernt    **         9.1.84   Vers. 2.3 **
+***** neue 'print text' prozedur            **         04.03.84 Vers. 2.4 **
+***************************************************************************)
+ 
+              print, 
+              reset print,
+              print line, 
+              pages printed,
+
+              is elan source , (* dummy Prozeduren , koennen von  *)
+              elan list :      (* 'elan lister' ueberdeckt werden *)
+ 
+
+LET blank = " " ,
+    backspace = ""8"" ,
+    begin mark underline = ""15"" ,
+    end mark underline = ""14"" ;
+LET paragraph end = " ";
+TEXT VAR inline := blank, 
+         outline := blank, 
+         type := blank, 
+         command char,
+         help := blank; 
+TEXT VAR command, 
+         par 1, par 2,
+         skip end text;
+REAL VAR  y position, y step, y max, y factor;
+INT VAR pagenr, from, to; 
+INT VAR printed pages;
+BOOL VAR not skipped, lines to be skipped,
+         first text line, end of paragraph,
+         linefeed needed;
+LET std pagelength = 25.4;
+
+INT VAR print mode set := left adj, collumn print possible;
+LET left adj=       0;
+LET right adj=      1;
+LET centre adj=     2;
+LET block line=     3;
+LET left col=       4;
+LET right col=      5;
+LET centre col=     6;
+LET block col=      7;
+LET collumn print = 4;
+ 
+
+PROC print (FILE VAR f):
+  enable stop;
+  reset printer; 
+  reset print;
+  print (f, from, to);
+END PROC print;
+ 
+PROC print (FILE VAR f, INT CONST first page, last page): 
+  enable stop;
+  from := first page; 
+  to := last page; 
+  IF from > 1 THEN not skipped := FALSE FI; 
+  WHILE (NOT eof(f)) AND (pagenr <= to)  REP 
+     getline (f, inline);
+     print input line;
+     ENDREP;
+  start(0.0, 0.0); make page;
+ENDPROC print; 
+
+PROC reset print:
+     first text line := TRUE;
+     not skipped := TRUE; 
+     lines to be skipped := FALSE;
+     command char := "#"; 
+     print mode set := left adj;
+     end of paragraph := TRUE;
+     inline := ""; 
+     y max := stdpagelength ;
+     y position := 10000.0;
+     y step := lf height of current font;
+     y factor := 1.0; 
+     pagenr := 0; 
+     from := 1; to := maxint;
+     printed pages := -1; (* move to top of first page will set to 0 *)
+ENDPROC reset print;
+ 
+INT PROC pages printed: 
+  printed pages 
+END PROC pages printed; 
+ 
+PROC print line (TEXT CONST in): 
+  inline := in;
+  print input line;
+END PROC print line;
+ 
+PROC print input line:
+(* debug   out ("print line:"); out (in); out (""10""13"");    debug *)
+INT VAR compos;
+INT VAR endpos := 0, tpos := 1;
+IF lines to be skipped
+     THEN IF pos (inline, skip end text) > 1 AND (inline SUB 1) = command char
+             THEN lines to be skipped := FALSE
+             FI;
+             LEAVE print input line
+     FI;
+  linefeed needed := FALSE;
+IF end of paragraph
+   THEN collumn print possible := collumn print
+   ELSE collumn print possible := 0
+   FI;
+compos := LENGTH inline;
+IF (inline SUB compos) = paragraph end
+   THEN end of paragraph := TRUE;
+        inline := subtext (inline, 1, compos -1)
+   ELSE end of paragraph := FALSE;
+   FI;
+  compos := pos (inline, command char);
+  IF compos <= 0
+     THEN print the line (inline);
+          new line;
+          LEAVE print input line
+     FI;
+  outline := "";
+  extract commands from input;
+  IF outline <> ""
+     THEN print the line (outline); new line 
+  ELIF linefeed needed 
+     THEN new line FI;
+.
+extract commands from input:
+WHILE compos > 0 REP
+  outline CAT subtext (inline, tpos, compos-1);
+  endpos := pos ( inline, command char, compos +1);
+  IF endpos <= compos
+     THEN endpos := compos - 1;
+          compos := 0
+     ELSE command := subtext ( inline, compos +1, endpos -1); 
+          analyze command ( command); 
+          tpos := endpos +1;
+          compos := pos(inline, command char, tpos);
+     FI;
+  PER;
+outline CAT subtext (inline, endpos + 1);
+
+ENDPROC print input line; 
+
+ 
+TEXT VAR comlist:="ub:1.0ue:2.0type:4.1linefeed:5.1limit:6.1free:7.1page:8.01
+pagenr:9.2pagelength:10.1start:11.2foot:12.0end:13.0head:15.0headeven:16.0
+headodd:17.0bottom:19.0bottomeven:20.0bottomodd:21.0"
+LET com list 2 =
+"on:22.1off:23.1block:24.0left:25.0right:26.0centre:27.0center:28.0material:31.1papersize:32.2print:33.2"; 
+comlist CAT comlist 2;
+ 
+PROC analyze command (TEXT CONST command): 
+(* debug   out ("analyze command:"); out (command); out (""10""13"");    debug *)
+IF pos (command, "-") = 1
+     THEN LEAVE analyze command
+     ELIF pos (command, "/") = 1 
+          THEN help := subtext (command, 2);
+               print line so far;
+               printer cmd (help);
+               LEAVE analyze command
+     FI;
+INT VAR comindex := -1, number := 0; 
+   par 1 := ""; par 2 := ""; 
+   disable stop;
+   analyze command ( com list, command, 3, comindex, number, par 1, par 2); 
+   IF is error
+      THEN clear error 
+      ELSE select command 
+      FI; 
+   enable stop;
+.
+select command : 
+ SELECT comindex OF 
+        CASE 1  :       print line so far; on ("u");
+        CASE 2  :       print line so far; off ("u");
+        CASE 4  :       print line so far; set type (par 1)
+        CASE 5  :       set linefeed ( par 1) 
+        CASE 6  :       set limit (par 1) 
+        CASE 7  :       print line so far; free (par 1)
+        CASE 8  :       print line so far; make page
+        CASE 9  :
+        CASE 10 :       set pagelength  (par 1)
+        CASE 11 :       set start (par 1, par 2)
+        CASE 12 :       (* skip text ("end") *)
+        CASE 15,16,17 : (* skip text ("end") *)
+        CASE 19,20,21 : (* skip text ("end") *)
+        CASE 22 :       print line so far; on (par1) 
+        CASE 23 :       print line so far; off (par1) 
+        CASE 24 :       print line so far; print mode set := block line;
+        CASE 25 :       print line so far; print mode set := left adj;
+        CASE 26 :       print line so far; print mode set := right adj
+        CASE 27 :       print line so far; print mode set := centre adj
+        CASE 28 :       comindex := print mode set MOD 4;
+                        IF comindex = block line
+                           THEN inline CAT "#block#"
+                        ELIF comindex = left adj
+                           THEN inline CAT "#left#"
+                        ELIF comindex = right adj
+                           THEN inline CAT "#right#"
+                        FI;
+                        print mode set := centre adj;
+(* the following commands must appear before any text *)
+        CASE 31 :       IF first text line THEN material (par1) FI
+        CASE 32 :       IF first text line THEN do papersize (par1, par2) FI
+        CASE 33 :       IF first text line THEN print from page till page (par1, par2) FI
+        OTHERWISE 
+       END SELECT ; 
+.
+print line so far:
+  IF outline <> ""
+     THEN print the line (outline);
+          outline := "";
+          linefeed needed := TRUE
+     FI;
+ 
+ENDPROC analyze command; 
+ 
+PROC do papersize (TEXT CONST s, t):
+REAL VAR w, l;
+     IF ok (par1, w) AND ok (par2, l) 
+          THEN papersize (w, l)
+     FI;
+END PROC do papersize;
+ 
+PROC print from page till page(TEXT VAR s, t):
+INT VAR i, j;
+  IF ok (par1, i) AND ok (par2, j)
+     THEN from := i;
+          to := j;
+     FI;
+END PROC print from page till page; 
+ 
+PROC set type (TEXT CONST new type): 
+  change type (new type);
+  y step := lf height of current font;
+ENDPROC set type; 
+ 
+PROC make page : 
+  IF y position > 0.0 CAND NOT first text line
+     THEN y position := y max + 1.0; new line
+     FI; 
+  end of paragraph := TRUE;
+  inline := "";  (* this stops further processing of the input line *)
+ENDPROC make page; 
+ 
+PROC skip text (TEXT CONST endword):
+  lines to be skipped := TRUE;
+  skip end text := endword;
+  inline := ""; (* possible rest of the line is not examined *)
+END PROC skip text;
+ 
+PROC set linefeed ( TEXT CONST lf): 
+REAL VAR l:= real (lf); 
+   IF last conversion ok THEN y factor := l FI;
+ENDPROC set linefeed; 
+ 
+PROC set limit ( TEXT CONST l): 
+  REAL VAR len;
+  IF ok (l, len) 
+     THEN limit (len) 
+     FI;
+ENDPROC set limit; 
+ 
+BOOL PROC ok ( TEXT CONST param, INT VAR number): 
+    number := int (param) ; 
+    last conversion ok 
+ENDPROC ok; 
+ 
+BOOL PROC ok ( TEXT CONST param, REAL VAR number): 
+    number := real (param) ; 
+    last conversion ok 
+ENDPROC ok; 
+ 
+PROC set pagelength (TEXT CONST y): 
+REAL VAR iy ; 
+  IF ok (y, iy )
+     THEN y max := iy;
+FI; 
+ENDPROC set pagelength; 
+ 
+PROC set start (TEXT CONST x, y): 
+REAL VAR rx, ry;
+  IF ok (x, rx) AND ok (y, ry) 
+     THEN start (rx, ry)
+     FI; 
+ENDPROC set start; 
+ 
+PROC free (TEXT CONST p): 
+REAL VAR x, y := y factor;
+  IF ok (p, x)
+     THEN advance 
+     FI; 
+y factor := y;
+end of paragraph := TRUE;
+  inline := "";  (* this stops further processing of the input line *)
+. 
+advance:
+  y factor := x / y step;
+  IF outline <> ""
+     THEN print the line (outline);
+          outline := ""
+     FI;
+  IF first text line
+     THEN new line FI;
+new line;
+END PROC free; 
+ 
+PROC print the line ( TEXT CONST in): 
+(* debug   out ("print the line:"); out (in); out (print mode set);
+out (""10""13"");  debug *)
+IF first text line
+     THEN first text line := FALSE; new line FI;
+IF not skipped
+   THEN IF print mode set = blockline
+           THEN IF end of paragraph
+                   THEN print text (in, left adj + collumn print possible)
+                   ELSE print text (in, blockline + collumn print possible)
+                   FI
+           ELSE print text (in, print mode set + collumn print possible)
+           FI
+   FI;
+ENDPROC print the line; 
+ 
+PROC new line: 
+(* debug   out ("new line: lf=");  out (text(yfactor)); out (""10""13"");    debug *)
+IF page is full 
+     THEN pagenr INCR 1; 
+          IF not skipped 
+             THEN printed pages INCR 1;
+                  new page
+                  FI;
+             check printmodes; 
+             y position := 0.0
+     ELSE IF not skipped
+             THEN line (y factor) 
+             FI;
+          y position INCR yfactor * y step 
+     FI; 
+ENDPROC new line; 
+ 
+PROC check printmodes: 
+   not skipped := ( pagenr >=  from) AND ( pagenr <= to);
+ENDPROC check printmodes; 
+ 
+BOOL PROC page is full: 
+     y position + yfactor * y step > y max
+ENDPROC page is full; 
+ 
+(********** dummys ************)
+
+BOOL PROC is elan source (FILE VAR source) :
+  FALSE
+ENDPROC is elan source ;
+ 
+PROC elan list (FILE VAR source) :
+  print (source)
+ENDPROC elan list ;
+
+ENDPACKET eumel printer;

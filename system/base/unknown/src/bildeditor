@@ -1,0 +1,722 @@
+ 
+PACKET  b i l d e d i t o r  DEFINES              (* Autor: P.Heyderhoff   *)
+        (*****************)                       (* Stand: 06.02.82       *)
+                                                  (* Vers.: 1.6.0          *)
+        bildeditor,                               (* test des bildeditors, *)
+        schreiberlaubnis,
+        zeile unveraendert,
+        feldanfangsmarke,
+        bildmarksatz,
+        bildeinfuegen,
+        bildneu,
+        bildzeile,
+        bildmarke,
+        bildstelle,
+        bildlaenge,
+        bildmaxlaenge,
+        bildsatz,
+        bildrand :
+ 
+ 
+LET anker = 2, freianker = 1, satzmax = 4075,
+    DATEI = ROW satzmax STRUCT (INT nachfolger, vorgaenger, index,
+                                fortsetzung, TEXT inhalt);
+ 
+INT VAR stelle   :: anker, marke  :: 0, satz   :: 1, zeile :: 1,
+        zeilen :: 0, maxlaenge :: 23, laenge :: maxlaenge, rand :: 0,
+        marksatz :: 0, alte feldstelle :: 1, alte feldmarke :: 0;
+ 
+TEXT VAR kommando :: "", teil :: "", zeichen :: "";
+ 
+BOOL VAR neu :: TRUE, zeileneu :: TRUE, ueberschriftneu :: FALSE,
+         einfuegen :: FALSE, schreiben erlaubt :: TRUE; 
+ 
+LET hop mark rubout up down cr          = ""1""16""12""3""10""13"",
+    hop cr mark down up right rubin     = ""1""13""16""10""3""2""11"",
+    hop rubin rubout down up cr tab esc = ""1""11""12""10""3""13""9""27"",
+    blank = " ", hop = ""1"", clear eop = ""4"", clear eol = ""5"",
+    left = ""8"", right = ""2"", up = ""3"", down = ""10"", bell = ""7"",
+    tab = ""9"", cr = ""13"", escape = ""27"", begin mark = ""15"",
+    end mark = ""14"", hoechstes steuerzeichen = ""31"", escape q = ""27"q",
+    rubin = ""11"", mark = ""16"", down clear eol = ""10""5"";
+ 
+(******************  z u g r i f f s p r o z e d u r e n  ******************)
+ 
+BOOL PROC schreiberlaubnis :
+  schreiben erlaubt
+END PROC schreiberlaubnis;
+ 
+PROC schreiberlaubnis (BOOL CONST b) :
+  schreiben erlaubt := b
+END PROC schreiberlaubnis;
+ 
+BOOL PROC bildneu :
+  neu
+END PROC bildneu;
+ 
+PROC bildneu (BOOL CONST b) :
+  neu := b
+END PROC bildneu;
+ 
+PROC bildeinfuegen (BOOL CONST b):
+  einfuegen := b
+END PROC bildeinfuegen;
+ 
+INT PROC bildmarke :
+  marke
+END PROC bildmarke;
+ 
+PROC bildmarke (INT CONST i) :
+  marke := i
+END PROC bildmarke;
+ 
+INT PROC feldanfangsmarke :
+  alte feldmarke
+END PROC feldanfangsmarke;
+ 
+PROC feldanfangsmarke (INT CONST i) :
+  alte feldmarke := i
+END PROC feldanfangsmarke;
+ 
+INT PROC bildstelle :
+  stelle
+END PROC bildstelle;
+ 
+PROC bildstelle (INT CONST i) :
+  stelle := i
+END PROC bildstelle;
+ 
+INT PROC bildmarksatz :
+  marksatz
+END PROC bildmarksatz;
+ 
+PROC bildmarksatz (INT CONST i) :
+  marksatz := i
+END PROC bildmarksatz;
+ 
+INT PROC bildsatz :
+  satz
+END PROC bildsatz;
+ 
+PROC bildsatz (INT CONST i) :
+  satz := i
+END PROC bildsatz;
+ 
+INT PROC bildzeile :
+  zeile
+END PROC bildzeile;
+ 
+PROC bildzeile (INT CONST i) :
+  zeile := min (i, laenge)
+END PROC bildzeile;
+ 
+INT PROC bildlaenge :
+  laenge
+END PROC bildlaenge;
+ 
+PROC bildlaenge (INT CONST i) :
+  laenge := i
+END PROC bildlaenge;
+ 
+PROC bildmaxlaenge (INT CONST i) : 
+  maxlaenge := i 
+END PROC bildmaxlaenge; 
+ 
+INT PROC bildrand :
+  rand
+END PROC bildrand;
+ 
+PROC bildrand (INT CONST i) :
+  rand := i
+END PROC bildrand;
+ 
+INT PROC max (INT CONST a, b) :
+  IF a > b THEN a ELSE b FI
+END PROC max;
+ 
+PROC zeile unveraendert :
+  zeileneu := FALSE
+END PROC zeile unveraendert;
+ 
+ 
+(**************************  b i l d e d i t o r  **************************)
+ 
+PROC bildeditor (DATEI VAR datei) :
+ 
+     INTERNAL 293 ; 
+ 
+  INT  VAR j;
+ 
+  kommando := feldkommando;
+  IF   neu
+  THEN bild ausgeben (datei) 
+  ELIF zeileneu
+  THEN satz ausgeben (datei); ueberschriftneu := TRUE 
+  ELSE feldposition; zeileneu := TRUE
+  FI;
+  REPEAT
+    IF   neu             THEN bild ausgeben (datei) 
+    ELIF ueberschriftneu THEN ueberschrift  (datei) 
+    FI ;
+    IF   stelle = anker
+         THEN IF   schreiben erlaubt
+              THEN satz erzeugen (datei, stelle); (* gestrichen z:=z *)
+                   satz ausgeben (datei)
+              ELSE feldkommando (escape q); out(bell); LEAVE bildeditor 
+              FI
+    FI ;
+    feldbearbeitung; 
+    IF   zeichen <> escape THEN kommandoausfuehrung FI
+  UNTIL  zeichen =  escape
+  END REPEAT; 
+  feldkommando (kommando) .
+ 
+feldbearbeitung :
+  feldkommando (kommando); 
+  IF   schreiben erlaubt
+  THEN feldeditor (inhalt); kommando := feldkommando
+  ELSE teil := inhalt; feldeditor (teil);
+       IF   teil <> inhalt
+       THEN kommando := escape q; kommando CAT teil
+       ELSE kommando := feldkommando
+       FI
+  FI;
+  zeichen := kommando SUB 1;
+  feldnachbehandlung .
+ 
+ 
+feldnachbehandlung :
+  IF   inhalt = ""
+  THEN IF   schreiben erlaubt
+       THEN IF   zeichen > hoechstes steuerzeichen
+            THEN inhalt   := subtext (kommando, 1, feldlimit);
+                 kommando := subtext (kommando, feldlimit+1);
+                 feldout (inhalt); zeichen := cr
+  FI   FI   FI . 
+ 
+kommandoausfuehrung :
+  delete char (kommando, 1);
+  IF   marke > 0
+  THEN bildmarkeditor (datei) 
+  ELSE 
+    SELECT pos (hop cr mark down up right rubin, zeichen) OF
+    CASE 1: 
+      zeichen := kommando SUB 1; delete char (kommando, 1);
+      SELECT pos (hop rubin rubout down up cr tab esc, zeichen) OF
+      CASE 1: oben links
+      CASE 2: IF   schreiben erlaubt
+              THEN zeilen einfuegen  ELSE out (bell) FI
+      CASE 3: IF   schreiben erlaubt
+              THEN zeile ausfuegen   ELSE out (bell) FI
+      CASE 4: weiterblaettern
+      CASE 5: zurueckblaettern
+      CASE 6: neue seite
+      CASE 7: ueberschriftneu := TRUE
+      CASE 8: lernmodus umschalten
+      OTHERWISE zeichen := ""; out (bell)
+      END SELECT
+    CASE 2: neue zeile
+    CASE 3: markieren beginnen
+    CASE 4: naechster satz
+    CASE 5: vorgaenger (datei)
+    CASE 6: feldposition (feldanfang); naechster satz
+    CASE 7: ueberschriftneu := TRUE;
+    OTHERWISE
+      IF   zeichen > hoechstes steuerzeichen
+      THEN IF schreiben erlaubt THEN ueberlauf FI
+      ELSE insert char (kommando, zeichen, 1);
+           insert char (kommando, escape,  1)
+      FI
+    END SELECT
+  FI . 
+ 
+oben links :
+  ueberschriftneu := TRUE;
+  WHILE zeile > 1 REP vorgaenger (datei) PER;
+  feldposition (feldanfang) .
+ 
+zeile ausfuegen : 
+  IF   feldstelle = 1
+  THEN satz loeschen (datei); 
+       IF   stelle = anker THEN vorgaenger (datei) FI
+  ELSE zeilen rekombinieren
+  FI .
+ 
+zeilen einfuegen :
+  ueberschriftneu := TRUE;
+  IF   einfuegen 
+  THEN einfuegen := FALSE;
+       IF inhalt = ""     THEN satz loeschen (datei) FI;
+       IF zeilen < laenge THEN bild ausgeben (datei) FI 
+  ELSE einfuegen := TRUE; 
+       IF   logischer satzanfang
+       THEN satz erzeugen (datei, stelle);
+            IF zeilen >= zeile THEN bildrest loeschen FI;
+            zeilen := zeile; satz ausgeben (datei)
+       ELSE IF   feldstelle <= LENGTH inhalt
+            THEN zeile auftrennen
+            FI;
+            IF   zeile < zeilen 
+            THEN nachfolger (datei); bildrest loeschen; 
+                 vorgaenger (datei); zeilen := zeile
+            FI ; feldposition
+       FI
+  FI .
+ 
+logischer satzanfang :
+  FOR j FROM feldanfang UPTO feldstelle - 1
+  REP IF   (inhalt SUB j) = "" 
+      THEN LEAVE logischer satzanfang WITH TRUE
+      ELIF (inhalt SUB j) <> " "
+      THEN LEAVE logischer satzanfang WITH FALSE
+      FI
+  END REP; TRUE . 
+ 
+zeilen rekombinieren :
+  IF   eof (datei) THEN
+  ELSE inhalt CAT (feldstelle-1-LENGTH inhalt) * " ";
+       inhalt CAT datei (datei (stelle).nachfolger).inhalt;
+       stelle := datei (stelle).nachfolger;
+       satz loeschen (datei, stelle); 
+       stelle := datei (stelle).vorgaenger;
+       bildausgeben (datei)
+  FI .
+ 
+zeile auftrennen :
+  marke  := stelle; (feldende-feldstelle+1) TIMESOUT " "; 
+  stelle := datei (stelle).nachfolger;
+  satz erzeugen (datei, stelle);
+  inhalt := subtext (datei (datei (stelle).vorgaenger).inhalt, feldstelle);
+  stelle := marke; marke := 0; 
+  inhalt := subtext (inhalt, 1, feldstelle-1) .
+ 
+weiterblaettern :
+  ueberschriftneu := TRUE;
+  IF   eof (datei)
+  THEN out (bell)
+  ELSE IF   zeile = laenge
+       THEN nachfolger (datei); zeile := 1; bild ausgeben (datei)
+       ELIF einfuegen
+       THEN IF zeile = zeilen THEN bild ausgeben (datei) FI
+       FI;
+       WHILE zeile < zeilen AND stelle <> anker 
+       REP nachfolger (datei) END REP;
+       IF   stelle = anker
+       THEN vorgaenger (datei) 
+  FI   FI .
+ 
+zurueckblaettern :
+  ueberschriftneu := TRUE;
+  IF   satz > 1
+  THEN IF   zeile = 1
+       THEN vorgaenger (datei); zeile := laenge
+       FI;
+       WHILE zeile > 1 AND satz > 1
+       REP vorgaenger (datei) PER;
+       zeile := 1
+  FI .
+ 
+ueberlauf :
+  insert char (kommando, zeichen, 1);
+  feldposition (feldanfang); feld einruecken (inhalt); nachfolger (datei);
+  satz erzeugen (datei, stelle); 
+  inhalt := ""0"" ;                    (* 12.01.81 *)
+  IF   zeile <= zeilen OR neu
+  THEN bild ausgeben (datei) ELSE satz ausgeben (datei)
+  FI ;
+  inhalt := "" .
+ 
+lernmodus umschalten :
+  feldlernmodus (NOT feldlernmodus);
+  ueberschriftneu := TRUE; 
+  IF   feldlernmodus 
+  THEN feldaudit (""); zeichen := ""
+  ELSE insert char (kommando, escape, 1);
+       insert char (kommando, hop, 1)
+  FI.
+ 
+neue seite :
+  feldstelle (feldanfang); zeile := 1; neu := TRUE . 
+ 
+neue zeile : 
+  BOOL VAR wirklich einfuegen := einfuegen;
+  IF   feldstelle > LENGTH inhalt OR feldstelle >= feldende
+  THEN feldposition (feldanfang); feld einruecken (inhalt); nachfolger(datei)
+  ELIF einfuegen AND logischer satzanfang
+  THEN feldposition (feldanfang); feldeinruecken (inhalt)
+  ELSE feldposition (feldanfang); nachfolger (datei);
+       wirklich einfuegen := FALSE
+  FI;
+  IF   stelle = anker THEN
+  ELIF wirklich einfuegen
+  THEN satz erzeugen (datei, stelle);
+       IF   zeile <= zeilen OR neu
+       THEN bild ausgeben (datei)
+       ELSE satz ausgeben (datei)
+       FI
+  ELIF neu THEN
+  ELSE IF   zeile > zeilen
+       THEN satz ausgeben (datei)
+       FI;
+       FOR j FROM feldanfang UPTO min (feldstelle, LENGTH inhalt)
+       REP  IF   (inhalt SUB j) <> blank
+            THEN feldposition (j); LEAVE neue zeile FI 
+       PER 
+  FI . 
+ 
+naechster satz :
+  nachfolger (datei);
+  IF   neu 
+  THEN IF   stelle = anker
+       THEN IF   datei (datei (stelle).vorgaenger).inhalt = ""
+            THEN stelle := datei (stelle).vorgaenger; satz DECR 1;
+                 neu := FALSE
+       FI   FI
+  ELIF zeile <= zeilen THEN
+  ELIF stelle = anker  THEN
+  ELSE satz ausgeben (datei)
+  FI .
+ 
+markieren beginnen :
+  IF   feldstelle <= min (LENGTH inhalt, feldende)
+  THEN feldmarke (feldstelle); marke := stelle; 
+       marksatz := satz; satz ausgeben (datei);
+       alte feldmarke := feldmarke
+  ELSE out (bell)
+  FI .
+ 
+inhalt :
+  datei (stelle).inhalt .
+ 
+END PROC bildeditor;
+ 
+ 
+(********************  b i l d - m a r k e d i t o r  **********************)
+ 
+PROC bildmarkeditor (DATEI VAR datei) :
+  INT  VAR j, k;
+ 
+  IF   zeichen  = right OR zeichen = tab
+  THEN zeichen := down;
+       feldposition (feldanfang)
+  FI;
+  SELECT pos (hop mark rubout up down cr, zeichen) OF
+    CASE 1: zeichen := kommando SUB 1; delete char (kommando, 1);
+            IF   zeichen = up
+            THEN rueckblaetternd demarkieren
+            ELIF zeichen = down
+            THEN weiterblaetternd markieren
+            ELSE out (bell)
+            FI;
+            zeichen := ""
+    CASE 2: markieren beenden
+    CASE 3: IF schreiben erlaubt
+            THEN markiertes loeschen
+            ELSE out (bell)
+            FI
+    CASE 4: zeile demarkieren
+    CASE 5,6: zeile markieren
+    OTHERWISE insert char (kommando, zeichen, 1);
+              insert char (kommando, escape,  1)
+  END SELECT;
+  IF   marke > 0
+  THEN IF   stelle = marke
+       THEN feldmarke (alte feldmarke)
+       ELSE feldmarke (feldanfang)
+       FI
+  FI .
+ 
+markieren beenden :
+  feldmarke (0); alte feldmarke := 0; 
+  IF   marke = stelle
+  THEN satz ausgeben (datei); ueberschriftneu := TRUE; 
+       marke := 0;
+  ELSE marke := 0; neu := TRUE
+  FI .
+ 
+markiertes loeschen :
+  IF   stelle = marke
+  THEN satzausschnitt loeschen
+  ELSE letzten satz bis stelle loeschen;
+       ersten satz ab marke loeschen;
+       alle zwischensaetze loeschen;
+       IF   zeile <= 1 
+       THEN zeile := 1
+       FI;
+       feldstelle (feldanfang); feldmarke (0);
+       alte feldmarke := 0; marke := 0; neu := TRUE 
+  FI . 
+ 
+satzausschnitt loeschen :
+  inhalt := subtext (inhalt, 1, feldmarke-1) + subtext (inhalt, feldstelle);
+  feldstelle (feldmarke); feldmarke (0); marke := 0; 
+  IF   inhalt = ""
+  THEN satz loeschen (datei)
+  ELSE satz ausgeben (datei)
+  FI .
+ 
+letzten satz bis stelle loeschen :
+  IF   feldstelle > LENGTH inhalt
+  THEN satz loeschen (datei, stelle)
+  ELIF feldstelle > feldanfang
+  THEN inhalt := subtext (inhalt, feldstelle)
+  FI .
+ 
+ersten satz ab marke loeschen :
+  INT CONST altstelle := stelle;
+  stelle := marke;
+  IF   alte feldmarke = 1
+  THEN satz loeschen (datei, stelle);
+       satz DECR 1; zeile DECR 1
+  ELSE IF   alte feldmarke <= LENGTH inhalt
+       THEN inhalt := text (inhalt, alte feldmarke-1)
+       FI;
+       stelle := datei (stelle).nachfolger
+  FI .
+ 
+alle zwischensaetze loeschen :
+  WHILE stelle <> altstelle
+  REP satzloeschen (datei, stelle);
+      satz DECR 1; zeile DECR 1
+  PER .
+ 
+zeile markieren : 
+  IF   zeichen = cr
+  THEN feldstelle (feldanfang)
+  FI;
+  IF   eof (datei) 
+  THEN feldstelle (feldende)
+  ELSE nachfolger (datei)
+  FI;
+  markierung justieren (datei);
+  satz ausgeben (datei) . 
+ 
+zeile demarkieren :
+  IF   stelle = marke
+  THEN out (bell); LEAVE zeile demarkieren
+  FI;
+  feldmarke (0); satz ausgeben (datei);
+  vorgaenger (datei);
+  markierung justieren (datei);
+  satz ausgeben (datei) .
+ 
+weiterblaetternd markieren :
+  IF zeile >= laenge THEN zeile := 0 FI; out (hop); 
+  WHILE NOT eof (datei)
+  REP nachfolger (datei) UNTIL zeile = laenge PER;
+  IF   eof (datei)
+  THEN feldstelle (feldende); 
+  FI;
+  neu := TRUE .
+ 
+rueckblaetternd demarkieren :
+  IF   stelle = marke
+  THEN out (bell); LEAVE rueckblaetternd demarkieren
+  FI;
+  FOR j FROM 1 UPTO laenge 
+  WHILE stelle <> marke
+  REP vorgaenger (datei) PER;
+  neu := TRUE .
+ 
+inhalt :
+  datei (stelle).inhalt .
+ 
+END PROC bildmarkeditor;
+ 
+PROC markierung justieren (DATEI CONST datei) :
+  IF   feldstelle > LENGTH inhalt
+  THEN feldstelle (min (feldende, LENGTH inhalt) + 1)
+  FI;
+  IF   stelle =  marke
+  THEN feldmarke (alte feldmarke);
+       IF   feldstelle < feldmarke
+       THEN feldstelle (feldmarke)
+       FI
+  ELSE feldmarke (feldanfang)
+  FI .
+ 
+inhalt :
+  datei (stelle).inhalt .
+ 
+END PROC markierung justieren;
+ 
+PROC vorgaenger (DATEI VAR datei) :
+  IF   eof (datei) 
+  THEN IF   inhalt = "" THEN satz loeschen (datei)
+  FI   FI ; 
+  stelle := datei (stelle).vorgaenger; satz DECR 1;
+  IF   stelle = anker
+  THEN out (bell); stelle := datei (anker).nachfolger;
+       satz := 1; zeile := 1
+  ELIF zeile > 1
+  THEN out (up); zeile DECR 1
+  ELSE neu := TRUE
+  FI .
+ 
+inhalt :
+  datei (stelle).inhalt .
+ 
+END PROC vorgaenger;
+ 
+PROC nachfolger (DATEI CONST datei) :
+  stelle := datei (stelle).nachfolger; satz INCR 1; zeile INCR 1;
+  IF   zeile <= laenge 
+  THEN out (down) 
+  ELIF laenge <> maxlaenge 
+  THEN neu := TRUE ; zeile := laenge
+  FI 
+END PROC nachfolger;
+ 
+PROC  bild ausgeben (DATEI VAR datei) :
+ 
+  IF marke > 0 THEN markierung justieren (datei) FI;
+  alte feldstelle := feldstelle; feldstelle (feldende+1);
+  INT VAR altstelle :: stelle, altsatz  :: satz,
+          altzeile  :: zeile,  altmarke :: feldmarke;
+  ueberschrift (datei); 
+  IF   marke > 0 OR neu
+  THEN zurueck zur ersten zeile;
+       cursor (1, rand+2) FI; 
+  IF   (rand+laenge) = maxlaenge THEN out (clear eop) FI;
+  WHILE zeile <= laenge AND stelle <> anker
+  REP zeile schreiben PER; 
+  feldstelle (alte feldstelle);
+  feldmarke (altmarke);
+  zeilen := zeile - 1;
+  IF   zeile > laenge 
+  THEN zeile := laenge; feldposition
+  ELSE bildrest loeschen
+  FI;
+  (zeile - altzeile) TIMESOUT up;
+  zeile := altzeile; satz := altsatz; stelle := altstelle;
+  neu   := FALSE .
+ 
+zurueck zur ersten zeile :
+  IF   eof (datei) 
+  THEN WHILE inhalt = "" AND datei(stelle).vorgaenger <> anker
+       REP vorgaenger (datei) END REP;
+       altstelle := stelle; altsatz := satz; altzeile := zeile;
+  FI;
+  WHILE zeile > 1 AND datei (stelle).vorgaenger <> anker
+  REP IF   stelle = marke
+      THEN feldmarke (0)
+      FI;
+      vorgaenger (datei)
+  PER;
+  altzeile DECR (zeile-1); zeile := 1 .
+ 
+inhalt :
+  datei (stelle).inhalt .
+ 
+zeile schreiben :
+   IF stelle = marke     THEN feldmarke  (alte feldmarke)  FI;
+   IF stelle = altstelle THEN feldstelle (alte feldstelle) FI;
+   feldout (inhalt);
+   IF   stelle = altstelle
+   THEN feldmarke (0)
+   ELIF feldmarke > feldanfang
+   THEN feldmarke (feldanfang)
+   FI;
+   zeile INCR 1;
+   IF   zeile <= laenge
+   THEN stelle := datei (stelle).nachfolger;
+        satz INCR 1; out (down)
+   FI .
+ 
+END PROC bild ausgeben;
+ 
+PROC ueberschrift (DATEI CONST datei) : 
+  cursor (feldrand+1, rand+1); out(begin mark);
+  INT CONST punkte :: 
+  (feldende-feldanfang-13-length(datei(anker).inhalt)) DIV 2;
+  punkte TIMESOUT "."; out (" ", datei(anker).inhalt, " .");
+  cursor (feldrand+3, rand+1);
+  IF   feldeinfuegen
+  THEN out ("RUBIN"2""2"")
+  ELSE out (""2""2""2""2""2""2""2"") FI;
+  IF   einfuegen
+  THEN out ("INS")
+  ELSE out (""2""2""2"") FI;
+  IF   feldlernmodus THEN out ("..LEARN.") FI;
+  cursor (feldrand+feldende-feldanfang-9-punkte, rand+1);
+  punkte TIMESOUT ".";
+  out (" zeile     ", end mark, "  ");
+  cursor (feldrand+feldende-feldanfang-2, rand+1) ;
+  IF   satz <= zeile THEN out("1")
+  ELSE out (text (satz-zeile+1))  FI;
+  cursor (feldrand+2, rand+1);
+  feldtab (tabulator);
+  outsubtext (tabulator, feldanfang+1, min (feldende, LENGTH tabulator));
+  cursor (1, rand+zeile+1); feldposition;
+  ueberschriftneu := FALSE 
+ 
+END PROC ueberschrift;
+ 
+TEXT VAR tabulator;
+ 
+PROC satz ausgeben (DATEI VAR datei) : 
+  IF   zeile > laenge
+  THEN roll up
+  ELIF zeile > zeilen
+  THEN zeilen INCR 1
+  FI;
+  feldout (datei (stelle).inhalt); feldposition .
+roll up :
+  out (down); cursor (1, rand + zeile); zeile DECR 1 .
+END PROC satz ausgeben;
+ 
+PROC satz loeschen (DATEI VAR datei) :
+  satz loeschen (datei, stelle); zeilen DECR 1;
+  IF   zeile > zeilen
+  THEN bildrest loeschen;
+       IF stelle <> anker THEN satz ausgeben (datei) FI
+  ELSE bild ausgeben (datei)
+  FI
+END PROC satz loeschen;
+ 
+PROC bildrest loeschen :
+  out (cr); feldrand TIMESOUT right;
+  IF   (rand+laenge) = maxlaenge
+  THEN out (clear eop)
+  ELSE out (up);
+       (laenge-zeile+1) TIMESOUT (down clear eol);
+       (laenge-zeile)   TIMESOUT up
+  FI;
+  feldposition
+END PROC bildrest loeschen;
+ 
+BOOL PROC eof (DATEI CONST datei) :
+  datei (stelle).nachfolger = anker
+END PROC eof;
+ 
+(*************************** schrott *************************************)
+ 
+PROC satz erzeugen (DATEI VAR datei, INT VAR satz): 
+  EXTERNAL 291 ;
+END  PROC satz erzeugen; 
+ 
+PROC satz loeschen (DATEI VAR datei, INT VAR satz): 
+  EXTERNAL 292 ;
+END  PROC satz loeschen; 
+ 
+(************************** testprogramm ***********************************)
+(*
+PROC test des bildeditors :
+ 
+  IF   NOT exists ("test")
+  THEN FILE VAR file 1 := sequential file (modify, "test"); close (file 1)
+  FI ;
+  DATASPACE VAR ds := old ("test");
+  BOUND DATEI VAR datei := ds ;
+  feldwortweise (NOT feldwortweise);
+  bildneu (TRUE); bildmarke (0); 
+  bildstelle (CONCR(datei) (anker).nachfolger); bildsatz (1);
+  feldmarke (0); feldseparator (""); feldstelle (1) ;
+  REP b i l d   e d i t o r  (CONCR (datei));
+      out (""7""); feldkommando ("") 
+  UNTIL (feldkommando SUB 1) = ""27""
+  PER;
+ 
+END PROC test des bildeditors;
+*)
+END PACKET bildeditor;

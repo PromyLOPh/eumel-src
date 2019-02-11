@@ -1,0 +1,405 @@
+PACKET incremental plot DEFINES drawing area,       { Autor: H. Indenbirken }
+                                begin plot,         { Stand: 07.09.84       }
+                                end plot, 
+                                clear, 
+                                pen,
+                                move, 
+                                draw, 
+                                get cursor,
+
+                                zeichensatz,
+                                reset:
+ 
+LET max x        = 511,             {***** Bildschirm : 0-511 x 0-255*****}
+    max x plus 1 = 512,
+    max y        = 255,
+ 
+    hor faktor   = 22.21739,        {***** x pixel / x cm *****}
+    vert faktor  = 18.61314,        {***** y pixel / y cm *****}
+
+
+    delete = 0,                         {Farbcodes}
+    std    = 1,
+    black  = 5,
+    white  = 6,
+
+    nothing          = 0,               {Linientypen}
+    durchgehend      = 1, 
+    gepunktet        = 2,
+    kurz gestrichelt = 3,
+    lang gestrichelt = 4,
+    strichpunkt      = 5,
+
+    pen up           = "U",
+    pen down         = "D",
+    up               = "8",                 {Richtungen}
+    up right         = "9",
+    right            = "6",
+    down right       = "3",
+    down             = "2",
+    down left        = "1",
+    left             = "4",
+    up left          = "7";
+
+LET PEN = STRUCT (INT back, fore, thick, line, BOOL hidden);
+LET POS = STRUCT (INT x, y);
+LET ZEICHENSATZ = STRUCT (ROW 255 TEXT char, INT width, height);
+
+ROW max x plus 1 INT VAR akt maxima, last maxima;
+ZEICHENSATZ VAR zeichen;
+PEN VAR stift :: PEN : (black, white, 0, durchgehend, FALSE);
+POS VAR pos :: POS : (0, 0), start, end;
+TEXT VAR point :: "";
+INT VAR i, n, diff, up right error, right error, old error, from, to,
+        pattern pos :: 0, line pattern :: -1;
+BOOL VAR bit set :: TRUE;
+
+reset;
+zeichensatz ("STD Zeichensatz");
+
+PROC reset:
+  FOR i FROM 1 UPTO 512
+  REP last maxima [i] := -1;
+      akt maxima [i] := -1
+  PER
+END PROC reset;
+
+PROC zeichensatz (TEXT CONST name):
+  IF exists (name)
+  THEN BOUND ZEICHENSATZ VAR new zeichen :: old (name);
+       zeichen := new zeichen;
+  ELSE errorstop ("Der Zeichensatz """ + name + """ existiert nicht") FI
+END PROC zeichensatz;
+
+PROC drawing area (REAL VAR x cm, y cm, INT VAR x pixel, y pixel) : 
+   x cm := 23.0;    y cm := 13.7;   {***** Horizontale und vertikale *****}
+                                    {***** Gr”áe in Zentimetern.     *****}
+   x pixel := 511;  y pixel := 255  {***** Koordinaten des rechten   *****}
+                                    {***** oberen Punktes.           *****}
+END PROC drawing area;
+
+PROC begin plot : 
+  {***** Graphikmodus einschalten *****} 
+  out (""16"")
+ENDPROC begin plot ;
+ 
+PROC end plot : 
+  {***** Graphikmodus ausschalten *****} 
+  out (""0"")
+ENDPROC end plot ;
+
+PROC clear :
+  stift := PEN : (black, white, 0, durchgehend, FALSE); 
+  pos := POS : (0, 0);
+  line pattern := -1;
+  pattern pos := 0;
+  point := "";
+ 
+  reset;
+  {***** neue Zeichenfl„che *****}
+  out ("P")
+END PROC clear;
+
+PROC pen (INT CONST background, foreground, thickness, linetype):
+  set background;
+  set foreground;
+  set thickness;
+  set linetype;
+  stift := PEN:(background, foreground, thickness, linetype, thickness<0)  .
+
+set background:
+  {***** Hintergrundfarbe setzen *****}  .
+
+set foreground:
+  {***** Stift ausw„hlen *****}  .
+ 
+set thickness:
+  {***** Es wird ein breiterer Sift simuliert, indem jeder Punkt    *****}
+  {***** dicker gezeichet wird. Mit 'stift.thick' wird angegeben,   *****}
+  {***** aus wieviel Pixeln ein Punkt bestehen soll. In 'point'     *****};
+  {***** stehen die Befehle, um einen dicken Punkt zu zeichnen.     *****}
+  point := "";
+  i := 2;
+  WHILE i <= thickness
+  REP point CAT down left;
+      point CAT (i * right);
+      point CAT (i * up);
+      point CAT (i * left);
+      point CAT (i * down);
+      i INCR 2
+  PER;
+  point CAT (thickness DIV 2) * up right  .
+
+set linetype:
+  {***** Falls das Endger„t hardwarem„áig verschieden Linientypen   *****}
+  {***** besitzt, k”nnen diese hier angesteuert werden. Ansonsten   *****}
+  {***** werden sie softwarem„áig simuliert.                        *****}
+  pattern pos := 0;
+  SELECT linetype OF
+  CASE durchgehend      : line pattern := -1
+  CASE gepunktet        : line pattern := 21845
+  CASE kurz gestrichelt : line pattern := 3855
+  CASE lang gestrichelt : line pattern := 255
+  CASE strichpunkt      : line pattern := 4351
+  OTHERWISE line pattern := linetype END SELECT  .
+
+END PROC pen;
+
+PROC move (INT CONST x, y) :
+  IF stift.hidden
+  THEN last maxima := akt maxima FI;
+
+  {***** Der Stift muss gehoben und ein Vektor zur Position (x,y)   *****}
+  {***** gezeichnet werden.                                         *****} 
+  out (pen up);
+  IF right to left
+  THEN (x-pos.x) TIMESOUT right;
+       IF down to up
+       THEN (y-pos.y) TIMESOUT up
+       ELSE (pos.y-y) TIMESOUT down FI
+  ELSE (pos.x-x) TIMESOUT left;
+       IF down to up
+       THEN (y-pos.y) TIMESOUT up
+       ELSE (pos.y-y) TIMESOUT down FI 
+  FI;
+
+  pos := POS  : (x, y)  .
+
+right to left: x > pos.x  .
+down to up: y > pos.y  .
+
+END PROC move;
+ 
+PROC draw (INT CONST x, y) :
+  {***** Der Stift muss gehoben und ein Vektor zur Position (x,y)   *****}
+  {***** gezeichnet werden.                                         *****}
+  vector (x-pos.x, y-pos.y);
+  pos := POS : (x, y)   .
+
+END PROC draw;
+ 
+PROC vector (INT CONST dx , dy) :
+  IF dx >= 0
+  THEN IF   dy >  dx THEN vector (pos.y, pos.x, dy, dx, 1, 1, up, up right)
+       ELIF dy >   0 THEN vector (pos.x, pos.y, dx, dy, 1, 1, right, up right)
+ 
+       ELIF dy > -dx THEN vector (pos.x, pos.y, dx,-dy, 1,-1, right, down right)
+       ELSE               vector (pos.y, pos.x,-dy, dx,-1, 1, down, down right) FI
+
+  ELSE IF   dy > -dx THEN vector (pos.y, pos.x, dy,-dx, 1,-1, up, up left)
+       ELIF dy >   0 THEN vector (pos.x, pos.y,-dx, dy,-1, 1, left, up left)
+ 
+       ELIF dy >  dx THEN vector (pos.x, pos.y,-dx,-dy,-1,-1, left, down left)
+       ELSE               vector (pos.y, pos.x,-dy,-dx,-1,-1, down, down left) FI
+  FI .
+ 
+ENDPROC vector ;
+ 
+PROC vector (INT VAR x pos, y pos, INT CONST dx, dy, x step, y step,
+             TEXT CONST step right, step up) :
+  prepare first step ;
+  FOR i FROM 1 UPTO dx
+  REP do one step PER  .
+
+prepare first step :
+  up right error := dy - dx;
+  right error := dy;
+  old error := 0;
+  IF visible (pos)
+  THEN out (pen down);
+       out (point)
+  ELSE out (pen up) FI  .
+
+do one step:
+  IF right is better
+    THEN do right step
+    ELSE do up right step
+  FI .
+ 
+right is better :
+  abs (old error + right error) < abs (old error + up right error)  .
+ 
+do upright step :
+  x pos INCR x step;
+  y pos INCR y step;
+  check point;
+  out (step up);
+  out (point);
+  old error INCR upright error .
+ 
+do right step :
+  x pos INCR x step;
+  check point;
+  out (step right);
+  out (point);
+  old error INCR right error .
+ 
+check point :
+  { In Abh„ngigkeit vom Ergebnis der Prozedur 'visible' wird der    *****}
+  { Stift gehoben oder gesenkt.                                     *****}
+
+  IF visible (pos)
+  THEN out (pen down)
+  ELSE out (pen up) FI  .
+
+END PROC vector;
+ 
+BOOL PROC visible (POS CONST pos) :
+  IF pos.x < 0 OR pos.x > max x OR pos.y < 0 OR pos.y > max y
+  THEN FALSE
+  ELSE pattern AND hidden FI  .
+
+pattern:
+  bit set := bit (line pattern, pattern pos);
+  pattern pos := (pattern pos+1) AND 15;
+  bit set  .
+
+hidden:
+  IF akt maxima [pos.x+1] < pos.y 
+  THEN akt maxima [pos.x+1] := pos.y FI; 
+
+  pos.y > last maxima [pos.x+1]  .
+
+END PROC visible;
+
+PROC draw (TEXT CONST record, REAL CONST angle, height, width):
+{**** Hier werden Texte mit dem Winkel 'angle',der H”he 'height' und *****}
+{**** der Breite 'width' gezeichnet. Falls die Hardware dieses       *****}
+{**** bereits erm”glicht, so mssen die Variable 'zeichen' und die   *****}
+{**** Prozedur Zeichensatz gel”scht werden. Der Datenraum            *****}
+{**** 'STD Zeichensatz' wird in diesem Fall nicht ben”tigt.          *****}
+  BOOL CONST horizontal :: NOT (abs (angle) MOD 180.0 > 45.0 AND abs (angle) MOD 180.0 < 135.0);
+  INT CONST x fak :: character width, x step :: character x step,
+            y fak :: character height, y step :: character y step;
+  INT VAR x pos :: pos.x, y pos :: pos.y, i;
+  from := pos;
+ 
+  FOR i FROM 1 UPTO length (record)
+  REP draw character i PER;
+  move (from) .
+
+character width:
+  IF width <> 0.0
+  THEN int (hor faktor * width+0.5)
+  ELSE zeichen.width FI  .
+
+character x step:
+  IF horizontal
+  THEN IF width <> 0.0
+       THEN int (cosd (angle) * hor faktor * width+0.5)
+       ELSE int (cosd (angle) * real (zeichen.width)+0.5) FI
+  ELSE IF width <> 0.0
+       THEN int (cosd (angle) * vert faktor * width+0.5)
+       ELSE int (cosd (angle) * real (zeichen.height)+0.5) FI 
+  FI  .
+
+character height:
+  IF height <> 0.0
+  THEN int (vert faktor * height+0.5)
+  ELSE zeichen.height FI  .
+
+character y step:
+  IF horizontal
+  THEN IF height <> 0.0
+       THEN int (sind (angle) * vert faktor * height+0.5)
+       ELSE int (sind (angle) * real (zeichen.height)+0.5) FI 
+  ELSE IF height <> 0.0
+       THEN int (sind (angle) * hor faktor * height+0.5)
+       ELSE int (sind (angle) * real (zeichen.width)+0.5) FI 
+  FI  .
+
+draw character i:
+  IF code (record SUB i) < 32
+  THEN steuerzeichen
+  ELSE normale zeichen FI  .
+
+steuerzeichen:
+  SELECT code (record SUB i) OF
+  CASE  7: out (""0""7""16"")
+  CASE 13: x pos := pos.x;  y pos := pos.y
+  END SELECT  .
+
+normale zeichen:
+  TEXT CONST char :: zeichen.char [code (record SUB i)];
+  IF horizontal
+  THEN draw horizontal
+  ELSE draw vertical FI  .
+
+draw vertical:
+  n := 3;
+  IF char <> ""
+  THEN move (((char ISUB 2)*y fak) DIV zeichen.height + x pos,
+            -((char ISUB 1)*x fak) DIV zeichen.width + y pos)
+  FI;
+  WHILE n <= length (char) DIV 2
+  REP IF (char ISUB n) < 0 OR (char ISUB n+1) < 0
+      THEN move (((char ISUB n+1)*y fak) DIV zeichen.height + x pos,
+                -((char ISUB n  )*x fak) DIV zeichen.width + y pos) 
+      ELSE draw (-((char ISUB n+1)*y fak) DIV zeichen.height + x pos,
+                  ((char ISUB n  )*x fak) DIV zeichen.width + y pos)
+      FI;
+      n INCR 2
+  PER;
+  x pos INCR x step;
+  y pos INCR y step  .
+
+draw horizontal:
+  n := 3;
+  IF char <> ""
+  THEN move (-((char ISUB 1)*x fak) DIV zeichen.width + x pos,
+             -((char ISUB 2)*y fak) DIV zeichen.height + y pos)
+  FI;
+  WHILE n <= length (char) DIV 2
+  REP IF (char ISUB n) < 0 OR (char ISUB n+1) < 0
+      THEN move (-((char ISUB n  )*x fak) DIV  zeichen.width + x pos,
+                 -((char ISUB n+1)*y fak) DIV zeichen.height + y pos)
+      ELSE draw (((char ISUB n  )*x fak) DIV zeichen.width + x pos,
+                 ((char ISUB n+1)*y fak) DIV zeichen.height + y pos)
+      FI;
+      n INCR 2
+  PER;
+  x pos INCR x step;
+  y pos INCR y step  .
+
+END PROC draw;
+
+PROC draw (TEXT CONST record) :
+  draw (record, 0.0, 0.0, 0.0)
+END PROC draw;
+ 
+PROC get cursor (TEXT VAR t, INT VAR x, y) :
+  x := pos.x;
+  y := pos.y;
+  cursor on;
+  REP inchar (t);
+      SELECT code (t) OF
+      CASE 54: x INCR 1;            out (right)      {normaler Zehnerblock} 
+      CASE 57: x INCR 1; y INCR 1;  out (up right)
+      CASE 56: y INCR 1;            out (up)
+      CASE 55: x DECR 1; y INCR 1;  out (up left)
+      CASE 52: x DECR 1;            out (left)
+      CASE 49: x DECR 1; y DECR 1;  out (down left)
+      CASE 50: y DECR 1;            out (down)
+      CASE 51: x INCR 1; y DECR 1;  out (down right)
+      OTHERWISE leave get cursor ENDSELECT;
+  PER  .
+
+cursor on:
+  {***** Der Graphische Cursor muss eingeschaltet werden *****};
+  out ("C")  .
+
+cursor off:
+  {***** Der Graphische Cursor muss eingeschaltet werden *****};
+  out ("c")  .
+
+leave get cursor:
+  cursor off;
+  out (pen up);
+  (x-pos.x) TIMESOUT left;
+  (y-pos.y) TIMESOUT right;
+
+  LEAVE get cursor  .
+
+END PROC get cursor;
+
+END PACKET incremental plot;

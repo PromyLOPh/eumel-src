@@ -1,0 +1,276 @@
+PACKET pc plot DEFINES drawing area,                {Autor: H. Indenbirken}
+                       begin plot,                  {Stand: 08.02.85      }
+                       end plot, 
+                       clear, 
+                       colour palette,
+                       pen,
+                       move, 
+                       draw, 
+
+                       get cursor,
+                       zeichensatz:
+ 
+LET hor faktor   = 22.21739,        {***** x pixel / x cm *****}
+    vert faktor  = 18.61314,        {***** y pixel / y cm *****}
+
+    delete = 0,                         {Farbcodes}
+    std    = 1,
+    black  = 5,
+    white  = 6,
+
+    nothing          = 0,               {Linientypen}
+    durchgehend      = 1, 
+    gepunktet        = 2,
+    kurz gestrichelt = 3,
+    lang gestrichelt = 4,
+    strichpunkt      = 5,
+
+    bit 14           = 16384;
+
+LET POS = STRUCT (INT x, y);
+LET ZEICHENSATZ = STRUCT (ROW 255 TEXT char, INT width, height);
+
+ZEICHENSATZ VAR zeichen;
+BOOL VAR character defined :: FALSE; 
+TEXT VAR cursor pos  :: ""0"M"0""0""0""0""0"D"0""0""0""0""0"M"0""0""0""0""0"D"0""0""0""0"", 
+         cursor line :: ""0"M"0""0""0""0""0"D"0""0""0""0""0"D"0""0""0""0"";
+INT VAR act thick :: 0, i, dummy, resolution :: 6, colour code :: 256;
+POS VAR pos :: POS : (0, 0);
+
+PROC zeichensatz (TEXT CONST name):
+  IF exists (name)                                      { H”he:   0.64 cm }
+  THEN BOUND ZEICHENSATZ VAR new zeichen :: old (name); { Breite: 0.40 cm }
+       zeichen := new zeichen;
+       character defined := TRUE
+  ELSE errorstop ("Der Zeichensatz """ + name + """ existiert nicht") FI
+END PROC zeichensatz;
+
+PROC drawing area (REAL VAR x cm, y cm, INT VAR x pixel, y pixel) : 
+   x cm    := 22.0;    y cm    := 13.7; 
+   IF resolution = 6
+   THEN x pixel := 639;     y pixel := 199 
+   ELSE x pixel := 319;     y pixel := 199 FI
+END PROC drawing area;
+
+ 
+PROC colour palette (INT CONST colour):
+  SELECT colour OF
+  CASE 0: resolution := 6
+  CASE 1: resolution := 4;
+          colour code:= 256
+  CASE 2: resolution := 4;
+          colour code:= 257
+  OTHERWISE errorstop ("colour palette nicht vorhanden") ENDSELECT
+
+END PROC colour palette;
+
+PROC begin plot : 
+  control (-5, resolution, 0, dummy);
+  control (-4, 0, colour code, dummy) 
+ENDPROC begin plot ;
+
+PROC end plot : 
+  control (-5, 3, 0, dummy)
+ENDPROC end plot ;
+
+PROC clear :
+  control (-5, resolution, 0, dummy);
+  control (-4, 0, colour code, dummy); 
+  act thick := 0;
+
+END PROC clear;
+
+PROC pen (INT CONST background, foreground, thickness, linetype):
+  act thick := thickness;
+  control (-8, linetype code, foreground code, dummy)  .
+
+linetype code:
+  SELECT linetype OF
+  CASE nothing          : 0
+  CASE durchgehend      : -1
+  CASE gepunktet        : 21845
+  CASE kurz gestrichelt : 3855
+  CASE lang gestrichelt : 255
+  CASE strichpunkt      : 4351
+  OTHERWISE linetype END SELECT  .
+
+foreground code:
+  IF foreground = delete
+  THEN 0
+  ELIF foreground < 0
+  THEN 128
+  ELSE foreground FI  .
+ 
+END PROC pen;
+
+PROC move (INT CONST x, y) :
+  control (-7, x, 200-y, dummy);
+  pos := POS  : (x, y)
+END PROC move;
+ 
+PROC draw (INT CONST x, y) :
+  IF act thick <> 0
+  THEN IF horizontal line
+       THEN thick y
+       ELSE thick x FI;
+       x MOVE y
+  ELSE control (-6, x, 200-y, dummy) FI;
+  pos := POS : (x, y)   .
+
+horizontal line:
+  abs (pos.x-x) > abs (pos.y-y)  .
+
+thick y:
+  INT VAR dy, old x :: pos.x-x ausgleich, new x :: x+x ausgleich;
+  old x MOVE pos.y;
+  new x DRAW     y;
+  FOR dy FROM 1 UPTO act thick
+  REP old x MOVE pos.y+dy;
+      new x DRAW     y+dy;
+      old x MOVE pos.y-dy;
+      new x DRAW y-dy;
+  PER  . 
+
+x ausgleich:
+  IF pos.x <= x
+  THEN  act thick
+  ELSE -act thick FI  .
+
+thick x:
+  INT VAR dx, old y :: pos.y-y ausgleich, new y :: y+y ausgleich;
+  pos.x MOVE old y;
+      x DRAW new y; 
+  FOR dx FROM 1 UPTO act thick
+  REP pos.x+dx MOVE old y;
+          x+dx DRAW new y;
+      pos.x-dx MOVE old y;
+          x-dx DRAW new y;
+  PER  . 
+
+y ausgleich:
+  IF pos.y <= y
+  THEN  act thick
+  ELSE -act thick FI  .
+
+END PROC draw;
+
+INT VAR x fak :: zeichen.width,
+        y fak :: zeichen.height;
+PROC draw (TEXT CONST record, REAL CONST angle, height, width):
+  IF character defined
+  THEN draw graphic character
+  ELSE pos cursor (pos.x, pos.y);
+       get cursor (x pos, y pos);
+       outsubtext (record, 1, 79-y pos); 
+  FI  .
+
+draw graphic character:
+{**** Hier werden Texte mit dem Winkel 'angle',der H”he 'height' und *****}
+{**** der Breite 'width' gezeichnet. Die Form der Zeichen ist in der *****}
+{**** Datei 'STD Zeichensatz' enthalten.                             *****}
+  INT CONST x step :: character x step, y step :: character y step;
+  INT VAR x pos :: pos.x, y pos :: pos.y, i, n, x, y;
+  BOOL VAR move order;
+ 
+  set character height and width;
+
+  FOR i FROM 1 UPTO length (record)
+  REP draw character i PER;
+  pos.x MOVE pos.y .
+
+set character height and width:
+  IF width = 0.0 AND height = 0.0
+  THEN x fak := zeichen.width;
+       y fak := zeichen.height
+  ELSE x fak := int (hor faktor * width+0.5);
+       y fak := int (vert faktor * height+0.5)
+  FI  .
+
+character x step:
+  IF width <> 0.0
+  THEN int (cosd (angle) * hor faktor * width+0.5)
+  ELSE int (cosd (angle) * real (zeichen.width)+0.5) FI  .
+
+character y step:
+  IF height <> 0.0
+  THEN int (sind (angle) * vert faktor * height+0.5)
+  ELSE int (sind (angle) * real (zeichen.height)+0.5) FI  .
+
+draw character i:
+  IF code (record SUB i) < 32
+  THEN steuerzeichen
+  ELSE normale zeichen FI  .
+
+steuerzeichen:
+  SELECT code (record SUB i) OF
+  CASE  1: x pos := 0;
+           y pos := 255-y fak
+  CASE  2: x pos INCR x fak 
+  CASE  3: y pos INCR y fak 
+  CASE  4: pos cursor (x pos, y pos);
+  CASE  5: pos cursor (x pos, y pos);
+  CASE  7: out (""7"")
+  CASE  8: x pos DECR x fak 
+  CASE 10: y pos DECR y fak 
+  CASE 13: x pos := pos.x
+  END SELECT  .
+
+normale zeichen:
+  TEXT CONST char :: zeichen.char [code (record SUB i)];
+  FOR n FROM 1 UPTO length (char) DIV 4
+  REP value (char, n, x, y, move order);
+      IF move order
+      THEN x pos+x MOVE y pos+y
+      ELSE x pos+x DRAW y pos+y FI
+  PER;
+  x pos INCR x step;
+  y pos INCR y step  .
+
+END PROC draw;
+
+PROC draw (TEXT CONST record) :
+  draw (record, 0.0, 0.0, 0.0)
+END PROC draw;
+ 
+PROC value (TEXT CONST char, INT CONST n, INT VAR x, y, BOOL VAR move):
+  x := char ISUB n+n-1;
+  y := char ISUB n+n;
+  IF x < 0
+  THEN IF (x AND bit 14) <> 0
+       THEN move := FALSE
+       ELSE move := TRUE;
+            x := x XOR bit 14
+       FI
+  ELSE IF (x AND bit 14) <> 0
+       THEN move := TRUE;
+            x := x XOR bit 14
+       ELSE move := FALSE FI
+  FI;
+  x := (x*x fak) DIV zeichen.width;
+  y := (y*y fak) DIV zeichen.height
+
+END PROC value;
+
+PROC get cursor (TEXT VAR t, INT VAR x, y) :
+END PROC get cursor;
+
+OP MOVE (INT CONST x, y):
+  control (-7, x, 200-y, dummy)
+END OP MOVE;
+
+OP DRAW (INT CONST x, y):
+  control (-6, x, 200-y, dummy)
+END OP DRAW;
+
+PROC pos cursor (INT CONST x, y):
+  cursor ((x-10) DIV 6, (237-y) DIV 10)
+END PROC pos cursor;
+
+END PACKET pc plot
+
+IF exists ("ZEICHEN 6*10")
+THEN zeichensatz ("ZEICHEN 6*10")
+ELIF exists ("ZEICHEN 9*12")
+THEN zeichensatz ("ZEICHEN 9*12")
+ELSE put line ("Warnung: Zeichensatz fehlt") FI
+

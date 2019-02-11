@@ -1,0 +1,781 @@
+PACKET basis plot DEFINES                       (* Autor: H. Indenbirken *)
+                                                (* Stand: 30.12.84       *)
+(**********************  Hardwareunabh„ngiger Teil  *************************
+*                                                                           * 
+*                                                                           * 
+*        Im Harwareunabh„ngigen Paket 'transformation' werden folgende      *
+*        Prozeduren definiert:                                              * 
+*        Procedure       :  Bedeutung                                       * 
+*        -------------------------------------------------------------------* 
+*        transform     :  Sie Prozedur projeziert einen dreidimensionalen * 
+*                           Vektor (x,y,z) auf einen zweidimensionalen (h,v)* 
+*        set values    :  Mit dieser Prozedur werden die Projektionspara- * 
+*                           meter gesetzt.                                  * 
+*                           size:    Weltkoordinatenbereich                 *
+*                                    ((xmin,xmax),(ymin,ymax),(zmin,zmax))  *
+*                           limits:  Zeichenfl„che                          *
+*                                    ((h min, h max), (v min, v max))       *
+*                                    Bei Werten < 2.0 werden die Werte als  *
+*                                    Prozente interpretiert, ansonsten als  *
+*                                    cm-Gr”ssen.                            *
+*        get values    :  šbergibt die aktuellen Werte                    *
+*        new values    :  Vermerkt neue Werte                             *
+*                                                                           *
+*                                                                           *
+*        drawing area  :  šbergibt die aktuelle Zeichengr”áe in Pixel.    *
+*                                                                           *
+*        angles        :  a) alpha:      Winkel der Y-Achse in Grad       *
+*                           b) (x, y, z):  karth. Projektionswinkel         *
+*        oblique       :  Schiefwinklige Projektion mit dem               *
+*                           Normalenvektor (a, b).                          *
+*        perspective   :  Perspektive mit dem Betrachtungsstandort        *
+*                           (x, y, z).                                      *
+*        window        :  siehe set values, size                          *
+*        viewport      :  siehe set values, limit                         *
+*        view          :  siehe set values, angle                         *
+*        oblique       :  Schiefwinklige Projektion                       *
+*        orthographic  :  Orthografische Projektion                       *
+*        perspective   :  Perspektivische Projektion                      *
+*                                                                           *
+*                                                                           *
+*        box           :  Rahmen um die aktuelle Zeichenfl„che            *
+*        reset         :  L”scht alte verdeckte Linien                    *
+*        hidden lines  :  Unterdrckt verdeckte Linien                    *
+*                                                                           *
+*        move          :  Positioniert auf (x, y, [z]) in Weltkoordinaten *
+*        draw          :  Zeichnet eine Linie bis zum Punkt (x, y, [z]).  *
+*        move r        :  Positioniert (x, y, [z]) weiter                 *
+*        draw r        :  Zeichnet (x, y, [z]) weiter                     *
+*        move cm       :  Positioniert auf (x cm, y cm).                  *
+*        draw cm       :  Zeichnet eine Linie bis (x cm, y cm)            *
+*        move cm r     :  Positioniert (x cm, y cm) weiter                *
+*        draw cm r     :  Zeichnet (x cm, y cm) weiter                    *
+*                                                                           *
+*        bar           :  Balken mit (hight, width, pattern)              *
+*        circle        :  Kreis(segment) mit (radius, from, to, pattern)  *
+*                                                                           *
+*        where         :  Gibt die aktuelle Stiftposition (x, y, [z])     *
+*                                                                           *
+*        get cursor    :  Graphische Eingabe                              *
+*                                                                           *
+*                                                                           *
+****************************************************************************)
+
+       transform, 
+       set values,
+       get values,
+       new values,
+       drawing area,
+
+       window, 
+       viewport,
+       view, 
+       oblique, 
+       orthographic, 
+       perspective,
+
+       box,
+       reset,
+       hidden lines,
+
+       move, 
+       draw, 
+       move r, 
+       draw r, 
+       move cm, 
+       draw cm, 
+       move cm r, 
+       draw cm r, 
+       bar,
+       circle,
+
+       where:
+
+BOOL VAR new limits :: TRUE, values new :: TRUE,
+         perspective projektion :: FALSE;
+INT VAR pixel hor, pixel vert;
+REAL VAR display hor, display vert,           (* Anzahl der Pixel        *)
+         size hor, size vert;                 (* Groesse des Bildschirms *)
+drawing area (size hor, size vert, pixel hor, pixel vert);
+display hor := real (pixel hor);  display vert := real (pixel vert);
+
+REAL VAR h min limit :: 0.0, h max limit :: display hor,
+         v min limit :: 0.0, v max limit :: display vert,
+         h min :: 0.0, h max :: size hor,
+         v min :: 0.0, v max :: size vert,
+         hor relation :: display hor/size hor,
+         vert relation :: display vert/size vert,
+         relation :: size hor/size vert;
+ 
+ROW 5 ROW 5 REAL VAR p :: ROW 5 ROW 5 REAL :
+                          (ROW 5 REAL : (1.0, 0.0, 0.0, 0.0, 0.0),
+                           ROW 5 REAL : (0.0, 1.0, 0.0, 0.0, 0.0),
+                           ROW 5 REAL : (0.0, 0.0, 1.0, 0.0, 0.0),
+                           ROW 5 REAL : (0.0, 0.0, 0.0, 1.0, 0.0),
+                           ROW 5 REAL : (0.0, 0.0, 0.0, 0.0, 1.0));
+
+ROW 3 ROW 2 REAL VAR size d :: ROW 3 ROW 2 REAL :
+                              (ROW 2 REAL : (0.0, 1.0),
+                               ROW 2 REAL : (0.0, 1.0),
+                               ROW 2 REAL : (0.0, 1.0)),
+                     last size :: size d;
+ROW 2 ROW 2 REAL VAR limits d :: ROW 2 ROW 2 REAL :
+                                (ROW 2 REAL : (0.0, relation),
+                                 ROW 2 REAL : (0.0, 1.0));
+ROW 4 REAL VAR angles d :: ROW 4 REAL : (0.0, 0.0, 0.0, 0.0);
+ROW 2 REAL VAR oblique d :: ROW 2 REAL : (0.0, 0.0);
+ROW 3 REAL VAR perspective d :: ROW 3 REAL : (0.0, 0.0, 0.0);
+REAL VAR size hor d := size hor, size vert d := size vert;
+INT VAR pixel hor d := pixel hor, pixel vert d := pixel vert;
+
+INT VAR i, j, k;
+
+BOOL OP = (ROW 3 ROW 2 REAL CONST l, r):
+  FOR i FROM 1 UPTO 3
+  REP IF l [i][1] <> r [i][1] OR l [i][2] <> r [i][2]
+      THEN LEAVE = WITH FALSE FI
+  PER;
+  TRUE
+END OP =;
+
+BOOL OP = (ROW 2 ROW 2 REAL CONST l, r):
+  FOR i FROM 1 UPTO 2
+  REP IF l [i][1] <> r [i][1] OR l [i][2] <> r [i][2]
+      THEN LEAVE = WITH FALSE FI
+  PER;
+  TRUE
+END OP =;
+
+BOOL OP = (ROW 2 REAL CONST l, r):
+  l [1] = r [1] AND l [2] = r [2]
+END OP =;
+
+BOOL OP = (ROW 3 REAL CONST l, r):
+  l [1] = r [1] AND l [2] = r [2] AND l [3] = r [3]
+END OP =;
+
+BOOL OP = (ROW 4 REAL CONST l, r):
+  l [1] = r [1] AND l [2] = r [2] AND l [3] = r [3] AND l [4] = r [4] 
+END OP =;
+
+PROC oblique (REAL CONST a, b) :
+  set values (size d, limits d, angles d, ROW 2 REAL : (a, b), ROW 3 REAL : (0.0, 0.0, 0.0)) 
+END PROC oblique;
+
+PROC orthographic :
+  set values (size d, limits d, angles d, ROW 2 REAL : (0.0, 0.0), ROW 3 REAL : (0.0, 0.0, 0.0))
+END PROC orthographic;
+
+PROC perspective (REAL CONST cx, cy, cz) :
+  set values (size d, limits d, angles d, ROW 2 REAL : (0.0, 0.0), ROW 3 REAL : (cx, cy, cz))
+END PROC perspective;
+
+PROC window (BOOL CONST dev) :
+  new limits := dev
+END PROC window;
+
+PROC window (REAL CONST x min, x max, y min, y max) :
+  window (x min, x max, y min, y max, 0.0, 1.0)
+END PROC window;
+
+PROC window (REAL CONST x min, x max, y min, y max, z min, z max) :
+  set values (ROW 3 ROW 2 REAL : (ROW 2 REAL : (x min, x max),
+                                  ROW 2 REAL : (y min, y max),
+                                  ROW 2 REAL : (z min, z max)),
+              limits d, angles d, oblique d, perspective d)
+END PROC window;
+
+PROC viewport (REAL CONST h min, h max, v min, v max) :
+  set values (size d, ROW 2 ROW 2 REAL : (ROW 2 REAL : (h min, h max), 
+                                          ROW 2 REAL : (v min, v max)),
+              angles d, oblique d, perspective d)
+END PROC view port;
+
+PROC view (REAL CONST alpha) :
+  set values (size d, limits d, ROW 4 REAL : (alpha, angles d(2), angles d (3), angles d (4)),
+              oblique d, perspective d)
+END PROC view;
+
+PROC view (REAL CONST phi, theta) :
+  set values (size d, limits d, ROW 4 REAL : (angles d(1), sind (theta) * cosd (phi),
+                                              sind (theta) * sind (phi), cosd (theta)),
+              oblique d, perspective d)
+END PROC view;
+
+PROC view (REAL CONST x, y, z) :
+  set values (size d, limits d, ROW 4 REAL : (angles d (1), x, y, z), oblique d, perspective d)
+END PROC view;
+
+set values (size d, limits d, angles d, oblique d, perspective d);
+
+PROC drawing area (REAL VAR min h, max h, min v, max v):
+  min h := h min limit;  max h := h max limit;
+  min v := v min limit;  max v := v max limit
+END PROC drawing area;
+ 
+BOOL PROC new values:
+  IF values new
+  THEN values new := FALSE;
+       TRUE
+  ELSE FALSE FI
+END PROC new values;
+
+PROC get values (ROW 3 ROW 2 REAL VAR size, 
+                 ROW 2 ROW 2 REAL VAR limits,
+                 ROW 4 REAL VAR angles,
+                 ROW 2 REAL VAR oblique,
+                 ROW 3 REAL VAR perspective) : 
+  size        := size d;
+  limits      := limits d;
+  angles      := angles d;
+  oblique     := oblique d;
+  perspective := perspective d;
+
+END PROC get values;
+
+PROC set values (ROW 3 ROW 2 REAL CONST size, 
+                 ROW 2 ROW 2 REAL CONST limits,
+                 ROW 4 REAL CONST angles,
+                 ROW 2 REAL CONST oblique,
+                 ROW 3 REAL CONST perspective) : 
+   drawing area (size hor, size vert, pixel hor, pixel vert);
+   display hor := real (pixel hor);  display vert := real (pixel vert);
+   IF NOT same values
+   THEN values new := TRUE;
+        copy values;
+        set views;
+        check perspective projektion; 
+        calc limits;
+        change projektion
+   FI  .
+
+same values:
+  size hor d  = size hor  AND size vert d  = size vert AND
+  pixel hor d = pixel hor AND pixel vert d = pixel vert AND
+  size d = size AND limits d = limits AND angles d = angles AND
+  oblique d = oblique AND perspective d = perspective  . 
+
+copy values :
+  size hor d := size hor;
+  size vert d := size vert;
+  pixel hor d := pixel hor;
+  pixel vert d := pixel vert;
+  size d := size;
+  limits d := limits;
+  angles d := angles;
+  oblique d := oblique;
+  perspective d := perspective  .
+
+set views :
+  REAL VAR diagonale := sqrt (angles [2] * angles [2] +
+                              angles [3] * angles [3] +
+                              angles [4] * angles [4]),
+           projektion := sqrt (angles [2] * angles [2] +
+                               angles [4] * angles [4]),
+           sin p, cos p, sin t, cos t, sin a, cos a;
+
+           IF diagonale = 0.0
+           THEN sin p :=  0.0;  cos p :=  1.0;
+                sin t :=  0.0;  cos t :=  1.0
+           ELIF projektion = 0.0
+           THEN sin p :=  angles [3] / diagonale;
+                cos p :=  projektion / diagonale;
+                sin t :=  0.0;  cos t :=  1.0
+           ELSE sin p :=  angles [3] / diagonale;
+                cos p :=  projektion / diagonale;
+                sin t :=  angles [2] / projektion;
+                cos t :=  angles [4] / projektion
+           FI;
+
+  REAL VAR   sin p sin t := sin p * sin t,
+             sin p cos t := sin p * cos t,
+             cos p sin t := cos p * sin t,
+             cos p cos t := cos p * cos t,
+
+             dx          := size [1][2] - size [1][1],
+             dy          := size [2][2] - size [2][1],
+             dz          := size [3][2] - size [3][1],
+             norm az     := oblique [1] ,
+             norm bz     := oblique [2] ,
+             norm cx     := perspective [1] / dx,
+             norm cy     := perspective [2] / dy,
+             norm cz     := perspective [3] / dz,
+             xx          := - size [1][1] / dx * cos p sin t -
+                              size [2][1] / dy * sin p + 
+                              size [3][1] / dz * cos p cos t;
+
+p :=  ROW 5 ROW 5 REAL :
+      (ROW 5 REAL : (  cos t       / dx - cos p sin t / dx * norm az ,
+                     - sin p sin t / dx - cos p sin t / dx * norm bz,
+                       0.0,
+                                        - cos p sin t / dx * norm cz,
+                       0.0 ),
+       ROW 5 REAL : (                   - sin p       / dy * norm az,
+                       cos p       / dy - sin p       / dy * norm bz,
+                       0.0, 
+                                        - sin p       / dy * norm cz,
+                       0.0 ),
+       ROW 5 REAL : (  sin t       / dz + cos p cos t / dz * norm az,
+                     + sin p cos t / dz + cos p cos t / dz * norm bz,
+                       0.0,
+                                        cos p cos t / dz * norm cz,
+                       0.0 ),
+       ROW 5 REAL : (- norm cx, - norm cy, 0.0, 1.0, 0.0 ),
+       ROW 5 REAL : (0.0, 0.0, 0.0, 0.0, 1.0));
+
+  IF angles (1) = 0.0
+  THEN set alpha as y vertical
+  ELSE sin a := sind (angles (1));
+       cos a := cosd (angles (1))
+  FI;
+ 
+  FOR j FROM 1 UPTO 5
+  REP REAL CONST p  j 1 := p (j)(1);
+      p (j)(1) :=  p  j  1  * cos a - p (j)(2) * sin a;
+      p (j)(2) :=  p  j  1  * sin a + p (j)(2) * cos a 
+  PER  .
+
+set alpha as y vertical :
+  REAL VAR r := sqrt (p(2)(1)**2 + p(2)(2)**2);
+  IF r = 0.0
+  THEN sin a := 0.0;
+       cos a := 1.0
+  ELSE sin a :=-p(2)(1)/r;
+       cos a := p(2)(2)/r
+  FI  .
+
+check perspective projektion:
+  perspective projektion := perspective [3] <> 0.0  .
+
+calc limits :
+  IF new limits
+  THEN calc two dim extrema;
+       IF all limits smaller than 2
+       THEN prozente
+       ELSE zentimeter FI
+  FI  .
+
+calc two dim extrema :
+  h min := max real;  h max :=-max real;
+  v min := max real;  v max :=-max real;
+ 
+  extrema (size [1][1], size [2][1], size [3][1], h min, h max, v min, v max); 
+  extrema (size [1][2], size [2][1], size [3][1], h min, h max, v min, v max);
+  extrema (size [1][2], size [2][2], size [3][1], h min, h max, v min, v max); 
+  extrema (size [1][1], size [2][2], size [3][1], h min, h max, v min, v max);
+  extrema (size [1][1], size [2][1], size [3][2], h min, h max, v min, v max); 
+  extrema (size [1][2], size [2][1], size [3][2], h min, h max, v min, v max);
+  extrema (size [1][2], size [2][2], size [3][2], h min, h max, v min, v max); 
+  extrema (size [1][1], size [2][2], size [3][2], h min, h max, v min, v max)  .
+
+all limits smaller than 2 :
+  limits (1)(2) < 2.0 AND limits (2)(2) < 2.0  .
+
+prozente :
+  h min limit := display hor * limits (1)(1)/relation;
+  h max limit := display hor * limits (1)(2)/relation;
+ 
+  v min limit := limits (2)(1) * display vert;
+  v max limit := limits (2)(2) * display vert  .
+ 
+zentimeter : 
+  h min limit := display hor * (limits (1)(1)/size hor);
+  h max limit := display hor * (limits (1)(2)/size hor);
+ 
+  v min limit := display vert * (limits (2)(1)/size vert);
+  v max limit := display vert * (limits (2)(2)/size vert)  .
+
+change projektion :
+  REAL VAR sh := (h max limit - h min limit) / (h max - h min),
+           sv := (v max limit - v min limit) / (v max - v min),
+           dh := h min limit - h min*sh,
+           dv := v min limit - v min*sv;
+
+  FOR j FROM 1 UPTO 5
+  REP
+     p (j)(1) := p (j)(1) * sh;
+     p (j)(2) := p (j)(2) * sv
+  PER;
+  p (5)(1) := dh;
+  p (5)(2) := dv.
+END PROC set values;
+ 
+PROC transform (REAL CONST x, y, z, INT VAR h, v) :
+  disable stop;
+  IF perspective projektion
+  THEN REAL CONST w :: 1.0/(x*p (1)(4) + y*p (2)(4) + z*p (3)(4) + 1.0);
+       h := int ((x*p (1)(1)+y*p (2)(1)+z*p (3)(1) + p (4)(1))*w + p (5)(1));
+       v := int ((x*p (1)(2)+y*p (2)(2)+z*p (3)(2) + p (4)(2))*w + p (5)(2))
+  ELSE h := int (x*p (1)(1)+y*p (2)(1)+z*p (3)(1) + p (5)(1));
+       v := int (x*p (1)(2)+y*p (2)(2)+z*p (3)(2) + p (5)(2));
+  FI;
+  IF is error
+  THEN h := -1;
+       v := -1;
+       clear error
+  FI
+END PROC transform;
+
+PROC extrema (REAL CONST x, y, z, REAL VAR h min, h max, v min, v max):
+  REAL VAR h, v;
+  IF perspective projektion
+  THEN REAL CONST w :: 1.0/(x*p (1)(4) + y*p (2)(4) + z*p (3)(4) + 1.0);
+       h := (x*p (1)(1)+y*p (2)(1)+z*p (3)(1) +p (4)(1))*w;
+       v := (x*p (1)(2)+y*p (2)(2)+z*p (3)(2) +p (4)(2))*w
+  ELSE h := (x*p (1)(1)+y*p (2)(1)+z*p (3)(1));
+       v := (x*p (1)(2)+y*p (2)(2)+z*p (3)(2))
+  FI;
+ 
+ IF h < h min
+ THEN h min := h
+ ELIF h > h max
+ THEN h max := h FI;
+
+ IF v < v min
+ THEN v min := v
+ ELIF v > v max
+ THEN v max := v FI
+
+END PROC extrema;
+
+(**************************** Plot Prozeduren ****************************)
+LET empty              = 0,             {Punktmuster} 
+    half               = 1,
+    full               = 2,
+    horizontal         = 3,
+    vertical           = 4,
+    cross              = 5,
+    diagonal right     = 6,
+    diagonal left      = 7,
+    diagonal both      = 8;
+
+LET POS = STRUCT (REAL x, y, z);
+POS VAR pos :: POS : (0.0, 0.0, 0.0);
+INT VAR h :: 0, v :: 0, new h :: 0, new v :: 0;
+BOOL VAR hidden :: FALSE;
+DATASPACE VAR ds :: nilspace;
+BOUND STRUCT (ROW 32764 INT akt, last) VAR maxima :: ds;
+
+
+PROC box :
+  move (int (h min limit+0.5), int (v min limit+0.5));
+  draw (int (h max limit+0.5), int (v min limit+0.5));
+  draw (int (h max limit+0.5), int (v max limit+0.5));
+  draw (int (h min limit+0.5), int (v max limit+0.5));
+  draw (int (h min limit+0.5), int (v min limit+0.5))
+END PROC box;
+ 
+PROC reset:
+  forget (ds);
+  ds := nilspace;
+  maxima := ds
+END PROC reset;
+
+PROC move (REAL CONST x, y) :
+  IF hidden 
+  THEN maxima.last := maxima.akt FI;
+
+  transform (x, y, 0.0, h, v);
+  move (h, v);
+  pos := POS : (x, y, 0.0)
+END PROC move;
+
+PROC move (REAL CONST x, y, z) :
+  IF hidden 
+  THEN maxima.last := maxima.akt FI;
+
+  transform (x, y, z, h, v);
+  move (h, v);
+  pos := POS : (x, y, z)
+END PROC move;
+
+PROC draw (REAL CONST x, y) :
+  IF hidden
+  THEN transform (x, y, 0.0, new h, new v);
+       vector (new h-h, new v-v)
+  ELSE transform (x, y, 0.0, h, v);
+       draw (h, v)
+  FI;
+  pos := POS : (x, y, 0.0)
+END PROC draw;
+
+PROC draw (REAL CONST x, y, z) :
+  IF hidden
+  THEN transform (x, y, z, new h, new v);
+       vector (new h-h, new v-v)
+  ELSE transform (x, y, z, h, v);
+       draw (h, v)
+  FI;
+  pos := POS : (x, y, z) 
+END PROC draw;
+
+PROC move r (REAL CONST x, y) :
+  IF hidden 
+  THEN maxima.last := maxima.akt FI;
+
+  transform (pos.x+x, pos.y+y, pos.z, h, v);
+  move (h, v);
+  pos := POS : (pos.x+x, pos.y+y, pos.z)
+END PROC move r;
+
+PROC move r (REAL CONST x, y, z) :
+  IF hidden 
+  THEN maxima.last := maxima.akt FI;
+
+  transform (pos.x+x, pos.y+y, pos.z+z, h, v);
+  move (h, v);
+  pos := POS : (pos.x+x, pos.y+y, pos.z+z)
+END PROC move r;
+
+PROC draw r (REAL CONST x, y) :
+  IF hidden
+  THEN transform (pos.x+x, pos.y+y, pos.z, h, v); 
+       vector (new h-h, new v-v)
+  ELSE transform (pos.x+x, pos.y+y, pos.z, h, v); 
+       draw (h, v)
+  FI;
+  pos := POS : (pos.x+x, pos.y+y, pos.z)
+END PROC draw r;
+
+PROC draw r (REAL CONST x, y, z) :
+  IF hidden
+  THEN transform (pos.x+x, pos.y+y, pos.z+z, h, v); 
+       vector (new h-h, new v-v)
+  ELSE transform (pos.x+x, pos.y+y, pos.z+z, h, v);
+       draw (h, v)
+  FI;
+  pos := POS : (pos.x+x, pos.y+y, pos.z+z)
+END PROC draw r;
+
+PROC move cm (REAL CONST x cm, y cm) :
+  IF hidden 
+  THEN maxima.last := maxima.akt FI;
+
+  h := int (x cm*hor relation+0.5);
+  v := int (y cm*vert relation+0.5);
+  move (h, v)
+END PROC move cm;
+
+PROC draw cm (REAL CONST x cm, y cm) :
+  IF hidden
+  THEN vector (int (x cm*hor relation+0.5)-h, int (y cm*vert relation+0.5)-v)
+  ELSE h := int (x cm*hor relation+0.5);
+       v := int (y cm*vert relation+0.5);
+       draw (h, v)
+  FI
+END PROC draw cm;
+
+PROC move cm r (REAL CONST x cm, y cm) :
+  IF hidden 
+  THEN maxima.last := maxima.akt FI;
+
+  h INCR int (x cm*hor relation+0.5);
+  v INCR int (y cm*vert relation+0.5);
+  move (h, v)
+END PROC move cm r;
+
+PROC draw cm r (REAL CONST x cm, y cm) :
+  IF hidden
+  THEN vector (int (x cm*hor relation+0.5), int (y cm*vert relation+0.5))
+  ELSE h INCR int (x cm*hor relation+0.5);
+       v INCR int (y cm*vert relation+0.5);
+       draw (h, v)
+  FI
+END PROC draw cm r;
+
+PROC hidden lines (BOOL CONST dev):
+  hidden := NOT dev;
+END PROC hidden lines;
+
+PROC vector (INT CONST dx, dy):
+  IF dx >= 0
+  THEN IF   dy >  dx THEN vector (v, h, dy, dx,  1, 1)
+       ELIF dy >   0 THEN vector (h, v, dx, dy,  1, 1)
+ 
+       ELIF dy > -dx THEN vector (h, v, dx, -dy, 1,-1)
+       ELSE               vector (v, h, -dy, dx,-1, 1) FI
+
+  ELSE IF   dy > -dx THEN vector (v, h, dy, -dx, 1,-1)
+       ELIF dy >   0 THEN vector (h, v, -dx, dy,-1, 1)
+ 
+       ELIF dy >  dx THEN vector (h, v, -dx, -dy,-1,-1)
+       ELSE               vector (v, h, -dy, -dx,-1,-1) FI
+  FI  .
+ 
+ENDPROC vector ;
+ 
+PROC vector (INT VAR x pos, y pos, INT CONST dx, dy, right, up) :
+  INT VAR i;
+  prepare first step ;
+  draw point;
+  FOR i FROM 1 UPTO dx
+  REP do one step PER;
+
+  IF was visible
+  THEN draw (h, v) FI  .
+
+
+prepare first step :
+  INT VAR up right error := dy - dx,
+          right error := dy,
+          old error := 0,
+          last h :: h, last v :: v;
+  BOOL VAR was visible :: visible  .
+
+
+do one step:
+  IF right is better
+    THEN do right step
+    ELSE do up right step
+  FI .
+ 
+right is better :
+  abs (old error + right error) < abs (old error + up right error)  .
+ 
+do upright step :
+  x pos INCR right ;
+  y pos INCR up ;
+  draw point ;
+  old error INCR upright error .
+ 
+do right step :
+  x pos INCR right ;
+  draw point ;
+  old error INCR right error .
+ 
+draw point :
+  IF was visible
+  THEN IF NOT visible
+       THEN draw (last h, last v);
+            was visible := FALSE
+       FI;
+       last h := h;
+       last v := v
+  ELSE IF visible
+       THEN move (h, v);
+            was visible := TRUE;
+            last h := h;
+            last v := v 
+       FI
+ FI  .
+
+visible:
+  IF h < 1 OR h > pixel hor
+  THEN FALSE
+  ELSE IF maxima.akt [h] < v 
+       THEN maxima.akt [h] := v FI; 
+       v > maxima.last [h]
+  FI
+END PROC vector;
+ 
+PROC where (REAL VAR x, y) :
+  x := pos.x;  y := pos.y
+END PROC where;
+
+PROC where (REAL VAR x, y, z) :
+  x := pos.x;  y := pos.y;  z := pos.z
+END PROC where;
+
+PROC bar (REAL CONST hight, width, INT CONST pattern):
+  INT VAR zero x, zero y, end x, end y;
+  transform (0.0, 0.0, 0.0, zero x, zero y);
+  transform (width, hight, 0.0, end x, end y);
+  bar (h-(end x-zero x) DIV 2, v, end x-zero x, end y-zero y, pattern)
+END PROC bar;
+
+PROC bar (INT CONST from x, from y, width, hight, pattern):
+  INT CONST to x :: from x+width, to y :: from y+hight;
+  INT VAR x, y;
+  draw frame;
+  SELECT pattern OF
+  CASE empty: (* nothing to do *)
+  CASE half:           half bar
+  CASE full:           full bar
+  CASE horizontal:     horizontal bar
+  CASE vertical:       vertical bar
+  CASE cross:          horizontal bar;
+                       vertical bar
+  CASE diagonal right: diagonal right bar
+  CASE diagonal left:  diagonal left bar
+  CASE diagonal both:  diagonal both bar
+  OTHERWISE errorstop ("Unknown pattern") ENDSELECT  .
+
+draw frame:
+  move (from x, from y);
+  draw (from x, to y);
+  draw (to x, to y);
+  draw (to x, from y)  .
+
+full bar:
+  FOR y FROM from y UPTO to y
+  REP move (from x, y);
+      draw (to x, y) 
+  PER  .
+
+half bar:
+  FOR y FROM from y UPTO to y
+  REP x := from x + 1 + (y AND 1);
+      WHILE x < to x 
+      REP move (x, y);
+          draw (x, y);
+          x INCR 2
+      PER
+  PER  .
+
+horizontal bar:
+  y := from y;
+  WHILE y < to y
+  REP move (from x, y);
+      draw (to x, y);
+      y INCR 5
+  PER  .
+
+vertical bar:
+  x := from x + 5;
+  WHILE x < to x
+  REP move (x, from y);
+      draw (x, to y);
+      x INCR 5
+  PER  .
+
+diagonal right bar:
+  y := from y-width+5;
+  WHILE y < to y
+  REP move (max (from x, to x-y-width+from y), max (from y, y));
+      draw (min (to x, from x+to y-y), min (to y, y+width));
+      y INCR 5
+  PER  .
+
+diagonal left bar:
+  y := from y-width+5;
+  WHILE y < to y
+  REP move (min (to x, to x-from y+y),  max (from y, y));
+      draw (max (from x, from x+y+width-to y), min (to y, y+width)); 
+      y INCR 5
+  PER  .
+
+diagonal both bar:
+  y := from y-width+5;
+  WHILE y < to y
+  REP move (max (from x, to x-y-width+from y), max (from y, y));
+      draw (min (to x, from x+to y-y), min (to y, y+width)); 
+      move (min (to x, to x-from y+y),  max (from y, y));
+      draw (max (from x, from x+y+width-to y), min (to y, y+width));
+      y INCR 5
+  PER  .
+
+END PROC bar;
+
+PROC circle (REAL CONST r, from, to, INT CONST pattern):
+  REAL VAR t :: from;
+  WHILE t < to
+  REP transform (pos.x + r*cosd (t), pos.y + r*sind (t), 0.0, h, v);
+      draw (h, v);
+      t INCR 1.0
+  PER;
+  transform (pos.x, pos.y, 0.0, h, v);
+  draw (h, v)  .
+
+END PROC circle;
+
+ENDPACKET basis plot;

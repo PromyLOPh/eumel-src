@@ -1,0 +1,150 @@
+PACKET hrz plot DEFINES drawing area,               {Autor: H. Indenbirken}
+                        begin plot,                 {Stand: 16.01.85      }
+                        end plot, 
+                        clear, 
+                        pen,
+                        move, 
+                        draw:
+ 
+LET delete = 0,                         {Farbcodes}
+    std    = 1,
+    red    = 2,
+    green  = 3,
+    blue   = 4,
+    black  = 5,
+    white  = 6,
+
+    nothing          = 0;               {Linientypen}
+
+LET POS = STRUCT (INT x, y);
+
+FILE VAR tr;
+TEXT VAR dummy;
+INT VAR act thick :: 0, i;
+POS VAR pos :: POS : (0, 0);
+
+PROC drawing area (REAL VAR x cm, y cm, INT VAR x pixel, y pixel) : 
+   x cm    := 39.1;    y cm    := 27.6; 
+   x pixel := 3910;    y pixel := 2760
+END PROC drawing area;
+
+PROC begin plot : 
+ENDPROC begin plot ;
+ 
+PROC end plot : 
+ENDPROC end plot ;
+
+PROC clear :
+  IF exists ("Plotter")
+  THEN put line (tr, "NEXT 1;")
+  ELSE init tr file FI;
+
+  pos := POS : (0, 0);
+  act thick := 0  .
+
+init tr file:
+  tr := sequential file (output, "Plotter");
+  put line (tr, "#XBA,BEN=7800017 0029 UHRZS012 Graphik#.");
+  put line (tr, "ECCO  ");
+  put line (tr, "#ANFANG,GRAFIK");
+  put line (tr, "#ZEICHNE,PL(1,9),MOD.=ZCH123,DINAF.=3.2,AUSS.=0'0'4200'2970,STIFTE=1'2'3'4'5'6,DATEI=/");
+  put line (tr, "CLEAR;BOX;")  .
+
+END PROC clear;
+
+PROC pen (INT CONST background, foreground, thickness, linetype):
+  set foreground;
+  set thickness  .
+
+set foreground:
+  put line (tr, "PEN " + text (foreground) + ";")  .
+ 
+set thickness:
+  act thick := thickness * 2  .
+
+END PROC pen;
+
+PROC move (INT CONST x, y) :
+  put (tr, text (x) + "!" + text (y) + ";"); 
+  pos := POS  : (x, y)
+END PROC move;
+ 
+PROC draw (INT CONST x, y) :
+  IF act thick <> 0
+  THEN IF horizontal line
+       THEN thick y
+       ELSE thick x FI;
+       x MOVE y
+  ELSE put (tr, text (x) + "&" + text (y) + ";") FI;
+  pos := POS : (x, y)   .
+
+horizontal line:
+  abs (pos.x-x) > abs (pos.y-y)  .
+
+thick y:
+  INT VAR dy, old x :: pos.x-x ausgleich, new x :: x+x ausgleich;
+  old x MOVE pos.y;
+  new x DRAW     y;
+  FOR dy FROM 1 UPTO act thick
+  REP old x MOVE pos.y+dy;
+      new x DRAW     y+dy;
+      old x MOVE pos.y-dy;
+      new x DRAW y-dy;
+  PER  . 
+
+x ausgleich:
+  IF pos.x <= x
+  THEN  act thick
+  ELSE -act thick FI  .
+
+thick x:
+  INT VAR dx, old y :: pos.y-y ausgleich, new y :: y+y ausgleich;
+  pos.x MOVE old y;
+      x DRAW new y; 
+  FOR dx FROM 1 UPTO act thick
+  REP pos.x+dx MOVE old y;
+          x+dx DRAW new y;
+      pos.x-dx MOVE old y;
+          x-dx DRAW new y;
+  PER  . 
+
+y ausgleich:
+  IF pos.y <= y
+  THEN  act thick
+  ELSE -act thick FI  .
+
+END PROC draw;
+
+PROC draw (TEXT CONST record, REAL CONST angle, height, width):
+  put (tr, height symbol + angle symbol + " SYMB """ + double record + """;")  .
+
+height symbol:
+  IF height = 0.0
+  THEN ""
+  ELSE "H" + text (height) FI  .
+
+angle symbol:
+  IF angle = 0.0
+  THEN ""
+  ELSE "A" + text (angle) FI  .
+
+double record:
+  dummy := record;
+  change all (dummy, """", """""");
+  dummy  .
+
+END PROC draw;
+
+PROC draw (TEXT CONST record) :
+  draw (record, 0.0, 0.0, 0.0)
+END PROC draw;
+ 
+OP MOVE (INT CONST x, y):
+  put (tr, text (x) + "!" + text (y) + ";") 
+END OP MOVE;
+
+OP DRAW (INT CONST x, y):
+  put (tr, text (x) + "&" + text (y) + ";")
+END OP DRAW;
+
+END PACKET hrz plot

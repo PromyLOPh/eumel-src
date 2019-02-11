@@ -1,0 +1,446 @@
+PACKET picfile DEFINES                            (*Autor: H.Indenbirken *)
+                                                  (*Stand: 23.02.1985    *)
+               PICFILE, :=, picture file, plot,
+               select pen, selected pen, background, 
+               set values, get values,
+               view, viewport, window, oblique, orthographic, perspective,
+               extrema,
+
+               put, get,
+               to first pic, to eof, to pic, up, down,
+               is first picture, eof, picture no, pictures,
+               delete picture, insert picture, read picture,
+               write picture, put picture:
+
+
+LET max pics = 1024,
+    pic dataspace = 1102;
+
+
+TYPE PICFILE = BOUND STRUCT (INT size, pos, background,
+                             ROW 16 ROW 3 INT pens,
+                             ROW 16 BOOL hidden,
+                             ROW 3 ROW 2 REAL sizes,
+                             ROW 2 ROW 2 REAL limits,
+                             ROW 4 REAL angles,
+                             ROW 2 REAL obliques,
+                             ROW 3 REAL perspectives
+                             ROW max pics PICTURE pic);
+
+TEXT VAR i text :: ""0""0"", r text :: ""0""0""0""0""0""0""0""0"";
+INT VAR i;
+
+OP := (PICFILE VAR p, DATASPACE CONST d) :
+  IF type (d) = pic dataspace
+    THEN CONCR (p) := d
+  ELIF type (d) < 0
+    THEN type (d, pic dataspace) ;
+         CONCR (p) := d ;
+         init picfile dataspace ;
+  ELSE errorstop ("dataspace is no PICFILE") FI .
+ 
+init picfile dataspace :
+  r.size := 0;
+  r.pos  := 0;
+  r.background := 0;
+  r.sizes := ROW 3 ROW 2 REAL : (ROW 2 REAL : (0.0, 1.0),
+                                 ROW 2 REAL : (0.0, 1.0),
+                                 ROW 2 REAL : (0.0, 1.0));
+  r.limits := ROW 2 ROW 2 REAL : (ROW 2 REAL : (0.0, 1.0),
+                                  ROW 2 REAL : (0.0, 1.0));
+  r.angles := ROW 4 REAL : (0.0, 0.0, 0.0, 0.0);
+  r.obliques := ROW 2 REAL : (0.0, 0.0);
+  r.perspectives := ROW 3 REAL : (0.0, 0.0, 0.0);
+  FOR i FROM 1 UPTO 16
+  REP r.pens [i] := ROW 3 INT : (1, 0, 1);
+      r.hidden [i] := TRUE
+  PER  .
+
+r : CONCR (CONCR (p)).
+END OP :=;
+ 
+DATASPACE PROC picture file (TEXT CONST name) :
+  IF exists (name)
+  THEN old (name)
+  ELSE new (name) FI 
+END PROC picture file;
+
+PROC plot (TEXT CONST name) :
+  PICFILE VAR p :: old (name);
+  plot (p);
+END PROC plot;
+
+PROC plot (PICFILE VAR p) :
+  set values (p.sizes, p.limits, p.angles, p.obliques,
+              p.perspectives);
+  begin plot;
+  clear;
+  FOR i FROM 1 UPTO p.size
+  REP IF pen (p.pic [i]) <> 0
+      THEN plot pic FI
+  PER;
+  end plot  .
+
+plot pic:
+  pen (p.background, p.pens (pen (p.pic (i)))(1),
+       p.pens (pen (p.pic (i)))(2), p.pens (pen (p.pic (i)))(3));
+  hidden lines (p.hidden [pen (p.pic [i])]);
+  plot (p.pic (i))  .
+
+END PROC plot;
+
+PROC select pen (PICFILE VAR p, INT CONST pen, colour, thickness, line type,
+                                BOOL CONST hidden):
+  IF pen < 1 OR pen > 16
+  THEN errorstop ("pen out of range") FI;
+  p.pens   [pen] := ROW 3 INT : (colour, thickness, line type);
+  p.hidden [pen] := hidden
+END PROC select pen;
+
+PROC selected pen (PICFILE CONST p, INT CONST pen,
+                                    INT VAR colour, thickness, line type,
+                                    BOOL VAR hidden):
+  IF pen < 1 OR pen > 16
+  THEN errorstop ("pen out of range") FI;
+  colour    := p.pens [pen][1];
+  thickness := p.pens [pen][2];
+  line type := p.pens [pen][3];
+  hidden    := p.hidden [pen]
+END PROC selected pen;
+
+INT PROC background (PICFILE CONST p):
+  p.background
+END PROC background;
+
+PROC background (PICFILE VAR p, INT CONST colour):
+  p.background := colour
+END PROC background;
+
+PROC get values (PICFILE CONST p,
+                 ROW 3 ROW 2 REAL VAR size, 
+                 ROW 2 ROW 2 REAL VAR limits,
+                 ROW 4 REAL VAR angles,
+                 ROW 2 REAL VAR oblique,
+                 ROW 3 REAL VAR perspective) : 
+  size        := p.sizes;
+  limits      := p.limits;
+  angles      := p.angles;
+  oblique     := p.obliques;
+  perspective := p.perspectives;
+
+END PROC get values;
+ 
+PROC set values (PICFILE VAR p,
+                 ROW 3 ROW 2 REAL CONST size, 
+                 ROW 2 ROW 2 REAL CONST limits,
+                 ROW 4 REAL CONST angles,
+                 ROW 2 REAL CONST oblique,
+                 ROW 3 REAL CONST perspective) : 
+  p.sizes        := size;
+  p.limits       := limits;
+  p.angles       := angles;
+  p.obliques     := oblique;
+  p.perspectives := perspective;
+
+END PROC set values;
+ 
+PROC view (PICFILE VAR p, REAL CONST alpha):
+  p.angles [1] := alpha
+END PROC view;
+
+PROC view (PICFILE VAR p, REAL CONST phi, theta):
+  p.angles [2] := sind (theta) * cosd (phi);
+  p.angles [3] := sind (theta) * sind (phi);
+  p.angles [4] := cosd (theta);
+END PROC view;
+
+PROC view (PICFILE VAR p, REAL CONST x, y, z):
+  p.angles [2] := x;
+  p.angles [3] := y;
+  p.angles [4] := z
+END PROC view;
+
+PROC viewport (PICFILE VAR p,REAL CONST hor min,hor max,vert min,vert max) :
+  p.limits := ROW 2 ROW 2 REAL : (ROW 2 REAL : (hor min, hor max),
+                                  ROW 2 REAL : (vert min, vert max))
+END PROC viewport;
+
+PROC window (PICFILE VAR p, REAL CONST x min, x max, y min, y max) :
+  window (p, x min, x max, y min, y max, 0.0, 1.0)
+END PROC window;
+
+PROC window (PICFILE VAR p, REAL CONST x min, x max, y min, y max, z min, z max) :
+  p.sizes := ROW 3 ROW 2 REAL : (ROW 2 REAL : (x min, x max),
+                                 ROW 2 REAL : (y min, y max),
+                                 ROW 2 REAL : (z min, z max))
+END PROC window;
+
+PROC oblique (PICFILE VAR p, REAL CONST a, b) :
+  p.obliques := ROW 2 REAL : (a, b);
+  p.perspectives := ROW 3 REAL : (0.0, 0.0, 0.0)
+END PROC oblique;
+
+PROC orthographic (PICFILE VAR p) :
+  p.obliques := ROW 2 REAL : (0.0, 0.0);
+  p.perspectives := ROW 3 REAL : (0.0, 0.0, 0.0)
+END PROC orthographic;
+ 
+PROC perspective (PICFILE VAR p, REAL CONST cx, cy, cz) :
+  p.obliques := ROW 2 REAL : (0.0, 0.0);
+  p.perspectives := ROW 3 REAL : (cx, cy, cz)
+END PROC perspective;
+ 
+PROC extrema (PICFILE VAR p, REAL VAR x min, x max, y min, y max) :
+  REAL VAR dummy;
+  extrema (p, x min, x max, y min, y max, dummy, dummy)
+END PROC extrema;
+
+PROC extrema (PICFILE VAR p, REAL VAR x min,x max,y min,y max,z min,z max) :
+  REAL VAR new x min, new x max, new y min, new y max, new z min, new z max;
+  x min := max real;  x max := - max real;
+  y min := max real;  y max := - max real;
+  z min := max real;  z max := - max real;
+  FOR i FROM 1 UPTO p.size
+  REP IF dim (p.pic [i]) = 2
+      THEN extrema (p.pic [i], new x min, new x max, new y min, new y max) 
+      ELSE extrema (p.pic [i], new x min, new x max, new y min, new y max,
+                               new z min, new z max)
+      FI;
+      x min := min (x min, new x min); x max := max (x max, new x max); 
+      y min := min (y min, new y min); y max := max (y max, new y max); 
+      z min := min (z min, new z min); z max := max (z max, new z max); 
+  PER
+END PROC extrema;
+
+PROC put (FILE VAR f, PICFILE CONST p):
+  put line (f, parameter);
+  FOR i FROM 1 UPTO p.size
+  REP put line (f, text (p.pic [i])) PER  .
+
+parameter:
+  intern (p.size) + intern (p.pos) + intern (p.background) + intern (p.pens) +
+  intern (p.hidden) + intern (p.sizes) + intern (p.limits) + intern (p.angles) +
+  intern (p.obliques) + intern (p.perspectives)  .
+
+END PROC put;
+
+PROC get (PICFILE VAR p, FILE VAR f):
+  TEXT VAR record;
+  get line (f, record);
+  convert parameter;
+  FOR i FROM 1 UPTO p.size
+  REP get line (f, record);
+      p.pic [i] := picture (record)
+  PER  .
+
+convert parameter:
+  convert (record, p.size);        convert (record, p.pos);
+  convert (record, p.background);  convert (record, p.pens);
+  convert (record, p.hidden);      convert (record, p.sizes);
+  convert (record, p.limits);      convert (record, p.angles);
+  convert (record, p.obliques);    convert (record, p.perspectives)  .
+
+END PROC get;
+
+PROC to first pic (PICFILE VAR p):
+  p.pos := 1
+END PROC to first pic;
+
+PROC to eof (PICFILE VAR p):
+ p.pos := p.size+1
+END PROC to eof;
+
+PROC to pic (PICFILE VAR p, INT CONST n):
+  IF n < 1
+  THEN errorstop ("Position underflow")
+  ELIF n > p.size
+  THEN errorstop ("Position after end of PICFILE")
+  ELSE p.pos := n FI
+END PROC to pic;
+
+PROC up (PICFILE VAR p):
+  to pic (p, p.pos-1)
+END PROC up;
+
+PROC up (PICFILE VAR p, INT CONST n):
+  to pic (p, p.pos-n)
+END PROC up;
+
+PROC down (PICFILE VAR p):
+  to pic (p, p.pos+1)
+END PROC down;
+
+PROC down (PICFILE VAR p, INT CONST n):
+  to pic (p, p.pos+n)
+END PROC down;
+
+BOOL PROC is first picture (PICFILE CONST p):
+  p.pos = 1
+END PROC is first picture;
+
+BOOL PROC eof (PICFILE CONST p):
+  p.pos >= p.size
+END PROC eof;
+
+INT PROC picture no (PICFILE CONST p):
+  p.pos
+END PROC picture no;
+
+INT PROC pictures (PICFILE CONST p):
+  p.size
+END PROC pictures;
+
+PROC delete picture (PICFILE VAR p) :
+  INT VAR i;
+  FOR i FROM p.pos+1 UPTO p.size
+  REP p.pic [i-1] := p.pic [i] PER;
+
+  p.pic [p.size] := nilpicture;
+  IF p.size > 1
+  THEN p.size DECR 1 FI
+END PROC delete picture;
+
+PROC insert picture (PICFILE VAR p) :
+  INT VAR i;
+  IF p.size >= max pics
+  THEN errorstop ("PICFILE overflow")
+  ELSE p.size INCR 1;
+       FOR i FROM p.size DOWNTO p.pos+1
+       REP p.pic [i] := p.pic [i-1] PER;
+
+       p.pic [p.pos] := nilpicture;
+  FI
+END PROC insert picture;
+
+PROC read picture (PICFILE VAR p, PICTURE VAR pic) :
+  pic := p.pic (p.pos)  .
+END PROC read picture;
+ 
+PROC write picture (PICFILE VAR p, PICTURE CONST pic) :
+  p.pic (p.pos) := pic  .
+END PROC write picture;
+
+PROC put picture (PICFILE VAR p, PICTURE CONST pic) :
+  IF p.size >= max pics
+  THEN errorstop ("PICFILE overflow")
+  ELSE p.size INCR 1;
+       p.pic [p.size] := pic;
+  FI 
+END PROC put picture;
+
+TEXT PROC intern (INT CONST n):
+  replace (i text, 1, n);
+  i text
+END PROC intern;
+
+TEXT PROC intern (ROW 16 ROW 3 INT CONST n):
+  INT VAR i, j;
+  TEXT VAR result :: "";
+  FOR i FROM 1 UPTO 16
+  REP FOR j FROM 1 UPTO 3
+      REP result CAT intern (n [i][j]) PER
+  PER;
+  result
+END PROC intern;
+
+TEXT PROC intern (ROW 16 BOOL CONST n):
+  INT VAR i, result :: 0;
+  FOR i FROM 1 UPTO 16
+  REP IF n [i]
+      THEN set bit (result, i-1) FI
+  PER;
+  intern (result)
+END PROC intern;
+
+TEXT PROC intern (REAL CONST r):
+  replace (r text, 1, r);
+  r text
+END PROC intern;
+
+TEXT PROC intern (ROW 3 ROW 2 REAL CONST r):
+  INT VAR i, j;
+  TEXT VAR result :: "";
+  FOR i FROM 1 UPTO 3
+  REP FOR j FROM 1 UPTO 2
+      REP result CAT intern (r [i][j]) PER
+  PER;
+  result
+END PROC intern;
+
+TEXT PROC intern (ROW 2 ROW 2 REAL CONST r):
+  INT VAR i, j;
+  TEXT VAR result :: "";
+  FOR i FROM 1 UPTO 2
+  REP FOR j FROM 1 UPTO 2
+      REP result CAT intern (r [i][j]) PER
+  PER;
+  result
+END PROC intern;
+
+TEXT PROC intern (ROW 4 REAL CONST r):
+  intern (r [1]) + intern (r [2]) + intern (r [3]) + intern (r [4]) 
+END PROC intern;
+
+TEXT PROC intern (ROW 3 REAL CONST r):
+  intern (r [1]) + intern (r [2]) + intern (r [3])
+END PROC intern;
+
+TEXT PROC intern (ROW 2 REAL CONST r):
+  intern (r [1]) + intern (r [2])
+END PROC intern;
+
+PROC convert (TEXT VAR record, INT VAR n):
+  n := record ISUB 1;
+  record := subtext (record, 3)
+END PROC convert;
+
+PROC convert (TEXT VAR record, ROW 16 ROW 3 INT VAR n):
+  INT VAR i, j;
+  FOR i FROM 1 UPTO 16
+  REP FOR j FROM 1 UPTO 3
+      REP convert (record, n [i][j]) PER
+  PER
+END PROC convert;
+
+PROC convert (TEXT VAR record, ROW 16 BOOL VAR n):
+  INT VAR i, result;
+  convert (record, result);
+  FOR i FROM 1 UPTO 16
+  REP n [i] := bit (i-1, result) PER
+END PROC convert;
+
+PROC convert (TEXT VAR record, REAL VAR r):
+  r := record RSUB 1;
+  record := subtext (record, 9)
+END PROC convert;
+
+PROC convert (TEXT VAR record, ROW 3 ROW 2 REAL VAR r):
+  INT VAR i, j;
+  FOR i FROM 1 UPTO 3
+  REP FOR j FROM 1 UPTO 2
+      REP convert (record, r [i][j]) PER
+  PER;
+END PROC convert;
+
+PROC convert (TEXT VAR record, ROW 2 ROW 2 REAL VAR r):
+  INT VAR i, j;
+  FOR i FROM 1 UPTO 2
+  REP FOR j FROM 1 UPTO 2
+      REP convert (record, r [i][j]) PER
+  PER;
+END PROC convert;
+
+PROC convert (TEXT VAR record, ROW 4 REAL VAR r):
+  convert (record, r [1]); convert (record, r [2]);
+  convert (record, r [3]); convert (record, r [4]) 
+END PROC convert;
+
+PROC convert (TEXT VAR record, ROW 3 REAL VAR r):
+  convert (record, r [1]); convert (record, r [2]); convert (record, r [3])
+END PROC convert;
+
+PROC convert (TEXT VAR record, ROW 2 REAL VAR r):
+  convert (record, r [1]); convert (record, r [2])
+END PROC convert;
+
+END PACKET picfile

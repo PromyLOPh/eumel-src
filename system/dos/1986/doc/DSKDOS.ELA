@@ -1,0 +1,967 @@
+#type ("17.klein")# 
+prefix of extended fcb:
+
+ offset  size  name
+     -7     1     flag byte          255
+     -6     5     reserved
+     -1     1     attribute byte     2=hidden file, 4=system file
+
+normal fcb format:
+
+ offset  size  name
+      0     1     drive number       0=default (for open), 1=A, 2=B
+      1     8     filename           8 chars, left aligned and padded
+                                     (if necessary) with blanks
+      9     3     extension          3 chars, left aligned and padded
+                                     (if necessary) with blanks
+     12     2     current block      pointer to the block of 128 records
+                                     containing the current record
+                                     (0 after open)
+     14     2     record size        logical record size in bytes
+                                     (128 after open, changed eventually)
+     16     4     file size          file size in bytes (1. byte low)
+     20     2     date of last write 20:mmmddddd 21:yyyyyyym
+     22     2     time of last write 22:mmmsssss 23:hhhhhmmm
+     24     8     reserved
+     32     1     current record     pointer to one of the 128 records in
+                                     the block (not initialized by open)
+                                     must be set before sequential read/write
+     33     4     relative record    pointer to selected record
+                                     (counting from the beginning of file by 0)
+                                     not initialized by open
+                                     must be set before sequential read/write
+                                     record size less than
+                                     64 bytes: both words used
+                                     else only first 3 bytes
+
+fields of directory entry:
+
+ offset  size  name
+      0     8  filename           8 chars, left aligned and padded
+                                  (if necessary) with blanks
+                                  special use of first byte:
+                                  0  : end of allocated directory
+                                  229: free directory entry
+      8     3  extension          3 chars, left aligned and padded
+                                  (if necessary) with blanks
+     11     1  attributes          1: read only file
+                                   2: hidden file
+                                   4: system file
+                                   8: entry is the volume's id
+                                  16: entry is subdirectory's name
+                                  32: archive bit (set, when written to)
+     12    10  reserved
+     22     2  time of last write 22:mmmsssss 23:hhhhhmmm
+     24     2  date of last write 24:mmmddddd 25:yyyyyyym
+     26     2  reserved
+     28     4  file size          file size in bytes (1. byte low)
+
+directory structure:
+
+ - the root directory has a fixed number of entries
+ - entries that represent a subdirectory have a special attribute in their
+   entry set
+ - the subdirectories are themselves files which records are of the same type
+   as those in the root directory
+ - the number of entries in subdirectories are not limited
+ - the length of a path to a subdirectory is not limited
+
+application of the directory entry fields on subdirectory entries:
+
+ volume id    : present at root, only one entry has this attribute
+ directory    : the directory entry represents itself an directory
+ read only    : meaningless
+ archive      : meaningless
+ hidden/system: prevents directories from beeing found, function $3B
+                will still work
+
+ms-dos interrupts:
+
+ $20 : program terminate
+     call:
+           CS: segment address
+     terminates process, returns control to parent process,
+     file handles are closed, disk cache cleaned, file buffers flushed
+     programm terminate, alt-c and critical error addresses are restored
+     new programs should use function $4C
+ $21 : function request
+     call:
+           AH: function number
+           other registers dependent on function
+ $22 to $24 :
+     address locations for msdos use
+     can be changed by function $25
+ $22 : terminate address
+ $23 : alt-c exit address
+     address of an alt-c routine
+ $24 : fatal error abort address
+     address of the error handler
+     BP:SI can contain further information
+     not called if error occurs during absolute disk operations (int $25,$26)
+ $25 : absolute disk read
+     call:
+           AL: drive number
+           DS:BX: disk transfer address
+           CX: number of sectors
+           DX: beginning relative sector
+     return:
+             CF: 0=successful
+                 1=unsuccessful
+             AL: error code if unsuccessful
+ $26 : absolute disk write
+     call:
+           AL: drive number
+           DS:BX: disk transfer address
+           CX: number of sectors
+           DX: beginning relative sector
+     return:
+             CF: 0=successful
+                 1=unsuccessful
+             AL: error code if unsuccessful
+ $27 : terminate but stay resident
+     call:
+           CS:DX: first byte following the code
+     new programms should use function $31
+
+ms-dos function requests:
+
+ $00 : terminate program
+     call:
+           AH: $00
+           CS: segment of programm prefix
+ $01 : read keyboard and echo
+     call:
+           AH: $01
+     return:
+             AL: character typed
+     waits for input, echos and returns it
+     alt-c will call interrupt
+ $02 : display character
+     call:
+           AH: $02
+           DL: character to be displayed
+     alt-c will call interrupt
+ $03 : auxiliary input
+     call:
+           AH: $03
+     return:
+             AL: character from auxiliary device
+     waits for input, alt-c will call interrupt
+ $04 : auxiliary output
+     call:
+           AH: $04
+           DL: character to output
+     alt-c will call interrupt
+ $05 : print character
+     call:
+           AH: $05
+           DL: character for printer
+     alt-c will call interrupt
+ $06 : direct console i/o
+     call:
+           AH: $06
+           DL: $FF: check for keyboard input
+               otherwise: display DL on screen
+     return:
+             ZF: 0=no char available
+                 1=char was read
+             AL: char if read
+ $07 : direct konsole input
+     call:
+           AH: $07
+     return:
+             AL: character from keyboard
+     waits for character
+ $08 : read keyboard
+     call:
+           AH: $08
+     return:
+             AL: character from keyboard
+     waits for character, alt-c will call interrupt
+ $09 : display string
+     call:
+           AH: $09
+           DS:DX: string, ending with '$'
+ $0A : buffered keyboard input
+     call:
+           AH: $0A
+           DS:DX: input buffer
+                  byte 1: maximum number of chars in buffer (with CR)
+                       2: actual number of chars in buffer (set by function)
+                       3-n: must be at least as long as the max
+     waits for chars, allows editing, ignores overflow,
+     alt-c will call interrupt
+ $0B : check keyboard status
+     call:
+           AH: $0B
+     return:
+             AL:   0=no chars in type-ahead buffer
+                 255=chars available
+ $0C : flush buffer and read keyboard
+     call:
+           AH: $0C
+           AL: $01,$06,$07,$08 or $0A: corresponding function is called
+               other values: no further processing
+     return:
+             AL: 0=type ahead buffer was flushed, no processing performed
+ $0D : disk reset
+     call:
+           AH: $0D
+     all disk buffers are flushed, no directory updates performed
+ $0E : select disk
+     call:
+           AH: $0E
+           DL: drive number, 1=A, 2=B, ..
+     return:
+             AL: number of logical drives
+ $0F : open file
+     call:
+           AH: $0F
+           DS:DX: unopened fcb
+     return:
+             AL:   0=directory entry found
+                     if drive code was 0, it is set to the default
+                     current block is set to 0
+                     record size is set to 128
+                     file size, time and date of last modification are set
+                     from directory
+                     the default record size must be set, if not 128
+                     before performing a sequential (random) operation,
+                     current record (relative record) field must be set
+                 255=no directory entry found
+
+ $10 : close file
+     call:
+           AH: $10
+           DS:DX: opened fcb
+     return:
+             AL:   0=directory entry found
+                 255=no directory entry found
+ $11 : search for first entry
+     call:
+           AH: $11
+           DS:DX: unopened fcb
+     return:
+               0=directory entry found
+                 fcb (normal or extended) is created
+                 at the disk transfer address
+             255=no directory entry found
+     to search for hidden or system files, the fcb must be extended
+     see notes on search attributes
+ $12 : search for next entry
+     call:
+           AH: $12
+           DS:DX: unopened fcb
+     return:
+             AL:   0=directory entry found
+                     fcb (normal or extended) is created
+                     at the disk transfer address
+                 255=no directory entry found
+     the fcb must be one used previously in a call to $11
+ $13 : delete file
+     call:
+           AH: $13
+           DS:DX: unopened fcb
+     return:
+             AL:   0=directory entry found
+                 255=no directory entry found
+     deletes all files with matching names
+ $14 : sequential read
+     call:
+           AH: $14
+           DS:DX: opened fcb
+     return:
+             AL: 0=read completed successfully
+                 1=eof, no data in the record
+                 2=dta too small, not enough space to read without exceeding
+                   the segment boundaries, read cancelled
+                 3=eof, partial record was read and padded to the record
+                   length with zeros
+     the record pointed to by the current block and current record
+     is loaded to the disk transfer address and the fields are incremented
+ $15 : sequential write
+     call:
+           AH: $15
+           DS:DX: opened fcb
+     return:
+             AL: 0=write completed successfully
+                 1=disk full, write canceled
+                 2=dta too small to write one record without exceeding the
+                   segment boundaries, write canceled
+     the record pointed to by the current block and current record
+     are written from the disk transfer address and the fields are incremented
+ $16 : create file
+     call:
+           AH: $16
+           DS:DX: unopened fcb
+     return:
+             AL:   0=empty directory entry found
+                 255=no empty entry available and file didn't exist before
+     if the file does already exist, it is made a zero length file
+     else it is created if an empty entry is found
+ $17 : rename file
+     call:
+           AH: $17
+           DS:DX: modified fcb
+     return:
+             AL:   0=directory entry found
+                 255=no directory entry found or destination already exists
+     the fcb must contain the search file name and another file name
+     at offset $11
+ $19 : current disk
+     call:
+           AH: $19
+     return:
+             AL: selected drive (0=A, 1=B, .. )
+ $1A : set disk transfer address
+     call:
+           AH: $1A
+           DS:DX: disk transfer address
+     default is $80 in the psp
+ $21 : random read
+     call:
+           AH: $21
+           DS:DX: opened fcb
+     return:
+             0=read completed successfully
+             1=eof, no data read
+             2=dta too small, read canceled
+             3=eof, partial record, padded with zeros
+     the current block and current record fields are set to match the
+     relative record field, then the record is loaded
+ $22 : random write
+     call:
+           AH: $22
+           DS:DX: opened fcb
+     return:
+             AL: 0=write completed successfully
+                 1=disk full
+                 2=dta too small, read canceled
+ $23 : file size
+     call:
+           AH: $23
+           DS:DX: unopened fcb
+     return:
+             AL:   0=directory entry found
+                     the relative record field is set to the number
+                     of records in the file
+                 255=no directory entry found
+     the record size field must be set
+ $24 : set relative record
+     call:
+           AH: $24
+           DS:DX: opened fcb
+     the relative record field is set to the same record as the current block
+     an the current record field
+ $25 : set vector
+     call:
+           AH: $25
+           AL: interrupt number
+           DS:DX: interrupt handling routine
+ $27 : random block read
+     call:
+           AH: $27
+           DS:DX: opened fcb
+           CX: number of blocks to read
+     return:
+             AL: 0=read completed successfully
+                 1=eof, no data read
+                 2=end of segment, read canceled
+                 3=eof, partial record, padded with zeros
+             CX: number of blocks read
+     the reading starts at the relative record
+     the current block, current record and relative record field are updated
+ $28 : random block write
+     call:
+           AH: $28
+           DS:DX: opened fcb
+           CX: number of records to write
+               0=set file size
+                 the file size field of thedirectory entry is set to the number
+                 of records specified by the relative record field
+     return:
+             AL: 0=write completed successfully
+                 1=disk full, no records written
+                 2=end of dta-segment, read canceled
+             CX: number of blocks written
+     the writing starts at the relative record
+     the current block, current record and relative record field are updated
+ $29 : parse file name
+     call:
+           AH: $29
+           AL: controls parsing
+               bit 0: if file separators are encountered
+                      (: . ; , = + / " [ ] \ < ] | blank tab)
+                     0: all parsing stops
+                     1: leading separators are ignored
+               bit 1: if the string does not contain a drive letter
+                     0: the fcb drive number is set to 0 (default)
+                     1: the fcb drive number is not changed
+               bit 2: if the string does not contain a filename
+                     0: the fcb filename is set to 8 blanks
+                     1: the fcb filename is not changed
+               bit 3: if the string does not contain an extension
+                     0: the fcb extension is set to three blanks
+                     1: the fcb extension is not changed
+           DS:SI: string to parse
+                  filename terminators include all filename separators
+                  plus any control character
+           ES:DI: if the string contained a valid filename,
+                  it points to an unopened fcb
+                  else ES:DI+1 points to a blank
+     return:
+             AL:   0=no wild card characters
+                   1=wild card characters used
+                 255=drive letter invalid
+             DS:SI: first byte past string that was parsed
+                    if the filename contains an asterisk,
+                    all folowing letters are set to question mark
+             ES:DI: unopened fcb
+                    if filename is found, an unopened fcb is created here
+ $2A : get date
+     call:
+           AH: $2A
+     return:
+             CX: year (1980-2099)
+             DH: month (1-12)
+             DL: day (1-31)
+             AL: day of week (0=sun, .., 6=sat)
+ $2B : set date
+     call:
+           AH: $2B
+           CX: year (1980-2099)
+           DH: month (1-12)
+           DL: day (1-31)
+     return:
+             AL:   0=date was valid
+                 255=date was invalid
+ $2C : get time
+     call:
+           AH: $2C
+     return:
+             CH: hour (0-23)
+             CL: minutes (0-59)
+             DH: seconds (0-59)
+             DL: hundredths (0-99)
+ $2D : set time
+     call:
+           AH: $2D
+           CH: hour (0-23)
+           CL: minutes (0-59)
+           DH: seconds (0-59)
+           DL: hundredths (0-99)
+     return:
+             AL:   0=time was valid
+                 255=time was invalid
+ $2E : set/reset verify flag
+     call:
+           AH: $2E
+           AL: 0=do not verify
+               1=verify
+ $2F : get disk transfer address
+     call:
+           AH: $2F
+     return:
+             ES:BX: points to disk transfer address
+ $30 : get dos version number
+     call:
+           AH: $30
+     return:
+             AL: major version number
+             AH: minor version number
+ $31 : keep process
+     call:
+           AH: $31
+           AL: exit code
+           DX: memory size in paragraphs
+     attemts to set the initial allocation block to a specific size
+     in paragraphs, will not free up other allocation blocks belonging
+     to that process, the exit code is available via function $4D
+ $33 : alt-c check
+     call:
+           AH: $33
+           AL: function
+               0=request current state
+               1=set state
+           DL: if setting
+               0=off
+               1=on
+     return:
+             AL: 255=al parameter was not in range 0..1
+             DL: if requesting current state
+                 0=off
+                 1=on
+     if check is on, every system call executes the check,
+     else only the device operations
+ $35 : get interrupt vector
+     call:
+           AH: $35
+           AL: interrupt number
+     return:
+             ES:BX: pointer to interrupt routine
+ $36 : get disk free space
+     call:
+           AH: $36
+           DL: drive (0=default, .....)
+     return:
+             BX: available clusters
+             DX: clusters per drive
+             CX: bytes per sector
+             AX: $FFFF=drive number invalid
+                 otherwise sectors per cluster
+ $38 : return country-dependent information
+     call:
+           AH: $38
+           DS:DX: pointer to 32 byte memory area
+                  area format:
+                  size     name
+                  2        date/time format
+                           0=usa standard    h:m:s m/d/y
+                           1=europe standard h:m:s d/m/y
+                           2=japan standard  y/m/d h:m:s
+                  5 asciz  currency symbol
+                  2 asciz  thousands separator
+                  2 asciz  decimal separator
+                  2 asciz  date separator
+                  2 asciz  time separator
+                  1        bit field
+                           bit 0: 0=currency symbol precedes amount
+                                  1=symbol comes after amount
+                           bit 1: 0=symbol immediately precedes the amount
+                                  1=space between symbol and amount
+                  1        currency places
+                           figures after decimal point of currency amounts
+                  1        time format
+                           0=12 hour time
+                           1=24 hour time
+                  4        case mapping call
+                           FAR procedure performs country-specific
+                           lower- to uppercase mapping
+                  2 asciz  data list separator
+                  if dx=-1 and the country code in AL is found,
+                  the current country is set accordingly
+
+           AL: function code
+               0=current country
+               or country code (usually international telephone prefix)
+               must be 0 in msdos 2.0 (only fully implemented after 2.01)
+     return:
+             CARRY: 1
+                    AX: 2=file not found
+             CARRY: 0
+                    DS:DX: filled with country data
+ $39 : create subdirectory
+     call:
+           AH: $39
+           DS:DX: pointer to pathname (asciz)
+     return:
+             CARRY: 1
+                    AX: 3=path not found
+                        5=access denied
+                          no room in parent,
+                          directory already exists or device was specified
+             CARRY: 0=no error
+ $3A : remove a directory entry
+     call:
+           AH: $3A
+           DS:DX: pointer to pathname (asciz)
+     return:
+             CARRY: 1
+                    AX:  3=path not found
+                         5=access denied
+                           directory not empty, not a directory, root directory
+                        16=current directory
+             CARRY: 0=no error
+ $3B : change the current directory
+     call:
+           AH: $3B
+           DS:DX: pointer to pathname (asciz)
+     return:
+             CARRY: 1
+                    AX: 3=path not found
+             CARRY: 0=no error
+ $3C : create a file
+     call:
+           AH: $3C
+           DS:DX: pointer to pathname
+           CX: file attribute
+     return:
+             CARRY: 1
+                    AX: 3=path not found
+                        4=too many open files
+                          file was created, but no room for handle
+                        5=access denied
+                          uncreatable attribute (directory or volume id),
+                          a file with a more inklusive attribute set exists,
+                          or a directory with the same name exists
+             CARRY: 0
+                    AX is handle number
+                    handle is open for read/write
+     creates a new file or truncates existing to length 0
+ $3D : open a file
+     call:
+           AH: $3D
+           DS:DX: pointer to pathname (asciz)
+           AL: access
+               0=open for reading
+               1=open for writing
+               2=open for both
+     return:
+             CARRY: 1
+                    AX:  2=file not found
+                         4=too many open files
+                           no file handles available
+                         5=access denied
+                           attempted to open a directory, volume id or
+                           a read only file for writing
+                        12=invalid access
+                           AL was not in range 0..2
+             CARRY: 0
+                    AX is handle number
+     read/write pointer is set to the first byte of the file
+     and the record size is set to 1
+     the returned file handle must be used in subsequent operations
+ $3E : close a file handle
+     call:
+           AH: $3E
+           BX: file handle
+     return:
+             CARRY: 1
+                    6=invalid handle (not currently open)
+             CARRY: 0=no error
+     the associated file is closed, buffers are flushed
+ $3F : read from file/device
+     call:
+           AH: $3F
+           DS:DX: pointer to buffer
+           CX: bytes to read
+           BX: file handle
+     return:
+             CARRY: 1
+                    AX: 5=access denied
+                          not opened for read
+                        6=invalid handle (not currently open)
+             CARRY: 0
+                    AX: number of bytes read
+                        0=eof
+ $40 : write to file/device
+     call:
+           AH: $40
+           DS:DX: pointer to buffer
+           CX: bytes to write
+               if 0, the file size is set to the current position
+           BX: file handle
+     return:
+             CARRY: 1
+                    AX: 5=access denied
+                        6=invalid handle
+             CARRY: 0
+                    AX: number of bytes written
+                        is error if not the same number as requested
+ $41 : delete a directory entry
+     call:
+           AH: $41
+           DS:DX: pointer to pathname
+     return:
+             CARRY: 1
+                    AX: 2=file not found
+                        5=access denied
+                          directory or read only
+             CARRY: 0=no error
+ $42 : move file pointer
+     call:
+           AH: $42
+           CX:DX: distance to move, in bytes
+           AL: method of moving
+               0=move pointer to offset from beginning of file
+               1=move to offset from current location
+               2=move to offset from eof
+           BX: file handle
+     return:
+             CARRY: 1
+                    AX: 1=invalid function
+                          AL not in range 0..2
+                        6=invalid handle
+             CARRY 0:
+                   DX:AX: new pointer location
+     moves the read/write file pointer
+ $43 : change attributes
+     call:
+           AH: $43
+           DS:DX: pointer to pathname (asciz)
+           AL: function
+               0=return in CX
+               1=set to CX
+           CX: if AL=1
+               attribute to be set
+     return:
+             CARRY: 1
+                    AX: 1=invalid function
+                          AL not in range 0..1
+                        3=path not found
+                        5=access denied
+                          CX contained attributes that can not be changed
+                             (directory, volume id)
+             CARRY: 0
+                    if AL=0
+                    CX: attributes
+ $44 : i/o control for devices
+     call:
+           AH: $44
+           BX: handle
+           BL: (for calls AL=4, 5) drive: 0=default, ..
+           DS:DX: data or buffer
+           CX: bytes to read or write
+           AL: function code
+               calls 0,1: bits of DX (DH must be 0 on a set call)
+                          0:    iscin
+                          1:    iscot
+                          2:    isnul
+                          3:    isclk
+                          4:    specl
+                          5:    raw
+                          6:    eof
+                          7:    isdev
+                          8-13: reserved
+                          14:   ctrl
+                          15:   res
+                          if isdev=0 then channel is a disk file
+                             eof: 0=channel has been written
+                             bits 0-5 are block device number for the channel
+                                  (0=a, 1=b, ..)
+                          if isdev=1 then channel is device
+                             eof  : 0=end of file on input
+                             raw  : 0=this device is cooked
+                                    1=device in raw mode
+                             isclk: 1=clock
+                             isnul: 1=nul
+                             iscot: 1=console output
+                             iscin: 1=console input
+                             specl: 1=device is special
+                             ctrl : 0=device can not do control strings
+                                      via calls 2,3
+                                    1=can do control
+               0=get device information (returned in DX)
+               1=set device information (according to DX)
+               calls 2,5: arbitrary control strings sent or received
+                          to or from a device
+                          call syntax is the same as in read/write calls,
+                          except for 4 and 5, which take drive number in BL
+                          instead of a handle in BX
+                          an invalid function error is returned, if
+                          the ctrl bit is 0
+               2=read CX number of bytes to DS:DX from device control channel
+               3=write CX number of bytes from DS:DX to device control channel
+               4=read CX number of bytes to DS:DX from device control channel
+                 drive number in BL (0=default, ..)
+               5=write CX number of bytes from DS:DX to device control channel
+                 drive number in BL (0=default, ..)
+               calls 6,7: check, if a file handle is ready for i/o
+                          intended for status of handles associated with
+                          devices, but checks of file handles are allowed
+                          and defined: input: always ready (255), until eof
+                                              then always not ready (0)
+                                       output: always ready
+               6=get input status
+               7=get output status
+     return:
+             CARRY: 1
+                    AX:  1=invalid function
+                         5=access denied
+                         6=invalid handle
+                        13=invalid data
+             CARRY: 0
+                    AL: 2,3,4,5
+                    AX: count transferred
+                    AL: 6,7
+                          0=not ready
+                        255=ready
+     sets or gets device information associated with an open handle
+     or sends or receives a control string to or from a device handle or device
+     if the function is used for files, only functions 0,6,7 are defined
+ $45 : duplicate a file handle
+     call:
+           AH: $45
+           BX: file handle
+     return:
+             CARRY: 1
+                    AX: 4=too many files open
+                        6=invalid handle
+             CARRY: 0
+                    AX: new file handle
+     retruns a new handle that refers to the same file
+ $46 : force a duplicate of a handle
+     call:
+           AH: $46
+           BX: existing file handle
+           CX: new file handle
+     return:
+             CARRY: 1
+                    AX: 4=too many open files
+                        6=invalid handle
+             CARRY: 0=no error
+     CX then refers to the same file as BX, eventually, CX is closed first
+ $47 : return text of current directory
+     call:
+           AH: $47
+           DS:SI: pointer to 64 byte area
+           DL: drive number (0=default, ..)
+     return:
+             CARRY: 1
+                    AX: 15=invalid drive
+             CARRY: 0=no error
+     the path name does not contain the leading separators
+ $48 : allocate memory
+     call:
+           AH: $48
+           BX: size of memory to be allocated
+     return:
+             CARRY: 1
+                    AX: 7=arena trashed
+                          internal consistency has been destroyed
+                        8=not enough memory
+                    BX: maximum size that could be allocated
+             CARRY: 0
+                    AX:0: pointer to the allocated memory
+ $49 : free allocated memory
+     call:
+           AH: $49
+           ES: segment address of memory area to be freed
+     return:
+             CARRY: 1
+                    AX: 7=arena trashed
+                          internal consistency has been destroyed
+                        9=invalid block
+                          the block was not allocated by $49
+             CARRY: 0=no error
+     returns a piece of memory to the system pool that was allocated with $49
+ $4A : modify allocated memory blocks
+     call:
+           AH: $4A
+           ES: segment address of memory area
+           BX: requested memory area
+     return:
+             CARRY: 1
+                    AX: 7=arena trashed
+                          internal consistency has been destroyed
+                        8=not enough memory
+                        9=invalid block
+                          the block was not allocated by $49
+                    BX: maximum size possible
+             CARRY: 0=no error
+     attempts to grow or shrink an allocated block
+ $4B : load and execute a program
+     call:
+           AH: $4B
+           DS:DX: pointer to pathname (asciz)
+           ES:BX: pointer to parameter block
+                  for AL=0:
+                  size    name
+                  2       segment address of environment
+                  4       pointer to command line at $80
+                  4       pointer to default fcb to be passed at $5C
+                  4       pointer to default fcb to be passed at $6C
+                  for AL=3:
+                  size    name
+                  2       segment address where file will be loaded
+                  2       relocation factor to be applied to the image
+           AL: 0=load and execute
+               3=load (overlay)
+     return:
+             CARRY: 1
+                    AX:  1=invalid function
+                           AL was not in range 0,3
+                         2=file not found
+                         8=not enough memory
+                        10=bad environment
+                           larger than 32K
+                        11=bad format
+                           EXE file contained inconsistent information
+             CARRY: 0=no error
+     all open files of a parent are copied to the child process
+     also inherited is an environment (block of text strings less than 32K)
+     a zero environment address causes the child to inherit then parents
+     environment unchanged
+ $4C : terminate process
+     call:
+           AH: $4C
+           AL: return code
+ $4D : retrieve then return code of a child
+     call:
+           AH: $4D
+     return:
+             AX: exit code
+                 high byte: 0=terminate/abort
+                            1=alt-c
+                            2=hard error
+                            3=terminate and stay resident
+     returns code only once
+ $4E : find match file
+     call:
+           AH: $4E
+           DS:DX: pointer to pathname
+           CX: search attributes
+     return:
+             CARRY: 1
+                    AX:  2=file not found
+                        18=no more files
+             CARRY: 0=no error
+     data block is written to current dma address:
+      size    name
+      21      reserved for subsequent calls
+       1      attribute found
+       2      time
+       2      date
+       2      low(size)
+       2      high(size)
+      13      packed name
+     subsequent calls: see $4F
+ $4F : step through a directory matching files
+     call:
+           AH: $4F
+     return:
+             CARRY: 1
+                    AX: 18=no more files
+             CARRY: 0=no error
+     only used for subsequent calls after $4E
+     dma address must point to the parablock
+ $54 : return current setting of verify after write flag
+     call:
+           AH: $54
+     return:
+             current verify flag value
+ $56 : move a directory entry
+     call:
+           AH: $56
+           DS:DX: pointer to pathname of existing file
+           ES:DI: pointer to new pathname
+     return:
+             CARRY: 1
+                    AX:  2=file not found
+                         5=access denied
+                           path is directory or new file exists
+                           or directory entry could not be created
+                        17=not same device
+             CARRY: 0=no error
+     attempts to rename a file in the directory of one device
+ $57 : get/set date/time of file
+     call:
+           AH: $57
+           AL: 0=get date and time
+               1=set date and time
+           BX: file handle
+           CX: if AL=1
+               time to be set
+           DX: if AL=1
+               date to be set
+     return:
+             CARRY: 1
+                    AX: 1=invalid function
+                        6=invalid handle
+             CARRY: 0=no error
+                    CX: if AL=0
+                        time
+                    DX: if AL=0
+                        date
+     date and time are not recorded until file is closed
+

@@ -1,0 +1,104 @@
+PACKET disk block io DEFINES                    (* Copyright (C) 1986 *)
+                                                (* Frank Klapper      *)
+                                                (* 25.03.86           *)
+  read disk block,
+  read disk cluster, 
+  write disk block,
+  write disk cluster,
+  io error,
+  first non dummy ds page:
+ 
+INT CONST first non dummy ds page := 2;
+
+INT VAR error;
+
+PROC read disk block (DATASPACE VAR ds,
+                      INT CONST ds page no, 
+                      INT CONST block no,
+                      INT VAR error):
+  check rerun;
+  read block (ds, ds page no, eublock (block no), error). 
+ 
+END PROC read disk block;
+ 
+PROC read disk block (DATASPACE VAR ds,
+                      INT CONST ds page no, 
+                      INT CONST block no):
+  check rerun;
+  read block (ds, ds page no, eublock (block no), error); 
+  IF error <> 0 
+    THEN io error (error)
+  FI. 
+ 
+END PROC read disk block;
+ 
+PROC read disk block (DATASPACE VAR ds,
+                      INT CONST block no):
+  read disk block (ds, first non dummy ds page, block no)
+
+END PROC read disk block; 
+
+PROC read disk cluster (DATASPACE VAR ds, 
+                        INT CONST first ds page no,
+                        INT CONST cluster no): 
+  INT VAR i;
+  FOR i FROM 0 UPTO sectors per cluster - 1 REP
+    read disk block (ds, first ds page no + i, block no + i)
+  PER.
+ 
+block no:
+  first block no of cluster (cluster no).
+ 
+END PROC read disk cluster; 
+ 
+PROC write disk block (DATASPACE CONST ds,
+                       INT CONST ds page no, 
+                       INT CONST block no,
+                       INT VAR error):
+  check rerun;
+  write block (ds, ds page no, 0,eu block (block no), error). 
+ 
+END PROC write disk block; 
+ 
+PROC write disk block (DATASPACE CONST ds,
+                       INT CONST ds page no, 
+                       INT CONST block no):
+  check rerun;
+  write block (ds, ds page no, 0, eu block (block no), error); 
+  IF error <> 0 
+    THEN io error (error)
+  FI. 
+ 
+END PROC write disk block; 
+ 
+PROC write disk block (DATASPACE CONST ds,
+                       INT CONST block no): 
+  write disk block (ds, first non dummy ds page, block no)
+
+END PROC write disk block; 
+
+PROC write disk cluster (DATASPACE CONST ds, 
+                        INT CONST first ds page no,
+                        INT CONST cluster no): 
+  INT VAR i;
+  FOR i FROM 0 UPTO sectors per cluster - 1 REP
+    write disk block (ds, first ds page no + i, block no + i)
+  PER.
+ 
+block no:
+  first block no of cluster (cluster no).
+ 
+END PROC write disk cluster; 
+ 
+PROC io  error (INT CONST error code):
+  SELECT error code OF 
+    CASE 1: errorstop ("Laufwerk nicht betriebsbereit") 
+    CASE 2: errorstop ("Schreib-/Lesefehler") 
+    CASE 3: errorstop ("Interner Fehler (Blocknummer zu hoch)") 
+    CASE 4: errorstop ("Block nicht lesbar")
+    OTHERWISE errorstop ("Schreib-/Lesefehler " + text (error)) 
+  END SELECT. 
+
+END PROC io error; 
+ 
+END PACKET disk block io;

@@ -1,0 +1,1636 @@
+;
+;****************************************************************
+;
+;	EUMEL-SHard Graphikroutinen fuer 6502-Teil.
+;	Anfang: 20.05.86, Michael Staubermann
+;	Version	1.2, Mit Incremental-Fill, dicke Striche, COPY-Modus
+;	Stand:	12.01.87
+;	
+		.printx	'GRAFIK65.MAC'
+
+;----------------------------------------------------------------------------
+;	V A R I A B L E
+;----------------------------------------------------------------------------
+;
+;	Konstante
+
+bit_a		EQU	2C	; Skip 2 Bytes
+
+;	Switches
+
+graphic_mode	EQU	$C050
+text_mode	EQU	$C051
+full_graphics	EQU	$C052
+page_1		EQU	$C054
+hires_mode	EQU	$C057
+lc_00		EQU	$C083
+lc_01		EQU	$C08B
+
+;----------------------------------------------------------------------------
+;
+;	G R A P H I K		Einsprung fuer alle Graphiksubtasks
+;
+;	Eingang:	$81 Subtasknummer
+;				0 = Move (x, y)
+;				1 = Draw (x, y)
+;				2 = Testbit (x, y) --> $81
+;				3 = Control (on/off, bank, page, or/and/xor, 
+;					     patternsource, colour, pattern)
+;				4 = Clear (page)
+;				5 = Fill (muster)
+;				6 = Trans (page a) to (page b)
+;
+;	Ausgang:	$81 (Nur bei Testbit)
+;
+;----------------------------------------------------------------------------
+
+GRAFIK:
+		lda	subtask		; 0 - 6
+		cmp	#7
+		bcc	grafik1
+		rts			; unerlaubt
+
+grafik1:
+		asl	a
+		tax
+		lda	gfunct,x
+		sta	1
+		lda	gfunct+1,x
+		sta	2		; 1/2 Sprungadressen
+		jmp	(1)		; Funktion aurufen
+
+gfunct:
+		dw	gmove, gdraw, gtest, gctrl, gclr, gfill, gtrans
+
+;---------------------------------------------------------------------
+;
+;	G M O V E
+;	Graphikcursor auf Position (x, y) setzen
+;
+;	Eingang: param1 = xpos
+;		 param2 = ypos
+;
+GMOVE:
+		lda	param1
+		sta	xpos		; LOW xpos
+		lda	param1+1
+		sta	xpos+1		; HIGH xpos
+		lda	param2
+		sta	ypos		; LOW ypos
+		lda	param2+1
+		sta	ypos+1		; HIGH ypos
+
+move_x:
+		lda	savepattern
+		sta	pattern
+		lda	savepattern+1
+		sta	pattern+1	; Linetypepattern auf Anfangswert
+		rts
+
+;---------------------------------------------------------------------
+;
+;	G D R A W
+;	Linie zur Position (x, y) zeichen
+;
+;	Eingang: param1 = xpos
+;		 param2 = ypos
+;
+GDRAW:
+	IF 0
+		lda	param1
+		pha			; 'to' Parameter retten
+		lda	param1+1
+		pha
+		lda	param2
+		pha
+		lda	param2+1
+		pha
+	ENDIF
+		jsr	draw		; draw (xpos,ypos TO param1,param2)
+	IF 0
+		pla
+		sta	ypos+1
+		pla
+		sta	ypos
+		pla
+		sta	xpos+1
+		pla
+		sta	xpos
+	ENDIF
+		rts
+
+;---------------------------------------------------------------------
+;
+;	G T E S T
+;	Punkt (x, y) testen
+;
+;	Eingang: param1 = xpos
+;		 param2 = ypos
+;	Ausgang: param = result = Flags
+;
+GTEST:
+		lda	param2+1	; HIGH y
+		bne	ytohigh		; Carry is set
+		lda	param1+1	; HIGH x
+		ldx	param1		; LOW x
+		ldy	param2		; LOW y
+		jsr	calcaddr	; Byteaddresse des Punktes berechnen
+ytohigh:	lda	#$FF		; 255 = Falsche Punktposition
+		bcs	testrts		; Return mit Ergebnis
+		ldy	#00
+		lda	(address),y
+		php			; Farbbit merken
+		and	bitmask,x	; Pixel ausmaskieren
+		beq	testcolor
+		lda	#01		; Bit 0 : Zustand des gesuchten Pixels
+testcolor:	plp
+		bpl	testrts
+		ora	#80		; Bit 7 : Farbe
+testrts:	sta	result
+		rts
+
+;---------------------------------------------------------------------
+;
+;	G C T R L
+;	Verschiede Steuerfunktionen
+;
+;	Eingang: param1 s.u.
+; Steuerbits:
+; 0:	0 = graphik off
+;	1 = graphik on
+; 1:	0 = Sichtbare Seite 0
+;	1 = Sichtbare Seite 1
+; 2:	0 = Bearbeitete Seite 0 (2000..3FFF)
+;	1 = Bearbeitete Seite 1 (4000..5FFF)
+; 3,4:	0 = OR (Setzen)
+;	1 = AND (Loeschen)
+;	2 = XOR (Invertieren)
+;	3 = COPY (kopieren = loeschen/setzen)
+; 5:	0 = Full Graphics display
+;	1 = Mixed Graphics display (4 Zeilen Text)
+; 6:	0 = param2 ist Linetypepattern
+;	1 = savepattern ist Linetypepatt.
+; 7:	0 = Violett
+;	1 = Gelb
+; 8..11 = Strichdicke
+;
+; param2 ist 16Bit Pattern (falls Bit 6 = 0)
+;
+GCTRL:
+		lda	param1		; Steuerbits
+		and	#80		; Bit 7 = Farbe
+		sta	colormask
+
+		lsr	param1		; Bit 0 = Graphik on/off
+		bcs	graphon
+
+		lda	text_mode
+		lda	page_1
+		bcc	bit12
+
+graphon:	lda	graphic_mode
+		lda	hires_mode
+
+		lda	param1		; Bit 2 = Page
+		and	#01
+		tax
+		sta	page_1,x	; Page Select
+
+bit12:		lsr	param1		; Bit 1 ins Carry
+		lsr	param1		; Bit 2 ins Carry
+		bcs	page2sel
+		lda	#20
+		db	bit_a
+page2sel:	lda	#40
+		sta	pagebase
+
+		lda	param1
+		and	#03		; Bit 3,4 = Bitmode
+		sta	bitmode
+		lsr	param1		; Bit 3 ins Carry
+		lsr	param1		; Bit 4 ins Carry
+
+		lda	param1+1
+		and	#0F
+		bne	setthick
+		lda	#1		; Default 0: 1 Strich
+setthick:
+		sta	thick		; Strichdicke in 8..11
+
+		lda	param1		; Bit 5 = full (0) or mixed (1) Graph.
+		and	#01
+		tax
+		sta	full_graphics,x
+		lsr	param1		; Bit 5 ins Carry
+
+		lsr	param1		; Bit 6 ins Carry
+		bcs	saved
+
+		lda	param2		; Parameter 2 (Word) Pattern
+		sta	pattern		; in interne Linepattern kopieren
+		sta	savepattern
+		lda	param2+1
+		sta	pattern+1
+		sta	savepattern+1
+		bcc	ctrlret
+
+saved:
+		lda	pattern		; Internes Savepattern als Workpattern
+		sta	savepattern	; benutzen
+		lda	pattern+1
+		sta	savepattern+1
+
+ctrlret:	rts
+
+;---------------------------------------------------------------------
+;
+;	G C L R 
+;	Graphikseite loeschen, bzw. mit einem Bitmuster fuellen
+;
+;	Eingang: param1 = Seite (0..3)
+;		 param2 = Byte (0..255)
+;
+GCLR:
+		lda	param1
+		jsr	page_addr	; Anfangsaddresse der Page --> A
+					; y := 0
+		sta	address+1
+		sty	address
+		ldx	#20		; 32 Pages
+		lda	param2
+gclr1:
+		sta	(address),y
+		iny
+		bne	gclr1
+		inc	address+1
+		dex
+		bne	gclr1
+		rts
+
+page_addr:
+		and	#3
+		asl	a
+		asl	a
+		asl	a
+		asl	a
+		asl	a
+		adc	#20		; + Offset fuer erste Grafikseite
+		ldy	#0
+		rts
+
+;---------------------------------------------------------------------
+;
+;	G F I L L
+;	Umrandete Flaeche Fuellen
+;
+;	Eingang: param1 = Nummer des Fuellmusters
+;
+GFILL:
+		lda	lc_01
+		lda	lc_01		; Select Page 1 D000..DFFF (Stack)
+		lda	param1
+		jsr	fill
+		lda	lc_00
+		lda	lc_00		; Select Page 0 D000..DFFF (Spooler)
+		rts
+
+
+;---------------------------------------------------------------------
+;
+;	G T R A N S
+;	Graphikseite in eine andere Grafikseite kopieren
+;
+;	Eingang: param1 = 'from'-Page (0..3)
+;		 param2 = 'to'-Page (0..3)
+;
+GTRANS:
+		lda	param1
+		jsr	page_addr
+		sta	address+1		; 'from' - Pagebase
+		sty	address
+
+		lda	param2
+		jsr	page_addr
+		sta	param1+1
+		sty	param			; 'to' - Pagebase
+		ldx	#20			; 32 Pages
+
+gtrans1:
+		lda	(address),y
+		sta	(param1),y
+		iny
+		bne	gtrans1
+		inc	address+1
+		inc	param1+1
+		dex
+		bne	gtrans1
+		rts
+
+;--------------------------------------------------------------------------
+;	Umrandete Graphikflaeche (xpos, ypos) ausfuellen
+;	Musternummer in A
+
+FILL:
+		and	#0F		; 16 Muster a 64 Bit
+		asl	a		; *8 (8 Bytes pro Muster)
+		asl	a
+		asl	a		; Offset auf Muster
+		sta	olderror+1
+		lda	pagebase
+		sta	olderror	; Merken
+		lda	#wrkpage	; Workpage (alter Inhalt geloescht!)
+		sta	pagebase
+		jsr	fill1		; ggf POP Returnaddress
+		lda	olderror
+		sta	pagebase	; restoren
+		rts
+
+fill1:
+		lda	bitmode
+		and	#1
+		sta	creg
+
+
+		lda	#2
+		sta	areg+1		; stackpointer
+		lda	ypos+1
+		bne	fill1d		; Out of Window
+		ldx	xpos
+		stx	xa		; xpos low (fuer Muster)
+		lda	xpos+1
+		sta	xb
+		ldy	ypos
+		sty	ya		; yposlow (fuer Muster)
+		jsr	startxy
+		bcc	fill1c
+fill1d:		rts			; Ausserhalb oder auf Punkt
+
+fill1c:
+		ldx	#wrkpage
+		stx	address+1
+		ldx	olderror	; Echte Seite
+		stx	link+1
+		ldx	#20		; 8k
+		ldy	#0
+		sty	address
+		sty	link
+fill1b:		lda	(link),y	; Echte Seite in Arbeitsseite kopieren
+		sta	(address),y	; Arbeitsseite loeschen
+		iny
+		bne	fill1b
+		inc	address+1
+		inc	link+1
+		dex
+		bne	fill1b
+		lda	xpos+1
+		ldx	xpos
+		ldy	ypos
+		jsr	startxy
+
+fill2:
+		ldy	creg+1		; Byte Offset
+		ldx	breg+1		; Bit Offset
+		jsr	testquick	; Bei (x,y) Punkt gesetzt ?
+		bcc	fill2h		; Punkt gesetzt
+		jsr	poppos
+		jmp	fill2
+					; (x-1, y) testen
+fill2h:		lda	breg+1
+		sta	dx
+		lda	creg+1
+		sta	dx+1
+		lda	xa
+		sta	xa+1		; Save xpos
+		lda	xb
+		sta	xb+1
+
+		lda	xa
+		bne	fill2d2
+		dec	xb
+fill2d2:	dec	xa
+		jsr	decx		; x-1, y bleibt
+		bcs	fill2d
+		jsr	testquick
+		bcc	fill2h
+
+fill2d:		lda	dx		; Altes x wiederherstellen
+		sta	breg+1		; (Der letzte Punkt vorm linken
+		lda	dx+1		; Rand)
+		sta	creg+1
+		lda	xa+1
+		sta	xa
+		lda	xb+1
+		sta	xb
+
+fill4:					; (x, y-1) testen
+		lda	address		; ypos retten
+		sta	dy
+		lda	address+1
+		sta	dy+1
+		lda	breg
+		sta	yb	
+		lda	ya		; ypos low
+		sta	ya+1
+
+		dec	ya
+		jsr	decy		; y-1
+		bcs	fill2a
+		jsr	testquick
+		bcs	fill2a
+		jsr	clrstack	; Hier auch 'pushpos'
+
+fill2a:					; (x, y+1) testen
+		jsr	incy
+		bcs	fill2e
+		jsr	incy
+		bcs	fill2e
+		inc	ya
+		inc	ya
+		jsr	testquick
+		bcs	fill2e
+		jsr	clrstack	; Hier auch 'pushpos'
+fill2e:					; Altes y wiederherstellen
+		lda	dy
+		sta	address		; ypos widerherstellen
+		lda	dy+1
+		sta	address+1
+		lda	yb
+		sta	breg
+		lda	ya+1
+		sta	ya
+
+		jsr	pointquick
+
+		inc	xa
+		bne	fill2g
+		inc	xb
+fill2g:		jsr	incx
+		bcs	fill2i
+		jsr	testquick
+		bcc	fill4		; Punkt bei (x+1, y) ?
+fill2i:		jsr	poppos		; Gerettete x/y Pos vom Stack
+		jmp	fill2		; Damit nochmal (pseudorekursion)
+
+;--------------------------------------------------------------------------
+;	Hilfsroutinen fuer 'GFILL'
+
+testquick:
+		lda	(address),y
+		and	bitmask,x
+		beq	testquick1	; Kein Punkt gesetzt
+		lda	#1
+testquick1:	eor	creg		; umdrehen, falls AND/COPY
+		lsr	a		; SEC/CLC
+		rts
+
+pointquick:
+		lda	ya		; ypos low
+		and	#7
+		ora	olderror+1	; Offset auf Muster
+		tay
+		lda	xa
+		and	#7
+		tax
+		lda	bitmask,x	; xpos Bit
+		and	muster,y	; ypos Byte
+		sta	yb+1		; 0, wenn kein Punkt gesetzt
+
+		ldx	breg+1
+		ldy	creg+1
+		lda	(address),y
+		eor	bitmask,x	; Bei OR loeschen, bei AND setzen!
+		sta	(address),y	; Zum Merken in Workpage
+					; Test, ob auch in echter Seite Punkt
+		lda	yb+1
+		beq	pointquick1	; Nicht mehr in echter Seite setzen
+		lda	address+1
+		pha
+		and	#$1F		; Nur 8k Bits
+		ora	olderror	; Echte pagebase
+		sta	address+1
+		lda	(address),y
+		and	#$7F
+		ora	colormask
+		eor	bitmask,x
+		sta	(address),y	; In echter Seite setzen
+		pla
+		sta	address+1
+
+pointquick1:	rts
+
+poppos:					; x/y Pos vom Stack holen
+		ldx	areg+1		; stackpointer
+		cpx	#2
+		beq	poppos1
+		dex			; ? ggf beq poppos1
+		beq	poppos1
+
+		lda	stack+000,x	; xpos
+		sta	breg+1
+		lda	stack+100,x
+		sta	creg+1
+
+		lda	stack+200,x	; ypos
+		sta	address
+		lda	stack+300,x
+		sta	address+1
+		lda	stack+400,x
+		sta	breg
+
+		lda	stack+500,x	; xpos low
+		sta	xa
+		lda	stack+600,x	; xpos high
+		sta	xb
+		lda	stack+700,x	; ypos low
+		sta	ya
+		stx	areg+1		; stackpointer
+		rts
+poppos1:
+		pla
+		pla
+		rts			; Fill verlassen
+
+
+clrstack:				; Stack aufraeumen und pushpos
+		ldx	#$FE		; creg+1, da Neues startxy gegeben wird
+		stx	yb+1		; Flag, ob zweites mal clrstack
+		ldx	areg+1		; stackpointer
+clrstack4:	dex
+		lda	stack+700,x
+		cmp	ya
+		bne	clrstack3
+		lda	stack+600,x	; (stack)+1 --> temp (in A/Y)
+		ldy	stack+500,x
+		iny
+		bne	clrstack2
+		clc
+		adc	#1
+clrstack2:	cmp	xb		; Stacktop = xpos-1 ?
+		bne	clrstack3
+		cpy	xa
+		bne	clrstack3
+
+		lda	breg+1		; xpos replacen
+		sta	stack+000,x
+		lda	creg+1
+		sta	stack+100,x
+		lda	xa
+		sta	stack+500,x
+		lda	xb
+		sta	stack+600,x
+		rts
+
+clrstack3:	inc	yb+1		; Flag fuer 2. Durchlauf
+		bne	clrstack4
+
+pushpos:				; xpos/ypos auf Stack bringen
+		ldx	areg+1		; stackpointer
+		lda	breg+1
+		sta	stack+000,x
+		lda	creg+1
+		sta	stack+100,x
+		lda	address
+		sta	stack+200,x
+		lda	address+1
+		sta	stack+300,x
+		lda	breg
+		sta	stack+400,x
+		lda	xa
+		sta	stack+500,x
+		lda	xb
+		sta	stack+600,x
+		lda	ya
+		sta	stack+700,x
+		inx
+		beq	pushpos1	; Stackoverflow
+		stx	areg+1		; stackpointer
+pushpos1:	rts
+
+;===========================================================================
+;	Incremental Adresses
+;	Belegt breg = rowstartoffset, breg+1 = x-reg = bitoffset
+;	       creg+1 = y-reg = xbyte offset,
+;	       address/address+1 = Byteaddresse
+;
+;	Fuer jede Routine gilt:
+;	Ausgang: X = Bitoffset, Y = Byteoffset, SEC = Out of Window
+;	Trat SEC auf, ist die aktuelle Position unveraendert (!)
+;		 Beispiel: jsr	incy
+;			   bcs	fehler
+;			   lda	(address),y
+;			   and	bitmask,x
+
+;---------------------------------------------------------------------------
+;	Start Scan
+;
+;	Eingang:		A: HIGH xpos
+;				X: LOW xpos
+;				Y: LOW ypos
+
+STARTXY:
+		cmp	#02		; xpos >= 512 ?
+		bcc	startxy1
+startxy2:	rts			; Carry is Set
+startxy1:	cmp	#01
+		bne	startxy3	; xpos < 256
+		cpx	#18		; xpos >= 280 ?
+		bcs	startxy2	; Bereichsfehler
+startxy3:	cpy	#$C0		; ypos >= 192 ?
+		bcs	startxy2	
+
+		pha			; xpos (HIGH) retten
+		tya
+		pha
+
+; adr := rowstart [ypos DIV 8] + (ypos MOD 8) * 1024 + xpos DIV 7
+
+		lsr	a		; ypos DIV 8
+		lsr	a
+		lsr	a
+		asl	a		; Fuer Tabellenzugriff * 2 (Bit 0 = 0)
+		tay
+		sty	breg		; rowstart Offset
+		lda	rowstart,y	; Tabelle der Zeilenanfaenge
+		sta	address
+		lda	rowstart+1,y
+		clc
+		adc	pagebase
+		sta	address+1
+		pla			; ypos
+		and	#07		; MOD 8
+		eor	#07		; y = 0 ist unten links
+		asl	a		; * 4 (* 256)
+		asl			; Carry is cleared
+		adc	address+1	; Mikrozeile addieren
+		sta	address+1
+		pla			; xpos (HIGH) --> Y
+		tay
+		txa			; xpos (LOW) --> A
+		jsr	divide7		; A/Y --> A (Quotient), X (Remainder)
+		sta	creg+1
+		tay			; y-reg = Byteoffset
+		stx	breg+1		; Bitoffset
+		clc			; Carry cleared = ok
+		rts
+			
+;-------------------------------------------------------------------------
+;	Increment actual y
+
+INCY:
+		lda	address+1
+		and	#1C
+		beq	incy1		; naechste Mikrozeile
+		lda	address+1
+		sec
+		sbc	#4
+		sta	address+1
+		clc			; ok
+incy2:		ldy	creg+1
+		ldx	breg+1
+		rts
+
+incy1:		ldy	breg
+		iny
+		iny			; naechste Makrozeile
+		cpy	#30		; tabellenende ?
+		bcs	incy2		; Fehler, nichts veraendert
+		sty	breg
+		lda	rowstart,y
+		sta	address		; Carry war cleared
+		lda	rowstart+1,y
+		adc	pagebase
+		adc	#1C		; 7. Mikrozeile
+		sta	address+1
+		bcc	incy2		; Always
+
+;--------------------------------------------------------------------------
+;	Decrement actual y
+
+DECY:
+		lda	address+1
+		and	#1C
+		cmp	#1C		; 7. Mikrozeile ?
+		beq	decy1		; naechste Mikrozeile
+		lda	address+1
+		adc	#4
+		sta	address+1
+decy2:		ldy	creg+1
+		ldx	breg+1
+		rts
+
+decy1:		ldy	breg		; naechste Makrozeile
+		sec
+		beq	decy2		; Out of Window ?
+		dey
+		dey
+		sty	breg
+		lda	rowstart,y
+		sta	address
+		clc
+		lda	rowstart+1,y
+		adc	pagebase
+		sta	address+1
+		bcc	decy2		; Always
+
+;-------------------------------------------------------------------------
+;	Increment actual x
+
+INCX:
+		ldy	creg+1
+		ldx	breg+1
+		cpx	#6
+		bcs	incx1
+		inx
+		clc
+incx2:		stx	breg+1		; y schon = creg+1
+		rts
+
+incx1:		inc	creg+1
+		iny
+		ldx	creg+1
+		cpx	#28		; Out of Window ?
+		ldx	#0
+		bcc	incx2		; CLC: ok
+		dec	creg+1		; Wieder Rueckgaengig
+		rts
+
+;-----------------------------------------------------------------------
+;	Decrement actual x
+
+DECX:
+		ldy	creg+1
+		ldx	breg+1
+		beq	decx1
+		dex
+decx2:		stx	breg+1		; y schon creg+1
+		rts
+
+decx1:		ldx	#6
+		dec	creg+1
+		dey
+		clc
+		bpl	decx2		; < 0 ?
+		sec			; Out of Window !
+		inc	creg+1		; Alter Zustand
+		rts
+
+
+;==========================================================================
+;	Absolute Adresses
+
+;--------------------------------------------------------------------------
+;
+;		C A L C A D D R
+;		Berechnet die Addresse eines Pixels
+;
+;		Eingang:	A: HIGH xpos
+;				X: LOW xpos
+;				Y: ypos
+;		Ausgang:	address,address+1: Addresse des Bytes mit Pixel
+;				Carry: Set = Pixelpos ausserhalb des Fensters
+;				X: Bitnummer im addressierten Byte (0..6)
+;---------------------------------------------------------------------------
+
+CALCADDR:
+		cmp	#02		; xpos >= 512 ?
+		bcc	less512
+rangeerr:	rts			; Carry is Set
+less512:	cmp	#01
+		bne	xposok		; xpos < 256
+		cpx	#18		; xpos >= 280 ?
+		bcs	rangeerr	; Bereichsfehler
+xposok:		cpy	#$C0		; ypos >= 192 ?
+		bcs	rangeerr	
+
+		pha			; xpos (HIGH) retten
+		tya
+		pha
+
+; adr := rowstart [ypos DIV 8] + (ypos MOD 8) * 1024 + xpos DIV 7
+
+		lsr			; ypos DIV 8
+		lsr
+		lsr
+		asl			; Fuer Tabellenzugriff * 2 (Bit 0 = 0)
+		tay
+		lda	rowstart,y	; Tabelle der Zeilenanfaenge
+		sta	address
+		lda	rowstart+1,y
+		clc
+		adc	pagebase
+		sta	address+1
+		pla			; ypos
+		and	#07		; MOD 8
+		eor	#07		; y = 0 ist unten links
+		asl			; * 4 (* 256)
+		asl			; Carry is cleared
+		adc	address+1
+		sta	address+1
+		pla			; xpos (HIGH) --> Y
+		tay
+		txa			; xpos (LOW) --> A
+		jsr	divide7		; A/Y --> A (Quotient), X (Remainder)
+		clc
+		adc	address
+		sta	address
+		bcc	calcret
+		inc	address+1
+		clc			; Carry cleared = ok
+calcret:	rts
+
+;-----------------------------------------------------------------------------
+;
+;		N E G 
+;		Vorzeichenwechsel
+;		Eingang/Ausgang:	A/X (HIGH/LOW)
+;-----------------------------------------------------------------------------
+
+NEG:		pha
+		txa
+		eor	#$FF
+		clc
+		adc	#01
+		tax
+		pla
+		eor	#$FF
+		adc	#00
+		rts
+
+;---------------------------------------------------------------------------
+;
+;		D I V I D E 7
+;		Division durch 7 mit Rest
+;		Eingang:	A: Low, Y: High (Nur 0 oder 1)
+;		Ausgang:	A: Quotient (Auch in quotient)
+;				X: Rest
+;--------------------------------------------------------------------------
+
+DIVIDE7:
+		ldx	#00		; Quotient Schieberegister loeschen
+		stx	quotient
+		ldx	#$E0		; 224 = 7 * 2^5 als Startwert
+		stx	divmask
+		ldx	#06		; Anzahl Verschiebungen
+		cpy	#01		; Zahl > 255 ?
+		bne	shiftloop	; Carry is set
+		inc	quotient
+		adc	#1F		; (Zahl MOD 256) + 32
+		bne	shift2loop	; Erste Subtraktion ueberspringen
+
+shiftloop:	sec
+		sbc	divmask		; Probeweise subtrahieren
+		php			; Borrow merken
+		rol	quotient	; Borrow in quotient rotieren
+		plp
+		bcs	shift2loop
+		adc	divmask		; Falls zuviel subtrahiert wieder add.
+shift2loop:	lsr	divmask		; Dann nur noch die Haelfte subtr.
+		dex
+		bne	shiftloop
+		tax			; Rest der Division
+		lda	quotient	; Quotient
+		rts
+
+;----------------------------------------------------------------------------
+;
+;		P O I N T
+;		Setzt/Loescht Punkt an bestimmter Position
+;		Eingang:	Position in xpos/ypos
+;				Linepattern in pattern
+;				Farbmaske in colormask
+;				Bitmodus in bitmode
+;---------------------------------------------------------------------------
+
+;DOPOINT:
+;		ldy	bitmode
+;		bpl	patternres	; Always
+
+POINT:
+		ldy	bitmode
+		asl	pattern
+		rol	pattern+1
+		bcs	patternset
+		cpy	#03		; Copymodus
+		bne	pointret	; Keine Aktion
+		ldy	#01		; Loeschen
+		bne	patternres	; Always
+
+patternset:	inc	pattern		; 1 links im pattern setzen
+patternres:	sty	tempmode	
+		lda	ypos+1
+		bne	pointret
+		lda	xpos+1
+		ldx	xpos
+		ldy	ypos
+;MAKEDOT:	
+		jsr	calcaddr	; Punktaddresse berechnen
+		bcs	pointret	; Ausserhalb des Bildschirms
+		ldy	#00
+		lda	(address),y
+		ldy	tempmode	
+		bne	mode1
+
+mode0:		ora	bitmask,x	; Modus 0 = setzen
+		bcc	setcolor
+
+mode1:		dey
+		bne	mode2
+		and	notbitmask,x	; Modus 1 = loeschen
+		bcc	setcolor
+
+mode2:		dey
+		bne	mode0		; Modus 3 (copy) wie Modus 0
+		eor	bitmask,x	; Modus 2 = invertieren
+		bcc	setcolor
+
+setcolor:	ldy	#00
+		and	#7F		; Altes Farbbit loeschen
+		ora	colormask	; Farbbit neu setzen
+		sta	(address),y	; Graphikbyte zurueckschreiben
+pointret:	rts
+
+
+;-----------------------------------------------------------------------------
+;	Drawthick zeichnet eine dicke Linie
+
+drawthick:
+		lda	param1
+		pha
+		lda	param1+1
+		pha			; to-pos retten
+		lda	param2
+		pha
+		lda	param2+1
+		pha
+
+		lda	savepattern
+		pha
+		lda	savepattern+1
+		pha
+		lda	pattern		; Linetype auf Startwert
+		sta	savepattern
+		lda	pattern+1
+		sta	savepattern+1
+
+		dec	thick
+
+;	x- oder y- Richtung feststellen:
+;	x direction := abs (xto - xfrom) > abs (yto - yfrom)
+
+		lda	param1
+		sec
+		sbc	xpos
+		tax
+		lda	param1+1
+		sbc	xpos+1
+		bcs	drawthick1
+		jsr	NEG		; Absolutwert (A/X)
+drawthick1:	sta	dx+1
+		stx	dx
+
+		lda	param2
+		sec
+		sbc	ypos
+		tax
+		lda	param2+1
+		sbc	ypos+1
+		bcs	drawthick2
+		jsr	NEG		; Absolutwert (A/X)
+drawthick2:	pha
+		txa
+		sec
+		sbc	dx
+		pla
+		sbc	dx+1		; Nur das Vorzeichen wichtig
+		pha			; xdirection, wenn A < 0
+
+;	Start- und Endpunkt der mittleren Linie berechnen
+
+		bpl	drawthick3	; y direction
+
+; start.x := xfrom - thick x  ; to.x := xto + thick x
+; start.y := yfrom            ; to.y := yto
+; thick x : IF xto < xfrom THEN -thick ELSE +thick FI
+		
+		lda	param1
+		sec
+		sbc	xpos		; xto - xfrom 
+		lda	param1+1
+		sbc	xpos+1
+		bcs	drawthick4	; xto >= xfrom (xto-xfrom >= 0)
+					; xto < xfrom
+		lda	xpos		; Carry is cleared
+		adc	thick
+		sta	xa		; start.x
+		lda	xpos+1
+		adc	#0
+		sta	xa+1
+
+		lda	param1		; to.x
+		sec
+		sbc	thick
+		sta	xb
+		lda	param1+1
+		sbc	#0
+		sta	xb+1
+		jmp	drawthick5
+
+drawthick4:
+		lda	xpos		; Carry is set
+		sbc	thick
+		sta	xa
+		lda	xpos+1
+		sbc	#0
+		sta	xa+1
+
+		lda	param1
+		clc
+		adc	thick
+		sta	xb
+		lda	param1+1
+		adc	#0
+		sta	xb+1
+
+drawthick5:
+;	start.y := ypos ; to.y := param2
+		lda	ypos
+		sta	ya
+		lda	ypos+1
+		sta	ya+1
+		lda	param2
+		sta	yb
+		lda	param2+1
+		sta	yb+1
+		jmp	drawthick8
+
+drawthick3:				; x direction
+
+; start.x := xfrom           ; to.x := xto
+; start.y := yfrom - thick y ; to.y := yto + thick y
+; thick y : IF yto < yfrom THEN -thick ELSE +thick FI
+
+		lda	param2
+		sec
+		sbc	ypos		; yto - yfrom 
+		lda	param2+1
+		sbc	ypos+1
+		bcs	drawthick6	; yto >= yfrom (yto-yfrom >= 0)
+					; yto < yfrom
+		lda	ypos		; Carry is cleared
+		adc	thick
+		sta	ya		; start.y
+		lda	ypos+1
+		adc	#0
+		sta	ya+1
+
+		lda	param2		; to.y
+		sec
+		sbc	thick
+		sta	yb
+		lda	param2+1
+		sbc	#0
+		sta	yb+1
+		jmp	drawthick7
+
+drawthick6:
+		lda	ypos		; Carry is set
+		sbc	thick
+		sta	ya
+		lda	ypos+1
+		sbc	#0
+		sta	ya+1
+
+		lda	param2
+		clc
+		adc	thick
+		sta	yb
+		lda	param2+1
+		adc	#0
+		sta	yb+1
+
+drawthick7:
+;	start.x := xpos ; to.x := param1
+		lda	xpos
+		sta	xa
+		lda	xpos+1
+		sta	xa+1
+		lda	param1
+		sta	xb
+		lda	param1+1
+		sta	xb+1
+
+;------
+;	FOR diff FROM -thick TO thick REP drawsingl PER
+
+drawthick8:
+		ldx	thick
+		lda	#0
+		jsr	NEG		; -thick
+		sta	areg+1
+		stx	areg		; = diff
+
+drawthick11:
+		ldx	areg
+		lda	areg+1
+		bne	drawthick9
+		cpx	thick		; > +thick ?
+		beq	drawthick9
+		bcc	drawthick9
+		
+;	PER ; restore pattern
+
+		pla			; x direction
+		inc	thick
+		pla
+		sta	savepattern+1
+		sta	pattern+1
+		pla
+		sta	savepattern
+		sta	pattern
+		pla
+		sta	param2+1		; To-Pos restoren
+		pla
+		sta	param2
+		pla
+		sta	param1+1
+		pla
+		sta	param1
+		lda	param1
+		sta	xpos
+		lda	param1+1
+		sta	xpos+1
+		lda	param2
+		sta	ypos
+		lda	param2+1
+		sta	ypos+1
+		rts
+
+;	singlevector:
+
+drawthick9:
+		pla
+		pha			; xdirection ?
+		bpl	drawthick10	; y direction
+
+; move (start.x, start.y-diff) ;
+; draw (to.x, to.y-diff) ;
+
+		lda	xa
+		sta	xpos
+		lda	xa+1
+		sta	xpos+1		; xpos := start.x
+		lda	ya
+		sec
+		sbc	areg
+		sta	ypos
+		lda	ya+1
+		sbc	areg+1
+		sta	ypos+1		; ypos := start.y - diff
+		jsr	move_x
+		
+		lda	xb		; xto := to.x
+		sta	param1
+		lda	xb+1
+		sta	param1+1
+		lda	yb		; yto := to.y - diff
+		sec
+		sbc	areg
+		sta	param2
+		lda	yb+1
+		sbc	areg+1
+		sta	param2+1
+		jsr	drawsglvec	; Linie von x/ypos nach param1/2
+		jmp	drawthick12
+
+drawthick10:
+
+; move (start.x + diff, start.y) ;
+; draw (to.x + diff, to.y) ;
+
+		lda	xa
+		clc
+		adc	areg
+		sta	xpos		; xpos := start.x + diff
+		lda	xa+1
+		adc	areg+1
+		sta	xpos+1
+		lda	ya		; ypos := start.y
+		sta	ypos
+		lda	ya+1
+		sta	ypos+1
+		jsr	move_x
+
+		lda	xb
+		clc
+		adc	areg		; xto := to.x + diff
+		sta	param1
+		lda	xb+1
+		adc	areg+1
+		sta	param1+1
+
+		lda	yb
+		sta	param2
+		lda	yb+1		; yto := to.y
+		sta	param2+1
+		jsr	drawsglvec	; Linie von x/ypos nach param1/2
+
+;	NEXT diff
+
+drawthick12:	
+		inc	areg
+		bne	drawthick13
+		inc	areg+1
+drawthick13:	jmp	drawthick11	; diff INCR 1
+		
+		
+;-----------------------------------------------------------------------------
+;
+;		D R A W
+;		Linie zwischen zwei Punkten zeichnen
+;		Eingang:	FROM-Position in xpos/ypos
+;				TO-Position in param1/param2
+;				Attribute in bitmode,pattern,colormask
+;-----------------------------------------------------------------------------
+
+DRAW:
+
+;	X-Vektorrichtung bestimmen
+;	dx := xto - xfrom ; right := sign (dx) ; dx := ABS dx
+
+		lda	thick
+		bne	draw1
+		rts			; Unsichtbare Linie
+draw1:		
+		cmp	#1
+		beq	drawsglvec	; Eine Linie Zeichnen
+		jmp	drawthick
+
+drawsglvec:
+		ldy	#00		; Vorzeichen fuer right: positiv
+		lda	param1		; xto (LOW)
+		sec
+		sbc	xpos		; xfrom (LOW)
+		tax
+		lda	param1+1	; xto (HIGH)
+		sbc	xpos+1		; xfrom (HIGH)
+		bpl	dxpositiv
+		jsr	NEG		; dx := -dx
+		dey			; Vorzeichen fuer right: negativ
+dxpositiv:	sta	dx+1
+		stx	dx
+		sty	right
+
+;	Y-Vektorrichtung bestimmen
+;	dy := yto - yfrom ; up := sign (dy) ; dy := ABS dy
+
+		ldy	#00		; Vorzeichen fuer up: positiv	
+		lda	param2		; yto
+		sec
+		sbc	ypos		; yfrom
+		tax
+		lda	param2+1
+		sbc	ypos+1
+		bpl	dypositiv
+		jsr	NEG		; dy := -dy
+		dey			; Vorzeichen fuer up: negativ
+dypositiv:	sta	dy+1
+		stx	dy
+		sty	up
+
+; init vectorloop
+
+		ldx	#00
+		stx	olderror
+		stx	olderror+1	; olderror := 0
+		ldx	#xpos		; xpointer zeigt auf xpos
+		stx	xpointer
+		ldx	#ypos
+		stx	ypointer	; ypointer zeigt auf ypos
+
+;	dy > dx   ==>   dx - dy < 0   ==> Parameter vertauschen
+
+		lda	dx
+		sec
+		sbc	dy		; Ergebnis unwichtig, nur Carry
+		lda	dx+1		; dx (HIGH)
+		sbc	dy+1		; dy (HIGH)
+		bpl	dy_lsequal_dx
+
+;	Parameter vertauschen
+
+		lda	xpointer	; xpointer und ypointer vertauschen
+		ldx	ypointer
+		stx	xpointer
+		sta	ypointer
+
+		lda	up		; up und right vertauschen
+		ldx	right
+		stx	up
+		sta	right
+
+		lda	dx		; dx (LOW) und dy (LOW) vertauschen
+		ldx	dy
+		stx	dx
+		sta	dy
+
+		lda	dx+1		; dx (HIGH) und dy (HIGH) vertauschen
+		ldx	dy+1
+		stx	dx+1
+		sta	dy+1
+
+dy_lsequal_dx:				; vector(xpos, ypos, dx, dy, right, up)
+
+;	uprighterror := dy - dx ; righterror = dy
+
+		lda	dy
+		sec
+		sbc	dx
+		sta	uprighterror
+		lda	dy+1
+		sbc	dx+1
+		sta	uprighterror+1
+
+;	Schleife: dx DECR 1
+
+nextpixel:	jsr	POINT		; POINT (xpos, ypos)
+		lda	dx		; dx = counter = 0 ?
+		ora	dx+1
+		bne	do_one_step
+		rts			; Ende der Vektorloop
+
+do_one_step:	
+		ldx	xpointer	; Referenz auf xpos oder ypos
+		bit	right		; right < 0 ?
+		bpl	rightstep	; sonst leftstep
+;leftstep:
+		lda	0,x		; xpos-Referenz DEC 1
+		bne	xposdec1
+		dec	1,x		; Highbyte von xpos
+xposdec1:	dec	0,x		; Lowbyte von xpos
+		jmp	detdirection
+rightstep:
+		inc	0,x
+		bne	detdirection
+		inc	1,x
+
+detdirection:
+
+;	IF abs (olderror + righterror) < abs (olderror + uprighterror)
+;		THEN do_right_step ELSE do_upright_step FI
+
+;	abs (olderror + uprighterror) = abs1
+
+		lda	olderror
+		clc
+		adc	uprighterror
+		tax
+		lda	olderror+1
+		adc	uprighterror+1
+		bpl	abs1positiv
+		jsr	NEG		; abs1 := -abs1 (A=HIGH, Y=LOW)
+abs1positiv:	stx	temporary	; Fuer spaetere Subtraktion merken
+		sta	temporary+1
+		
+;	abs (olderror + righterror) = abs2
+
+		lda	olderror
+		clc
+		adc	righterror
+		tax
+		lda	olderror+1
+		adc	righterror+1
+		bpl	abs2positiv
+		jsr	NEG		; abs2 := -abs2 (A=HIGH, X=LOW)
+abs2positiv:
+		tay			; abs2 (HIGH) retten
+		txa			; abs2 (LOW) --> A
+		sec
+		sbc	temporary	; abs1 (LOW) 
+		tya			; Nur Carrybit wesentlich
+		sbc	temporary+1	; abs1 (HIGH) 
+		bmi	do_right_step
+
+;do_upright_step:
+
+;	ypos INCR up
+
+		ldx	ypointer
+		bit	up		; Vorzeichen von up
+		bpl	yposinc1
+
+		lda	0,x		; ypointer enthaelt Offset ab xpos
+		bne	yposdec1
+		dec	1,x
+yposdec1:	dec	0,x
+		jmp	xyerror
+
+yposinc1:	inc	0,x
+		bne	xyerror
+		inc	1,x
+
+xyerror:	
+
+;	olderror INCR uprighterror
+
+		lda	olderror
+		clc
+		adc	uprighterror
+		sta	olderror
+		lda	olderror+1
+		adc	uprighterror+1
+		sta	olderror+1
+		jmp	dxdec1
+
+do_right_step:
+
+;	olderror INCR righterror
+
+		lda	olderror
+		clc
+		adc	righterror
+		sta	olderror
+		lda	olderror+1
+		adc	righterror+1
+		sta	olderror+1
+
+dxdec1:
+		lda	dx
+		bne	dxdec
+		dec	dx+1
+dxdec:		dec	dx
+
+		jmp	nextpixel		; zum Schleifenanfang
+
+;--------------------------------------------------------------------------
+;	Muster fuer GFILL:
+
+muster:
+		.RADIX	2
+		DB	11111111	; 0: gefuellt
+		DB	11111111	
+		DB	11111111	
+		DB	11111111	
+		DB	11111111	
+		DB	11111111	
+		DB	11111111	
+		DB	11111111	
+
+		DB	10101010	; 1: Halb
+		DB	01010101	
+		DB	10101010	
+		DB	01010101	
+		DB	10101010	
+		DB	01010101	
+		DB	10101010	
+		DB	01010101	
+
+		DB	11111111	; 2: Waagerecht (grob)
+		DB	00000000	
+		DB	00000000	
+		DB	00000000	
+		DB	11111111	
+		DB	00000000	
+		DB	00000000	
+		DB	00000000	
+
+		DB	11111111	; 3: Waagerecht (fein)
+		DB	00000000	
+		DB	11111111	
+		DB	00000000	
+		DB	11111111	
+		DB	00000000	
+		DB	11111111	
+		DB	00000000	
+
+		DB	10001000	; 4: Senkrecht (grob)
+		DB	10001000	
+		DB	10001000	
+		DB	10001000	
+		DB	10001000	
+		DB	10001000	
+		DB	10001000	
+		DB	10001000	
+
+		DB	10101010	; 5: Senkrecht (fein)
+		DB	10101010	
+		DB	10101010	
+		DB	10101010	
+		DB	10101010	
+		DB	10101010	
+		DB	10101010	
+		DB	10101010	
+
+		DB	11111111	; 6: Gerades Raster (grob)
+		DB	10001000	
+		DB	10001000	
+		DB	10001000	
+		DB	11111111	
+		DB	10001000	
+		DB	10001000	
+		DB	10001000	
+
+		DB	11111111	; 7: Gerades Raster (fein)
+		DB	10101010	
+		DB	11111111	
+		DB	10101010	
+		DB	11111111	
+		DB	10101010	
+		DB	11111111	
+		DB	10101010	
+
+		DB	10001000	; 8: Links Schraffur
+		DB	00010001	
+		DB	00100010	
+		DB	01000100	
+		DB	10001000	
+		DB	00010001	
+		DB	00100010	
+		DB	01000100	
+
+		DB	10001000	; 9: Rechts Schraffur
+		DB	01000100	
+		DB	00100010	
+		DB	00010001	
+		DB	10001000	
+		DB	01000100	
+		DB	00100010	
+		DB	00010001	
+
+		DB	10001000	; 10: Schraeges Gitter
+		DB	01010101	
+		DB	00100010	
+		DB	01010101	
+		DB	10001000	
+		DB	01010101	
+		DB	00100010	
+		DB	01010101	
+
+		DB	10101010	; 11: Punktraster
+		DB	00000000	
+		DB	10101010	
+		DB	00000000	
+		DB	10101010	
+		DB	00000000	
+		DB	10101010	
+		DB	00000000	
+
+		DB	11111111	; 12: Mauer
+		DB	01000000	
+		DB	01000000	
+		DB	01000000	
+		DB	11111111	
+		DB	00000100	
+		DB	00000100	
+		DB	00000100	
+
+		DB	00100010	; 13: Korb
+		DB	01010101	
+		DB	10001000	
+		DB	10001000	
+		DB	10001000	
+		DB	01010101	
+		DB	00100010	
+		DB	00100010	
+
+		DB	00000000	; 14: Wellenlinie
+		DB	00100010	
+		DB	01010101	
+		DB	10001000	
+		DB	00000000	
+		DB	00100010	
+		DB	01010101	
+		DB	10001000	
+
+;usermuster:
+		DB	10000000	; 15: User (Default: Zickzack)
+		DB	01000001	
+		DB	00100010	
+		DB	00010100	
+		DB	00001000	
+		DB	00000000	
+		DB	00000000	
+		DB	00000000	
+
+		.RADIX	16
+
+;----------------------------------------------------------------------------
+;	T A B E L L E N
+;----------------------------------------------------------------------------
+
+bitmask:	db	$01, $02, $04, $08, $10, $20, $40, $80
+notbitmask:	db	$FE, $FD, $FB, $F7, $EF, $DF, $BF, $7F
+
+;	Graphikzeilenanfaenge, Ypos 0 ist unten
+
+rowstart:	
+		dw	03D0, 0350, 02D0, 0250
+		dw	01D0, 0150, 00D0, 0050
+
+		dw	03A8, 0328, 02A8, 0228
+		dw	01A8, 0128, 00A8, 0028
+
+		dw	0380, 0300, 0280, 0200
+		dw	0180, 0100, 0080, 0000
+
+		.printx 'Ende'
+

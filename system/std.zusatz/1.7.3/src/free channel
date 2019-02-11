@@ -1,0 +1,292 @@
+PACKET free channel DEFINES                       (* Autor: J.Liedtke *)
+                                                  (* Stand: 05.10.82  *)
+  FCHANNEL ,
+  := ,
+  free channel ,
+  open ,
+  close ,
+  out ,
+  in ,
+  dialogue :
+ 
+ 
+
+LET ack                = 0 ,
+    nak                = 1 ,
+    break code         = 6 ,
+    empty message code = 256 ,
+    long message code  = 257 ,
+    file message code  = 1024 ,
+    open code          = 1000 ,
+    close code         = 1001 ,
+
+    cr                 = ""13"" ;
+
+INT CONST task not existing := - 1 ;
+
+
+TYPE FCHANNEL = STRUCT (TASK server, TEXT input buffer, server name) ;
+
+INT VAR message code , response code ;
+TASK VAR partner , used by ;
+DATASPACE VAR ds ;
+
+BOUND TEXT VAR msg ;
+TEXT VAR response, char, esc char , record ;
+
+FILE VAR file ;
+
+
+OP := (FCHANNEL VAR dest, FCHANNEL CONST source) :
+ 
+  dest.server := source.server ;
+  dest.input buffer := "" ;
+  dest.server name := source.server name ;
+  open (dest)
+
+ENDOP := ;
+
+FCHANNEL PROC free channel (TEXT CONST channel name) :
+
+  FCHANNEL:(niltask,"", channel name)
+
+ENDPROC free channel ;
+
+PROC open (FCHANNEL VAR channel) :
+
+  TASK VAR task id ;
+  INT VAR receipt ;
+ 
+  initialize message dataspace ;
+  send open code ;
+  IF receipt <> ack
+    THEN errorstop ("channel not free")
+  FI .
+
+initialize message dataspace :
+  forget (ds) ;
+  ds := nilspace .
+
+send open code :
+  ping pong (channel.server, open code, ds, receipt) ;
+  IF receipt = task not existing
+    THEN channel.server := task (channel.server name) ;
+         ping pong (channel.server, open code, ds, receipt)
+  FI .
+ 
+ENDPROC open ;
+
+PROC close (FCHANNEL VAR channel) :
+
+  call (channel.server, close code, ds, response code)
+
+ENDPROC close ;
+
+PROC close (TEXT CONST channel server) :
+
+  call (task (channel server), close code, ds, response code)
+
+ENDPROC close ;
+
+
+PROC out (FCHANNEL VAR channel, TEXT CONST message) :
+
+  send message ;
+  get response .
+
+send message :
+  IF message = ""
+    THEN call (channel.server, empty message code, ds, response code)
+    ELSE msg := ds ;
+         CONCR (msg) := message ;
+         call (channel.server, long message code, ds, response code)
+  FI .
+
+get response :
+  IF response code < 0
+    THEN errorstop ("channel not ready")
+  ELIF response code < 256
+    THEN channel.input buffer CAT code (response code)
+  ELIF response code = long message code
+    THEN msg := ds ;
+         channel.input buffer CAT CONCR (msg)
+  FI .
+
+ENDPROC out ;
+
+PROC in (FCHANNEL VAR channel, TEXT VAR response) :
+
+  out (channel, "") ;
+  response := channel.input buffer ;
+  channel.input buffer := ""
+
+ENDPROC in ;
+
+PROC out (FCHANNEL VAR channel, DATASPACE CONST file space) :
+
+  out (channel, file space, ""0"")
+
+ENDPROC out ;
+
+PROC out (FCHANNEL VAR channel, DATASPACE CONST file space,
+          TEXT CONST handshake char) :
+
+  forget (ds) ;
+  ds := file space ;
+  call (channel.server, file message code + code (handshake char) ,
+                        ds, response code) ;
+  forget (ds) ;
+  ds := nilspace
+
+ENDPROC out ;
+
+
+PROC dialogue (FCHANNEL CONST channel, TEXT CONST esc) :
+
+  forget (ds) ;
+  ds := nilspace ;
+  partner := channel.server ;
+  esc char := esc ;
+  enable stop ;
+
+  response code := empty message code ;
+  REP
+    get and send message charety ;
+    out response option
+  PER .
+
+get and send message charety :
+  IF response code = empty message code
+    THEN char := incharety (10)
+    ELSE char := incharety
+  FI ;
+  IF char = ""
+    THEN call (partner, empty message code, ds, response code)
+  ELIF char = esc char
+    THEN LEAVE dialogue
+  ELSE   call (partner, code (char), ds, response code)
+  FI .
+
+out response option :
+  IF response code < 256
+    THEN out (code (response code))
+  ELIF response code = long message code
+    THEN msg := ds ;
+         out (CONCR (msg))
+  FI .
+
+ENDPROC dialogue ;
+
+PROC free channel (INT CONST nr) :
+
+  INT CONST my channel := nr ;
+  break ;
+  disable stop ;
+  REP
+    wait (ds, message code, partner) ;
+    IF message code = open code
+      THEN connect to my channel ;
+           use channel ;
+           break without advertise ;
+           send handshake ack 
+      ELSE send (partner, nak, ds)
+    FI
+  PER .
+
+use channel :
+  ping pong (partner, ack, ds, message code) ;
+  REP
+    execute message ;
+    response option
+  PER .
+
+execute message :
+  IF   message code < 0
+    THEN LEAVE use channel
+  ELIF message code < 256
+    THEN out (code (message code))
+  ELIF message code = long message code
+    THEN msg := ds ;
+         out (CONCR (msg))
+  ELIF message code >= file message code
+    THEN send file ;
+         clear error
+  ELIF message code = close code
+    THEN LEAVE use channel
+  FI .
+
+response option :
+  response := incharety (1) ;
+  IF response = ""
+    THEN ping pong (partner, empty message code, ds, message code)
+    ELSE short or long response
+  FI .
+
+short or long response :
+  char := incharety ;
+  IF char = ""
+    THEN short response
+    ELSE long response
+  FI .
+
+short response :
+  ping pong (partner, code (response), ds, message code) .
+
+long response :
+  msg := ds ;
+  response CAT char ;
+  REP
+    char := incharety ;
+    response CAT char
+  UNTIL char = "" PER ;
+  CONCR (msg) := response ;
+  ping pong (partner, long message code, ds, message code) .
+
+connect to my channel :
+  continue (my channel) ;
+  WHILE is error REP
+    clear error ;
+    pause (100) ;
+    continue (my channel)
+  PER .
+
+break without advertise :
+  INT VAR receipt ;
+  call (supervisor, break code, ds, receipt) .
+
+send handshake ack :
+  send (partner, ack, ds) .
+
+ENDPROC free channel ;
+
+PROC send file :
+
+  enable stop ;
+  get handshake ;
+  file := sequential file (input,ds) ;
+  REP
+    getline (file, record) ;
+    out (record) ;
+    out (cr) ;
+    handshake option
+  UNTIL eof (file) PER .
+
+get handshake :
+  TEXT CONST handshake char := code (message code - file message code) .
+
+handshake option :
+  IF handshake char <> ""0""
+    THEN wait for handshake or time out
+  FI .
+
+wait for handshake or time out :
+  REP
+    char := incharety (300)
+  UNTIL char = handshake char OR char = "" PER ;
+  IF char = ""
+    THEN LEAVE send file
+  FI .
+
+ENDPROC send file ;
+
+ENDPACKET free channel ;

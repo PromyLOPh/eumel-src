@@ -1,0 +1,521 @@
+PACKET picture DEFINES                            (*Autor: H.Indenbirken *)
+               PICTURE,                           (*Stand: 23.02.1985    *)
+               :=, CAT, nilpicture,
+               draw, draw r, draw cm, draw cm r,
+               move, move r, move cm, move cm r, 
+               bar, circle,
+               length, dim, pen, where,
+               extrema, rotate, stretch, translate,
+               text, picture, plot:
+
+LET draw key      = 1,
+    move key      = 2,
+    text key      = 3,
+    move r key    = 4,
+    draw r key    = 5,
+    move cm key   = 6, 
+    draw cm key   = 7,
+    move cm r key = 8,
+    draw cm r key = 9,
+    bar key       = 10,
+    circle key    = 11,
+    max 2 dim     = 31983,
+    max 3 dim     = 31975,
+    max text      = 31974,
+    max bar       = 31982,
+    max circle    = 31974,
+    max length    = 32000;
+
+
+TYPE PICTURE = STRUCT (INT dim, pen, TEXT points);
+
+
+INT VAR i, read pos, key;
+REAL VAR x, y, z;
+TEXT VAR t, r2 :: 16*""0"", r3 :: 24*""0"", i1 :: ""0""0"", i2 :: ""0""0""0""0"";
+
+OP := (PICTURE VAR l, PICTURE CONST r) :
+  CONCR (l) := CONCR (r)
+END OP :=;
+
+OP CAT (PICTURE VAR l, PICTURE CONST r) :
+  IF l.dim <> r.dim
+  THEN errorstop ("OP CAT : left dimension <> right dimension")
+  ELIF length (l.points) > max length - length (r.points)
+  THEN errorstop ("OP CAT : Picture overflow") FI;
+
+  l.points CAT r.points
+END OP CAT;
+
+PICTURE PROC nilpicture :
+  PICTURE : (0, 1, "")
+END PROC nilpicture;
+
+PROC draw (PICTURE VAR p, TEXT CONST text) :
+  draw (p, text, 0.0, 0.0, 0.0)
+END PROC draw;
+
+PROC draw (PICTURE VAR p, TEXT CONST text, REAL CONST angle, height, bright):
+  write (p, text, angle, height, bright, text key)
+END PROC draw;
+
+PROC draw (PICTURE VAR p, REAL CONST x, y, z) :
+  check dim (p, 3);
+  write (p, x, y, z, draw key)
+END PROC draw;
+
+PROC draw (PICTURE VAR p, REAL CONST x, y) :
+  check dim (p, 2);
+  write (p, x, y, draw key)
+END PROC draw;
+
+PROC draw r (PICTURE VAR p, REAL CONST x, y, z) :
+  check dim (p, 3);
+  write (p, x, y, z, draw r key)
+END PROC draw r;
+
+PROC draw r (PICTURE VAR p, REAL CONST x, y) :
+  check dim (p, 2);
+  write (p, x, y, draw r key)
+END PROC draw r;
+
+PROC draw cm (PICTURE VAR p, REAL CONST x, y) :
+  write (p, x, y, draw cm key)
+END PROC draw cm;
+
+PROC draw cm r (PICTURE VAR p, REAL CONST x, y) :
+  write (p, x, y, draw cm r key)
+END PROC draw cm r;
+
+PROC move (PICTURE VAR p, REAL CONST x, y, z) :
+  check dim (p, 3);
+  write (p, x, y, z, move key)
+END PROC move;
+
+PROC move (PICTURE VAR p, REAL CONST x, y) :
+  check dim (p, 2);
+  write (p, x, y, move key)
+END PROC move;
+
+PROC move r (PICTURE VAR p, REAL CONST x, y, z) :
+  check dim (p, 3);
+  write (p, x, y, z, move r key)
+END PROC move r;
+
+PROC move r (PICTURE VAR p, REAL CONST x, y) :
+  check dim (p, 2);
+  write (p, x, y, move r key)
+END PROC move r;
+
+PROC move cm (PICTURE VAR p, REAL CONST x, y) :
+  write (p, x, y, move cm key)
+END PROC move cm;
+
+PROC move cm r (PICTURE VAR p, REAL CONST x, y) :
+  write (p, x, y, move cm r key)
+END PROC move cm r;
+
+PROC bar (PICTURE VAR p, REAL CONST width, height, INT CONST pattern):
+  write (p, width, height, pattern, bar key)
+END PROC bar;
+
+PROC circle (PICTURE VAR p, REAL CONST radius, from, to, INT CONST pattern):
+  write (p, radius, from, to, pattern, circle key)
+END PROC circle;
+
+
+PROC write (PICTURE VAR p, REAL CONST x, y, z, INT CONST key) :
+  IF length (p.points) < max 3 dim
+  THEN p.points CAT code (key); 
+       replace (r3, 1, x);
+       replace (r3, 2, y);
+       replace (r3, 3, z);
+       p.points CAT r3
+  ELSE errorstop ("Picture overflow") FI
+END PROC write;
+
+PROC write (PICTURE VAR p, REAL CONST x, y, INT CONST key) :
+  IF length (p.points) < max 2 dim
+  THEN p.points CAT code (key); 
+       replace (r2, 1, x);
+       replace (r2, 2, y);
+       p.points CAT r2
+  ELSE errorstop ("Picture overflow") FI
+END PROC write;
+
+PROC write (PICTURE VAR p, REAL CONST x, y, INT CONST n, key) :
+  IF length (p.points) < max bar
+  THEN p.points CAT code (key); 
+       replace (r2, 1, x);
+       replace (r2, 2, y);
+       p.points CAT r2;
+       replace (i1, 1, n);
+       p.points CAT i1
+  ELSE errorstop ("Picture overflow") FI
+END PROC write;
+
+PROC write (PICTURE VAR p, REAL CONST x, y, z, INT CONST n, key) :
+  IF length (p.points) < max circle 
+  THEN p.points CAT code (key); 
+       replace (r3, 1, x);
+       replace (r3, 2, y);
+       replace (r3, 3, z);
+       p.points CAT r3;
+       replace (i1, 1, n);
+       p.points CAT i1 
+  ELSE errorstop ("Picture overflow") FI
+END PROC write;
+
+PROC write (PICTURE VAR p, TEXT CONST t, REAL CONST angle, height, bright,
+            INT CONST key) :
+  IF max text - length (p.points) >= length (t)
+  THEN p.points CAT code (key);
+       replace (i1, 1, length (t));
+       p.points CAT i1;
+       p.points CAT t;
+       replace (r3, 1, angle);
+       replace (r3, 2, height);
+       replace (r3, 3, bright);
+       p.points CAT r3
+  FI;
+END PROC write;
+
+PROC check dim (PICTURE VAR p, INT CONST dim):
+  IF p.dim = 0
+  THEN p.dim := dim
+  ELIF p.dim <> dim
+  THEN errorstop ("Picture is " + text (p.dim) + " dimensional") FI
+END PROC check dim;
+
+INT PROC length (PICTURE CONST p):
+  length (p.points)
+END PROC length;
+
+INT PROC dim (PICTURE CONST pic) :
+  pic.dim
+END PROC dim;
+
+PROC pen (PICTURE VAR p, INT CONST pen) :
+  IF pen < 0 OR pen > 16
+  THEN errorstop ("pen out of range [0-16]") FI;
+  p.pen := pen
+END PROC pen;
+
+INT PROC pen (PICTURE CONST p) :
+  p.pen
+END PROC pen;
+
+PROC where (PICTURE CONST p, REAL VAR x, y) :
+  IF p.dim = 0
+  THEN x := 0.0;  y := 0.0
+  ELIF p.dim = 3
+  THEN errorstop ("Picture is 3 dimensional")
+  ELSE x := subtext (p.points, length (p.points)-15, length (p.points)-8) RSUB 1;
+       y := subtext (p.points, length (p.points)-7,  length (p.points)) RSUB 1
+  FI
+END PROC where;
+
+PROC where (PICTURE CONST p, REAL VAR x, y, z) :
+  IF p.dim = 0
+  THEN x := 0.0;  y := 0.0;  z := 0.0
+  ELIF p.dim = 2
+  THEN errorstop ("Picture is 2 dimensional")
+  ELSE x := subtext (p.points, length (p.points)-23, length (p.points)-16) RSUB 1;
+       y := subtext (p.points, length (p.points)-15, length (p.points)-8) RSUB 1;
+       z := subtext (p.points, length (p.points)-7,  length (p.points)) RSUB 1;
+  FI
+END PROC where;
+
+
+PROC extrema (PICTURE CONST p, REAL VAR x min, x max, y min, y max, z min, z max) :
+  x min := max real;  x max :=-max real;
+  y min := max real;  y max :=-max real;
+  z min := max real;  z max :=-max real;
+  read pos := 0; 
+  INT CONST pic length := length (p.points);
+  WHILE read pos < pic length
+  REP check position PER  .
+
+check position :
+  read pos INCR 1;
+  SELECT code (p.points SUB read pos) OF
+  CASE draw key : calc extrema
+  CASE move key : calc extrema
+  CASE move r key : calc rel extrema
+  CASE draw r key : calc rel extrema
+  CASE move cm key : read pos INCR 16
+  CASE draw cm key : read pos INCR 16
+  CASE move cm r key : read pos INCR 16
+  CASE draw cm r key : read pos INCR 16
+  CASE text key : read pos INCR next int + 24
+  CASE bar key : read pos INCR 18
+  CASE circle key : read pos INCR 26
+  OTHERWISE errorstop ("wrong key code") END SELECT  . 
+
+calc extrema :
+  x := next real;  y := next real;  z := next real;
+  x min := min (x min, x);  x max := max (x max, x);
+  y min := min (y min, y);  y max := max (y max, y);
+  z min := min (z min, z);  z max := max (z max, z)  .
+
+calc rel extrema :
+  x INCR next real;  y INCR next real;  z INCR next real;
+  x min := min (x min, x);  x max := max (x max, x);
+  y min := min (y min, y);  y max := max (y max, y);
+  z min := min (z min, z);  z max := max (z max, z)  .
+
+next real :
+  read pos INCR 8;
+  subtext (p.points, read pos-7, read pos) RSUB 1  .
+
+next int :
+  read pos INCR 2;
+  subtext (p.points, read pos-1, read pos) ISUB 1  .
+
+END PROC extrema;
+
+PROC extrema (PICTURE CONST p, REAL VAR x min, x max, y min, y max):
+  x min := max real;  x max :=-max real;
+  y min := max real;  y max :=-max real;
+  read pos := 0; 
+  INT CONST pic length := length (p.points);
+  WHILE read pos < pic length
+  REP check position PER  .
+
+check position :
+  read pos INCR 1;
+  SELECT code (p.points SUB read pos) OF
+  CASE draw key : calc extrema
+  CASE move key : calc extrema
+  CASE move r key : calc rel extrema
+  CASE draw r key : calc rel extrema
+  CASE move cm key : read pos INCR 16
+  CASE draw cm key : read pos INCR 16
+  CASE move cm r key : read pos INCR 16
+  CASE draw cm r key : read pos INCR 16
+  CASE text key : read pos INCR next int + 24
+  CASE bar key : read pos INCR 18
+  CASE circle key : read pos INCR 26
+  OTHERWISE errorstop ("wrong key code") END SELECT  . 
+
+calc extrema :
+  x := next real;  y := next real;
+  x min := min (x min, x);  x max := max (x max, x);
+  y min := min (y min, y);  y max := max (y max, y)  .
+
+calc rel extrema :
+  x INCR next real;  y INCR next real;
+  x min := min (x min, x);  x max := max (x max, x);
+  y min := min (y min, y);  y max := max (y max, y)  .
+
+next real :
+  read pos INCR 8;
+  subtext (p.points, read pos-7, read pos) RSUB 1  .
+
+next int :
+  read pos INCR 2;
+  subtext (p.points, read pos-1, read pos) ISUB 1  .
+
+END PROC extrema;
+
+PROC rotate (PICTURE VAR p, REAL CONST angle) :
+  REAL CONST s :: sind( angle ), c := cosd( angle );
+  transform (p, ROW 4 ROW 3 REAL : 
+               (ROW 3 REAL : ( 1.0,  0.0,  0.0 ),
+                ROW 3 REAL : ( 0.0,   c ,   s  ),
+                ROW 3 REAL : ( 0.0,  -s ,   c  ),
+                ROW 3 REAL : ( 0.0,  0.0,  0.0 )))
+END PROC rotate;
+
+PROC rotate (PICTURE VAR p, REAL CONST phi, theta, lambda ) :
+  REAL CONST s   :: sind ( theta ), c   :: cosd ( theta ),
+             s p :: sind (  phi  ), s l :: sind ( lambda ),
+             ga  :: cosd (  phi  ), c l :: cosd ( lambda ),
+             be  :: s p * s l,      al  :: s p * c l, c1 :: 1.0 - c;
+  transform (p, ROW 4 ROW 3 REAL : 
+               (ROW 3 REAL : ( al*al*c1 + c , be*al*c1+ga*s, ga*al*c1-be*s ),
+                ROW 3 REAL : ( al*be*c1-ga*s, be*be*c1 + c , ga*be*c1+al*s ),
+                ROW 3 REAL : ( al*ga*c1+be*s, be*ga*c1-al*s, ga*ga*c1 + c  ),
+                ROW 3 REAL : (      0.0     ,      0.0     ,      0.0    )))
+END PROC rotate; 
+ 
+PROC stretch (PICTURE VAR pic, REAL CONST sx, sy) : 
+  stretch (pic, sx, sy, 1.0) 
+END PROC stretch;
+
+PROC stretch (PICTURE VAR p, REAL CONST sx, sy, sz) :
+  transform (p, ROW 4 ROW 3 REAL : 
+               (ROW 3 REAL : ( sx, 0.0, 0.0),
+                ROW 3 REAL : (0.0,  sy, 0.0),
+                ROW 3 REAL : (0.0, 0.0,  sz),
+                ROW 3 REAL : (0.0, 0.0, 0.0)))
+END PROC stretch;
+
+PROC translate (PICTURE VAR p, REAL CONST dx, dy) : 
+  translate (p, dx, dy, 0.0) 
+END PROC translate;
+
+PROC translate (PICTURE VAR p, REAL CONST dx, dy, dz) :
+  transform (p, ROW 4 ROW 3 REAL : 
+               (ROW 3 REAL : (1.0, 0.0, 0.0),
+                ROW 3 REAL : (0.0, 1.0, 0.0),
+                ROW 3 REAL : (0.0, 0.0, 1.0),
+                ROW 3 REAL : ( dx,  dy,  dz)))
+END PROC translate;
+
+PROC transform (PICTURE VAR p, ROW 4 ROW 3 REAL CONST a) :
+  INT CONST pic length := length (p.points);
+  INT VAR begin pos;
+  read pos := 0; 
+  x := 0.0; y := 0.0; z := 0.0;
+  IF p.dim = 2
+  THEN transform 2 dim pic
+  ELSE transform 3 dim pic FI  .
+ 
+transform 2 dim pic:
+  WHILE read pos < pic length
+  REP transform 2 dim position PER  .
+
+transform 2 dim position:
+  read pos INCR 1;
+  SELECT code (p.points SUB read pos) OF
+  CASE draw key : transform 2 dim point 
+  CASE move key : transform 2 dim point 
+  CASE move r key : transform 2 dim point 
+  CASE draw r key : transform 2 dim point 
+  CASE move cm key : read pos INCR 16
+  CASE draw cm key : read pos INCR 16
+  CASE move cm r key : read pos INCR 16
+  CASE draw cm r key : read pos INCR 16
+  CASE text key : read pos INCR next int + 24
+  CASE bar key : read pos INCR 18
+  CASE circle key : read pos INCR 26
+  OTHERWISE errorstop ("wrong key code") END SELECT  . 
+
+transform 2 dim point:
+  begin pos := read pos+1;
+  x := next real;  y := next real;
+  transform (a, x, y, z); 
+  replace (r2, 1, x);
+  replace (r2, 2, y);
+  replace (p.points, begin pos, r2)  .
+
+transform 3 dim pic:
+  WHILE read pos < pic length
+  REP transform 3 dim position PER  .
+
+transform 3 dim position :
+  read pos INCR 1;
+  SELECT code (p.points SUB read pos) OF
+  CASE draw key : transform 3 dim point 
+  CASE move key : transform 3 dim point 
+  CASE move r key : transform 3 dim point 
+  CASE draw r key : transform 3 dim point 
+  CASE move cm key : read pos INCR 16
+  CASE draw cm key : read pos INCR 16
+  CASE move cm r key : read pos INCR 16
+  CASE draw cm r key : read pos INCR 16
+  CASE text key : read pos INCR next int + 24
+  CASE bar key : read pos INCR 18
+  CASE circle key : read pos INCR 26
+  OTHERWISE errorstop ("wrong key code") END SELECT  . 
+
+transform 3 dim point:
+  begin pos := read pos+1;
+  x := next real;  y := next real; z := next real;
+  transform (a, x, y, z); 
+  replace (r3, 1, x);
+  replace (r3, 2, y);
+  replace (r3, 3, z);
+  replace (p.points, begin pos, r3)  .
+
+next real :
+  read pos INCR 8;
+  subtext (p.points, read pos-7, read pos) RSUB 1  .
+
+next int :
+  read pos INCR 2;
+  subtext (p.points, read pos-1, read pos) ISUB 1  .
+
+END PROC transform;
+
+PROC transform (ROW 4 ROW 3 REAL CONST a, REAL VAR x, y, z) :
+  REAL CONST ox :: x, oy :: y, oz :: z;
+  x := ox*a(1)(1) + oy*a(2)(1) + oz*a(3)(1) + a(4)(1);
+  y := ox*a(1)(2) + oy*a(2)(2) + oz*a(3)(2) + a(4)(2);
+  z := ox*a(1)(3) + oy*a(2)(3) + oz*a(3)(3) + a(4)(3)
+END PROC transform;
+
+TEXT PROC text (PICTURE CONST pic):
+  replace (i2, 1, pic.dim);
+  replace (i2, 2, pic.pen);
+  i2 + pic.points
+END PROC text;
+
+PICTURE PROC picture (TEXT CONST text):
+  PICTURE : (text ISUB 1, text ISUB 2, subtext (text, 5))
+END PROC picture;
+
+PROC plot (PICTURE CONST p) :
+  INT CONST pic length := length (p.points);
+  read pos := 0;
+  IF p.dim = 2
+  THEN plot two dim pic
+  ELSE plot three dim pic FI  .
+
+plot two dim pic:
+  WHILE read pos < pic length
+  REP plot two dim position PER  .
+
+plot two dim position :
+  read pos INCR 1;
+  SELECT code (p.points SUB read pos) OF
+  CASE draw key : draw (next real, next real)
+  CASE move key : move (next real, next real)
+  CASE move r key : move r (next real, next real)
+  CASE draw r key : draw r (next real, next real)
+  CASE move cm key : move cm (next real, next real)
+  CASE draw cm key : draw cm (next real, next real)
+  CASE move cm r key : move cm r (next real, next real)
+  CASE draw cm r key : draw cm r (next real, next real)
+  CASE text key : draw (next text, next real, next real, next real)
+  CASE bar key : bar (next real, next real, next int) 
+  CASE circle key : circle (next real, next real, next real, next int) 
+  OTHERWISE errorstop ("wrong key code") END SELECT  . 
+
+plot three dim pic:
+  WHILE read pos < pic length
+  REP plot three dim position PER  .
+
+plot three dim position :
+  read pos INCR 1;
+  SELECT code (p.points SUB read pos) OF
+  CASE draw key : draw (next real, next real, next real)
+  CASE move key : move (next real, next real, next real)
+  CASE move r key : move r (next real, next real, next real)
+  CASE draw r key : draw r (next real, next real, next real)
+  CASE move cm key : move cm (next real, next real)
+  CASE draw cm key : draw cm (next real, next real)
+  CASE move cm r key : move cm r (next real, next real)
+  CASE draw cm r key : draw cm r (next real, next real)
+  CASE text key : draw (next text, next real, next real, next real)
+  CASE bar key : bar (next real, next real, next int) 
+  CASE circle key : circle (next real, next real, next real, next int) 
+  OTHERWISE errorstop ("wrong key code") END SELECT  . 
+
+next real :
+  read pos INCR 8;
+  subtext (p.points, read pos-7, read pos) RSUB 1  .
+
+next int :
+  read pos INCR 2;
+  subtext (p.points, read pos-1, read pos) ISUB 1  .
+
+next text :
+  INT CONST text length :: next int;
+  read pos INCR text length;
+  subtext (p.points, read pos-text length+1, read pos)  .
+ 
+END PROC plot;
+
+END PACKET picture

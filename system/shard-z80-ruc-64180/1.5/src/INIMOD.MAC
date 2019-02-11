@@ -1,0 +1,637 @@
+	TITLE	INIMOD - Hardwareinitialisierung fuer EUMEL 1.8 auf RUC 180
+;
+	INCLUDE	HD64180.LIB
+;
+	.LIST
+	CSEG
+;
+;****************************************************************
+;
+;	INIMOD: Initialisierung fuer  EUMEL 1.8 -> RUC 64180 Karte
+;
+;	Version 1.2 - 05.01.87 
+;		1.2 mit logischen und physischen Kanaelen
+;	Version 1.3 - 08.02.87
+;		1.4 - 27.05.87 Console-Texthardcopy m. SHIFT CTRl F12
+;		1.5 - CIO-Printer Haenger beseitigt
+vers	equ	105
+;
+;	Copyright (C) 1985, 86, 87 by ruc:
+;			1.7.3:Rainer Ellerbrake
+;			      Eggeberger Str. 12
+;			      4802 Halle (Westf.)
+;
+;			1.8.: Michael Staubermann
+;			      Moraenenstr. 29
+;			      4400 Muenster-Hiltrup
+;
+;****************************************************************
+;
+;	Globale Variable
+;
+	GLOBAL	START, ZZZZZZ, ZZZZZD
+;
+;................................................................
+;
+;	Externe Variable
+;
+	EXTERNAL SHEND, SHSINF, SHSACC, SHIOCNT, SHOUT, SHBIN, SHBOUT
+	EXTERNAL INITS, SCCINIT
+	EXTERNAL RTCOK, TRAP, MEMDMA, SENDMSG
+	EXTERNAL ADLEISTE, MODECONF, URLK1, URLK2
+	EXTERNAL HDOFS, HDLAST, HGBLKS, CPMOFS, CPMLAST, CPMBLKS
+	EXTERNAL DES6502, PRG6502, LEN65, ST6502
+	EXTERNAL TIMER, CENTR, I6502, ERROR
+	EXTERNAL SCCKA, SCCKB, SCCAER, SCCBER, SCCATX, SCCBTX
+;	
+;................................................................
+;
+;	Konstanten
+;
+;	Eumel Systemadressen
+;
+VECBASE	EQU	0A000H			; Basisadresse fuer JP-Vektoren
+;
+EU0BLKS	EQU	VECBASE+10H
+;
+ESTART	EQU	VECBASE+1EH		; EUMEL Systemstart
+;
+ELEISTE	EQU	VECBASE+21H
+;	
+ELLEN	EQU	VECBASE+36H-ELEISTE
+;
+;................................................................
+;
+;	andere Adressen
+;
+WINDOW	EQU	0F000H		; Anfangsadresse des 4K Windows
+LIMIT	EQU	WINDOW-1	; Obergrenze fuer EUMEL-Pufferbereich
+;SHUG	EQU	0100H		; SHard Code Anfang
+SHOG	EQU	1400H		; EUMEL 0 Anfang
+RESVEC	EQU	0F3F4H		; Pruefsumme Reset Vektor (CBR=51H)
+VPOINT	EQU	0F010H		; Pointer auf Hintergrund Volume
+;
+;	Adressen
+;
+BASE	EQU	WINDOW
+;
+STADR	EQU	BASE+01H
+TSK65	EQU	BASE+80H	;Task fuer 6502
+;
+;	Zeichen
+;
+CR	EQU	0DH		;Carriage Return
+LF	EQU	0AH		;Line Feed
+;
+;	sonstige Konstanten
+;
+CB1	EQU	0F0H		;Anfang Common Base 1 und Bank Base (log.)
+BOTLNG	EQU	40H		; Laenge des Bootstrapladers in Bloecken
+;
+CMN1T0	EQU	51H		;Common Area 1 auf 6502 Adr. 0
+CMN1T1	EQU	52H		;Common Area 1 auf 6502 Adr. $1000
+;
+	INCLUDE	PORTS.MAC
+;
+;-----------------------------------------------------------------------
+;	Bereich ab hier darf NACH dem Systemstart ueberschrieben werden
+;
+KANAL:	DEFB	0		; log. Kanal, der Systemstarturlader enthaelt
+
+SLEISTE:
+	DEFB	'SHARD           ' ; Identifikationstext
+	DEFW	8		; SHard-Interface-Version
+MODE:	DEFW	0		; Vortest-Modus, 	wird ueberschrieben
+ID4:	DEFW	0		; Lizenznummer des SHards,		"
+ID5:	DEFW	0		; Installationsnummer des SHards,	"
+ID6:	DEFW	0		; Reserviert f. SHard,			"
+ID7:	DEFW	8000+vers	; Frei f. SHard: SHard-Version
+	DEFW	0		; -
+	DEFW	0		; -
+	JP	SHOUT
+	JP	SHBIN
+	JP	SHBOUT
+	JP	SHIOCNT
+	JP	SHEND
+	JP	SHSINF
+	JP	SHSACC
+	DEFW	0		; -
+	DEFW	LIMIT		; obere Hauptspeicher-Grenze fuer EUMEL
+
+;----------------------------------------------------------------
+;
+;	System laden
+;
+SYSRD:
+	LD	HL,SHOG
+	LD	DE,10
+;
+RDSLOP:
+	PUSH	HL
+	PUSH	DE		;Adresse + Block retten
+;
+	LD	A,(KANAL)
+	CALL	SHBIN
+;
+	POP	DE
+	POP	HL
+	LD	A,C
+	AND	A
+	JR	NZ,RDSLOP	;Fehler -> Retry
+;
+	INC	H		;Adresse erhoehen
+	INC	H
+	INC	DE		;Blocknummer erhoehen
+	LD	A,(EU0BLKS)
+	ADD	10
+	CP	E		; Alle gelesen ?
+	JR	NC,RDSLOP	;Nein -> weiterlesen
+
+;	System wurde geladen
+;
+
+;	SHard muss sich die benoetigten Teile der EUMEL-Linkleiste retten
+;
+	DI
+
+	LD	HL,ELEISTE
+	LD	DE,ADLEISTE
+	LD	BC,ELLEN	; EUMEL-Linkleiste kopieren
+	LDIR
+;
+;	EUMEL starten
+;
+	LD	HL,SLEISTE	; SHard-Linkleiste
+	JP	ESTART		;EUMEL Lader starten
+;
+ZZZZZZ	EQU	$
+;
+;****************************************************************
+;
+;	S T A R T 
+;
+;	SHARD Initialisierung und Systemstart
+;
+;	1. Treiber initialisieren
+;	2. Startup Meldung ausgeben
+;	3. Interruptadressen setzen, Interrupt Modus setzen
+;	4. Urlader laden
+;	5. Systemstart
+;
+;	Bereich ab hier darf schon VOR dem Systemstart ueberschrieben werden
+;	(darf vom Urlader ueberschrieben werden)
+
+START:
+	DI
+	LD	SP,LIMIT	;obere Speichergrenze
+;
+;	Speicherkonfiguration setzen
+;
+	XOR	A		;Bank Area ab 0
+	OUT0	(BBR),A
+;
+	LD	A,CB1		;Common Area 1 ab log. F000, Bank Area ab 0
+	OUT0	(CBAR),A
+;
+	LD	A,83H		; Refresh Zyklus 2 Takte, alle 80 States
+	OUT0	(RCR),A
+;
+;	Startvektor deaktivieren
+;
+
+	LD	A,0C3H		; JP-Code
+	LD	(0),A		; JP-Code eintragen bei RESET/TRAP-Adr
+	LD	HL,TRAP		; Falls RESET oder TRAP: Info ' shard' 'TRAP'
+	LD	(1),HL		; Kein START, dieses Modul wird ueberschrieben
+
+	LD	A,51H		;Common Area 1 auf Apple Speicher setzen
+	OUT0	(CBR),A 
+;
+;	Durch Veraenderung der Pruefsumme des Reset-Vektors wird erreicht,
+;	dass bei Betaetigen von Reset immer ein Kaltstart ausgefuehrt wird
+;
+	LD	(RESVEC),A	;veraendert
+
+;
+;	Anfang und Ende des Harddisk Volumes (HG) eintragen
+;
+	LD	HL,(VPOINT)	;Pointer auf Tabelle
+	LD	A,H
+	AND	0F0H		;4K-Bereich bestimmen
+	RRCA
+	RRCA
+	RRCA
+	RRCA
+	ADD	A,51H		;Apple Speicher Anfangsoffset
+	OUT0	(CBR),A		;in MMU eintragen
+;
+	LD	A,H
+	OR	0F0H		;im 64180 Speicher ab F000H
+	LD	H,A
+;
+	LD	BC,3		;3 Byte kopieren
+	INC	HL
+	LD	DE,HDOFS
+	LDIR			;Anfang
+;
+;	Laenge des Bootstrapladers (SHARD) hinzuaddieren
+;
+	DEC	DE
+	LD	A,(DE)
+	ADD	A,BOTLNG	;Laenge in 256-Byte Pages
+	LD	(DE),A
+	DEC	DE
+	LD	A,(DE)
+	ADC	A,0
+	LD	(DE),A
+	DEC	DE
+	LD	A,(DE)
+	ADC	A,0
+	LD	(DE),A
+;
+	INC	HL
+	LD	C,3
+	LD	DE,HDLAST
+	LDIR			;Ende
+;
+	LD	A,51H
+	OUT0	(CBR),A
+;
+;	Hintergrund Blockanzahl bestimmen
+;
+	LD	HL,HDOFS+2
+	LD	DE,HDLAST+2	;Last-First ausrechnen
+	CALL	CALCSIZ
+	LD	(HGBLKS),HL	;Groesse eintragen, max. 32MB
+;
+;	CP/M-Volume Blockanzahl bestimmen
+;
+	LD	HL,CPMOFS+2
+	LD	DE,CPMLAST+2
+	CALL	CALCSIZ
+	LD	(CPMBLKS),HL
+;
+	CALL	INICIO		; CIO, incl. Interrupts initialisieren
+
+	CALL	INIINT		; Interrupt System starten
+
+	CALL	INITS		; SCSI-Controller initialisieren
+;
+	CALL	CHKRTC		; Flag fuer gueltige RTC-Werte setzen
+;
+;	Mode, ID laden
+;
+	LD	HL,MODECONF
+	LD	DE,MODE
+	LD	BC,8		; 3 ID-Felder, 1 Mode-Feld
+	LDIR
+
+	LD	HL,STARTUP	; Startupmeldung ausgeben
+	CALL	SENDMSG
+;
+;	Block 10 lesen (enthaelt EUMEL0-Linkleiste)
+;
+
+	LD	A,(URLK1)	; Kanal, auf dem der Urlader zuerst
+	CALL	NEXTKAN		; gesucht wird
+	JP	Z,SYSRD		; System von diesem Kanal laden
+
+	LD	A,(URLK2)	; Kanal, auf dem der Uralder dann gesucht
+	CALL	NEXTKAN		; wird
+	JP	Z,SYSRD		; von diesem Kanal laden
+
+	LD	HL,NOURL	;kein EUMEL Urlader
+	CALL	SENDMSG
+	DI
+	HALT
+
+NEXTKAN:
+	LD	(KANAL),A
+	LD	DE,0		; Default Typ
+	LD	BC,5		; IOCONTROL 'size'
+	CALL	SHIOCNT		; zum initialisieren
+	LD	A,B		; 0 Bloecke, Fehler
+	OR	C
+	JR	NZ,NEXTOK
+	INC	A		; NZ setzen, da vorher 0
+	RET
+
+NEXTOK:
+	LD	A,(KANAL)
+	LD	HL,VECBASE	; Hauptspeicher-Adresse
+	LD	DE,10		; Block 10 lesen
+	CALL	SHBIN
+
+	LD	A,C		; Fehlerrueckmeldung
+	AND	A		;erfolgreich ?
+	RET	NZ
+
+	JP	CKEUMEL		;Eumel Urlader ?
+
+;................................................................
+;
+;	Berechnung der Groesse eines Volumes
+;	Eingang: HL = Zeiger auf letztes der 3 Byte Anfangs LUN/Adresse
+;		 DE = Zeiger auf letztes der 3 Byte Ende+1 LUN/Adresse
+;	Ausgang: HL = Anzahl 512-Byte Bloecke dieses Volumes
+;		 DE und A werden veraendert!
+;
+CALCSIZ:
+	LD	A,(DE)
+	SUB	(HL)
+	LD	C,A
+;
+	DEC	DE
+	DEC	HL
+	LD	A,(DE)
+	SBC	A,(HL)
+	LD	H,A
+	LD	L,C
+	SRL	H		;256 -> 512 Byte Bloecke
+	RR	L
+	RET
+;
+;................................................................
+;
+;	Ueberpruefen ob Block 10 den Text EUMEL enthaelt
+;
+;	Exit:	B=0! bei F=Zero
+;
+CKEUMEL:
+	LD	HL,VECBASE
+	LD	DE,EUMTXT
+	LD	B,5
+;
+CKLP:
+	LD	A,(DE)
+	CP	(HL)
+	INC	HL
+	INC	DE
+	RET	NZ
+	DJNZ	CKLP
+
+	RET
+;
+;................................................................
+;
+STARTUP:
+	DEFB	STUPLEN, 9, CR, LF, LF
+	DEFB	'   EUMEL auf HD64180 & 6502', CR, LF
+	DEFB	'   SHard-Interfaceversion 8', CR, LF
+	DEFB	'   Version 1.5 vom 26.06.87', CR, LF
+	DEFB	'    (c) 1985, 86, 87 by ruc', CR, LF
+	DEFB	'   '
+STUPLEN	EQU	$-STARTUP-1
+;
+NOURL:
+	DEFB	NOURLEN, CR, LF
+	DEFB	'EUMEL-Urlader nicht gefunden', CR, LF
+NOURLEN	EQU	$-NOURL-1
+;
+EUMTXT:
+	DEFB	'EUMEL'
+;
+;-----------------------------------------------------------------
+;
+;	C H K R T C
+;
+;	RTC-Werte auf Gueltigkeit ueberpruefen
+;
+
+CHKRTC:
+	LD	A,20H		; 2 (programmierte) eff. 3 Uhrenwaitstates
+	OUT	(DCNTL),A
+
+				; Testen, ob vernuenftige Werte vorhanden
+				; (BCD, Uhr laeuft, 24h-Modus, Bereiche ok)
+	XOR	A
+	LD	(RTCOK),A	; 'Nicht ok' vorbesetzen
+
+	IN0	A,(RTCRA)	; Register A der Uhr
+	AND	7FH
+	CP	20H		; 
+	JR	NZ,CALEND	; falscher Wert
+
+	IN0	A,(RTCRB)	; Register B der Uhr
+	CP	2
+	JR	NZ,CALEND	; falscher Wert
+
+	IN0	A,(RTCYR)	; Jahr < 87 ?
+	CP	87H
+	JR	C,CALEND
+
+	IN0	A,(RTCDY)	; Tag > 31
+	CP	32H		; 
+	JR	NC,CALEND
+	LD	H,A
+
+	IN0	A,(RTCMO)	; Monat > 12 ?
+	CP	13H
+	JR	NC,CALEND
+
+ 	OR	H
+	JR	Z,CALEND	; Monat oder Tag = 0 ?
+
+	IN0	A,(RTCM)
+	CP	60H
+	JR	NC,CALEND	; Minuten > 59 ?
+	
+	IN0	A,(RTCH)
+	CP	24H
+	JR	NC,CALEND	; Stunden > 23 ?
+	
+	LD	A,0FFH
+	LD	(RTCOK),A
+	
+CALEND:
+	XOR	A
+	OUT0	(DCNTL),A	; 0 (prog.) I/O Waitstates, 0 Memory Waitst.
+	RET
+
+;................................................................
+;
+;	I N I C I O
+;
+INICIO:
+
+;	CIO initialisieren
+
+	IN0	C,(CIOCTL)	;Dummy Read
+	LD	B,INILNG
+	LD	HL,INITAB	;CIO Initialisierungstabelle
+
+INILOP:
+	LD	C,(HL)		;Wert holen
+	OUT0	(CIOCTL),C	;und ausgeben
+	INC	HL
+	DJNZ	INILOP
+	RET
+
+;......................................................................
+;
+;	I N I I N T
+;
+;	Interrupt System starten
+;
+INIINT:
+	CALL	SCCINIT		;SCC initialisieren
+;
+;	6502-Programmstueck verschieben
+;
+	LD	A,1		; Transferrichtung 64180 --> 6502
+	LD	BC,LEN65	; Laenge des Programmstuecks
+	LD	DE,PRG6502	; Startadresse im log. 64180-Speicher
+	LD	HL,DES6502	; Destinationadresse im Basisspeicher
+	CALL	MEMDMA		; Bytes transferieren
+;
+	LD	B,(CBR)		; CBR merken
+
+	LD	A,CMN1T0
+	OUT0	(CBR),A
+
+	LD	HL,ST6502	;Startadresse 6502-Routinen
+	LD	(STADR),HL
+	LD	A,4		;6502 Teil starten
+	LD	(TSK65),A
+;
+	OUT0	(CBR),B		;CBR wieder zuruecksetzen
+;
+	LD	HL,VECTAB	; Interrupttabelle
+	LD	DE,18H		; Destination
+	LD	BC,ITABLEN	; Transferlaenge
+	LDIR
+
+	XOR	A		;interne Interrupts ab Vektor 0040
+	LD	I,A		;externe Interrupts ab 0018H
+	LD	A,40H
+	OUT0	(IL),A
+;
+	IM	2		; Fuer INT0 Interrupt Modus 2 benutzen
+	LD	A,3		;Enable Interrupt 0 and 1
+	OUT0	(ITC),A
+;
+;
+;	6502 Interrupts hardwaremaessig freigeben
+;
+	LD	A,0B0H		;CIO PC2 auf Low setzen
+	OUT0	(CIOCD),A
+	LD	A,0B4H		;CIO PC2 auf High setzen
+	OUT0	(CIOCD),A
+
+	EI
+
+	RET
+
+;...........................................................................
+;
+;	CIO Initialisierungs Tabelle
+;
+
+INITAB:
+;*	DEFB	0,1		;Set Reset Bit (raus: kein Recalibrate mehr)
+	DEFB	0,0		;Reset Reset Bit
+	DEFB	1,0		;Master configuration control
+
+;	SCSI-Interface-Leitungen
+
+	DEFB    20H,00000010B	;Port A Mode Reg.
+	DEFB	22H,01000010B	;Port A Data Path Polarity Reg.
+	DEFB	23H,10111101B	;Port A Data Direction Reg.
+	DEFB	24H,0		;Port A Special I/O Control
+	DEFB	25H,10101100B	;Port A Pattern Polarity
+	DEFB	26H,0		;Port A Pattern Transition
+	DEFB	27H,10101100B	;Port A Pattern Mask
+	DEFB	0DH,0		;Port A Data
+	DEFB	02H,18H		;Port A Interrupt Vector (** TEST **)
+	DEFB	08H,11100000B	;Port A Command: Clear IE
+	DEFB	08H,00100000B	;Port A Command: Clear IUS & IP
+
+;	General Purpose Port (Centronics, SCSI, 6502-IRQ-Maske)
+
+	DEFB	06H,00000001B	;Port C Data Direction Reg.
+	DEFB	05H,00001000B	;Port C Data Path Polarity Reg.
+	DEFB	07H,0		;Port C Special I/O Control
+	DEFB	0FH,4		;Port C Data Register
+
+;	Centronics Interface
+
+	DEFB	28H,10010000B	;Port B Mode
+	DEFB	29H,01000000B	;Port B Handshake: Strobed
+	DEFB	09H,00100000B	;Port B Command: Clear IUS & IP
+	DEFB	2AH,0		;Port B Data Path Polarity
+	DEFB	2CH,0		;Port B Special I/O Control
+	DEFB	03H,30H		;Port B Interrupt Vektor
+
+;	Deskew Timer
+
+;	DEFB	1EH,00000010B	;Counter 3 Mode Specification
+;	DEFB	0CH,00100000B	;Counter 3 Command and Status
+;	DEFB	1AH,0		;Counter 3 Time Constant MSB
+;	DEFB	1BH,7		;Counter 3 Time Constant LSB (2,268 us)
+;	DEFB	0CH,11100100B	;Counter 3 Gate Enable
+
+;	Timer
+
+	DEFB	1CH,10000000B	;Counter/Timer 1 Mode Spec. Reg.
+	DEFB	1DH,10000000B   ;Counter/Timer 2 Mode Spec. Reg.
+	DEFB	0AH,00100000B	;Counter/Timer 1 Command: Clear IP & IUS
+	DEFB	0BH,00100000B	;Counter/Timer 2 Command: Clear IP & IUS
+	DEFB	16H,HIGH 38400  ;Time Constant 1 MSB
+	DEFB	17H,LOW 38400   ;Time Constant 1 LSB
+	DEFB	18H,0		;Time Constant 2 MSB, mit Timer 1 zus. 50ms
+	DEFB	19H,4		;Time Constant 2 LSB
+	DEFB	04H,18H		;Interrupt Vector Counters
+
+;	CIO-Interrupts freigeben
+
+	DEFB	01H,11110111B	;Master Config. Register
+	DEFB	00H,10000010B	;Master Interrupt Enable
+
+	DEFB	09H,11000000B	;Port B Command: Set IE
+
+	DEFB	0BH,11000110B	;Counter/Timer 2 Command: Set IE
+ 	DEFB	0AH,11100110B	;Counter/Timer 1 Command: Clear IE
+
+INILNG	EQU	$-INITAB
+
+;****************************************************************
+;
+;	Interrupt Vektor Tabelle, wird kopiert
+;
+VECTAB:
+	DEFW	TIMER	;18	Timer Interrupt (CIO Counter 2)
+	DEFW	ERROR	;1A
+	DEFW	ERROR	;1C
+	DEFW	ERROR	;1E
+	DEFW	SCCBTX	;20	SCC Transmitter Interrupt (Kanal B)
+	DEFW	ERROR	;22	SCC EXT/Status Interrupt (Kanal B) 
+	DEFW	SCCKB	;24	SCC Receive Char. available (Kanal B)
+	DEFW	SCCBER	;26	SCC Special Receive Condition (Kanal B)
+	DEFW	SCCATX	;28	SCC Transmitter Interrupt (Kanal A)
+	DEFW	ERROR	;2A	SCC EXT/Status Interrupt (Kanal A) 
+	DEFW	SCCKA	;2C	SCC Receive Char. available (Kanal A)
+	DEFW	SCCAER	;2E	SCC Special Receive Condition (Kanal A)
+	DEFW	CENTR	;30	Centronics Interface
+	DEFW	ERROR	;32
+	DEFW	ERROR	;34
+	DEFW	ERROR	;36
+	DEFW	ERROR	;38
+	DEFW	ERROR	;3A
+	DEFW	ERROR	;3C
+	DEFW	ERROR	;3E
+	DEFW	I6502	;40	INT1 = 6502 Interrupt
+	DEFW	ERROR	;42	INT2 = unbenutzt
+	DEFW	ERROR	;44	Timer Channel 0 = unbenutzt
+	DEFW	ERROR	;46	Timer Channel 1 = unbenutzt
+	DEFW	ERROR	;48	DMA Channel 0 = unbenutzt
+	DEFW	ERROR	;4A	DMA Channel 1 = unbenutzt
+	DEFW	ERROR	;4C	CSI/O = unbenutzt
+	DEFW	ERROR	;4E	ASCI Channel 0 = unbenutzt
+	DEFW	ERROR	;50	ASCI Channel 1 = unbenutzt
+
+ITABLEN	EQU	$-VECTAB
+;
+;.....................................................................
+
+ZZZZZD:	END
+

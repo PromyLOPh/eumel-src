@@ -1,0 +1,326 @@
+PACKET ructerm plot  DEFINES                  (* M. Staubermann, 23.11.86 *)
+                     drawing area,
+                     begin plot,
+                     end plot, 
+                     clear, 
+                     pen,
+                     move, 
+                     draw, 
+                     get cursor ,
+
+                     testbit, where,
+                     pages ,
+                     circle, ellipse, fill, box, filled box,
+                     get screen ,
+                     put screen :
+ 
+LET max x        = 279 ,                {Abmessungen : 280 x 192}
+    max y        = 191 ,
+
+    hor faktor   = 11.2 ,               {***** x pixel / x cm *****}
+    vert faktor  = 11.29412 ,           {***** y pixel / y cm *****}
+
+
+    delete = 0 ,                        {Farbcodes}
+    std    = 1 ,
+    black  = 5 ,
+    white  = 6 ,
+    yellow = 7 ;
+(*  lilac  = 8 ,
+
+    durchgehend      = 1 ,              {Linientypen}
+    gepunktet        = 2 ,
+    kurz gestrichelt = 3 ,
+    lang gestrichelt = 4 ,
+    strichpunkt      = 5 ,
+    strichpunktpunkt = 6 ;*)
+
+LET POS = STRUCT (INT x, y) ;
+
+POS VAR pos ;
+INT VAR i ;
+ 
+clear ;
+
+TEXT PROC text word (INT CONST i) :
+ TEXT VAR t := "  " ;
+ replace (t, 1, i) ;
+ t
+ENDPROC text word ;
+
+PROC drawing area (REAL VAR x cm, y cm, INT VAR x pixel, y pixel) : 
+   x cm := 25.0;    y cm := 17.0;   {***** Horizontale und vertikale *****}
+                                    {***** Gr”áe in Zentimetern.     *****}
+   x pixel := maxx;  y pixel := maxy{***** Koordinaten des rechten   *****}
+                                    {***** oberen Punktes.           *****}
+END PROC drawing area;
+
+PROC begin plot : 
+ out (""27"$")
+ENDPROC begin plot ;
+ 
+PROC end plot : 
+ out (""27"%")
+ENDPROC end plot ;
+
+PROC where (INT VAR x, y) :
+ REP UNTIL incharety = "" PER ;
+ out (""27";") ;
+ x := (incharety (1000) + incharety (1000)) ISUB 1 ;
+ y := (incharety (1000) + incharety (1000)) ISUB 1
+ENDPROC where ;
+
+BOOL PROC testbit :
+ TEXT VAR t ;
+ REP UNTIL incharety = "" PER ;
+ out (""27"-") ;
+ inchar (t) ;
+ bit (code (t), 0)
+ENDPROC testbit ;
+
+PROC clear :
+  pos   := POS:(0, 0) ;
+  out (""27"O0"27"y") ; (* Clear und Cursor (0,0) *)
+END PROC clear;
+
+PROC pen (INT CONST background, foreground, thickness, linetype):
+  INT CONST farbe := abs (foreground) ;
+  set linetype ;
+  set colour ;
+  set thickness .
+
+set colour :
+ IF farbe = std OR farbe = yellow OR farbe = white
+    THEN out (""27"O21")
+    ELSE out (""27"O20")
+ FI ;
+ IF   farbe = delete OR  farbe = black  THEN out (""27"O41") (* AND *)
+ ELIF foreground < 0 AND thickness >= 0 THEN out (""27"O42") (* XOR *)
+ ELIF foreground < 0{AND thickness < 0} THEN out (""27"O43") (* COPY *)
+                                        ELSE out (""27"O40") (* SET *)
+ FI .
+
+set thickness :
+ IF thickness > 0 AND thickness < 16
+    THEN out (""27"O1" + code (thickness + 32))
+ FI .
+
+set linetype:
+  IF linetype < 7 AND linetype > 0
+     THEN out (""27"O3" + code (line type + 32))
+     ELSE out (""27"O6" + text word (line type) + ""27"O37") ;
+  FI .
+
+END PROC pen;
+
+PROC move (INT CONST x, y) :
+ TEXT VAR cmd := ""27"v" ;
+ cmd CAT text (x) ;
+ cmd CAT "," ;
+ cmd CAT text (y) ;
+ cmd CAT ";" ;
+ out (cmd) ;
+ pos := POS:(x,y)
+END PROC move;
+ 
+PROC draw (INT CONST x, y) :
+ TEXT VAR cmd := ""27"w" ;
+ cmd CAT text (x) ;
+ cmd CAT "," ;
+ cmd CAT text (y) ;
+ cmd CAT ";" ;
+ out (cmd) ;
+ pos := POS : (x, y)
+
+END PROC draw;
+ 
+PROC draw (TEXT CONST record, REAL CONST angle, height, width):
+ TEXT VAR cmd := ""27"&"27"N" ;
+ cmd CAT code (72 + int (angle / 5.0) MOD 72) ;
+ cmd CAT code (int (hor faktor * width + 0.5)) ;
+ cmd CAT code (int (vert faktor * height + 0.5)) ;
+ out (cmd) ;
+ out (record) ;
+ out (""27"N"0""0""0"") ;
+ move (pos.x, pos.y) .
+END PROC draw;
+
+PROC draw (TEXT CONST record) :
+  draw (record, 0.0, 0.0, 0.0)
+END PROC draw;
+
+PROC get cursor (TEXT VAR t, INT VAR x, y) :
+  get cursor (t, x, y, -1, -1, -1, -1)
+END PROC get cursor;
+
+PROC get cursor (TEXT VAR t, INT VAR x, y, INT CONST x0, y0, x1, y1) :
+ get cursor (t, x, y, x0, y0, x1, y1, FALSE)
+ENDPROC get cursor ;
+
+PROC get cursor (TEXT VAR t, INT VAR x, y, INT CONST x0, y0, x1, y1,
+                 BOOL CONST only one key):
+  BOOL VAR hop key := FALSE ;
+  t := "" ;
+  check;
+  init cursor;
+  REP set cursor;
+      get step;
+      set cursor;
+      move cursor
+  UNTIL only one key PER .
+
+init cursor:
+  POS CONST old pos :: pos ;
+  REP UNTIL incharety = "" PER ;
+  out (""27"5") ;
+  TEXT VAR old params ;
+  inchar (old params) ;
+  out (""27"O5a") ; (* Strichdicke 1, XOR, Gelb *)
+  INT VAR delta := 1 ;
+  x := pos.x ;
+  y := pos.y .
+
+set cursor:
+  IF x0 >= 0 AND y0 >= 0
+  THEN move (x0, y0) ;
+       draw (x, y)
+  FI;
+  IF x1 >= 0 AND y1 >= 0
+  THEN move (x1, y1) ;
+       draw (x, y)
+  FI;
+  out (""24"") . (* Fadenkreuz an/aus *)
+
+get step:
+  hop key := t = ""1"" ;
+  t := incharety (1);
+  IF t <> ""
+  THEN delta INCR 1
+  ELSE delta := 1 ;
+       inchar (t)
+  FI .
+
+move cursor:
+  IF hop key
+     THEN hop mode
+     ELSE single key
+  FI ;
+  check .
+
+single key :
+ SELECT code (t) OF
+  CASE 1 : 
+  CASE 2, 54 : x INCR delta (* right, '6' *)
+  CASE 3, 56 : y INCR delta (* up,    '8' *) 
+  CASE 8, 52 : x DECR delta (* left,  '4' *)
+  CASE 10, 50 : y DECR delta(* down,  '2' *)
+  CASE 55 : x DECR delta ; y INCR delta (* '7' *)
+  CASE 57 : x INCR delta ; y INCR delta (* '9' *)
+  CASE 49 : x DECR delta ; y DECR delta (* '1' *)
+  CASE 51 : x INCR delta ; y DECR delta (* '3' *)
+  OTHERWISE leave get cursor
+ ENDSELECT .
+
+hop mode :
+ SELECT code (t) OF
+  CASE 1 : t := "" ; x := 0 ; y := max y ;
+  CASE 2, 54 : x := max x
+  CASE 3, 56 : y := max y
+  CASE 8, 52 : x := 0 
+  CASE 10, 50 : y := 0
+  CASE 55 : x := 0 ; y := max y 
+  CASE 57 : x := max x ; y := max y
+  CASE 49 : x := 0 ; y := 0
+  CASE 51 : x := max x ; y := 0
+  OTHERWISE t := ""1"" + t ; leave get cursor
+ ENDSELECT .
+
+leave get cursor:
+  out (""27"O5" + old params) ;
+  move (old pos.x, old pos.y);
+  LEAVE get cursor  .
+
+check :
+  IF x < 0
+  THEN x := 0 ; out (""7"")
+  ELIF x > max x
+  THEN x := max x ; out (""7"") FI ; 
+
+  IF y < 0
+  THEN y := 0 ; out (""7"")
+  ELIF y > max y
+  THEN y := max y ; out (""7"") FI .
+
+END PROC get cursor;
+
+PROC get screen (TEXT CONST name):
+  IF exists (name)
+     THEN get screen (old (name))
+     ELSE get screen (new (name))
+  FI ;
+END PROC get screen;
+
+PROC get screen (DATASPACE CONST to ds) :
+  BOUND ROW 16 ROW 256 INT VAR screen := to ds ;
+  INT VAR i, j ;
+  REP UNTIL incharety = "" PER ;
+  FOR i FROM 0 UPTO 16 REP
+   out (""27"\"0""2""0"" + code (i * 2)) ;
+   FOR j FROM 1 UPTO 256 REP
+    screen (i)(j) := (incharety (1000) + incharety (1000)) ISUB 1
+   PER ;
+  PER
+END PROC get screen;
+
+PROC put screen (TEXT CONST name):
+  IF exists (name)
+  THEN put screen (old (name))
+  ELSE errorstop ("Der Datenraum """ + name + """ existiert nicht") FI
+END PROC put screen;
+
+PROC put screen (DATASPACE CONST from ds) :
+  BOUND ROW 4096 INT VAR screen :: from ds ;
+  out (""27"/"0""32""0""0"") ;
+  FOR i FROM 1 UPTO 4096 REP
+   out (textword (screen (i)))
+  PER 
+END PROC put screen;
+
+PROC pages (INT CONST bits) :
+ out (""27"O7" + code (bits + 32))
+ENDPROC pages ;
+
+INT PROC pages :
+ TEXT VAR t ;
+ REP UNTIL incharety = "" PER ;
+ out (""27"4") ;
+ inchar (t) ;
+ code (t) AND 7
+ENDPROC pages ;
+
+PROC circle (INT CONST radius) :
+ IF radius > 0
+    THEN out (""27"K" + text (radius) + ",0;") ;
+ FI
+ENDPROC circle ;
+
+PROC ellipse (INT CONST x rad, y rad, REAL CONST from, to) :
+ out (""27"s" + text (x rad) + "," + text (yrad) + "," +
+                text (72 + int (from / 5.0) MOD 72) + "," +
+                text (72 + int (to / 5.0) MOD 72) + ";")
+ENDPROC ellipse ;
+
+PROC box (INT CONST width, height) :
+ out (""27"J" + text (width) + "," + text (height) + ";")
+ENDPROC box ;
+
+PROC filled box (INT CONST width, height) : (* Width max. 255 *)
+ out (""27"N" + code (width) + code (height)) ; (* Groáes inverses Blank *)
+ put (""0""27"&"27"O41"27"G0 "27"N"0""0""0"")   (* ausgeben *)
+ENDPROC filled box ;
+
+PROC fill (INT CONST pattern) :
+ out (""27"|" + code (pattern + 32))
+ENDPROC fill ;
+
+END PACKET ructerm plot ;

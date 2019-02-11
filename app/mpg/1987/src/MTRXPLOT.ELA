@@ -1,0 +1,416 @@
+PACKET matrix plot DEFINES drawing area, 
+                        begin plot, 
+                        end plot, 
+                        clear, 
+                        pen,
+                        move, 
+                        draw, 
+                        get cursor,
+
+                        zeichensatz,
+                        reset,
+                        SCREEN, :=, 
+                        get screen, put screen:
+ 
+LET max x        = 511,                 {Bildschirm : 1-512 x 1-256}
+    max x plus 1 = 512,
+    max y        = 255,
+
+    hor faktor   = 22.21739,            {***** x pixel / x cm *****}
+    vert faktor  = 18.61314,            {***** y pixel / y cm *****}
+
+
+    delete = 0,                         {Farbcodes}
+    std    = 1,
+    black  = 5,
+    white  = 6,
+
+    durchgehend      = 1,               {Linientypen}
+    gepunktet        = 2,
+    kurz gestrichelt = 3,
+    lang gestrichelt = 4,
+    strichpunkt      = 5;
+
+
+LET PEN = STRUCT (INT back, fore, thick, line, BOOL hidden, action);
+LET POS = STRUCT (INT x, y);
+TYPE SCREEN = ROW 32 ROW 256 INT;
+LET ZEICHENSATZ = STRUCT (ROW 255 TEXT char, INT width, height);
+
+ROW max x plus 1 INT VAR akt maxima, last maxima;
+ZEICHENSATZ VAR zeichen;
+SCREEN VAR screen;
+PEN VAR stift :: PEN : (black, white, 0, durchgehend, FALSE, TRUE);
+POS VAR pos :: POS : (0, 0), start, delta;
+INT VAR i, n, diff, up right error, right error, old error,
+        pattern pos :: 0, line pattern :: -1;
+BOOL VAR bit set :: TRUE;
+ 
+reset;
+zeichensatz ("STD Zeichensatz");
+clear (screen);
+
+PROC reset:
+  FOR i FROM 1 UPTO 512
+  REP last maxima [i] := -1;
+      akt maxima [i] := -1
+  PER
+END PROC reset;
+
+PROC zeichensatz (TEXT CONST name):
+  IF exists (name)
+  THEN BOUND ZEICHENSATZ VAR new zeichen :: old (name);
+       zeichen := new zeichen
+  ELSE errorstop ("Der Zeichensatz """ + name + """ existiert nicht") FI
+END PROC zeichensatz;
+
+PROC drawing area (REAL VAR x cm, y cm, INT VAR x pixel, y pixel) : 
+   x cm := 23.0;    y cm := 13.7;   {***** Horizontale und vertikale *****}
+                                    {***** Gr”áe in Zentimetern.     *****}
+   x pixel := 511;  y pixel := 255  {***** Koordinaten des rechten   *****}
+                                    {***** oberen Punktes.           *****}
+END PROC drawing area;
+
+PROC begin plot : 
+ENDPROC begin plot ;
+ 
+PROC end plot : 
+ENDPROC end plot ;
+
+PROC clear :
+  stift := PEN : (black, white, 0, durchgehend, FALSE, TRUE);
+  pos := POS : (0, 0);
+
+(*    L”schen der Hiddenmaxima      *);
+  reset;
+
+(*    Ausgabe der Bildmatrix auf dem Endger„t      *);
+  put screen;
+
+(*    L”schen der Bildmatrix       *);
+  clear (screen)
+
+END PROC clear;
+
+PROC pen (INT CONST background, foreground, thickness, linetype):
+  set linetype;
+  stift := PEN : (background, foreground,thickness, linetype,
+                  linetype <> 0, thickness < 0)  .
+
+set linetype:
+  pattern pos := 0;
+  SELECT linetype OF
+  CASE durchgehend      : stift.line := -1
+  CASE gepunktet        : stift.line := 21845
+  CASE kurz gestrichelt : stift.line := 3855
+  CASE lang gestrichelt : stift.line := 255
+  CASE strichpunkt      : stift.line := 4351
+  OTHERWISE stift.line := linetype END SELECT;
+
+END PROC pen;
+
+PROC move (INT CONST x, y) :
+  pattern pos := 0;
+  IF stift.hidden
+  THEN last maxima := akt maxima FI;
+ 
+  pos := POS  : (x, y) 
+END PROC move;
+ 
+PROC draw (INT CONST x, y) :
+  IF stift.action
+  THEN IF stift.thick > 1
+       THEN draw thick vektor
+       ELSE vector (x-pos.x, y-pos.y) FI
+  FI;
+  pos := POS : (x, y)   .
+
+draw thick vektor:
+  INT CONST old pattern pos := pattern pos; 
+  check direction;
+  FOR diff FROM -stift.thick UPTO stift.thick
+  REP draw single vektor PER  .
+
+check direction :
+  BOOL CONST x direction := abs (x-pos.x) > abs (y-pos.y);
+  IF x direction
+  THEN start := POS : (pos.x+stift.thick * sign (pos.x-x), pos.y); 
+       delta := POS : (x+stift.thick * sign (x-pos.x)-pos.x, y-pos.y)
+  ELSE start := POS : (pos.x, pos.y+stift.thick * sign (pos.y-y)); 
+       delta := POS : (x-pos.x, y+stift.thick * sign (y-pos.y)-pos.y); 
+  FI  .
+
+draw single vektor :
+  pattern pos := old pattern pos;
+  IF x direction
+  THEN pos := POS : (start.x, start.y+diff);
+       vector (delta.x, delta.y+diff)
+  ELSE pos := POS : (start.x+diff, start.y+diff);
+       vector (delta.x+diff, delta.y)
+  FI .
+ 
+END PROC draw;
+ 
+PROC vector (INT CONST dx , dy) :
+  IF dx >= 0
+  THEN IF   dy >  dx THEN vector (pos.y, pos.x, dy, dx, 1, 1)
+       ELIF dy >   0 THEN vector (pos.x, pos.y, dx, dy, 1, 1)
+ 
+       ELIF dy > -dx THEN vector (pos.x, pos.y, dx, -dy, 1,-1)
+       ELSE               vector (pos.y, pos.x, -dy, dx,-1, 1) FI
+
+  ELSE IF   dy > -dx THEN vector (pos.y, pos.x, dy, -dx, 1,-1)
+       ELIF dy >   0 THEN vector (pos.x, pos.y, -dx, dy,-1, 1)
+ 
+       ELIF dy >  dx THEN vector (pos.x, pos.y, -dx, -dy,-1,-1)
+       ELSE               vector (pos.y, pos.x, -dy, -dx,-1,-1) FI
+  FI .
+ 
+ENDPROC vector ;
+ 
+PROC vector (INT VAR x pos, y pos, INT CONST dx, dy, right, up) :
+  prepare first step ;
+  point;
+  FOR i FROM 1 UPTO dx
+  REP do one step PER  .
+
+prepare first step :
+  up right error := dy - dx;
+  right error := dy;
+  old error := 0  .
+
+do one step:
+  IF right is better
+    THEN do right step
+    ELSE do up right step
+  FI .
+ 
+right is better :
+  abs (old error + right error) < abs (old error + up right error)  .
+ 
+do upright step :
+  x pos INCR right ;
+  y pos INCR up ;
+  point ;
+  old error INCR upright error .
+ 
+do right step :
+  x pos INCR right ;
+  point ;
+  old error INCR right error .
+ 
+point :
+  IF visible (pos) 
+  THEN SELECT (pos.x+1) MOD 16 OF
+       CASE  0: set bit (block [byte],  8)
+       CASE  1: set bit (block [byte],  7)
+       CASE  2: set bit (block [byte],  6)
+       CASE  3: set bit (block [byte],  5)
+       CASE  4: set bit (block [byte],  4)
+       CASE  5: set bit (block [byte],  3)
+       CASE  6: set bit (block [byte],  2)
+       CASE  7: set bit (block [byte],  1)
+       CASE  8: set bit (block [byte],  0)
+       CASE  9: set bit (block [byte], 15)
+       CASE 10: set bit (block [byte], 14)
+       CASE 11: set bit (block [byte], 13)
+       CASE 12: set bit (block [byte], 12)
+       CASE 13: set bit (block [byte], 11)
+       CASE 14: set bit (block [byte], 10)
+       CASE 15: set bit (block [byte],  9)
+       END SELECT;
+  FI  .
+
+block:
+  screen [(255-pos.y) DIV 8 + 1]  .
+
+byte:
+  pos.x DIV 16 + ((255-pos.y) AND 7) * 32 + 1  .
+
+END PROC vector;
+ 
+BOOL PROC visible (POS CONST pos) :
+  IF pos.x < 0 OR pos.x > max x OR pos.y < 0 OR pos.y > max y
+  THEN FALSE
+  ELSE pattern AND hidden FI  .
+
+pattern:
+  bit set := bit (line pattern, pattern pos);
+  pattern pos := (pattern pos+1) AND 15;
+  bit set  .
+
+hidden:
+  IF akt maxima [pos.x+1] < pos.y 
+  THEN akt maxima [pos.x+1] := pos.y FI; 
+
+  pos.y > last maxima [pos.x+1]  .
+
+END PROC visible;
+
+PROC draw (TEXT CONST record, REAL CONST angle, height, width):
+{**** Hier werden Texte mit dem Winkel 'angle',der H”he 'height' und *****}
+{**** der Breite 'width' gezeichnet. Falls die Hardware dieses       *****}
+{**** bereits erm”glicht, so mssen die Variable 'zeichen' und die   *****}
+{**** Prozedur Zeichensatz gel”scht werden. Der Datenraum            *****}
+{**** 'STD Zeichensatz' wird in diesem Fall nicht ben”tigt.          *****}
+  BOOL CONST horizontal :: NOT (abs (angle) MOD 180.0 > 45.0 AND abs (angle) MOD 180.0 < 135.0);
+  INT CONST x fak :: character width, x step :: character x step,
+            y fak :: character height, y step :: character y step;
+  INT VAR x pos :: pos.x, y pos :: pos.y, i;
+  POS VAR old pos := pos;
+ 
+  FOR i FROM 1 UPTO length (record)
+  REP draw character i PER;
+  pos := old pos  .
+
+character width:
+  IF width <> 0.0
+  THEN int (hor faktor * width+0.5)
+  ELSE zeichen.width FI  .
+
+character x step:
+  IF horizontal
+  THEN IF width <> 0.0
+       THEN int (cosd (angle) * hor faktor * width+0.5)
+       ELSE int (cosd (angle) * real (zeichen.width)+0.5) FI
+  ELSE IF width <> 0.0
+       THEN int (cosd (angle) * vert faktor * width+0.5)
+       ELSE int (cosd (angle) * real (zeichen.height)+0.5) FI 
+  FI  .
+
+character height:
+  IF height <> 0.0
+  THEN int (vert faktor * height+0.5)
+  ELSE zeichen.height FI  .
+
+character y step:
+  IF horizontal
+  THEN IF height <> 0.0
+       THEN int (sind (angle) * vert faktor * height+0.5)
+       ELSE int (sind (angle) * real (zeichen.height)+0.5) FI 
+  ELSE IF height <> 0.0
+       THEN int (sind (angle) * hor faktor * height+0.5)
+       ELSE int (sind (angle) * real (zeichen.width)+0.5) FI 
+  FI  .
+
+draw character i:
+  IF code (record SUB i) < 32
+  THEN steuerzeichen
+  ELSE normale zeichen FI  .
+
+steuerzeichen:
+  SELECT code (record SUB i) OF
+  CASE  7: out (""0""7""16"")
+  CASE 13: x pos := pos.x;  y pos := pos.y
+  END SELECT  .
+
+normale zeichen:
+  TEXT CONST char :: zeichen.char [code (record SUB i)];
+  IF horizontal
+  THEN draw horizontal
+  ELSE draw vertical FI  .
+
+draw vertical:
+  n := 3;
+  IF char <> ""
+  THEN pos := POS : (((char ISUB 2)*y fak) DIV zeichen.height + x pos,
+                    -((char ISUB 1)*x fak) DIV zeichen.width + y pos)
+  FI;
+  WHILE n <= length (char) DIV 2
+  REP IF (char ISUB n) < 0 OR (char ISUB n+1) < 0
+      THEN pos := POS : (((char ISUB n+1)*y fak) DIV zeichen.height + x pos,
+                        -((char ISUB n  )*x fak) DIV zeichen.width + y pos) 
+      ELSE vector (-((char ISUB n+1)*y fak) DIV zeichen.height + x pos-pos.x,
+                    ((char ISUB n  )*x fak) DIV zeichen.width + y pos-pos.y)
+      FI;
+      n INCR 2
+  PER;
+  x pos INCR x step;
+  y pos INCR y step  .
+
+draw horizontal:
+  n := 3;
+  IF char <> ""
+  THEN pos := POS : (-((char ISUB 1)*x fak) DIV zeichen.width + x pos,
+                     -((char ISUB 2)*y fak) DIV zeichen.height + y pos)
+  FI;
+  WHILE n <= length (char) DIV 2
+  REP IF (char ISUB n) < 0 OR (char ISUB n+1) < 0
+      THEN pos := POS : (-((char ISUB n  )*x fak) DIV  zeichen.width + x pos,
+                         -((char ISUB n+1)*y fak) DIV zeichen.height + y pos)
+      ELSE vector (((char ISUB n  )*x fak) DIV zeichen.width + x pos-pos.x,
+                   ((char ISUB n+1)*y fak) DIV zeichen.height + y pos-pos.y)
+      FI;
+      n INCR 2
+  PER;
+  x pos INCR x step;
+  y pos INCR y step  .
+
+END PROC draw;
+
+PROC draw (TEXT CONST record) :
+  draw (record, 0.0, 0.0, 0.0)
+END PROC draw;
+ 
+PROC get cursor (TEXT VAR t, INT VAR x, y) :
+  t := "";
+  x := 0;
+  y := 0
+END PROC get cursor;
+
+OP := (SCREEN VAR l, SCREEN CONST r):
+  CONCR (l) := CONCR (r)
+END OP :=;
+
+PROC get screen (TEXT CONST name):
+  IF exists (name)
+  THEN get screen (old (name))
+  ELSE get screen (new (name)) FI;
+END PROC get screen;
+
+PROC get screen (DATASPACE CONST ds):
+  BOUND SCREEN VAR ds screen :: ds;
+  ds screen := screen
+END PROC get screen;
+
+PROC get screen (SCREEN VAR ds screen):
+  ds screen := screen
+END PROC get screen;
+
+PROC get screen:
+  FOR i FROM 1 UPTO 32
+  REP block in (screen [i], -1, i-1, n) PER
+END PROC get screen;
+
+PROC put screen (TEXT CONST name):
+  IF exists (name)
+  THEN put screen (old (name))
+  ELSE errorstop ("Der Datenraum """ + name + """ existiert nicht") FI
+END PROC put screen;
+
+PROC put screen (DATASPACE CONST ds):
+  BOUND SCREEN VAR ds screen :: ds;
+  screen := ds screen;
+  put screen
+END PROC put screen;
+
+PROC put screen (SCREEN VAR ds screen):
+  screen := ds screen;
+  put screen
+END PROC put screen;
+
+PROC put screen:
+  FOR i FROM 1 UPTO 32
+  REP block out (screen [i], -1, i-1, n) PER
+END PROC put screen;
+
+PROC clear (SCREEN VAR screen):
+  FOR i FROM 1 UPTO 256
+  REP screen [1] [i] := 0 PER;
+  FOR i FROM 2 UPTO 32
+  REP screen [i] := screen [1] PER
+END PROC clear;
+
+END PACKET matrix plot;
+
+

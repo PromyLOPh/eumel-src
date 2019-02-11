@@ -1,0 +1,500 @@
+(* SHard-Patcher fuer Schoenbeck AT-Shard V2.7: 
+   - Vortest/Speichertest 
+   - Keyboard Repeatfrequenz 
+   - Baudrates 19200/38400 werden angeboten 
+   - Refresh-Intervall Ñnderbar (bis zu 5% mehr Leistung) 
+   - control (-3,,,r) liefert im Highbyte das Modemstatusregister (RI etc.) 
+   - control (-5,8,,r) geht in ruc-Bios-Graphikmodus (mit Textausgabe: 
+     Text mit 'out', 'put' etc. schreiben, cursor (x, y) mit y:1..43, 
+     Codes ""4"", ""5"", Scroll lîschen jetzt vernÅnftig (Attribut von 7 auf
+     0 geÑndert), 
+     Achtung: getcursor (x, y) im 'begin plot' einbauen. 
+              cursor (x,y) im 'end plot' einbauen, wegen y<25 im Textmodus!) 
+   - Kanal 30 (Archiv 1) jetzt fÅr MF-Laufwerke (5.25" bzw. 3.5"), Default- 
+              Size ist 1.2MB (Achtung bei Formatieren von 3.5"-Floppys!) 
+   - Mit control (-10/-11,...) ("stop", "weiter") wird an den RS232-KanÑlen 
+     jetzt nicht nur RTS active/inactive gesetzt sondern auch DTR (Modem). 
+   - An Kanal 32: 
+     Mit control (-3, x, mcr*32+kanal, r) (mcr ist Modemcontrolregister Wert,
+     x egal) kînnen RTS, DTR explizit gesetzt werden.
+   - id (6) > 0 : SHard wurde gepatcht.
+ 
+   Michael Staubermann, Version 2:   09.10.87, Keyboardrepeat, Baudrates
+                        Version 3:   04.11.87, Graphikcursor & Graphikmodi
+                        Version 3.1: 20.11.87, >32MB Partitionen f. M+ 
+                        Version 4:   04.12.87, TX-Interrupt restart
+                        Version 4.1: 10.01.88, Refresh-Intervall Ñnderbar 
+                        Version 5:   21.02.88, Kanal 30 1.2MB-Format (3.5") 
+                        Version 5.1: 22.02.88,
+*) 
+ 
+LET setup channel = 28 ; 
+ 
+LET max partitions = 4 , 
+    patch version  = 5 ,
+    shard bloecke  = 18 ; 
+ 
+   
+patch shard ; 
+
+ROW shard bloecke ROW 256 INT VAR block ; 
+ROW shard bloecke BOOL VAR modified ; 
+INT VAR old session := 0 ; 
+REAL VAR partition size := 0.0, partition start 1 := 256.0 * 65536.0 -1.0 ; 
+INT VAR i ; 
+FOR i FROM 1 UPTO shard bloecke REP 
+ modified (i) := FALSE 
+PER ; 
+ 
+ROW 256 INT VAR partition table ; 
+ 
+ 
+INT OP & (TEXT CONST hex) : 
+ INT VAR i, h := 0 ; 
+ IF LENGTH hex > 4 THEN errorstop ("OP &: LENGTH > 4") FI ; 
+ FOR i FROM 1 UPTO LENGTH hex REP 
+  rotate (h, 4) ;
+  INT CONST c :: code (hex SUB i) ; 
+  IF c >= 97 AND c <= 102 
+     THEN h := h OR (c-87)
+  ELIF c >= 65 AND c <= 70 
+     THEN h := h OR (c-55)
+  ELIF c >= 48 AND c <= 57 
+     THEN h := h OR (c-48) 
+  ELSE errorstop ("OP &: ungÅltiges Hexdigit ("+code(c)+")") 
+  FI ; 
+ PER ; 
+ h 
+ENDOP & ; 
+ 
+TEXT OP % (INT CONST int) : 
+ LET hex = "0123456789ABCDEF" ; 
+ TEXT VAR t := "" ; 
+ INT VAR i, r := int ; 
+ FOR i FROM 1 UPTO 4 REP 
+  rotate (r, 4) ; 
+  t CAT (hex SUB ((r AND 15)+1)) ; 
+ PER ; 
+ t 
+ENDOP % ; 
+ 
+PROC poke (INT CONST shard adr, INT CONST byte) : 
+ (* Der Shard beginnt bei 1280 d.h. 0500H, EUCONECT bei 504H (='EUMEL') *) 
+ INT VAR block no, block offset ; 
+ IF shard adr < 256 
+    THEN errorstop ("poke: Adresse < 256") ; 
+         LEAVE poke 
+ FI ; 
+ block offset := shard adr-256 ; 
+ rotate (block offset, -1) ; 
+ block offset := (block offset AND 255) + 1 ;
+ block no := shard adr - 256 ; 
+ rotate (block no, -9) ; 
+ block no := (block no AND 63) + 1 ; 
+ IF block no < 1 OR block no > shard bloecke 
+    THEN errorstop ("poke: falsche Adresse") ; 
+         LEAVE poke 
+ FI ; 
+ TEXT VAR t := "  " ; 
+ replace (t, 1, block (block no)(block offset)) ; 
+ replace (t, (shard adr AND 1) + 1, code (byte AND 255)) ; 
+ modified (block no) := TRUE ; 
+ block (block no)(block offset) := t ISUB 1 ; 
+ENDPROC poke ; 
+ 
+PROC poke2 (INT CONST shard adr, INT CONST word) : 
+ INT VAR r := word ; 
+ poke (shard adr, r) ; 
+ rotate (r, 8) ; 
+ poke (shard adr+1, r) ; 
+ENDPROC poke2 ; 
+ 
+PROC poken (INT CONST shard adr, TEXT CONST str) : 
+ INT VAR i, adr := shard adr ; 
+ i := 1 ; 
+ WHILE i <= LENGTH str REP 
+  IF (str SUB i+2) = " " OR (str SUB i+2) = ""
+     THEN poke (adr, &subtext (str, i, i+1)) ; 
+          i INCR 3 ; 
+          adr INCR 1 
+  ELIF (str SUB i+4) = " " OR (str SUB i+4) = "" 
+     THEN poke2 (adr, &subtext (str, i, i+3)) ; 
+          i INCR 5 ; 
+          adr INCR 2 
+  ELSE errorstop ("poken: Zuviele zusammenhÑngende Bytes") 
+  FI ; 
+ PER ; 
+ENDPROC poken ; 
+ 
+INT PROC peek (INT CONST shard adr) : 
+ INT VAR block no, block offset ; 
+ block offset := shard adr ; 
+ IF shard adr < 256 
+    THEN errorstop ("peek: Adresse < 256") ; 
+         LEAVE peek WITH 0 
+ FI ; 
+ block offset := shard adr-256 ; 
+ rotate (block offset, -1) ; 
+ block offset := (block offset AND 255) + 1 ;
+ block no := shard adr-256 ; 
+ rotate (block no, -9) ; 
+ block no := (block no AND 63) + 1 ;
+ IF block no < 1 OR block no > shard bloecke 
+    THEN errorstop ("peek: falsche Adresse") ; 
+         LEAVE peek WITH 0
+ FI ; 
+ TEXT VAR t := "  " ; 
+ replace (t, 1, block (block no)(block offset)) ; 
+ code (t SUB ((shard adr AND 1) + 1))  
+ENDPROC peek ; 
+ 
+ 
+INT PROC peek2 (INT CONST shard adr) : 
+ INT VAR r := peek (shard adr + 1) ; 
+ rotate (r, 8) ; 
+ r + peek (shard adr) 
+ENDPROC peek2 ; 
+ 
+ 
+PROC get partition : 
+ INT VAR partition, cyls, heads, secs ; 
+ get media size (setup channel, cyls, heads, secs) ; 
+ get partition table ; 
+ get partition number from user ; 
+ line ; 
+ IF (partition size  high AND -256) <> 0 OR 
+    (partition start high AND -256) <> 0
+    THEN errorstop ("Sorry, Partitionsangaben zu hoch") 
+ FI ; 
+ line ; 
+ partition start1 := real24 (partition start high, partition start low)-1.0; 
+ partition size  := real24 (partition size high, partition size low) ; 
+ putline ("Platte hat " + text (cyls) + " Cylinder, " + text (heads) + 
+          " Heads, " + text (secs) + " Sektoren = " + 
+          text (real(cyls)*real(heads)*real(secs)/2048.0, 5, 1) + " MB") ;
+ putline ("Partionsanfang: " + 
+           text ((partition start 1+1.0)/2.0, 6, 0) + " KB = Cylinder " + 
+           text (int ((partition start 1+1.0)/real(secs)/real(heads)))) ; 
+ putline ("Partionsgrîsse: " + text (partition size/2.0, 6, 0) + " KB = " + 
+           text (int (partition size/real(secs)/real(heads))) + " Cylinder"); 
+ put ("Diese Partition ist") ; 
+ IF NOT partition active 
+    THEN put (""15"nicht"14"")
+ FI ; 
+ putline ("aktiviert.") ;
+ line . 
+ 
+get partition table : 
+ blockin (setup channel, partition table, 0.0) . 
+ 
+get partition number from user : 
+ FOR partition FROM 1 UPTO max partitions REP 
+  IF eumel partition CAND yes ("EUMEL-Partiton " + 
+                          text (partition type) + " patchen") 
+     THEN LEAVE get partition number from user 
+  FI 
+ PER ; 
+ partition := 0 ; 
+ errorstop ("Keine EUMEL Partition gefunden") . 
+ 
+ 
+eumel partition : 
+ partition type >= 69 AND partition type <= 72 . 
+ 
+entry               : 216 + partition * 8 . 
+partition active    : bit (partition table (entry), 7) . 
+partition type      : partition table (entry + 2) AND 255 . 
+partition start low : partition table (entry + 4) .
+partition start high: partition table (entry + 5) . 
+partition size  low : partition table (entry + 6) . 
+partition size  high: partition table (entry + 7) . 
+ 
+ENDPROC get partition ; 
+ 
+PROC read shard : 
+ INT VAR i ; 
+ old session := session ; 
+ FOR i FROM 1 UPTO shard bloecke REP 
+  cout (i) ; 
+  modified (i) := FALSE ; 
+  blockin (setup channel, block (i), partition start1 + real(i-1)) 
+ PER ; 
+ENDPROC read shard ; 
+ 
+ 
+PROC write shard : 
+ INT VAR i ; 
+ FOR i FROM 1 UPTO shard bloecke REP 
+  IF modified (i) 
+     THEN IF session <> old session 
+             THEN errorstop ("RERUN wÑhrend patch") 
+          FI ; 
+          blockout (setup channel, block (i), partition start1+real(i-1)) ; 
+          modified (i) := FALSE 
+  FI ; 
+  cout (i)
+ PER 
+ENDPROC write shard ; 
+ 
+REAL PROC real24 (INT CONST high, low) : 
+ real (high) * 65536.0 + low real . 
+ 
+low real : 
+ IF low < 0 
+    THEN real (low) + 65536.0 
+    ELSE real (low) 
+ FI 
+ENDPROC real24 ;
+ 
+PROC split real24 (REAL CONST r, INT VAR high, low) : 
+ high := int (r/65536.0) ; 
+ low := (code (int (r MOD 256.0)) + 
+         code (int ((r MOD 65536.0)/256.0))) ISUB1
+ENDPROC split real24 ; 
+
+PROC patch shard : 
+ get partition ; 
+ read shard ; 
+ check if patch possible ; 
+ patch baudrate ;
+ patch id and mode ; 
+ patch typematic ;
+ patch refresh ; 
+ patch modem status ; 
+ patch cursor maxima ; 
+ patch attribute bytes ; 
+ patch out restart ; 
+ patch dtr inactive ; 
+ patch mcr set routine ; 
+ patch archive 1 format ; 
+ IF yes ("énderungen permanent machen") 
+    THEN write shard ; 
+         putline ("énderungen durchgefÅhrt, System neu booten.") ;
+    ELSE putline ("Keine énderungen durchgefÅhrt.") ; 
+ FI . 
+ 
+check if patch possible : 
+ IF peek2 (&"0300") <> &"05EA" 
+    THEN errorstop ("Partition enthaelt keinen SHard") 
+    ELSE IF peek2 (shard ver) <> 7 
+            THEN errorstop ("Dies ist die falsche SHard-Version")
+         ELIF peek2 (id6) = patch version 
+            THEN putline ("Hinweis: Dieser SHard wurde bereits gepatcht") 
+         ELIF peek2 (id6) <> 0 
+            THEN putline ("Der SHard-Patch wird upgedated") 
+         FI 
+ FI . 
+ 
+shard ver: &"0554" . 
+mode:      &"0556" . 
+id 6:      &"055C" . 
+ 
+patch baudrate :
+ putline ("Baudrates 50, 75 entfernt, 19200, 38400 eingefÅgt.") ; 
+ poke2 (&"07E8", 1047) ; (*  3:   110 *) 
+ poke2 (&"07EA",  857) ; (*  4:   134.5 *) 
+ poke2 (&"07EC",  768) ; (*  5:   150 *) 
+ poke2 (&"07EE",  384) ; (*  6:   300 *) 
+ poke2 (&"07F0",  192) ; (*  7:   600 *) 
+ poke2 (&"07F2",   96) ; (*  8:  1200 *) 
+ poke2 (&"07F4",   64) ; (*  9:  1800 *) 
+ poke2 (&"07F6",   48) ; (* 10:  2400 *) 
+ poke2 (&"07F8",   32) ; (* 11:  3600 *) 
+ poke2 (&"07FA",   24) ; (* 12:  4800 *) 
+ poke2 (&"07FC",   16) ; (* 13:  7200 *) 
+ poke2 (&"07FE",   12) ; (* 14:  9600 *) 
+ poke2 (&"0800",    6) ; (* 15: 19200 *) 
+ poke2 (&"0802",    3) ; (* 16: 38400 *) 
+   
+ (* Korrektur der Adressoffsetberechnung auf Baudtable *) 
+ (* Maschinencode nicht veraendern! 
+    08F4: 
+    i8250_baud: 
+      CMP BH,17 
+      JNC i8250_not_ok 
+      CMP BH,3 
+      JC  i8250_not_ok 
+      .... 
+    0918:
+      MOV AX,WORD PTR i8250_baud_table-6[BX] 
+*) 
+ poken (&"08F4", "17 73 75 80 FF 03 72 70") ; 
+ poken (&"0918", "87 E2") . 
+ 
+patch id and mode : 
+ poke2 (id6, patch version) ; (* Update Patch Version *)
+ IF yes ("Soll ein Vortest durchgefÅhrt werden") 
+    THEN IF yes ("Soll ein Speichertest durchgefuehrt werden") 
+            THEN poke2 (mode, 0) 
+            ELSE poke2 (mode, 256) 
+         FI
+    ELSE poke2 (mode, 512) 
+ FI . 
+ 
+patch modem status: 
+  poke (&"0A5D", 6) . (* Modem Status Register Offset = 6 *) 
+ 
+patch typematic: (* Nur mit ruc-Bios *) 
+ INT VAR typematic ; 
+ IF yes ("Schneller Keyboardrepeat") 
+    THEN typematic := 4 (* Fast *) 
+    ELSE typematic := 2 * 256 + 12 (* Standard *) 
+ FI ; 
+ (* Maschinencode, nicht veraendern! 
+ 0E20: 
+   XOR  AX,AX           ; Set Default Video Mode 
+   INT  10H 
+    MOV  AX,0342        ; Set Typematic + Marwin 
+    MOV  BX,typematic   ; BH = Delay (0..3), BL = Rate (0..31) 
+    INT  16H             
+ 0E2C: 
+     MOV  AL,54H        ; Ab hier in 'patch refresh' 
+     OUT  [43H],AL      ; 
+     JMP  $+2           ;
+     MOV  AL,interval   ; interval = 1.19 * us 
+     OUT  [41H],AL      ;
+   RET                  ; End pc_init
+*) 
+ poken (&"0E20", "33 C0 CD 10 B8 42 03 BB " + %typematic + " CD 16 C3") . 
+ (* RET wird ueberschrieben von Refresh *) 
+ 
+patch refresh: 
+ INT VAR refresh ; 
+ TEXT VAR ref := "15.126" ;
+ line ; 
+ putline ("215us Refresh-Intervall bringen 5% mehr RAM-Performance.") ; 
+ putline ("Achtung: Nicht bei allen RAMs moeglich (z.B. 120ns Toshiba nicht).") ;
+ put ("RAM-Refresh Intervall (in us):") ; 
+ editget (ref) ; line ; 
+ refresh := int (1.19 * real (ref) + 0.5) ; 
+ IF refresh < 1 
+    THEN refresh := 1 
+ ELIF refresh > 255 
+    THEN refresh := 256 
+ FI ; 
+ put (real (refresh) / 1.19) ; 
+ putline ("us Refresh-Intervall eingestellt.") ;
+ IF refresh = 256 THEN refresh := 0 FI ; 
+ poken (&"0E2C", "B0 54 E6 43 EB 00 B0 " + subtext (%refresh, 3, 4) + 
+                " E6 41 C3") . 
+ 
+patch cursor maxima: 
+(* Es werden nur die Maxima bei CURSOR(,) veraendert, CLEOL, CLEOP,SCROLL 
+    etc. arbeiten weiter mit 24 Zeilen, 80 Spalten *) 
+ (* CURSOR y:0..43, x:0..89 EUMEL lÑsst allerdings nur 0..79 zu *)
+ poke (&"0EFF", 43) ; 
+ poke (&"0F16", 89) . 
+ 
+patch attribute bytes: 
+ poke (&"0FD4", 0) ; poke (&"0FE8", 0) ; (* CLEOP *) 
+ poke (&"1002", 0) ; (* CLREOL *) 
+ poke (&"1027", 0) . (* SCROLL *) 
+ 
+patch out restart : 
+ poke (&"09BA", 0) . (* out_restart immer: JP $+0 *) 
+ 
+patch dtr inactive : 
+ poke (&"0A30", 8) . (* RTS + DTR inaktiv, OUT2 muss an bleiben *) 
+ 
+patch mcr set routine :
+ (* 
+  0812: 20 Bytes zur VerfÅgung
+   MOV  DX,(DI+i8250_base) 
+   ADD  DX,i8250_mcr 
+   MOV  AL,BH        ; Highbyte 2. IOCONTROL Parameter 
+   OUT  [DX],AL 
+   MOV  CX,0 
+   RET 
+  *) 
+ poken (&"0812", "8B 95 1B 00 83 C2 04 88 F8 EE B9 00 00 C3") . 
+ 
+patch archive 1 format :
+ line ; 
+ putline ("Archiv-Kanal 30-Laufwerk (bitte Typnummer angeben):") ; 
+ putline ("  0: Nicht vorhanden") ; 
+ putline ("  1: 360K (Standard/Doublestep)") ; 
+ putline ("  2: 720K (Standard/Singlestep)") ; 
+ putline ("  3: 1.2MB (Multifunction)") ; 
+ putline ("ESC: Nichts verÑndern") ; 
+ put ("Typ:") ; 
+ TEXT VAR t ; 
+ REP inchar (t) UNTIL t >= "0" AND t <= "3" OR t = ""27"" PER ; 
+ putline (t) ; 
+ line ;
+ IF t = "0" OR t = "1" 
+    THEN poken (&"21DE", "00 01") 
+ ELIF t = "2" 
+    THEN poken (&"21DE", "04 02")
+ ELIF t = "3" 
+    THEN poken (&"21DE", "01 03") 
+ FI . 
+ 
+ENDPROC patch shard ; 
+ 
+PROC blockin (INT CONST kanal, ROW 256 INT VAR block, REAL CONST blockno) :
+ INT VAR r, my channel :: channel, high, low ; 
+ split real24 (blockno, high, low) ; 
+ continue (kanal) ; 
+ blockin (block, high AND 255, low, r) ; 
+ continue (my channel) ; 
+ SELECT r OF 
+   CASE 0 :
+   CASE 1 : errorstop ("Harddisk kann nicht gelesen werden")
+   CASE 2 : errorstop ("Lesefehler bei Block " + text (blockno))
+   CASE 3 : errorstop ("Block " + text(blockno) + " zu hoch")
+  OTHERWISE errorstop ("unbekannter Lesefehler auf Harddisk")
+ ENDSELECT .
+ 
+ENDPROC blockin ; 
+
+PROC blockout (INT CONST kanal, ROW 256 INT VAR block, REAL CONST blockno):
+ INT VAR r, my channel :: channel, high, low ; 
+ split real24 (blockno, high, low) ; 
+ continue (kanal) ; 
+ blockout (block, high AND 255, low, r) ; 
+ continue (my channel) ; 
+ SELECT r OF 
+   CASE 0 :
+   CASE 1 : errorstop ("Harddisk kann nicht beschrieben werden")
+   CASE 2 : errorstop ("Schreibfehler bei Block " + text (blockno))
+   CASE 3 : errorstop ("Block " + text (blockno) + " zu hoch")
+  OTHERWISE errorstop ("unbekannter Schreibfehler auf Harddisk")
+ ENDSELECT .
+ 
+ENDPROC blockout ; 
+
+PROC get media size (INT CONST kanal, INT VAR cyls, heads, secs) : 
+ INT CONST old channel :: channel ; 
+ continue (kanal) ;
+ control (-10, 0, 0, cyls) ; cyls INCR 1 ; 
+ control (-11, 0, 0, secs) ;
+ control (-12, 0, 0, heads) ; 
+ continue (old channel)
+ENDPROC get media size ; 
+(*
+PROC dump block (INT CONST adr) : 
+TEXT VAR t ; 
+FOR i FROM adr UPTO adr+511 REP 
+ IF (i AND 15) = 0 
+    THEN line ; 
+         put (%i+":") ; 
+         t := "" ; 
+ FI ;
+ INT CONST j :: peek (i) ; 
+ IF j < 32 OR j > 126 THEN t CAT "." 
+ ELSE t CAT code (j) FI ; 
+ outsubtext (%j, 3, 4) ;
+ out (" ") ; 
+ IF (i AND 15) = 15 
+    THEN out (t)
+ FI 
+PER ; 
+line 
+ENDPROC dump block ; 
+ 
+putline ("Partitionstabelle lesen...") ; 
+get partition ; 
+putline ("SHard lesen...") ; 
+read shard ; 
+put (%peek (1364)) ; 
+*)

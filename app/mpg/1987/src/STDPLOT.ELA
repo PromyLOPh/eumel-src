@@ -1,0 +1,234 @@
+PACKET std plot DEFINES drawing area, 
+                        begin plot, 
+                        end plot, 
+                        clear, 
+                        pen,
+                        move, 
+                        draw, 
+                        get cursor:
+ 
+LET delete = 0,                         {Farbcodes}
+    std    = 1,
+    black  = 5,
+    white  = 6,
+
+    durchgehend      = 1,               {Linientypen}
+    gepunktet        = 2,
+    kurz gestrichelt = 3,
+    lang gestrichelt = 4,
+    strichpunkt      = 5,
+
+    empty            = 0,               {Punktsymbole}
+    high             = 1,
+    low              = 2, 
+    both             = 3; 
+
+LET POS = STRUCT (INT x, y);
+
+ROW 79 ROW 24 INT VAR screen;
+BOOL VAR colour :: TRUE, action :: TRUE;
+POS VAR pos :: POS : (0, 0);
+ 
+clear;
+
+PROC drawing area (REAL VAR x cm, y cm, INT VAR x pixel, y pixel) : 
+   x cm := 25.0;    y cm := 17.0;   {***** Horizontale und vertikale *****}
+                                    {***** Gr”áe in Zentimetern.     *****}
+   x pixel := 79;   y pixel := 48   {***** Koordinaten des rechten   *****}
+                                    {***** oberen Punktes.           *****}
+END PROC drawing area;
+
+PROC begin plot : 
+ENDPROC begin plot ;
+ 
+PROC end plot : 
+ENDPROC end plot ;
+
+PROC clear :
+  INT VAR i, j;
+  colour := TRUE;
+  action := TRUE;
+  pos := POS : (0, 0);
+
+  FOR i FROM 1 UPTO 24
+  REP screen [1] [i] := 0 PER;
+  FOR i FROM 2 UPTO 79
+  REP screen [i] := screen [1] PER;
+  page;
+  out (""6""23""0"")  .
+END PROC clear;
+
+PROC pen (INT CONST background, foreground, thickness, linetype):
+  colour := foreground > 0;
+  action := linetype <> 0  .
+
+END PROC pen;
+
+PROC move (INT CONST x, y) :
+  out (""6""+ code (23-y DIV 2) + code (x)); 
+  pos := POS  : (x, y) 
+END PROC move;
+ 
+PROC draw (INT CONST x, y) :
+  IF action
+  THEN vector (x-pos.x, y-pos.y) FI;
+  pos := POS : (x, y)   .
+
+END PROC draw;
+ 
+PROC vector (INT CONST dx , dy) :
+  IF dx >= 0
+  THEN IF   dy >  dx THEN vector (pos.y, pos.x, dy, dx, 1, 1)
+       ELIF dy >   0 THEN vector (pos.x, pos.y, dx, dy, 1, 1)
+ 
+       ELIF dy > -dx THEN vector (pos.x, pos.y, dx, -dy, 1,-1)
+       ELSE               vector (pos.y, pos.x, -dy, dx,-1, 1) FI
+
+  ELSE IF   dy > -dx THEN vector (pos.y, pos.x, dy, -dx, 1,-1)
+       ELIF dy >   0 THEN vector (pos.x, pos.y, -dx, dy,-1, 1)
+ 
+       ELIF dy >  dx THEN vector (pos.x, pos.y, -dx, -dy,-1,-1)
+       ELSE               vector (pos.y, pos.x, -dy, -dx,-1,-1) FI
+  FI .
+ 
+ENDPROC vector ;
+ 
+PROC vector (INT VAR x pos, y pos, INT CONST dx, dy, right, up) :
+  INT VAR i;
+  prepare first step ;
+  point;
+  FOR i FROM 1 UPTO dx
+  REP do one step PER  .
+
+prepare first step :
+  INT VAR up right error := dy - dx,
+          right error := dy,
+          old error := 0  .
+
+do one step:
+  IF right is better
+    THEN do right step
+    ELSE do up right step
+  FI .
+ 
+right is better :
+  abs (old error + right error) < abs (old error + up right error)  .
+ 
+do upright step :
+  x pos INCR right ;
+  y pos INCR up ;
+  point ;
+  old error INCR upright error .
+ 
+do right step :
+  x pos INCR right ;
+  point ;
+  old error INCR right error .
+ 
+point :
+  IF (pos.y AND 1) = 0
+  THEN lower point
+  ELSE upper point FI  .
+
+lower point :
+  out (""6""+ code (23-pos.y DIV 2) + code (pos.x));
+  IF colour
+  THEN set lower point
+  ELSE reset lower point FI  .
+
+set lower point:
+  SELECT screen [pos.x+1] [pos.y DIV 2+1] OF
+  CASE empty : out (","8"");
+               screen [pos.x+1] [pos.y DIV 2+1] := low
+  CASE high  : out ("|"8"");
+               screen [pos.x+1] [pos.y DIV 2+1] := both
+  ENDSELECT  .
+
+reset lower point: 
+  SELECT screen [pos.x+1] [pos.y DIV 2+1] OF
+  CASE low   : out (" "8"");
+               screen [pos.x+1] [pos.y DIV 2+1] := empty
+  CASE both  : out ("'"8"");
+               screen [pos.x+1] [pos.y DIV 2+1] := high
+  ENDSELECT  .
+
+upper point :
+  out (""6""+ code (23-pos.y DIV 2) + code (pos.x)); 
+  IF colour
+  THEN set upper point
+  ELSE reset upper point FI  .
+
+set upper point:
+  SELECT screen [pos.x+1] [pos.y DIV 2+1] OF
+  CASE empty : out ("'"8"");
+               screen [pos.x+1] [pos.y DIV 2+1] := high
+  CASE low   : out ("|"8"");
+               screen [pos.x+1] [pos.y DIV 2+1] := both
+  ENDSELECT  .
+ 
+reset upper point:
+  SELECT screen [pos.x+1] [pos.y DIV 2+1] OF
+  CASE high  : out (" "8"");
+               screen [pos.x+1] [pos.y DIV 2+1] := empty
+  CASE both  : out (","8"");
+               screen [pos.x+1] [pos.y DIV 2+1] := low
+  ENDSELECT  .
+
+END PROC vector;
+ 
+PROC draw (TEXT CONST record, REAL CONST angle, height, width):
+   out (subtext (record, 1, 79-pos.x));
+   out (""6""+ code (23-pos.y DIV 2) + code (pos.x)); 
+END PROC draw;
+
+PROC draw (TEXT CONST record) :
+  draw (record, 0.0, 0.0, 0.0)
+END PROC draw;
+ 
+PROC get cursor (TEXT VAR t, INT VAR x, y) :
+  x := pos.x;
+  y := pos.y;
+  REP out (""6""+ code (23-y DIV 2) + code (x)); 
+      inchar (t);
+      SELECT code (t) OF
+      CASE 2 : x INCR 1
+      CASE 3 : y INCR 1
+      CASE 8 : x DECR 1
+      CASE 10: y DECR 1
+      CASE 1 : out (""0""1"" + text (x, 3) + "," + text (y, 3) + "  "13""16"")
+      OTHERWISE leave get cursor ENDSELECT;
+      check
+  PER  .
+
+leave get cursor:
+  out (""6""+ code (23-pos.y DIV 2) + code (pos.x)); 
+  LEAVE get cursor  .
+
+check :
+  IF x < 0
+  THEN x := 0;
+       out (""7"")
+  ELIF x > 47
+  THEN x := 47;
+       out (""7"")
+  FI; 
+  IF y < 0
+  THEN y := 0;
+       out (""7"")
+  ELIF y > 78
+  THEN y := 78;
+       out (""7"")
+  FI  .
+
+END PROC get cursor;
+
+PROC test (INT CONST x, y, TEXT CONST t):
+  out (""27";(" + text (x) + "," + text (y) + ")  " + t + ""29"");
+  IF incharety (10000) = ""27""
+  THEN stop FI
+END PROC test;
+
+
+END PACKET std plot;
+
+

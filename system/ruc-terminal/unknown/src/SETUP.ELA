@@ -1,0 +1,257 @@
+PACKET setup DEFINES setup :         (* 02.03.86, M.Staubermann *) 
+ 
+LET separator  = "|" , 
+    old option mark = " " , (* ""16"" , *)
+    choice mark = ""15"" , 
+    end mark   = ""14"" , 
+    left       = ""8"" , 
+    right      = ""2"" , 
+    bottom     = ""6""21""0"" , 
+    clr line   = ""13""5"" ,
+    home       = ""1"" ;
+ 
+PROC selektor (TEXT CONST options, INT VAR option number,BOOL CONST warten) :
+ TEXT VAR zeichen ;
+ INT VAR i , 
+         last separator pos , 
+         new separator pos := 0 ,
+         old option := option number , 
+         max options := 0 ;
+ REP 
+  new separator pos := pos (options, separator, new separator pos +1) ; 
+  max options INCR 1 
+ UNTIL new separator pos = 0 PER ;
+ out (""13"") ; 
+ REP 
+  i := 0 ; 
+  last separator pos := 0 ;
+  REP 
+   i INCR 1 ;
+   new separator pos := pos (options, separator, last separator pos + 1) ; 
+   IF new separator pos = 0 
+      THEN new separator pos := LENGTH options + 1 
+   FI ;
+   IF i = option number
+      THEN out (choice mark) 
+   ELIF i = old option 
+      THEN out (old option mark) 
+   ELSE out (end mark) 
+   FI ; 
+   out subtext (options, last separator pos + 1, new separator pos - 1) ; 
+   out (end mark) ;
+   last separator pos := new separator pos 
+  UNTIL last separator pos = LENGTH options + 1 PER ;
+  out (""13"") ;
+  IF warten 
+     THEN inchar (zeichen) ; 
+          IF zeichen = ""27"" 
+             THEN option number := old option 
+          ELIF zeichen = left AND option number = 1 
+             THEN option number := max options 
+          ELIF zeichen = left 
+             THEN option number DECR 1 
+          ELIF zeichen = right AND option number = max options 
+             THEN option number := 1 
+          ELIF zeichen = right 
+             THEN option number INCR 1 
+          FI 
+  ELSE zeichen := ""13"" 
+  FI
+ UNTIL zeichen = ""13"" OR zeichen = ""27"" PER 
+ENDPROC selektor ; 
+ 
+LET std datenbits = 4 , (* 8 *) 
+    std stopbits  = 1 , (* 1.0 *) 
+    std flowmode  = 1 , (* xon/xoff *) 
+    std parity    = 1 , (* no parity *) 
+    std fixed     = 4 , (* RTS ON, DTR ON *) 
+ 
+    setup text    = "Ende|Kanal|Baudrate|Datenbits|Stopbits|Parity|Fluákontrolle", 
+    ende text     = "Žndern|Abbruch" , 
+    kanal text    = "2|3" , 
+    datenbits text= "5|6|7|8" , 
+    stopbits text = "1.0|1.5|2.0" , 
+    parity text   = "no|even|odd" , 
+    fixed text    = "DTR OFF/RTS OFF|DTR OFF/RTS ON|DTR ON/RTS OFF|DTR ON/RTS ON" , 
+    flowmode text = "xon/xoff|dtr|rts/cts|dtr/rts/cts|fixed" ; 
+ 
+INT VAR old session := 0 ; 
+ROW 2 INT VAR datenbits, stopbits, parity, flowmode , fixed ; 
+ROW 2 REAL VAR baudrates ; 
+ 
+PROC init params : 
+ datenbits := ROW 2 INT:(std datenbits , std datenbits) ; 
+ stopbits  := ROW 2 INT:(std stopbits , std stopbits) ; 
+ parity    := ROW 2 INT:(std parity , std parity) ; 
+ flowmode  := ROW 2 INT:(std flowmode , std flowmode) ; 
+ fixed     := ROW 2 INT:(std fixed, std fixed) ; 
+ baudrates := ROW 2REAL:(baudrate (channelb), baudrate (channela)) ;
+ENDPROC init params ; 
+ 
+PROC setup :
+ INT VAR kanal := aktueller kanal , 
+         setup choice := 1 ; 
+ BOOL VAR x dtr, x rts, x auto dtr, x cts ; 
+ page ;
+ init setup (kanal, setup choice) ; 
+ select setup choice ; 
+ cursor (1, 19) ; 
+ setup choice := 2 ; 
+ selektor (ende text, setup choice, TRUE) ; 
+ out (bottom) ;
+ IF setup choice = 1 
+    THEN kanal := 1 ; 
+         x flowmode ; 
+         setup (kanal bool, x parity, x stopbits, x datenbits, 
+                x dtr, x rts, x auto dtr, x cts) ; 
+         baudrate (kanal bool, baudrates (kanal)) ; 
+         kanal := 2 ; 
+         x flowmode ; 
+         setup (kanal bool, x parity, x stopbits, x datenbits, 
+                x dtr, x rts, x auto dtr, x cts) ; 
+         baudrate (kanal bool, baudrates (kanal)) 
+ FI . 
+ 
+x flowmode : 
+ x dtr := FALSE ; 
+ x rts := FALSE ; 
+ SELECT flowmode (kanal) OF 
+  CASE 1 : x auto dtr := FALSE ; (* XON/XOFF *) 
+           x cts      := FALSE 
+  CASE 2 : x auto dtr := TRUE ;  (* DTR *)
+           x cts      := FALSE 
+  CASE 3 : x auto dtr := FALSE ; (* RTS/CTS *)
+           x cts      := TRUE 
+  CASE 4 : x auto dtr := TRUE  ; (* RTS/CTS/DTR *) 
+           x cts      := TRUE 
+  CASE 5 : x auto dtr := FALSE ; (* fixed *) 
+           x cts      := FALSE ; 
+           SELECT fixed (kanal) OF 
+            CASE 1 : x dtr := FALSE ; (* wie XON/XOFF *)
+                     x rts := FALSE 
+            CASE 2 : x dtr := FALSE ; (* RTS=1 *) 
+                     x rts := TRUE 
+            CASE 3 : x dtr := TRUE ;  (* DTR=1 *)
+                     x rts := FALSE 
+            CASE 4 : x dtr := TRUE ;  (* RTS=1,DTR=1 *) 
+                     x rts := TRUE 
+           ENDSELECT 
+ENDSELECT. 
+ 
+x parity : 
+ SELECT parity (kanal) OF 
+  CASE 2 : even parity 
+  CASE 3 : odd parity 
+  OTHERWISE no parity 
+ ENDSELECT. 
+ 
+x stopbits : 
+ SELECT stopbits (kanal) OF 
+  CASE 2 : 1.5 
+  CASE 3 : 2.0 
+  OTHERWISE 1.0 
+ ENDSELECT. 
+ 
+x datenbits : 
+ datenbits (kanal) + 4. 
+ 
+select setup choice : 
+ REP 
+  cursor (1, 5) ; 
+  selektor (setup text, setup choice, TRUE) ; 
+  SELECT setup choice OF 
+   CASE 1 : LEAVE select setup choice 
+   CASE 2 : select kanal choice 
+   CASE 3 : select baudrate choice 
+   CASE 4 : select datenbits choice 
+   CASE 5 : select stopbits choice 
+   CASE 6 : select parity choice 
+   CASE 7 : select flowmode choice 
+  ENDSELECT 
+ PER . 
+ 
+select kanal choice : 
+ INT VAR save kanal := kanal ; 
+ cursor (1, 7) ; 
+ selektor (kanal text, kanal, TRUE) ; 
+ init setup (kanal, setup choice) .
+ 
+select baudrate choice : 
+ cursor (1, 9) ; 
+ TEXT VAR t := text (baudrates (kanal)) + "    " ; 
+ out (" ") ;
+ editget (t) ; 
+ baudrates (kanal) := real (t) . 
+ 
+select datenbits choice : 
+ cursor (1, 11) ; 
+ selektor (datenbits text, datenbits (kanal), TRUE) . 
+ 
+select stopbits choice : 
+ cursor (1, 13) ; 
+ selektor (stopbits text, stopbits (kanal), TRUE) . 
+ 
+select parity choice : 
+ cursor (1, 15) ; 
+ selektor (parity text, parity (kanal), TRUE).
+ 
+select flowmode choice : 
+ cursor (1, 17) ; 
+ selektor (flowmode text, flowmode (kanal), TRUE) ; 
+ IF flowmode (kanal) = 5 
+    THEN cursor (1, 19) ; 
+         selektor (fixed text, fixed (kanal), TRUE) ; 
+         out (clr line) 
+ FI . 
+ 
+aktueller kanal : 
+ IF channel = 2 THEN 1 
+ ELIF channel = 3 THEN 2 
+ ELSE 1 
+ FI . 
+ 
+kanal bool : 
+ IF kanal = 1 THEN channel b ELSE channel a FI . 
+ 
+ENDPROC setup ; 
+ 
+PROC init setup (INT VAR kanal, setup choice) :
+ IF session <> old session 
+    THEN init params ; 
+         old session := session 
+ FI ;
+ out (home) ; 
+ putline (" ----------------------------- V 2 4 - S E T U P ---------------------------") ; 
+ line ; 
+ putline (" Verlassen 'ESC', Aussuchen 'LEFT' und 'RIGHT', Einstellen 'RETURN'") ; 
+ line ; 
+ selektor (setup text, setup choice, FALSE) ; 
+ line ; 
+ line ; 
+ selektor (kanal text, kanal, FALSE) ; 
+ line ; 
+ line ; 
+ out (" ") ; put (baudrates (kanal)) ; out ("     ") ;
+ line ; 
+ line ; 
+ selektor (datenbits text, datenbits (kanal), FALSE) ; 
+ line ; 
+ line ; 
+ selektor (stopbits text, stopbits (kanal), FALSE) ; 
+ line ; 
+ line ; 
+ selektor (parity text, parity (kanal), FALSE) ; 
+ line ; 
+ line ; 
+ selektor (flowmode text, flowmode (kanal), FALSE) ; 
+ line ; 
+ line ; 
+ line ; 
+ line ;
+ putline (" --------------------------------------------------------------------------") ; 
+ out (home) . 
+ENDPROC init setup ;
+ 
+ENDPACKET setup ; 
+ 
+

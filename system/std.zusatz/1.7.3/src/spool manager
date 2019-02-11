@@ -1,0 +1,377 @@
+PACKET spool manager DEFINES                         (* Autor: J. Liedtke *)
+    spool manager, server channel:                   (* 21.05.84          *)
+ 
+ 
+LET que size       = 100 ,
+
+    ack            = 0 ,
+    nak            = 1 ,
+    error nak      = 2 ,
+    second phase ack = 5 ,
+
+    fetch code     = 11 ,
+    save code      = 12 ,
+    erase code     = 14 ,
+    list code      = 15 ,
+    all code       = 17 ,
+    continue code  = 100,
+
+    empty          = 0 ,
+    used           = 1 ;
+
+TASK VAR order task , waiting server , from task , server ;
+INT VAR order code , reply , first , last , list index ;
+
+DATASPACE VAR ds ;
+
+TEXT VAR from title ;
+
+BOUND STRUCT (TEXT name, write pass, read pass) VAR msg ;
+BOUND TEXT VAR error msg ;
+BOUND STRUCT (TEXT tname, tpass, TASK task) VAR sv msg ;
+
+FILE VAR list file ;
+TEXT VAR entry name, entry task;
+
+INT VAR command index , params ;
+TEXT VAR command line, param 1, param 2 ;
+ 
+LET spool command list =
+"break:1.0start:2.01stop:4.0first:5.0killer:6.0 " ;
+
+
+LET ENTRY = STRUCT (TEXT title, TASK origin, DATASPACE space, INT status) ;
+
+ROW que size ENTRY VAR que ;
+
+
+INT VAR server chan := 0; 
+ 
+PROC server channel (INT CONST ch): 
+  server chan := ch 
+ 
+END PROC server channel; 
+ 
+INT PROC server channel: 
+  server chan 
+ 
+END PROC server channel; 
+ 
+PROC spool manager (PROC server start) :
+  INT VAR old heap size := heap size;
+  begin (PROC server start, server) ;
+  set autonom ;
+  break ;
+  disable stop ;
+  first := 1 ;
+  last  := 1 ;
+  from task := niltask ;
+  waiting server := niltask ;
+  spool ;
+  clear error ;
+  forget all dataspaces.
+
+forget all dataspaces :
+  INT VAR i ;
+  FOR i FROM 1 UPTO que size REP
+    forget (que (i).space)
+  PER .
+
+spool:
+  REP
+    wait (ds, order code, order task) ;
+    IF   order code = fetch code    THEN out of que
+    ELIF order code = save code     THEN prepare into que
+    ELIF order code = second phase ack THEN into que
+    ELIF order code = erase code    THEN delete que entry
+    ELIF order code = list code     THEN list spool
+    ELIF order code = all code      THEN y all
+    ELIF order code >= continue code
+       AND order task = supervisor  THEN spool command (PROC server start)
+    FI;
+    clear error
+  PER;
+  collect heap garbage if necessary. 
+ 
+collect heap garbage if necessary: 
+  IF heap size > old heap size + 2 
+  THEN collect heap garbage; 
+       old heap size := heap size 
+  FI.
+
+ENDPROC spool manager ;
+
+PROC out of que :
+
+  forget (ds) ;
+  IF NOT (order task < myself)
+    THEN error ("not parent")
+  ELIF que empty
+    THEN waiting server := order task
+    ELSE send (order task, ack, que (first).space) ;
+         inc first
+  FI .
+
+que empty :   first = last .
+
+ENDPROC out of que ;
+
+PROC inc first :
+
+  que (first).status := empty ;
+  REP
+    first := first MOD que size + 1 ;
+  UNTIL first = last OR que (first).status <> empty PER
+
+ENDPROC inc first ;
+
+PROC dec first :
+
+  first DECR 1 ;
+  IF first = 0
+    THEN first := que size
+  FI
+
+ENDPROC dec first ;
+
+PROC prepare into que :
+
+  msg := ds ;
+  from task := order task ;
+  from title := CONCR (msg).name ;
+  send (order task,  second phase ack, ds) .
+
+ENDPROC prepare into que ;
+
+PROC into que :
+
+  IF order task = from task
+    THEN try entry into spool
+    ELSE send (order task, nak, ds)
+  FI .
+
+try entry into spool :
+  IF que full
+    THEN error ("spool overflow")
+    ELSE entry (que (last)) ;
+         last := next (last) ;
+         send (order task, ack, ds) ;
+         awake server if necessary
+  FI .
+ 
+awake server if necessary :
+  IF NOT is niltask (waiting server)
+    THEN send (waiting server, ack, que (first).space , reply) ;
+         IF reply = ack
+           THEN waiting server := niltask ;
+                inc first
+         FI
+  FI .
+
+que full  :   first = next (last) .
+
+ENDPROC into que ;
+
+PROC entry (ENTRY VAR que entry) :
+
+  que entry.title   := from title ;
+  que entry.origin  := from task ;
+  que entry.space   := ds ;
+  que entry.status  := used ;
+
+ENDPROC entry ;
+
+INT PROC next (INT CONST index) :
+
+  index MOD que size + 1 
+
+ENDPROC next ;
+
+
+PROC delete que entry :
+
+  msg := ds ;
+  INT VAR index := first ;
+  WHILE index <> last REP
+    IF entry found
+      THEN erase entry (index) ;
+           send (order task, ack, ds) ;
+           LEAVE delete que entry
+    FI ;
+    index := next (index)
+  PER ;
+  error ("your file does not exist") .
+
+entry found :
+  entry.status = used CAND entry.origin = order task
+  CAND entry.title = CONCR (msg).name .
+
+entry :  que (index) .
+
+ENDPROC delete que entry ;
+
+PROC erase entry (INT CONST index) :
+
+  entry.status := empty ;
+  forget (entry.space) ;
+  IF index = first
+    THEN inc first
+  FI .
+
+entry : que (index) .
+
+ENDPROC erase entry ;
+
+PROC list spool :
+
+  forget (ds) ;
+  ds := nilspace ;
+  list file := sequential file (output, ds) ;
+  to first que entry ; 
+  get next que entry (entry name, entry task) ; 
+  WHILE entry name <> "" REP 
+    putline (list file, text (entry task, 15) + " : " + entry name);
+    get next que entry (entry name, entry task)
+  PER;
+  send (order task, ack, ds) .
+
+ENDPROC list spool ;
+
+BOUND THESAURUS VAR all thesaurus;
+ 
+PROC y all:
+  forget (ds); 
+  ds := nilspace;
+  all thesaurus := ds; 
+  all thesaurus := empty thesaurus; 
+  to first que entry; 
+  get next que entry (entry name, entry task);   (* hier erster Eintrag *) 
+  WHILE entryname <> "" REP 
+    IF entry task = name (order task) 
+      AND NOT (all thesaurus CONTAINS entry name)
+      THEN insert (all thesaurus, entry name) 
+    FI; 
+    get next que entry (entry name, entry task) 
+  PER;
+  send (order task, ack, ds) 
+ 
+END PROC y all; 
+ 
+PROC to first que entry :
+
+  list index := first - 1
+
+ENDPROC to first que entry ;
+
+PROC get next que entry (TEXT VAR entry name, origin task name): 
+ 
+  WHILE list index <> last REP
+    list index := next (list index)
+  UNTIL que (list index).status <> empty PER ;
+  IF que (list index).status = used
+    THEN origin task name := name (que (list index).origin) ;
+         entry name := que (list index).title
+    ELSE entry name := ""; 
+         origin task name := ""
+  FI .
+
+ENDPROC get next que entry ;
+
+PROC error (TEXT CONST error text) :
+
+  forget (ds) ;
+  ds := nilspace ;
+  error msg := ds ;
+  CONCR (error msg) := error text ;
+  send (order task, error nak, ds)
+
+ENDPROC error ;
+
+PROC spool command (PROC server start) :
+
+  enable stop ;
+  continue (order code - continue code) ;
+  command dialogue (TRUE) ;
+  disable stop ;
+  REP 
+    get command ("gib spoolkommando :", command line);
+    analyze command (spool command list, command line, 3,
+                     command index, params, param1, param2);
+    execute command
+  PER .
+
+execute command :
+  SELECT command index OF 
+    CASE 1 : break cmd 
+    CASE 2 : start cmd
+    CASE 3 : start channel cmd
+    CASE 4 : stop cmd
+    CASE 5 : first cmd
+    CASE 6 : killer cmd
+  OTHERWISE  do (command line) END SELECT .
+
+start channel cmd: 
+  server channel (int (param1)); 
+  start cmd; 
+  break cmd. 
+ 
+break cmd: 
+  break; set autonom  ; LEAVE spool command. 
+
+start cmd :
+  IF is niltask (server)
+    THEN begin (PROC server start, server)
+  FI .
+
+stop cmd :
+  IF NOT is niltask (server)
+    THEN command dialogue (FALSE) ;
+         end (server) ;
+         server := niltask 
+  FI .
+
+first cmd :
+  line ;
+  to first que entry ;
+  get next que entry (entry name, entry task);
+  IF entry name = ""
+    THEN LEAVE first cmd
+  FI ;
+  REP
+    get next que entry (entry name, entry task) ;
+    IF entry name = ""
+      THEN LEAVE first cmd
+    FI;
+    say (text (entry task, 15) + " : " + entry name) ;
+    IF yes ("   als erstes")
+      THEN make to first entry ;
+           LEAVE first cmd
+    FI 
+  PER .
+
+make to first entry :
+  IF first = next (last)
+    THEN errorstop ("spool overflow")
+    ELSE dec first ;
+         que (first) := que (list index) ;
+         erase entry (list index)
+  FI .
+
+
+killer cmd :
+  line ;
+  to first que entry ;
+  REP
+    get next que entry (entry name, entry task) ;
+    IF entry name = "" 
+      THEN LEAVE killer cmd
+    FI ;
+    say (text (entry task, 15) + " : " + entry name) ;
+    IF yes ("   loeschen")
+      THEN erase entry (list index)
+    FI 
+  PER .
+ 
+ENDPROC spool command ;
+
+ENDPACKET spool manager ;

@@ -1,0 +1,1293 @@
+
+	TITLE	Interrrupts fuer SHARD
+;
+	INCLUDE	HD64180.LIB
+;
+	.LIST
+;
+;****************************************************************
+;
+;	Interruptmodul fuer EUMEL SHARD
+;
+;	Timer Handling, SCC Interrupts, 6502 Interrupts
+;	Buffer Manager
+;
+;	Version 0.9 vom 10.01.87 (Transmittinterrupts)
+;	Version 1.0, getestet (Ringpuffer korrigiert,
+;			20.01.87 - keine Interrupthaenger an Kanal 1/5 mehr)
+;		1.1 (27.05.87) Verlorener Timerinterrupt im Info/Vortest
+;			durch Korrektur von CHKINT (weniger oft aufgerufen)
+;               1.2 (26.06.87) Wieder rausgebaut, da bei mehr als 16 Zeichen im
+;			Eingabepuffer die Puffer-Auslesegeschwindigkeit stark
+;			sinkt.
+;
+;	Copyright (C) 1985 by R. Ellerbrake
+;			86/87, M. Staubermann
+;
+;****************************************************************
+;
+;	Globale Adressen
+;
+	GLOBAL	BAUSCC, BITSCC, SCCINIT, CLRCBUF 
+	GLOBAL	ESTOP, EGO, AFLOW
+	GLOBAL  I6502, TIMER, CENTR
+	GLOBAL	SCCKA, SCCKB, SCCAER, SCCBER, SCCATX, SCCBTX
+	GLOBAL	PUTBUF, FREEBUF, DRUCK, SCCATAB, SCCBTAB
+
+;
+;----------------------------------------------------------------
+;
+;	Externe Adressen
+;
+	EXTERNAL TIMEAD, IINTAD, SHUTUPAD
+	EXTERNAL IKANTAB, BLINKP, SWICUR, MEMDMA, FLWTYP
+	EXTERNAL AFLOW5, RD6502
+;
+;
+;----------------------------------------------------------------
+;
+	CSEG
+;
+;	Konstanten
+;
+CMN1T0	EQU	51H		;Common Area 1 auf 6502 Adr. 0
+CMN1T1	EQU	52H		;Common Area 1 auf 6502 Adr. $1000
+;
+XON	EQU	11H		; CTRL-Q
+XOFF	EQU	13H		; CTRL-S
+
+				; Bereich fuer Transmitbuffer im 6502-Speicher
+DBUF	EQU	0A000H
+SABUF	EQU	DBUF+1000H
+SBBUF	EQU	SABUF+0800H	; SABUF+SBBUF zusammen max. 4k in einem Window
+				; Offsets auf Kanal-Buffer-Tabellen
+SIZE	EQU	0		; aktuelle Groesse (Belegung) des Puffers
+BEG	EQU	2		; Pufferanfang (fest)
+READ	EQU	3		; Adresse des naechsten Out-Buffer-Zeichens
+WRITE	EQU	5		; Adresse des naechsten In-Buffer-Zeichens
+ENDE	EQU	7		; excl. Pufferende (fest)
+
+CPORT	EQU	8		; Controlport mit Statusregister
+XFLAG	EQU	9		; Bit 7 = 1: Transmitter stoppen
+				; Bit 6 = 1: XON/XOFF ausgabeseitig
+
+	INCLUDE	PORTS.MAC
+
+
+;----------------------------------------------------------------
+;
+;	6502-Adressen
+;
+
+BASE	EQU	0F000H		;Anfangsadresse 6502 Bereich
+IFLG	EQU	BASE+09EH	; Start/Stop Flag fuer 6502
+INTPAR1	EQU	BASE+0EAH	;Interrupt Parameter 1 (Kanal)
+INTPAR2	EQU	INTPAR1+1	;Interrupt Parameter 2 (Eingabezeichen)
+INTPAR3	EQU	INTPAR2+1	;Interrupt Parameter 3 (Fehlerbits)
+
+
+;-----------------------------------------------------------------
+;
+;	P H Y S L O G
+;	Umrechnung der physischen Kanalnummer in eine logische
+;
+;	Eingang: A = phys. Kanalnummer
+;	Ausgang: A = log. Kanalnummer
+;		 keine anderen Register veraendert
+;
+PHYSLOG:
+	PUSH	HL
+	ADD	A,IKANTAB	; Kanal phys. --> log. Umrechnen
+	LD	L,A
+	LD	H,0
+	LD	A,(HL)
+	POP	HL
+	RET
+
+;................................................................
+;
+;	Timer Interrupt Handler
+;
+;	wird durch CIO Timer 2 Interrupt aufgerufen
+;
+TIMER:
+	PUSH	AF
+;
+	LD	A,50		;50 ms pro Timerinterrupt
+	CALL	TIMEAD		;EUMEL timerinterrupt
+;
+	DI
+	LD	A,(CCOUNT)	;Cursor invertieren ?
+	DEC	A
+	JR	NZ,TIMER1
+;
+	IN0	A,(CIOAD)	; Cursor invertieren, wenn Zugriff erlaubt
+	BIT	0,A
+	JR	Z,TIMER2
+
+	PUSH	HL
+	PUSH	DE
+	PUSH	BC
+	CALL	SWICUR		; Cursor invertieren
+	POP	BC
+	POP	DE
+	POP	HL
+
+TIMER2:
+	LD	A,(BLINKP)
+TIMER1:
+	LD	(CCOUNT),A
+
+	LD	A,0BH
+	OUT0	(CIOCTL),A	;Counter/Timer 2 Command
+	LD 	A,00100100B 	;Clear IP & IUS
+	OUT0	(CIOCTL),A
+
+	PUSH	IX
+	LD	IX,DRUCK
+	CALL	TXHANDLER	; Testen, ob Drucker haengt
+	POP	IX
+
+EINT:
+	POP	AF
+EINT1:
+	EI
+	RETI
+;
+;................................................................
+;
+;	I 6 5 0 2
+;
+;	6502 Interrupt Handler
+;
+I6502:
+	PUSH	AF
+	PUSH	BC
+	CALL	INT6502
+	POP	BC
+	JR	EINT
+
+INT6502:
+	PUSH	DE
+
+	LD	A,0B0H		; Reset Interrupt FF (Keine IRQ's mehr)
+	OUT0	(CIOCD),A
+
+	IN0	A,(CBR)		;Common Area 1 retten
+	PUSH	AF
+
+	LD	A,CMN1T0
+	OUT0	(CBR),A
+;
+	LD	BC,(INTPAR1)	; C = Kanalnummer, B = Eingabezeichen
+	LD	DE,(INTPAR3)	; E = Fehlerbits
+
+	XOR	A		; Interrupt quitieren
+	LD	(INTPAR1),A
+
+	POP	AF
+	OUT0	(CBR),A		;Common Area 1 zurueckschalten
+
+	LD	A,C
+	AND	A		;kein Auftrag ->
+	JR	Z,RET6502I
+
+	CP	40H
+	JR	NC,BREAK	; Sonderbehandlung
+
+	LD	C,E		; Fehlerbits
+
+	PUSH	AF
+
+	CALL	PHYSLOG
+	CALL	IINTAD		; EUMEL Inputinterrupt
+	DI
+
+	POP	BC		; Kanal in B
+	CP	1
+	JR	NZ,RET6502I	; noch Platz im Puffer
+
+	LD	A,B
+	CALL	ESTOP		; Eingabestop, reagiert sofort
+
+RET6502I:
+	POP	DE
+RET6502J:
+	LD	C,0B4H		; Reseteingang des 6502-IRQ-FF wieder auf High
+	OUT0	(CIOCD),C
+	RET
+
+
+BREAK:
+	POP	DE
+	CALL	RET6502J
+
+	CP	'S'		; Shutup ? (53H)
+	RET	NZ
+
+	CALL	EINT1		; Interrupts freigeben
+	JP	SHUTUPAD
+
+;-------------------------------------------------------------------
+;
+;	E F L W 5
+;	Kanal 5 Interrupt an 64180 stoppen/starten
+;	Reagiert sofort
+;
+;	Eingang: Bit 7(HL) = 1: Stop, = 0: Start
+;	Ausgang: BC veraendert
+;
+EFLW5:
+	LD	BC,7F80H	; B = AND-resetmaske, C = OR-setmaske
+	JR	EFLW15		; Bit 7 ist Flag
+
+;-------------------------------------------------------------------
+;
+;	E F L W 1
+;	Kanal 1 Interrupt an 64180 stoppen/starten
+;	Reagiert sofort
+;
+;	Eingang: Bit 7(HL) = 1: Stop, = 0: Start
+;	Ausgang: BC veraendert
+;
+EFLW1:
+	LD	BC,0BF40H	; Bit 6 ist Flag
+
+EFLW15:
+	PUSH	AF
+	LD	A,I
+	DI
+	IN0	A,(CBR)
+	PUSH	AF
+
+	LD	A,51H
+	OUT0	(CBR),A
+
+	LD	A,(IFLG)
+	AND	B		; "weiter"
+	BIT	7,(HL)
+	JR	Z,EFLWA
+	OR	C		; "stop" setzen
+EFLWA:	LD	(IFLG),A	; Stop/Weiter an 6502 weitergeben
+
+	POP	AF
+	OUT0	(CBR),A
+	JP	PO,EFLWB
+	EI
+EFLWB:
+	POP	AF
+	RET
+
+;********************************************************************
+;
+;	Ringpuffer - Verwaltung
+;
+;----------------------------------------------------------------
+;
+;	F R E E B U F
+;	freien Platz im Puffer berechnen
+;	(dies ist nicht immer die Anzahl der uebernehmbaren Zeichen!)
+;
+;	Eingang: IX = Zeiger auf Kanal-Puffer-Tabelle
+;	Ausgang: BC = Anzahl Bytes, die noch in den Puffer passen
+;		 Carry gesetzt: Puffer leer, sonst Puffer gefuellt
+;		 A veraendert
+;
+FREEBUF:
+	PUSH	HL
+	LD	A,(IX+ENDE)		; Konstante
+	SUB	(IX+BEG)
+	LD	H,A
+	LD	L,0
+
+	DI
+	LD	B,(IX+SIZE+1)
+	LD	C,(IX+SIZE)
+	EI
+
+	LD	A,B
+	OR	C
+	SCF				; Set carry, Puffer leer
+	JR	Z,FREEBUF1
+	AND	A
+	SBC	HL,BC			; Carry is cleared
+FREEBUF1:
+	LD	B,H
+	LD	C,L
+	POP	HL
+	RET
+
+;----------------------------------------------------------------
+;
+;	P U T B U F
+;	Zeichenkette in Ausgabepuffer schreiben
+;
+;	Eingang: HL = Anfangsadresse der Zeichenkette
+;		 BC = Laenge der Zeichenkette
+;		 IX = Zeiger auf Kanal-Puffer-Tabelle
+;	Ausgang: BC = Anzahl der uebernommenen Zeichen
+;		 Carry set, alles uebernommen
+;		 HL, A veraendert
+;
+PUTBUF:
+	PUSH	BC
+	CALL	FREEBUF
+	DI
+	LD	A,B
+	OR	C
+	JR	NZ,PUTBUF1
+
+	PUSH	AF
+	CALL	TXHANDLER
+	POP	AF
+	EI
+
+	INC	SP		; POP BC, nichts uebernommen, Clear carry
+	INC	SP
+	RET
+
+PUTBUF1:
+	POP	BC
+
+	PUSH	DE
+	PUSH	HL		; Stringanfang im Hauptspeicher in HL
+
+	LD	H,(IX+READ+1)	; Lesezeiger in HL
+	LD	L,(IX+READ)
+	LD	D,(IX+WRITE+1)	; Schreibzeiger in DE
+	LD	E,(IX+WRITE)
+
+	LD	A,(IX+SIZE)	; Puffer leer ?
+	OR	(IX+SIZE+1)
+	JR	NZ,PUTBUF3
+
+	LD	D,(IX+BEG)
+	LD	E,0		; Beide Zeiger auf Pufferstart
+	LD	(IX+READ+1),D
+	LD	(IX+READ),E
+	LD	(IX+WRITE+1),D
+	LD	(IX+WRITE),E	; Weiter, ohne zu splitten
+	LD	L,E		; L := 0
+	LD	H,(IX+ENDE)
+
+PUTBUF3:
+				; DE, erste Position fuer String
+				; HL, letzte Position (excl.) fuer String
+	AND	A		; falls nicht HL = Pufferende
+	SBC	HL,DE
+	JR	C,PUTBUF2	; C, wenn Read < Write: String splitten
+				; Z kann nicht auftreten, da Puffer nicht voll
+
+PUTBUF9:			; BC := min (BC, HL)
+	LD	A,L		; HL enthaelt max. uebernehmbare Size
+	SUB	C		; BC enthaelt Eingangs-Stringlaenge
+	LD	A,H
+	SBC	B
+	JR	NC,PUTBUF4	; NC, alles uebernommen
+	LD	B,H		; C --> nur Puffersize uebernommen
+	LD	C,L
+
+PUTBUF4:
+	CCF			; Carry fuer EUMEL umdrehen
+
+	POP	HL		; Stringanfang in HL
+
+	PUSH	AF
+	CALL	PUTBUFA
+	CALL	TXHANDLER	; Ein Zeichen ausgeben, IP wird gesetzt
+	EI
+	POP	AF
+	POP	DE
+	RET
+
+PUTBUF2:			; String muss ggf. gesplittet werden
+	LD	H,(IX+ENDE)
+	XOR	A
+	LD	L,A
+	SBC	HL,DE		; HL enthaelt Size (immer > 0)
+	JR	PUTBUF9
+
+;----------------------------------------------------------------------
+;
+;	Teilstring in Puffer schreiben
+;	Eingang: Interrupts disabled
+;		 HL = Teilstringanfang
+;		 DE = Schreibzeiger
+;		 BC = Stringlaenge, die uebernommen werden soll
+;			(BC muss ok sein!)
+;	Ausgang: Nur BC ok
+;		 (DE = Schreibzeiger (korrigiert))
+;		 (HL = Teilstring + uebernommene Stringlaenge)
+;		 BC unveraendert
+;		
+PUTBUFA:
+	PUSH	HL
+	EX	DE,HL		; DE = Hauptspeicher, HL = 6502-Speicher
+	PUSH	BC		; merken fuer Ausgang
+	PUSH	HL		; Stringanfang in DE, Schreibzeiger in HL
+	LD	A,1		; Von DE (log.) nach HL(6502) kopieren
+	CALL	MEMDMA
+	POP	HL		; Schreibzeiger
+	POP	BC		; uebernommene Stringlaenge
+
+	ADD	HL,BC		; Stringlaenge addieren
+
+	LD	A,H
+	CP	(IX+ENDE)
+	JR	NZ,PUTBUFA2
+	LD	H,(IX+BEG)	; Schreibzeiger auf Pufferanfang setzen
+				; L war schon 0
+PUTBUFA2:
+	LD	(IX+WRITE+1),H
+	LD	(IX+WRITE),L	; Schreibzeiger neu setzen
+;	EX	DE,HL		; Schreibzeiger in DE
+
+	LD	L,(IX+SIZE)
+	LD	H,(IX+SIZE+1)
+	ADD	HL,BC		; Stringlaenge addieren
+	LD	(IX+SIZE+1),H	; eintragen
+	LD	(IX+SIZE),L
+
+	POP	HL		; Stringanfang
+	RET
+
+;................................................................
+;
+;	SCCA Output Interrupt
+;
+SCCATX:
+	PUSH	IX
+	LD	IX,SCCATAB
+	JR	TXCHAR
+
+;................................................................
+;
+;	SCCB Output Interrupt
+;
+SCCBTX:
+	PUSH	IX
+	LD	IX,SCCBTAB
+TXCHAR:
+	PUSH	AF
+	CALL	TXHANDLER
+
+	LD	A,00111000B	; Reset highest IUS
+	OUT0	(SCCBC),A
+
+	JR	EOFTX
+	
+
+;................................................................
+;
+;	Centronics Output Interrupt
+;
+CENTR:
+	PUSH	IX
+	LD	IX,DRUCK
+	PUSH	AF
+	CALL	TXHANDLER
+
+	LD	A,9		; Statusregister
+	OUT0	(CIOCTL),A
+	LD	A,00100000B	; Reset IP & IUS
+	OUT0	(CIOCTL),A
+EOFTX:
+	POP	AF
+	POP	IX
+	EI
+	RETI
+;
+;------------------------------------------------------------------------
+;	Output Interrupt Handler
+;	fuer Centronics und SCC
+;
+;	Eingang: IX = Zeiger auf Descriptortabelle des Kanals
+;		 Interrupts disabled
+;	Ausgang: Nur AF veraendert
+;
+TXHANDLER:
+	PUSH	HL
+	PUSH	DE
+	PUSH	BC
+
+	IN0	A,(CIOAD)	; Zugriff auf Puffer erlaubt ?
+	BIT	0,A
+	JP	Z,REGRET
+
+	PUSH	IX
+	POP	HL
+	LD	A,L
+	CP	LOW DRUCK
+	JR	Z,CENTRIRQ
+
+	LD	B,0
+
+	BIT	7,(IX+XFLAG)	; Transmitter gestoppt ?
+	JR	NZ,REGRET	; Keine Interruptbehandlung
+
+	LD	E,(IX+SIZE)
+	LD	D,(IX+SIZE+1)
+	LD	L,(IX+READ)
+	LD	H,(IX+READ+1)
+
+TX1:
+	LD	C,(IX+CPORT)
+
+	LD	A,D
+	OR	E
+	JR	Z,TX5		; Puffer ist leer
+	
+	TSTIO	0100B
+	JR	Z,TX4		; Output-Buffer voll
+
+	IN0	A,(CBR)
+	PUSH	AF
+
+	LD	A,51H+(SABUF/1000H); MMU-Wert fuer Pufferwindow (max. 4k)
+	OUT0	(CBR),A
+
+	PUSH	HL
+
+	LD	A,H
+	AND	0FH
+	OR	0F0H		; Ins Window F000H...
+	LD	H,A
+
+	LD	A,(HL)		; Zeichen ausgeben
+	INC	C		; Aus Controlport wird Datenport
+	INC	C
+	OUT	(C),A		; B bleibt 0!
+
+	POP	HL
+	INC	HL
+
+	POP	AF
+	OUT0	(CBR),A		; MMU zurueckschalten
+
+	LD	A,H
+	CP	(IX+ENDE)
+	JR	NZ,TX2		; Carry set: Lesezeiger < Pufferende, ok
+
+	LD	H,(IX+BEG)	; L war schon 0
+TX2:
+	DEC	DE		; Puffergroesse DECR 1
+	JR	TX1		; Falls moeglich naechstes Zeichen ausgeben
+
+TX5:
+	LD	A,00101000B	; Reset TxIP (B ist 0!)
+	OUT	(C),A
+
+TX4:
+	LD	(IX+SIZE),E
+	LD	(IX+SIZE+1),D
+	LD	(IX+READ),L
+	LD	(IX+READ+1),H
+
+REGRET:
+	POP	BC
+	POP	DE
+	POP	HL
+	RET
+
+CENTRIRQ:
+	LD	C,CIOCTL
+	LD	DE,(DRUCK+SIZE)
+	LD	HL,(DRUCK+READ)
+
+CENTR3:
+	LD	A,D
+	OR	E
+	JR	Z,TX4		; Puffer ist leer
+	
+	LD	A,9		; Statusregister
+	OUT0	(CIOCTL),A	; Statusregister
+	TSTIO	1000B
+	JR	Z,TX4		; Output-Buffer voll
+
+	IN0	B,(CBR)
+
+	LD	A,51H+(DBUF/1000H)	; MMU-Wert fuer Pufferwindow (max. 4k)
+	OUT0	(CBR),A
+
+	PUSH	HL
+
+	LD	A,H
+	AND	0FH
+	OR	0F0H		; Ins Window F000H...
+	LD	H,A
+
+	LD	A,(HL)		; Byte aus Puffer lesen
+	OUT0	(CIOBD),A	; und ausgeben
+
+	OUT0	(CBR),B		; MMU zurueckschalten
+
+	POP	HL
+	INC	HL
+
+	LD	A,H		; Pufferende ?
+	CP	(IX+ENDE)
+	JR	NZ,CENTR2
+
+	LD	H,(IX+BEG)	; L war schon 0
+CENTR2:
+
+	DEC	DE		; Puffergroesse DECR 1
+	JR	CENTR3		; Falls moeglich naechstes Zeichen ausgeben
+
+
+;*************************************************************************
+;
+;	CLRCBUF
+;
+;	64180-Centronics Buffer loeschen
+;	Ausgang: HL veraendert, Flags unveraendert
+;
+CLRCBUF:
+	LD	HL,DBUF
+	LD	(DRUCK+READ),HL
+	LD	(DRUCK+WRITE),HL
+	LD	HL,0
+	LD	(DRUCK+SIZE),HL
+	RET
+	
+;................................................................
+;
+;	SCC Input Interrupt Handler
+
+;--------------------------------------------------------------------
+;	Zeichen mit Fehler empfangen
+
+SCCAER:				; von SCC-Kanal A
+	PUSH	BC
+	LD	C,SCCAC
+	JR	SCCERR
+
+SCCBER:				; von SCC-Kanal B
+	PUSH	BC
+	LD	C,SCCBC
+
+SCCERR:
+	PUSH	AF
+
+	LD	B,0
+	LD	A,00010000B	; Reset EXT/Status Interrupts
+	OUT	(C),A
+	LD	A,00110000B	; Error Reset
+	OUT	(C),A
+
+	LD	A,1
+	OUT	(C),A		; Read-Register 1
+	IN	B,(C)
+
+	BIT	5,B		; Overrun Error ?
+	JR	Z,SCCER1
+	SET	0,A
+SCCER1:
+	BIT	4,B		; Parity Error ?
+	JR	Z,SCCER2
+	SET	2,A
+SCCER2:
+	BIT	6,B		; Framing Error (mit 0 = Break)
+	JR	Z,SCCER3
+	SET	1,A
+SCCER3:
+	JR	SCC1
+
+;-----------------------------------------------------------------------
+;	Zeichen ohne Fehler empfangen
+
+SCCKA:
+	PUSH	BC
+	LD	C,SCCAC
+	JR	SCCOK
+
+SCCKB:
+	PUSH	BC
+	LD	C,SCCBC
+
+SCCOK:
+	PUSH	AF
+	XOR	A		; Keine Fehler
+
+;	Interrupt weiterleiten und Flusskontrolle auswerten
+;	Eingang: A = Fehlerbits
+;		 C = Contollportadresse des Kanals
+
+SCC1:
+	LD	(ERRBIT),A
+	LD	A,C
+	SUB	A,3EH
+	LD	(KANAL),A
+
+	LD	B,0
+	PUSH	BC
+
+	TSTIO	1		; Statusregister
+	JR	Z,IRET		; Receive Character available ?
+
+	INC	C		; Aus Controlport wird Datenport
+	INC	C
+	IN	B,(C)		; Zeichen einlesen
+
+	LD	A,11111101B	; Maske zur XON/XOFF Erkennung
+	AND	B		; mit Eingabezeichen verknuepfen
+	CP	00010001B	; = XON oder XOFF ?
+	JR	NZ,SCC2		; Nein, normaler Inputinterrupt
+
+	PUSH	HL
+
+	LD	HL,XFLGB
+	LD	A,(KANAL)
+	CP	2
+	JR	Z,SCC3
+	LD	HL,XFLGA
+SCC3:	
+	BIT	6,(HL)		; Bit 6: Ausgabeseitig XON/XOFF
+	JR	Z,SCC5		; 0: An Inputinterrupt weiterleiten
+
+	BIT	1,B		; XOFF : Bit 1 = 1, XON: Bit 1 = 0
+	JR	Z,SCC4
+
+	SET	7,(HL)		; Transmitter stoppen
+	POP	HL
+	JR	IRET
+SCC4:
+	RES	7,(HL)		; Transmitter starten
+
+	POP	HL
+	POP	BC
+
+	CP	2		; Flag setzen
+
+	CALL	NZ,SCCATX	; Flags werden nicht veraendert!
+	CALL	Z,SCCBTX	; enthaelt u.a. EI und RETI
+				; und Reset highest IUS	
+	POP	AF
+	POP	BC
+	RET
+	
+SCC5:	
+	POP	HL
+SCC2:
+	LD	A,(ERRBIT)	; Fehlerbits
+	LD	C,A
+	LD	A,(KANAL)	; Kanalnummer
+	CALL	PHYSLOG		; phys. Kanalnummer --> log. Kanalnummer
+
+	CALL	IINTAD
+
+	CP	3		; Weniger als 3 Zeichen Platz ?
+	JR	NC,IRET
+
+	LD	A,(KANAL)
+	CALL	ESTOP		; Eingabestop fuer Kanal 2 oder 3
+
+IRET:
+	POP	BC
+
+	LD	A,00111000B	; Reset highest IUS
+	OUT	(C),A
+;
+	POP	AF
+	POP	BC
+	EI
+	RETI
+
+;................................................................
+;
+;	SCC Initialisierung
+;	HL, BC veraendert
+;
+SCCINIT:
+	LD	HL,SCCAINI		;SCC Kanal A initialisieren
+	LD	BC,(SCCALG+1)*100H+SCCAC+1
+INILP1:
+	DEC	C
+	OTIM
+	JR	NZ,INILP1
+;					; SCC Kanal B initialisieren
+	LD	BC,(SCCBLG+1)*100H+SCCBC+1
+INILP2:
+	DEC	C
+	OTIM
+	JR	NZ,INILP2
+;
+	RET
+;
+;.................................................................
+;
+;	B A U S C C
+;	Baudrateneinstellung fuer SCC-Kanaele
+;
+;	Eingang: A - Kanalnummer (2 oder 3)
+;		 HL - Schluessel (s. Tabelle) (1..16)
+;		 Es werden korrekte Parameter vorrausgesetzt
+;
+;	Ausgang: Register duerfen nicht veraendert werden
+;
+BAUSCC:
+	PUSH	AF
+	PUSH	HL
+	LD	BC,BDSCCA+1
+	CP	3		;Kanal A ?
+	JR	Z,CHABD		;Ja ->
+;
+	LD	BC,BDSCCB+1	;Tab. fuer Kanal B
+;
+CHABD:
+	PUSH	BC
+	LD	BC,BDTAB-2	;Tabelle mit Baudratenteilfaktoren
+	ADD	HL,HL		;Tab.-Offset
+	ADD	HL,BC
+	POP	BC		;Baudrate eintragen
+	LD	A,(HL)
+	LD	(BC),A		;LSB eintragen
+	INC	HL
+	INC	BC
+	INC	BC
+	LD	A,(HL)		;MSB eintragen
+	LD	(BC),A
+
+INISCC:
+	CALL	SCCINIT
+	POP	HL
+	POP	AF
+	RET	
+;
+;.................................................................
+;
+;	B I T S C C
+;	Stopbits, Parity, Datenbits fuer SCC-Kanaele einstellen
+;
+;	Eingang: A = Kanal (2 oder 3)
+;		 L = Schluessel : 
+;		     Bit 0..2 : Datenbits - 1 (Nur 7 oder 8 erlaubt)
+;		     Bit 3..4 : 00 = No Parity, 01 = Odd , 10 = Even
+;		     Bit 5..6 : 00 = 1 Stop, 01 = 1.5 Stop, 10 = 2 Stop
+;
+;	Es werden korrekte Parameter vorausgesetzt
+;
+;	Ausgang: Register unveraendert
+;
+BITSCC:
+	PUSH	AF
+	PUSH	HL
+	LD	BC,BTSCCA+1
+	CP	3		;Kanal A ?
+	JR	Z,CHABT		;Ja ->
+;
+	LD	BC,BTSCCB+1	;Tab. fuer Kanal B
+;
+CHABT:
+	LD	A,L
+	RRA
+	RRA
+	RRA			; Paritybits (0, 1), Stopbits (2, 3)
+	AND	0FH
+	ADD	4		; Stopbits korrigieren
+	BIT	1,A		; Wenn even Parity noch Bit 0 setzen
+	JR	Z,NOEVN		; 00 = No Parity, 01 = Odd, 11 = Even
+	SET	0,A
+NOEVN:	OR	01000000B	; Clock x16 Mode
+	LD	(BC),A		; eintragen
+	INC	BC		; Zeigt auf Register 3
+	INC	BC
+
+	LD	A,L
+	AND	7
+	CP	7-1
+	LD	A,01000001B	; Receiver Enable, 7 Datenbits
+	JR	Z,CHABT1
+	LD	A,11000001B	; dgl., 8 Datenbits
+CHABT1:
+	LD	(BC),A		; Eintragen
+	INC	BC		; Zeigt auf Register 5
+	INC	BC
+	LD	A,10101010B	; Enable Transmitter, 7 Datenbits
+	JR	Z,CHABT2	; Compare-Flag noch nicht veraendert!
+	LD	A,11101010B	; dgl. 8 Datenbits
+CHABT2:
+	LD	(BC),A		; eintragen
+	JR	INISCC
+
+;..................................................................
+;
+;	X F L W 2 3
+;	XON/XOFF - Eingabeflusskontrolle auf SCC-Kanaelen
+;
+;	Eingang: A = Kanal (2, 3)
+;		 BIT 7 (HL), Stop/Weiter
+;
+;	Ausgang: alle Register unveraendert
+;
+XFLW23:
+	PUSH	AF
+	PUSH	BC
+
+	LD	B,0
+	ADD	A,3EH		; Kanal --> Controlport
+	LD	C,A		; Transmitinterrupt kann nicht durchkommen
+
+XFLW23B:
+	TSTIO	0100B		; Transmitbuffer empty ?
+	JR	Z,XFLW23B
+
+	LD	A,XON
+	BIT	7,(HL)
+	JR	Z,XFLW23A
+	LD	A,XOFF
+XFLW23A:
+	INC	C		; Controlport --> Datenport
+	INC	C
+	OUT	(C),A
+
+	POP	BC
+	POP	AF
+	RET
+
+;.................................................................
+;
+;	C F L O W 2 3
+;	CTS - Ausgabeflusskontrolle auf SCC-Kanaelen
+;
+;	Eingang: A = Kanal (2, 3)
+;		 BIT 1(HL), BIT 2(HL) beide 1 : Mit CTS-Flusskontrolle
+;						sonst ohne Flusskontrolle
+;	Ausgang: Nur HL darf veraendert werden
+;
+CFLOW23:
+	PUSH	AF
+	PUSH	BC
+
+	LD	B,0
+
+	ADD	A,3EH		; Controlport
+	LD	C,A
+
+	CP	40H		; SCCA ?
+
+	LD	A,(HL)		; Bit 1 und 2 relevant
+
+	LD	HL,CTSA+1
+	JR	Z,CFLOW2
+	LD	HL,CTSB+1
+CFLOW2:
+	RES	5,(HL)		; erstmal keine Auto-Enables
+	AND	0110B		; Bit 1 und 2 ausblenden
+	CP	0110B
+	JR	NZ,CFLOW3
+
+	SET	5,(HL)		; Auto-Enables einschalten
+CFLOW3:	
+	LD	A,3
+	OUT	(C),A		; Write-Register 3
+	LD	A,(HL)
+	OUT	(C),A
+
+	POP	BC
+	POP	AF
+	RET
+
+	
+;......................................................................
+;
+;	R F L W 2 3
+;	RTS/DTR - Eingabeflusskontrolle auf SCC-Kanaelen
+;
+;	Eingang: A = Kanal (2, 3)
+;		 Bit 7 (HL), Stop/Weiter
+;
+;	Ausgang: Nur Register HL darf veraendert werden
+;
+RFLW23:
+	PUSH	AF
+	PUSH	BC
+
+	LD	B,0
+
+	ADD	A,3EH		; Controlport
+	LD	C,A
+
+	CP	40H		; SCCA ?
+	LD	A,(RTSA+1)
+	JR	Z,RFLW2
+	LD	A,(RTSB+1)
+RFLW2:
+	AND	01111101B	; RTS und DTR ausblenden
+	BIT	7,(HL)
+	JR	NZ,RFLW3	; Stop: RTS = 0 und DTR = 0
+	OR	10000010B	; Go : RTS = 1 und DTR = 1
+RFLW3:	
+	PUSH	AF
+
+	LD	A,5
+	OUT	(C),A		; Write-Register 5
+	POP	AF
+	OUT	(C),A
+
+	POP	BC
+	POP	AF
+	RET
+
+;........................................................................
+;
+;	X F L O W 2 3
+;	XON/XOFF - Ausgabeflusskontrolle fuer SCC-Kanaele
+;
+;	Eingang: A = Kanal (2, 3)
+;		 Bit 0, 2 (HL) = 1 : XON/XOFF gewuenscht sonst nicht
+;	Ausgang: Nur HL veraendert
+;
+XFLOW23:
+	PUSH	AF
+	LD	A,(HL)
+	AND	0101B
+	CP	0101B		; einstellen, wenn 0101
+	LD	L,0
+	JR	NZ,XFLOW2
+	SET	6,L		; Bit 6 = 1 : mit Flusskontrolle
+XFLOW2:
+	POP	AF
+	PUSH	AF
+	CP	2		; Kanal 2 = SCCB
+	LD	A,L
+	JR	Z,XFLOW1
+
+	LD	(XFLGA),A
+	POP	AF
+	RET
+
+XFLOW1:
+	LD	(XFLGB),A
+	POP	AF
+	RET
+
+;........................................................................
+;
+;	A F L O W
+;	Ausgabeflusskontrolle einstellen
+;
+;	Eingang: A = phys. Kanalnummer
+;		 Bit 0, 1, 2(HL) = Flusskontrolmodus
+;
+;	Ausgang: Nur HL darf veraendert werden
+;
+AFLOW:
+	CP	5
+	JP	Z,AFLOW5	; Kanal 5: Ausgabeseitig ist immer CTS
+				; Flusskontrolle eingestellt, Software-
+				; Flusskontrolle mit XON/XOFF ist einschalt-
+				; bar, zusaetzlich einstellbar DSR-Flussk.
+	CP	2
+	RET	C		; Kanal 1 hat keine Ausgabeflusskontrolle
+	CP	4
+	RET	NC		; > 3 : -->
+
+	PUSH	HL
+	CALL	XFLOW23		; XON/XOFF-Flusskontrolle einstellen
+	POP	HL
+	JP	CFLOW23		; Auto-Enables on, wenn Bit 1(HL)=1 und 2(HL)=1
+
+;..................................................................
+;
+;	Eingabestop
+;
+;	Eingang: A = phys. Kanalnummer (2, 3, 5)
+;
+ESTOP:
+	CP	7
+	RET	NC		; Nicht existenter Kanal
+
+	PUSH	HL
+	CALL	FLWTYP		; Zeiger auf Flowmode - Tabelle berechnen
+
+	BIT	3,(HL)
+	JR	Z,POPRET	; Keine Eingabeflusskontrolle erwuenscht
+
+	BIT	7,(HL)		; War der Kanal schon gestoppt ?
+	JR	NZ,POPRET
+
+	SET	7,(HL)		; Stopflag setzen
+
+ESTPGO:				; Ab hier Stop/Go identisch
+
+	CP	2
+	JR	Z,ESTOP23
+	CP	3
+	JR	Z,ESTOP23
+
+	PUSH	BC
+	CP	5
+	CALL	Z,EFLW5		; AF wird nicht veraendert
+	CP	1
+	CALL	Z,EFLW1
+	POP	BC
+
+POPRET:
+	POP	HL
+	RET
+
+ESTOP23:
+	BIT	0,(HL)		; XOFF senden ?
+	CALL	NZ,XFLW23	; Bit 7 unterscheidet XON/XOFF
+	BIT	1,(HL)		; DTR/RTS low setzen?
+	CALL	NZ,RFLW23	; Bit 7 unterscheidet 
+	JR	POPRET
+
+;..................................................................
+;
+;	Eingabe Weiter
+;
+;	Eingang: A = Kanalnummer (2, 3, 5)
+;
+EGO:
+	CP	7
+	RET	NC		; Nicht existenter Kanal
+
+	PUSH	HL
+
+	PUSH	AF
+	AND	1011B		; Kanal 1 oder 5
+	CP	1
+	CALL	Z,CHKINT
+	POP	AF
+
+	CALL	FLWTYP		; Zeiger auf Flowmode - Tabelle berechnen
+
+	BIT	3,(HL)
+	JR	Z,POPRET	; Keine Eingabeflusskontrolle erwuenscht
+
+	BIT	7,(HL)		; War der Kanal gestoppt ?
+	JR	Z,POPRET	; Nein, return
+
+	RES	7,(HL)		; Goflag setzen
+	JR	ESTPGO		; Wie Stop weiter
+
+;-----------------------------------------------------------------
+;
+;	C H K I N T
+;	ggf. Inputinterrupt aufrufen, falls 6502-IRQ nicht quittiert
+;
+;	HL, A veraendert
+;
+CHKINT:
+;	LD	HL,DCOUNT	; Nicht immer CHKINT
+;	DEC	(HL)		; Korr. 1.1
+;	RET	NZ
+;	LD	(HL),100
+
+	PUSH	BC
+	LD	HL,LOW INTPAR1
+	CALL	RD6502		; Byte aus Zeropage lesen
+	AND	A
+	CALL	NZ,INT6502
+	POP	BC
+	RET
+	
+;----------------------------------------------------------------
+;
+;	SCC Kanal A Initialisierung
+;
+SCCAINI:
+	DEFB	9,0C0H		; Force Hardware Reset (beide Kanaele)
+				; Master Interrupts disabled
+	DEFB	2,20H		; Interrupt Vektor (beide Kanaele)
+
+	DEFB	11,01010110B	; use Baudrategenerator Output
+BDSCCA:
+	DEFB	12,18		; Baud Rate Low, Default 9600 Baud
+	DEFB	13,0		; Baud Rate High
+	DEFB	14,00000010B	; Baud Rate Gen. Source = PCLK
+BTSCCA:
+	DEFB	4,01001100B	; No Parity, 2 Stopbits
+CTSA:
+	DEFB	3,11000001B	; Enable Receiver, Datenbits
+RTSA:
+	DEFB	5,11101010B	; Enable Transmitter, Datenbits
+;
+ 	DEFB	14,00000011B	; Enable Baudrategenerator
+	DEFB	17,00010110B	; Receive/Transmit Interrupts Enable
+				; Reset Ext./STatus-Interrupts
+
+SCCALG	EQU	$-SCCAINI
+;
+;	SCC Kanal B Initialisierung
+;
+SCCBINI:
+	DEFB	11,01010110B	; use Baudrategenerator Output
+BDSCCB:
+	DEFB	12,18		; Baud Rate Low, Default 9600 Baud
+	DEFB	13,0		; Baud Rate High
+	DEFB	14,00000010B	; Baud Rate Gen. Source = PCLK
+BTSCCB:
+	DEFB	4,01001100B	; No Parity, 2 Stopbits
+CTSB:
+	DEFB	3,11000001B	; Enable Receiver, Datenbits
+RTSB:
+	DEFB	5,11101010B	; Enable Transmitter, Datenbits
+;
+ 	DEFB	14,00000011B	; Enable Baudrategenerator
+	DEFB	17,00010110B	; Receive/Transmit Interrupts Enable
+				; Reset Ext./Status-Interrupts
+	DEFB	9,00001001B	; Master Interrupt Enable
+;
+SCCBLG	EQU	$-SCCBINI
+;
+;	Baudratentabelle fuer beide SCC-Kanaele
+;
+BDTAB:
+	DEFW	3838		;50 Baud
+	DEFW	2558		;75 Baud
+	DEFW	1743		;110 Baud
+	DEFW	1426		;134.5 Baud
+	DEFW	1278		;150 Baud
+	DEFW	638		;300 Baud
+	DEFW	318		;600 Baud
+	DEFW	158		;1200 Baud
+	DEFW	105		;1800 Baud
+	DEFW	78		;2400 Baud
+	DEFW	51		;3600 Baud
+	DEFW	38		;4800 Baud
+	DEFW	25		;7200 Baud
+	DEFW	18		;9600 Baud
+	DEFW	8		;19200 Baud
+	DEFW	3		;38400 Baud
+;
+;	Datenbereich
+;
+
+ERRBIT:	DEFB	0		; Fehlerbits
+KANAL:	DEFB	0		; Kanal mit Eingabezeichen
+
+CCOUNT:	DEFB	8		; Cursorinvertier Zaehler
+;DCOUNT: DEFB	0		; CHKINT - Weiter Zaehler
+
+DRUCK:	
+	DEFW	0		; aktuelle Groesse des Puffers
+	DEFB	HIGH DBUF	; Drucker-Pufferanfang
+	DEFW	DBUF		; Lesezeiger
+	DEFW	DBUF		; Schreibzeiger
+	DEFB	HIGH (DBUF+1000H); Druckerpufferende (excl.)
+
+SCCATAB:	
+	DEFW	0		; Aktuelle Groesse des Puffers
+	DEFB	HIGH SABUF	; SCCA-Transmitbuffer Anfang im Basisspeicher
+	DEFW	SABUF		; Lesezeiger
+	DEFW	SABUF		; Schreibzeiger
+	DEFB	HIGH (SABUF+0800H); SCCA-Transmitbufferende (excl.)
+	DEFB	SCCAC		; Controlport
+XFLGA:	DEFB	0		; XON/XOFF auf SCCA ausgabeseitig ?
+
+SCCBTAB:	
+	DEFW	0		; aktuelle Groesse des Puffers
+	DEFB	HIGH SBBUF	; SCCB-Transmitbuffer Anfang im Basispeicher
+	DEFW	SBBUF		; Lesezeiger
+	DEFW	SBBUF		; Schreibzeiger
+	DEFB	HIGH (SBBUF+0800H); SCCB-Transmitbufferende (excl.)
+	DEFB	SCCBC		; Controlport
+XFLGB:	DEFB	0		; XON/XOFF auf SCCB ausgabeseitig ?
+
+;****************************************************************
+
+	END
+

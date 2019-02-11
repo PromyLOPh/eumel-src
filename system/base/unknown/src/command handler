@@ -1,0 +1,239 @@
+ 
+PACKET command handler DEFINES                (* Autor: J.Liedtke *)
+                                              (* Stand:  29.02.82 *)
+       command handler ,
+       do command ,
+       command error ,
+       set command :
+ 
+ 
+LET esc          = ""27"" ,
+    esc k        = ""27"k" ,
+    cr lf        = ""4""13""10"" ,
+    command pre  = ""4""13"      " ,
+    command post =    ""13""10"      " ,
+ 
+    tag type = 1 ,
+    texttype = 4 ,
+    eof type = 7 ;
+ 
+ 
+TEXT VAR command line := "" ,
+         previous command line := "" ,
+         symbol ,
+         procedure ,
+         pattern ,
+         error note := "" ;
+ 
+INT VAR  symbol type ,
+         allowed type := 0 ;
+ 
+ 
+PROC set command (TEXT CONST command, INT CONST type) :
+
+  param position (0) ;
+  command line := command ;
+  allowed type := type
+ 
+ENDPROC set command ;
+ 
+PROC do command :
+ 
+  do (command line)
+
+ENDPROC do command ;
+
+ 
+PROC command handler ( TEXT CONST command list,
+                       INT VAR command index, number of params,
+                       TEXT VAR param 1, param 2,
+                       TEXT CONST command text ) :
+ 
+prepare and get command ;
+command handler (command list,command index,number of params,param1,param2).
+ 
+prepare and get command :
+  set line nr (0) ;
+  error protocoll ;
+  get command from console .
+ 
+error protocoll :
+  IF is error
+    THEN put error ;
+         clear error
+    ELSE command line := "" ;
+  FI .
+ 
+get command from console :
+  INT VAR x, y;
+  out (crlf) ;
+  get cursor (x, y) ;
+  cursor (x, y) ;
+  REP
+    out (command pre) ;
+    out (command text) ;
+    out (command post) ;
+    editget command
+  UNTIL command line <> "" PER ;
+  param position (LENGTH command line) ;
+  out (command post) .
+ 
+editget command :
+  feldaudit ("") ;
+  feldlernmodus (FALSE) ;
+  REP
+    feldtabulator ("") ;
+    feldseparator (esc) ;
+    editget (command line) ;
+    ignore halt errors during editget ;
+    IF feldzeichen = esc k
+      THEN command line := previous command line
+      ELSE previous command line := command line ;
+           LEAVE editget command
+    FI
+  PER .
+
+ignore halt errors during editget :
+  IF is error
+    THEN clear error
+  FI .
+
+ENDPROC command handler ;
+ 
+PROC command handler ( TEXT CONST command list,
+                       INT VAR command index, number of params,
+                       TEXT VAR param 1, param 2) :
+ 
+  scan (command line) ;
+  next symbol ;
+  IF pos (command list, symbol) > 0
+    THEN procedure name ;
+         parameter list pack option ;
+         nothing else in command line ;
+         decode command
+    ELSE impossible command
+  FI .
+ 
+procedure name :
+  IF symbol type = tag type OR symbol = "?"
+    THEN procedure := symbol ;
+         next symbol
+    ELSE error ("incorrect procedure name")
+  FI .
+ 
+parameter list pack option :
+  number of params := 0 ;
+  param 1 := "" ;
+  param 2 := "" ;
+  IF symbol = "("
+    THEN next symbol ;
+         parameter list ;
+         IF symbol <> ")"
+           THEN error (") expected")
+         FI
+  ELIF symbol type <> eof type
+    THEN error ("( expected")
+  FI .
+ 
+parameter list :
+  parameter (param 1, number of params) ;
+  IF symbol = ","
+    THEN next symbol ;
+         parameter (param 2, number of params) ;
+  FI ;
+  IF symbol <> ")"
+    THEN error (") expected")
+  FI .
+ 
+nothing else in command line :
+  next symbol ;
+  IF symbol <> ""
+    THEN error ("command too complex")
+  FI .
+
+decode command :
+  command index := index (command list, procedure, number of params) .
+ 
+impossible command :
+  command index := 0 .
+ 
+ENDPROC command handler ;
+ 
+PROC parameter (TEXT VAR param, INT VAR number of params) :
+ 
+  IF symbol type = text type OR symbol type = allowed type
+    THEN param := symbol ;
+         number of params INCR 1 ;
+         next symbol
+    ELSE error ("parameter is no text denoter ("" missing!)")
+  FI
+ 
+ENDPROC parameter ;
+ 
+INT PROC index (TEXT CONST list, procedure, INT CONST params) :
+ 
+  pattern := procedure ;
+  pattern CAT ":" ;
+  INT CONST index pos := pos (list, pattern) ;
+  IF procedure name found
+    THEN get colon pos ;
+         get dot pos ;
+         get end pos ;
+         get command index ;
+         get param index ;
+         IF param index >= 0
+           THEN command index + param index
+           ELSE - command index
+         FI
+    ELSE 0
+  FI .
+ 
+procedure name found :
+  index pos > 0  AND  (list SUB index pos - 1) <= "9"  .
+ 
+get param index :
+  INT CONST param index :=
+            pos (list, text (params), dot pos, end pos) - dot pos - 1 .
+ 
+get command index :
+  INT CONST command index :=
+            int ( subtext (list, colon pos + 1, dot pos - 1) ) .
+ 
+get colon pos :
+  INT CONST colon pos := pos (list, ":", index pos) .
+ 
+get dot pos :
+  INT CONST dot pos := pos (list, ".", index pos) .
+ 
+get end pos :
+  INT CONST end pos := dot pos + 4 .
+ 
+ENDPROC index ;
+ 
+PROC error (TEXT CONST message) :
+ 
+  error note := message ;
+  scan ("") ;
+  procedure := "-"
+ 
+ENDPROC error ;
+ 
+PROC command error :
+
+  disable stop ;
+  IF error note <> ""
+    THEN errorstop (error note) ;
+         error note := ""
+  FI ;
+  enable stop
+
+ENDPROC command error ;
+
+
+PROC next symbol :
+ 
+  next symbol (symbol, symbol type)
+ 
+ENDPROC next symbol ;
+ 
+iNDPACKET command handler ;

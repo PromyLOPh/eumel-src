@@ -1,0 +1,365 @@
+PACKET std plot DEFINES                         (* J. Liedtke 06.02.81 *)
+                                                (* H.Indenbirken, 19.08.82 *)
+  transform,
+  set values,
+
+  clear ,
+  begin plot ,
+  end plot ,
+  dir move,
+  dir draw ,
+  pen,
+  pen info :
+ 
+LET pen down    = "*"8"" ,
+    y raster = 43,
+    display hor  = 78.0,
+    display vert = 43.0;
+ 
+INT CONST up         :=  1 ,
+          right      :=  1 ,
+          down       := -1 ,
+          left       := -1 ;
+ 
+REAL VAR h min limit :: 0.0, h max limit :: display hor,
+         v min limit :: 0.0, v max limit :: display vert,
+         h :: display hor/2.0, v :: display vert/2.0,
+         size hor :: 23.5, size vert :: 15.5;
+
+ROW 5 ROW 5 REAL VAR p :: ROW 5 ROW 5 REAL :
+                          (ROW 5 REAL : (1.0, 0.0, 0.0, 0.0, 0.0),
+                           ROW 5 REAL : (0.0, 1.0, 0.0, 0.0, 0.0),
+                           ROW 5 REAL : (0.0, 0.0, 1.0, 0.0, 0.0),
+                           ROW 5 REAL : (0.0, 0.0, 0.0, 1.0, 0.0),
+                           ROW 5 REAL : (0.0, 0.0, 0.0, 0.0, 1.0));
+ROW 5 ROW 5 REAL VAR result;
+INT VAR i, j;
+
+ROW 5 ROW 5 REAL OP * (ROW 5 ROW 5 REAL CONST l, r) :
+  ROW 5 ROW 5 REAL VAR erg;
+  FOR i FROM 1 UPTO 5
+  REP FOR j FROM 1 UPTO 5
+      REP erg [i] [j] := zeile i mal spalte j
+      PER
+  PER;
+  erg  .
+
+zeile i mal spalte j :
+  INT VAR k;
+  REAL VAR summe :: 0.0;
+  FOR k FROM 1 UPTO 5
+  REP summe INCR zeile i * spalte j PER;
+  summe  .
+
+zeile i :  l [i] [k]  .
+
+spalte j : r [k] [j]  .
+
+END OP *;
+ 
+PROC set values (ROW 3 ROW 2 REAL CONST size, 
+                 ROW 2 ROW 2 REAL CONST limits,
+                 ROW 3 REAL CONST angles,
+                 ROW 2 REAL CONST oblique,
+                 ROW 3 REAL CONST perspective) :
+  norm p;
+  set views;
+  calc two dim extrema;
+  calc limits;
+  calc result values  .
+
+norm p :
+  p := ROW 5 ROW 5 REAL :
+ (ROW 5 REAL : (1.0/dx,    0.0,    0.0, 0.0, 0.0),
+  ROW 5 REAL : (   0.0, 1.0/dy,    0.0, 0.0, 0.0),
+  ROW 5 REAL : (   0.0,    0.0, 1.0/dz, 0.0, 0.0),
+  ROW 5 REAL : (   0.0,    0.0,    0.0, 1.0, 0.0),
+  ROW 5 REAL : (size [1][1]/dx,  size [2][1]/dy,
+                size [3][1]/dz, 0.0, 1.0))  .
+
+dx : size [1][2] - size [1][1]  .
+dy : size [2][2] - size [2][1]  .
+dz : size [3][2] - size [3][1]  .
+
+set views :
+  REAL VAR sin a := sind (angles [1]),  cos a := cosd (angles [1]),
+           sin p := sind (angles [2]),  cos p := cosd (angles [2]),
+           sin t := sind (angles [3]),  cos t := cosd (angles [3]),
+           norm a :: oblique [1] * p [1][1],
+           norm b :: oblique [2] * p [2][2],
+           norm cx :: perspective [1] * p [1][1],
+           norm cy :: perspective [2] * p [2][2],
+           norm cz :: perspective [3] * p [3][3];
+
+  result := ROW 5 ROW 5 REAL :
+ (ROW 5 REAL : (cos p*cos t, -sin p, cos p*sin t, 0.0, 0.0),
+  ROW 5 REAL : (sin p*cos t,  cos p, sin p*sin t, 0.0, 0.0),
+  ROW 5 REAL : (     -sin t,    0.0,       cos t, 0.0, 0.0),
+  ROW 5 REAL : (        0.0,    0.0,         0.0, 1.0, 0.0),
+  ROW 5 REAL : (        0.0,    0.0,         0.0, 0.0, 1.0));
+  p := p*result;
+
+ 
+  result := ROW 5 ROW 5 REAL :
+ (ROW 5 REAL : (     1.0,      0.0, 0.0,     0.0, 0.0),
+  ROW 5 REAL : (     0.0,      1.0, 0.0,     0.0, 0.0),
+  ROW 5 REAL : (  norm a,   norm b, 0.0, norm cz, 0.0),
+  ROW 5 REAL : (-norm cx, -norm cy, 0.0,     1.0, 0.0),
+  ROW 5 REAL : (     0.0,      0.0, 0.0,     0.0, 1.0));
+  p := p * result;
+
+  result := ROW 5 ROW 5 REAL :
+ (ROW 5 REAL : (cos a,-sin a, 0.0, 0.0, 0.0),
+  ROW 5 REAL : (sin a, cos a, 0.0, 0.0, 0.0), 
+  ROW 5 REAL : (  0.0,   0.0, 1.0, 0.0, 0.0),
+  ROW 5 REAL : (  0.0,   0.0, 0.0, 1.0, 0.0),
+  ROW 5 REAL : (  0.0,   0.0, 0.0, 0.0, 1.0));
+  p := p * result  .
+
+calc two dim extrema :
+  REAL VAR max x :: - max real, min x :: max real,
+           max y :: - max real, min y :: max real, x, y;
+
+  transform (size [1][1], size [2][1], size [3][1], x, y);
+  extrema;
+  transform (size [1][2], size [2][1], size [3][1], x, y);
+  extrema;
+  transform (size [1][2], size [2][2], size [3][1], x, y);
+  extrema;
+  transform (size [1][1], size [2][2], size [3][1], x, y);
+  extrema;
+  transform (size [1][1], size [2][1], size [3][2], x, y);
+  extrema;
+  transform (size [1][2], size [2][1], size [3][2], x, y);
+  extrema;
+  transform (size [1][2], size [2][2], size [3][2], x, y);
+  extrema;
+  transform (size [1][1], size [2][2], size [3][2], x, y);
+  extrema  .
+
+extrema :
+  min x := min (min x, x);
+  max x := max (max x, x);
+ 
+  min y := min (min y, y);
+  max y := max (max y, y) .
+ 
+calc limits :
+  IF all limits smaller than 2
+  THEN prozente
+  ELSE zentimeter FI  .
+
+all limits smaller than 2 :
+  limits [1][2] < 2.0 AND limits [2][2] < 2.0  .
+
+prozente :
+  h min limit := limits [1][1] * display hor * (size vert/size hor);
+  h max limit := limits [1][2] * display hor * (size vert/size hor);
+ 
+  v min limit := limits [2][1] * display vert;
+  v max limit := limits [2][2] * display vert  .
+ 
+zentimeter : 
+  h min limit := display hor * (limits [1][1]/size hor);
+  h max limit := display hor * (limits [1][2]/size hor);
+ 
+  v min limit := display vert * (limits [2][1]/size vert);
+  v max limit := display vert * (limits [2][2]/size vert)  .
+
+calc result values :
+  REAL VAR sh := (h max limit - h min limit) / (max x - min x),
+           sv := (v max limit - v min limit) / (max y - min y),
+           dh := h min limit - min x*sh,
+           dv := v min limit - min y*sv;
+
+  result := ROW 5 ROW 5 REAL :
+           (ROW 5 REAL : ( sh, 0.0, 0.0, 0.0, 0.0),
+            ROW 5 REAL : (0.0,  sv, 0.0, 0.0, 0.0),
+            ROW 5 REAL : (0.0, 0.0, 1.0, 0.0, 0.0),
+            ROW 5 REAL : (0.0, 0.0, 0.0, 1.0, 0.0),
+            ROW 5 REAL : ( dh,  dv, 0.0, 0.0, 1.0));
+  p := p * result  .
+ 
+END PROC set values;
+ 
+PROC transform (REAL CONST x, y, z, REAL VAR h, v) :
+  REAL CONST w :: 1.0/(x*p [1][4] + y*p [2][4] + z*p [3][4] + p [4][4]);
+
+  h := (x*p [1][1]+y*p [2][1]+z*p [3][1]+p [4][1])*w + p [5][1];
+  v := (x*p [1][2]+y*p [2][2]+z*p [3][2]+p [4][2])*w + p [5][2];
+END PROC transform;
+
+(**************************  Eigentliches plot *************************)
+INT VAR x pos := 0 ,
+        y pos := 0 ,
+        new x pos ,
+        new y pos ;
+ 
+ROW 24 TEXT VAR display;
+clear ;
+ 
+PROC clear :
+
+  INT VAR i;
+  display (1) := 79 * " " ;
+  FOR i FROM 2 UPTO 24
+  REP display [i] := display [1]
+  PER;
+  out (""6""2""0""4"")
+ 
+END PROC clear ;
+ 
+PROC begin plot :
+
+  cursor (x pos + 1,  24 - (y pos) DIV 2 )
+ 
+ENDPROC begin plot ;
+ 
+PROC end plot :
+ 
+ENDPROC end plot ;
+ 
+PROC dir move (REAL CONST x, y, z) :
+  transform (x, y, z, h, v);
+  move (round (h), round (v))
+
+END PROC dir move;
+
+PROC move (INT CONST x val, y val) :
+ 
+  x pos := x val;
+  y pos := y val
+
+ENDPROC move ;
+ 
+PROC dir draw (REAL CONST x, y, z) :
+  transform (x, y, z, h, v);
+  draw (round (h), round (v))
+
+END PROC dir draw;
+
+PROC draw (INT CONST x val, y val) :
+
+  new x pos := x val;
+  new y pos := y val;
+
+  plot vector (new x pos - x pos, new y pos - y pos) ;
+ 
+END PROC draw ;
+ 
+PROC dir draw (TEXT CONST text, REAL CONST angle, height) :
+  out (""6"");
+  out (code (23 - (y pos DIV 2)));
+  out (code (x pos));
+
+  out (text)
+ 
+END PROC dir draw;
+ 
+INT VAR act no :: 1, act thickness :: 1, act line type :: 1;
+
+PROC pen (INT CONST no, thickness, line type) :
+  act no := no;
+  act thickness := thickness;
+  act line type := line type
+ 
+ENDPROC pen ;
+
+PROC pen info (INT VAR no, thickness, line type) :
+  no := act no;
+  thickness := act thickness;
+  line type := act line type
+
+END PROC pen info;
+ 
+PROC plot vector (INT CONST dx , dy) :
+ 
+  IF dx >= 0
+    THEN IF   dy >  dx THEN vector (y pos, x pos, dy, dx, up, right)
+         ELIF dy >   0 THEN vector (x pos, y pos, dx, dy, right, up)
+ 
+         ELIF dy > -dx THEN vector (x pos, y pos, dx, -dy, right, down)
+         ELSE               vector (y pos, x pos, -dy, dx, down, right)
+         FI
+    ELSE IF   dy > -dx THEN vector (y pos, x pos, dy, -dx, up, left)
+         ELIF dy >   0 THEN vector (x pos, y pos, -dx, dy, left, up)
+ 
+         ELIF dy >  dx THEN vector (x pos, y pos, -dx, -dy, left, down)
+         ELSE               vector (y pos, x pos, -dy, -dx, down, left)
+         FI
+  FI .
+ 
+ENDPROC plot vector ;
+ 
+PROC vector (INT VAR x pos, y pos; INT CONST dx, dy, right, up) :
+
+  prepare first step ;
+  INT VAR i ;
+  FOR i FROM 1 UPTO dx REP
+    do one step
+  PER .
+ 
+prepare first step :
+  point;
+  INT VAR old error := 0 ,
+          up right error := dy - dx ,
+          right error    := dy .
+ 
+do one step :
+  IF right is better
+    THEN do right step
+    ELSE do up right step
+  FI .
+ 
+right is better :
+  abs (old error + right error) < abs (old error + up right error) .
+ 
+do upright step :
+  x pos INCR right ;
+  y pos INCR up ;
+  point ;
+  old error INCR upright error .
+ 
+do right step :
+  x pos INCR right ;
+  point ;
+  old error INCR right error .
+ 
+ENDPROC vector ;
+ 
+ 
+PROC point :
+  INT CONST line :: y pos DIV 2;
+  BOOL CONST above :: (y pos MOD 2) = 1;
+  TEXT CONST point :: display [line+1] SUB (x pos+1),
+             new point :: calculated point;
+ 
+  replace (display [line+1], x pos+1, new point);
+  out (""6"") ;
+  out (code (23-line)) ;
+  out (code (x pos)) ;
+  out (new point) .
+ 
+calculated point :
+  IF above
+  THEN IF point = "," OR point = "|"
+       THEN "|"
+       ELSE "'" FI
+  ELSE IF point = "'" OR point = "|"
+       THEN "|"
+       ELSE "," FI
+  FI
+ 
+END PROC point;
+ 
+REAL CONST real max int := real (max int);
+INT PROC round (REAL CONST x) :
+  IF x > real max int
+  THEN max int
+  ELIF x < 0.0
+  THEN 0
+  ELSE int (x + 0.5) FI
+
+END PROC round;
+
+ENDPACKET std plot ;

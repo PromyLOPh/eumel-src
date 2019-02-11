@@ -1,0 +1,245 @@
+ 
+PACKET local manager part 2 DEFINES            (* Autor: J.Liedtke *)
+                                               (* Stand: 29.04.80  *)
+  list ,
+  file names :
+ 
+ 
+FILE VAR list file ;
+TEXT VAR file name, status text;
+ 
+PROC list :
+ 
+  list file := sequential file (output) ;
+  headline (list file, "list") ;
+  list (list file) ;
+  show (list file) ;
+  close
+ 
+ENDPROC list ;
+ 
+PROC list (FILE VAR f) :
+ 
+  begin list ;
+  putline (f, "") ;
+  REP
+    get list entry (file name, status text) ;
+    IF file name = ""
+      THEN LEAVE list
+    FI ;
+    out (f, status text + "  """ ) ;
+    out (f, file name) ;
+    out (f, """") ;
+    line (f)
+  PER
+ 
+ENDPROC list ;
+ 
+PROC file names (FILE VAR f) :
+ 
+  begin list ;
+  REP
+    get list entry (file name, status text) ;
+    IF file name = ""
+      THEN LEAVE file names
+    FI ;
+    putline (f, file name)
+  PER
+ 
+ENDPROC file names ;
+
+ENDPACKET local manager part 2 ;
+ 
+ 
+PACKET elan DEFINES                               (*Autor: J.Liedtke *)
+                                                  (*Stand: 01.05.82  *)
+    do ,
+    run ,
+    run again ,
+    insert ,
+    prot ,
+    prot off ,
+    check on ,
+    check off :
+ 
+ 
+LET newinit option = FALSE ,
+    ins = TRUE ,
+    no ins = FALSE ,
+    lst = TRUE ,
+    no lst = FALSE ,
+    compiler dump option = FALSE ,
+    sys option = TRUE ,
+    stop at first error = TRUE ,
+    multiple error analysis = FALSE ,
+    sermon = TRUE ,
+    no sermon = FALSE ,
+
+    run again mode = 0 ,
+    compile file mode = 1 ,
+    compile line mode = 2 ,
+
+    error message = 4 ;
+
+BOOL VAR list option := FALSE ,
+         check option := TRUE ,
+         errors occurred ;
+
+INT VAR run again mod nr := 0 ;
+DATASPACE VAR ds ;
+
+FILE VAR error file, source file ;
+ 
+ 
+PROC do (TEXT CONST command) :
+
+  INT VAR dummy mod ;
+  run again mod nr := 0 ;
+  errors occurred := FALSE ;
+  elan (compile line mode, ds, command, dummy mod,
+        newinit option, no ins, compiler dump option, no lst, sys option,
+        check option, stop at first error, no sermon) ;
+  IF errors occurred
+    THEN forget (ds) ;
+         errorstop ("")
+  FI
+ 
+ENDPROC do ;
+ 
+ 
+PROC run (TEXT CONST file name) : 
+ 
+  last param (file name) ;
+  run elan (file name, no ins)
+ 
+END PROC run;
+ 
+PROC run :
+ 
+  run (last param)
+ 
+ENDPROC run ;
+ 
+PROC run again :
+ 
+  IF run again mod nr > 0
+    THEN INT VAR mod := run again mod nr ;
+         elan (run again mode, ds, "", run again mod nr,
+               newinit option, no ins, compiler dump option, no lst, 
+               sys option, check option, stop at first error, no sermon)
+    ELSE errorstop ("run again impossible")
+  FI
+ 
+ENDPROC run again ;
+ 
+PROC insert (TEXT CONST file name) : 
+ 
+  last param (file name) ;
+  run elan (file name, ins)
+ 
+ENDPROC insert ;
+ 
+PROC insert :
+ 
+  insert (last param)
+ 
+ENDPROC insert ;
+ 
+PROC run elan (TEXT CONST file name, BOOL CONST insert option) :
+
+  IF exists (file name)
+    THEN compile and execute
+    ELSE errorstop ("file does not exist")
+  FI .
+
+compile and execute :
+  disable stop ;
+  errors occurred := FALSE ;
+  elan (compile file mode, old (file name, 1002), "" , run again mod nr,
+        newinit option, insert option, compiler dump option, list option,
+        sys option, check option, multiple error analysis, sermon) ;
+ 
+  IF errors occurred
+    THEN ignore halt during compiling ;
+         errors occurred := FALSE ;
+         enable stop ;
+         source file := sequential file (modify, file name) ;
+         modify (error file) ;
+         edit (error file, source file) ;
+         forget (ds)
+  FI .
+
+ignore halt during compiling :
+  IF is error
+    THEN put error ;
+         clear error ;
+         pause (5)
+  FI .
+
+ENDPROC run elan ;
+
+PROC elan (INT CONST mode, DATASPACE CONST source, TEXT CONST line, 
+           INT VAR start module number,
+           BOOL CONST newinit, ins, dump, lst, sys, rt check, error1, ser) :
+  EXTERNAL 256
+ENDPROC elan ;
+
+PROC out text (TEXT CONST text, INT CONST out type) :
+
+  INTERNAL 257 ;
+  out (text) ;
+  IF out type = error message 
+    THEN access error file ;
+         out (error file, text)
+  FI .
+ 
+access error file :
+  IF NOT errors occurred
+    THEN open error file
+  FI .
+
+ENDPROC out text ;
+
+PROC out line (INT CONST out type) :
+
+  INTERNAL 258 ;
+  out (""13""10"") ;
+  IF out type = error message
+    THEN access error file ;
+         line (error file)
+  FI .
+
+access error file :
+  IF NOT errors occurred
+    THEN open error file
+  FI .
+
+ENDPROC out line ;
+
+PROC open error file :
+
+  errors occurred := TRUE ;
+  forget (ds) ;
+  ds := nilspace ;
+  error file := sequential file (output, ds) ;
+  headline (error file, "errors")
+
+ENDPROC open error file ;
+
+PROC prot :
+  list option := TRUE
+ENDPROC prot ;
+ 
+PROC prot off :
+  list option := FALSE
+ENDPROC prot off ;
+ 
+PROC check on :
+  check option := TRUE
+ENDPROC check on ;
+ 
+PROC check off :
+  check option := FALSE
+ENDPROC check off ;
+ 
+ENDPACKET elan ;

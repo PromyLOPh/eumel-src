@@ -1,0 +1,658 @@
+#type ("17.klein")# 
+System-Ports: 
+ 
+Port | Funktion
+-----+-------------------------------------------------------------------- 
+     | DMA Controller 1 (8237A-5) fÅr Bytetransfers (Kanal 0..3) 
+ 00  | Byteadresse (start/current) Kanal 0 (frei fÅr Memory-Memory Transfer)
+ 01  | Bytecount Kanal 0            (Pageregister 87H) (Sourcechannel)
+ 02  | Byteadresse (start/current) Kanal 1 (reserviert fÅr SDLC) 
+ 03  | Bytecount Kanal 1            (Pageregister 83H) (Destinationchannel)
+ 04  | Byteadresse (start/current) Kanal 2 (Diskette) 
+ 05  | Bytecount Kanal 2            (Pageregister 81H) 
+ 06  | Byteadresse (start/current) Kanal 3 (XT: Harddisk) 
+ 07  | Bytecount Kanal 3            (Pageregister 82H) 
+ 08  | Read: DMA-Status (D4..D7:1 = DREQ liegt an, D0..D3:0 = Kanal Busy) 
+     | Write: DMA-Command: 
+     |  D0 1 = memory<-->memory transfer enabled 
+     |  D1 Falls D0 = 1: 1 = Kanal 0 Adresse INCR/DECR, 0 = Adr. unverÑndert
+     |  D2 1 = DMA-Control enabled
+     |  D3 1 = R/W-Signal verkÅrzt 
+     |  D4 0 = Feste Kanalprios, 1 = Kanalprios rotieren 
+     |  D5 Falls D3 = 0, 1 = verzîgertes R/W-Signal, 0 = verlÑngertes R/W 
+     |  D6 1 = DREQ active-low, 0 = DREQ active-high 
+     |  D7 1 = DACK active-high, 1 = DACK active-low 
+  09 | Read/Write: Anforderungsregister 
+     |  D1, D0 = Nummer des aktiven DMA-Kanals 
+     |  D2 1 = DMA-Transfer anstossen, (D0/D1 = Kanalnummer) 
+     |     0 = DMA-Transfer wurde per Hardware angestossen 
+  0A | Read/Write : Single Mask Register Bit 
+     | D0..D3 fÅr jeden Kanal: 1 =  DREQ gesperrt, 0 = DREQ freigegeben 
+  0B | Write: Mode-Register
+     | D1, D0 bestimmen den Kanal auf den sich D2..D7 beziehen (0..3) 
+     | D3, D2 (falls D6=D7=1 (Kaskade) ohne Bedeutung) 
+     |  0   0 PrÅfzyklen 
+     |  0   1 Write in Memory 
+     |  1   0 Read aus Memory 
+     |  1   1 Illegal 
+     | D4 1 = Autorepeat 
+     | D5 1 = DECR Adressen, 0 = INCR Adressen 
+     | D7, D6 
+     |  0   0 Polling
+     |  0   1 Cycle Steal 
+     |  1   0 Burst Mode 
+     |  1   1 Kaskadierter Controller
+  0C | Clear Byte Pointer Flip-Flop 
+  0D | Read: Temporary-Register, Write: Master Clear 
+  0E | Clear Mask Register 
+  0F | Write: All Mask Register 
+     | 
+     | Interrupt-Controller 1 (Master) 8259, siehe Datenblatt 
+  20 | Write: ICW1, OCW2, OCW3, Read: ISR, IRQ-Level (Je nach Zustand) 
+  21 | Write: ICW2, ICW3, ICW4, OCW1, Read: IMR (Je Nach Zustand)
+     | 
+     | Intervall-Timer 8254.2 
+  40 | Channel 0 Timeconstant (System Interrupt IRQ 0) 
+  41 | Channel 1 Timeconstant (Refesh Request) 
+  42 | Channel 2 Timeconstant (Speaker Output) 
+  43 | Control (Channel 0..2) 
+     |
+     | KEYBOARD
+  60 | Keyboard Data Read/Write 
+  61 | System Control Port (In/Out Port) 
+     | Write:
+     |  D0 = Speaker Gate
+     |  D1 = Speaker Data
+     |  D2 = Base Parity Check (<512k), 0 = Parity Check erlaubt
+     |  D3 = Channel Parity Check (>=512k), 0 = Parity Check erlaubt  
+     | Read:
+     |  D4 = 1 = Refresh Detected
+     |  D5 = 1 = Output Timer 2 
+     |  D6 = 1 = IO-RAM Parity Error 
+     |  D7 = 1 = Base-RAM Parity Error 
+  64 | Keyboard Command/Status Port
+     | Write (Command): 
+     | Command C0H liest Input Port, Byte im Datenregister ist dann: 
+     | D4 : 0 = 2nd 256k Board-RAM disabled 
+     | D5 : 0 = Manufacturing Jumper installed 
+     | D6 : 1 = Primary Display is Monochrome, 0 = Color 
+     | D7 : 0 = Keyboard is inhibited
+     | Command D0H liest Output Port, Byte im Datenregister ist dann:
+     | D0 : 0 = System Reset 
+     | D1 : Gate A20 (AND-VerknÅpfung mit A20-Adressleitung)
+     | D4 : Output-Buffer full 
+     | D5 : Input-Buffer empty 
+     | D6 : Keyboard clock (output) 
+     | D7 : Keyboard data (output)
+     | D1H schreibt Output Port, sonst wie D0H 
+     | Read (Status): 
+     | D0 : 1 = Outputbuffer is filled (Keyboard --> Computer) 
+     | D1 : 0 = Inputbuffer is empty
+     | D2 : System-Flag
+     | D3 : Last Write: 1 = Command, 0 = Data
+     | D4 : 0 = keyboard is inhibited 
+     | D5 : 1 = Transmit-Timeout Error
+     | D6 : 1 = Receive-Timeout Error
+     | D7 : 1 = Parity Error (Receive)
+     | 
+     | RTC/RAM
+ 70  | CMOS-Adresse, NMI-Mask 
+     | D0..D5 = CMOS-Adresse (0..63) 
+     | D7 : 0 = NMI enabled, 1 = NMI disabled (Power-Fail, Parity-Check, NP)
+     | RTC-Adressen:
+     | 00 : Seconds 
+     | 01 : Alarm Seconds 
+     | 02 : Minutes 
+     | 03 : Alarm Minutes 
+     | 04 : Hours 
+     | 05 : Alarm Hours 
+     | 06 : Day of week (1..7) 
+     | 07 : Date of Month 
+     | 08 : Month 
+     | 09 : Year     (32H = Century) 
+     | 0A : Status Register A : Bit 7 = 1 Update in progress 
+     | 0B : Status Register B : Bit 5 = 1 Alarm Interrupt enabled 
+     |                          Bit 0 = 1 Sommerzeit (Ende Mai..Ende Okt.!) 
+     | 0C : Status register C : Bit 7 = 1 Interrupt occured 
+     | 0D : (Read!) Bit 7 = 1 Power Good 
+     | RAM-Adressen: 
+     | 0E : Diagnostic Status Byte 
+     |  D7 : 1 = RTC lost power 
+     |  D6 : 1 = CMOS Checksum wrong 
+     |  D5 : 1 = Primary Display not set/No Diskette attached 
+     |  D4 : 1 = Memory Size miscompare (Vorhanden <> Setup-angegeben) 
+     |  D3 : 1 = Fixed Disk (Drive C) not ok 
+     |  D2 : 1 = RTC Time/Status nicht gÅltig 
+     | 0F : Shutdown Status Byte (Restart Code) 
+     |  0 = Power on Reset
+     |  9 = Enter Real Mode: 
+     |      TESTPORT = 32, Stack (SS=0469,SP=0467) RET-Adr., PUSHA, ES, DS 
+     | 10 : Diskette configuration: 
+     |    D4..D7 : 0 = Not installed 
+     |             1 = 48 tpi (double sided)        Drive A
+     |             2 = 96 tpi (high capacity)
+     |    D0..D3 : 0 = Not installed 
+     |             1 = 48 tpi (double sided)        Drive B 
+     |             2 = 96 tpi (high capacity)
+     | 12 : Fixed Disk configuration: 
+     |    D4..D7 : 0 = Not installed 
+     |             1..14 Tabelle                    Drive C 
+     |             15 = Typ 16..47 spezifiziert 
+     |    D0..D3 : 0 = Not installed 
+     |             1..14 Tabelle                    Drive D 
+     |             15 = Typ 16..47 spezifiziert 
+     | 
+     | 
+     | 14 : Equipment Byte (only for Power on Diagnostics) 
+     |    D6/D7 :  0 = 1 Floppy 
+     |             1 = 2 Floppys
+     |    D4/D5 :  0 = No Primary Display 
+     |             1 = Color 40 Zeichen 
+     |             2 = Color 80 Zeichen 
+     |             3 = Monochrome 
+     |    D1    :  1 = Mathe Coprozessor installed 
+     |    D0    :  1 = Disk drives are installed
+     | 
+     | 15/16 : Base Memory Size (in KB) 
+     | 15 = low, 16 = high 
+     | 
+     | 17/18 : Expansion Memory Size (in KB) 
+     | 17 = low, 18 = high 
+     | 
+     | 2E/2D Checksum der Adressen 10..20 
+     | 2E = high, 2F = low
+     | 
+     | 30/31 : Expansion Memory Size (in KB Åber ersten 1MB) 
+     | 30 = low, 31 = high 
+     |
+     | 32 : Date Century Byte (19) 
+     | 
+     | 33 : Information Flag 
+     | 
+ 71  | CMOS-Daten (Read/Write) 
+     | 
+     | Memory Mapper 74LS612
+ 80  | Test-Port (Read/Write) Fehlerstatus der letzten Testoperation 
+ 81  | Channel 2 DMA-Pageregister
+ 82  | Channel 3 DMA-Pageregister
+ 83  | Channel 1 DMA-Pageregister
+ 84  | frei 
+ 85  | frei 
+ 86  | frei 
+ 87  | Channel 0 DMA-Pageregister
+ 88  | frei 
+ 89  | Channel 6 DMA-Pageregister
+ 8A  | Channel 7 DMA-Pageregister
+ 8B  | Channel 5 DMA-Pageregister
+ 8C  | frei 
+ 8D  | frei 
+ 8E  | frei
+ 8F  | Refresh Register
+     | 
+     | Interrupt-Controller 2 (Slave) 8259, siehe Datenblatt 
+ A0  | Write: ICW1, OCW2, OCW3, Read: ISR, IRQ-Level (Je nach Zustand) 
+ A1  | Write: ICW2, ICW3, ICW4, OCW1, Read: IMR (Je Nach Zustand)
+     | 
+     | DMA Controller 2 (8237A-5) fÅr Wordtransfers (Kanal 5..7) 
+ C0  | Wordadresse (start/current) Kanal 4 (Kaskade fÅr Controller 1)
+ C2  | Wordcount Kanal 4
+ C4  | Wordadresse (start/current) Kanal 5 (frei) 
+ C6  | Wordcount Kanal 5            (Pageregister 8BH)
+ C8  | Wordadresse (start/current) Kanal 6 (frei) 
+ CA  | Wordcount Kanal 6            (Pageregister 89H) 
+ CC  | Wordadresse (start/current) Kanal 7 (frei) 
+ CE  | Wordcount Kanal 7            (Pageregister 8AH) 
+ D0  | Read: DMA-Status (D4..D7:1 = DREQ liegt an, D0..D3:0 = Kanal Busy) 
+     | Write: DMA-Command: 
+     |  D0 1 = memory<-->memory transfer enabled 
+     |  D1 Falls D0 = 1: 1 = Kanal 4 Adresse INCR/DECR, 0 = Adr. unverÑndert
+     |  D2 1 = DMA-Control enabled
+     |  D3 1 = R/W-Signal verkÅrzt 
+     |  D4 0 = Feste Kanalprios, 1 = Kanalprios rotieren 
+     |  D5 Falls D3 = 0, 1 = verzîgertes R/W-Signal, 0 = verlÑngertes R/W 
+     |  D6 1 = DREQ active-low, 0 = DREQ active-high 
+     |  D7 1 = DACK active-high, 1 = DACK active-low 
+  D2 | Read/Write: Anforderungsregister 
+     |  D1, D0 = Nummer des aktiven DMA-Kanals 
+     |  D2 1 = DMA-Transfer anstossen, (D0/D1 = Kanalnummer) 
+     |     0 = DMA-Transfer wurde per Hardware angestossen 
+  D4 | Read/Write : Single Mask Register Bit 
+     | D0..D3 fÅr jeden Kanal: 1 =  DREQ gesperrt, 0 = DREQ freigegeben 
+  D6 | Write: Mode-Register
+     | D1, D0 bestimmen den Kanal auf den sich D2..D7 beziehen (4..7) 
+     | D3, D2 (falls D6=D7=1 (Kaskade) ohne Bedeutung) 
+     |  0   0 PrÅfzyklen 
+     |  0   1 Write in Memory 
+     |  1   0 Read aus Memory 
+     |  1   1 Illegal 
+     | D4 1 = Autorepeat 
+     | D5 1 = DECR Adressen, 0 = INCR Adressen 
+     | D7, D6 
+     |  0   0 Polling
+     |  0   1 Cycle Steal 
+     |  1   0 Burst Mode 
+     |  1   1 Kaskadierter Controller
+  D8 | Clear Byte Pointer Flip-Flop 
+  DA | Read: Temporary-Register, Write: Master Clear 
+  DC | Clear Mask Register 
+  DE | Write: All Mask Register 
+     | 
+     | Coprozessor 
+  F0 | Clear Coprozessor Busy 
+  F1 | Reset Coprozessor (mit D0..D7 = 0) und in Real Mode bringen) 
+     | 
+  F8 | Coprozessor Ports (vom 80286 vorgegeben) 
+  ...| 
+  FF |
+     | 
+-----+---------------------------------------------------------------------
+     |
+     | Harddisk WD1010 
+01F0 | Read/Write: Daten (am besten per DMA uebertragen)
+01F1 | Write: Taskfile Byte 1 (Write Precomp DIV 4, 6 Bit)
+     | Read : Error Register
+     | D0..D7 <> 1 : Fehler aufgetreten
+01F2 | Write: Taskfile Byte 2 (Sector Count 8 Bit)
+01F3 | Write: Taskfile Byte 3 (Sector Number 6 Bit)
+01F4 | Write: Taskfile Byte 4 (Cylinder low 8 Bit)
+01F5 | Write: Taskfile Byte 5 (Cylinder high 2 Bit D6,D7) 
+01F6 | Write: Taskfile Byte 6 
+     | D0..D3 = Head 
+     | D4 : 0 = Drive C, 1 = Drive D 
+     | D5 : 1 = 512 Bytes/Sektor, 0 = 256 Bytes/Sektor 
+     | D6 : 
+     | D7 : 1 = ECC versuchen
+01F7 | Write: Taskfile Byte 7 (Commandbyte, Retries)
+     | D0 : 1 = No Retries 
+     | D1 : 1 = 4 ECC Bytes uebrtragen
+     | D2 : 
+     | D3 :
+     | CMD: 7654 Funktion
+     |      0000
+     |      0001 Recalibrate
+     |      0010 Read
+     |      0011 Write
+     |      0100 Verify
+     |      0101 Format Taskfile Byte 3: Gap
+     |      0110
+     |      0111 Seek
+     |      1000
+     |      1001 D0 = 1: Set Parameters, D0 = 0 : Diagnostics
+     |      1010
+     |      1011
+     |      1100 
+     |      1101
+     |      1110
+     |      1111
+     | Read : Status Register
+     | D7 : 1 = BUSY 
+     | D6 : 1 = Not ready 
+     | D5 : Write fault 
+     | D4 : Seek not complete 
+     | D3 : 1 = Request Data
+     | D2 : 1 = Data corrected 
+     | D1 : 1 = 
+     | D0 : 1 =
+01F8 | Datenport Read/Write 
+01F9 | Write: Reset 
+     | Read: Statusport 
+01FA | Write: Select 
+01FB | Write: DMA/IRQ Maskenregister 
+     | 
+     | Game Connector
+0200 | 
+0201 | Write: Start Monoflops 
+     | Read: 
+     | D0..D3 : AusgÑnge der 4 Monoflops Zeit = (24.2 + 0.011 * R(kOhm))us. 
+     | D4..D7 : Auslîsetasten (nicht entprellt) 
+0202 | Nicht verwendet, aber ausdekodiert
+ ... | 
+0207 |
+     | 
+     | Printer 2 (LPT2)
+0278 | Write: Daten (Read latched write data) 
+0279 | Read/Write: 
+     | D3 : -ERROR 
+     | D4 : -SLCT in
+     | D5 : PE 
+     | D6 : -ACK 
+     | D7 : BUSY 
+027A | D0 : -STROBE
+     | D1 : -AUTOFEED 
+     | D2 : INIT 
+     | D3 : -SLCT out
+     | D4 : IRQ Mask 
+027B | N.C. 
+ ... | 
+027F |
+     |
+02F8 | RS232C Adapter (COM2) wie COM1 (03F8..03FF) 
+...  | Generiert IRQ 3
+02FF | 
+     | 
+0300 | Prototype Card 
+ ... | 
+031F | 
+     |
+     | Printer 1 (LPT1, wie 03B8..03BA) 
+0378 | Write: Daten (Read latched write data) 
+0379 | Read/Write: 
+     | D3 : -ERROR 
+     | D4 : -SLCT in
+     | D5 : PE 
+     | D6 : -ACK 
+     | D7 : BUSY 
+037A | D0 : -STROBE
+     | D1 : -AUTOFEED 
+     | D2 : INIT 
+     | D3 : -SLCT out
+     | D4 : IRQ Mask 
+037B | N.C. 
+ ... | 
+037F |
+     |
+     | SDLC, bisync 2 
+     | 0380..0383 = 8255 : Parallel Ports
+0380 | Port A - Read
+     | D0 : 0 = Rufzeichen liegt an (RI)
+     | D1 : 0 = TrÑgerfrequenzkennung liegt an (DCD)
+     | D2 : TXCLK (Diagnostic)
+     | D3 : 0 = Sendebereitschaft liegt an (CTS)
+     | D4 : RXCLK (Diagnostic)
+     | D5 : 1 = ModemstatusÑnderung (DSR changed) 
+     | D6 : 1 = Timer 2 Output active
+     | D7 : 1 = Timer 1 Output active
+0381 | Port B - Write 
+     | D0 : 0 = Baudrateselektor ein
+     | D1 : 0 = Auswahlbereitschaft ein 
+     | D2 : 0 = PrÅfung einschalten 
+     | D3 : 1 = Reset ModemstatusÑnderungs Flip-Flop 
+     | D4 : 1 = Reset 8273 
+     | D5 : 1 = Timer 2 durchschalten 
+     | D6 : 1 = Timer 1 durchschalten 
+     | D7 : 1 = IRQ 4 aktivieren 
+0382 | Port C - D0..D3 Write, D4..D6 Read, D7 N.C. 
+     | D0 : 1 = Internen Takt durchschalten 
+     | D1 : 1 = Externen Takt durchschalten 
+     | D2 : 1 = Elektronischer Test 
+     | D3 : 0 = IRQ 3 + 4 durchschalten 
+     | D4 : RX Daten 
+     | D5 : Timer 0 Output 
+     | D6 : 0 = PrÅfanzeige aktiv
+0383 | 8255 Modussteuerregister 
+     |
+     | 0384..0387 = 8253: Timer
+0384 | Timer 0 low/high. Ausgang ist Eingang von Timer 2 (Bit 5 in 0382) 
+0385 | Timer 1 low/high. Timeout Counter 
+0386 | Timer 2 low/high. Timeout Counter 
+0387 | 8254 Modusregister 
+     | 
+     | 0388..038C = 8273 SDLC Controller 
+0388 | Read: Statusregister 
+     | Write: Befehlsregister 
+0389 | Read: Ergebnisregister 
+     | Write: Parameterregister
+038A | DMA/Interrupt Register fÅr Empfangen 
+038B | DMA/Interrupt Register fÅr Senden 
+038C | Datenport Read/Write 
+     | 8273 Registerbeschreibung: 
+     | Moderegister (Bit D6..D7 wÑhlt Counter auf den sich D0..D5 beziehen) 
+     | D0 : 0 = Counter 16 Bit BinÑr 
+     |      1 = Counter  4 Dekad. BCD
+     | D1..D3 : Modus 0..5 (D7 = 1) 
+     | D4..D5 : D54
+     |           00 = Counter stop 
+     |           01 = read/write highbyte 
+     |           10 = read/write lowbyte 
+     |           11 = erst low, dann highbyte read/write 
+     | D6..D7 : Counter auswÑhlen (00=0, 01=1, 10=2, 11=3) 
+     | 
+     | Betriebsarten Register
+     | D0 : 1 = Kennzeichenmodus 
+     | D1 : 1 = Sync fÅr 2. Header
+     | D2 : 1 = Buffer Modus 
+     | D3 : 1 = Vorzeitigen Sendeinterrupt aktivieren 
+     | D4 : 1 = EOP IRQ aktivieren 
+     | D5 : 1 = MDLC Abbruch aktivieren 
+     | 
+     | Serial I/O Moderegister 
+     | D0 = 1 : NRZI Modus 
+     | D1 = 1 : Clock Loopback 
+     | D2 = 1 : Data Loopback 
+     | 
+     | Transmit Moderegister 
+     | D0 = 1 : DatenÅbertragung unterbrechen 
+     | 
+     | Singlebit Delay Modusregister 
+     | D7 = 1 : Singlebit delay aktivieren 
+     | 
+038D | N.C.
+ ... |
+038F |
+     |
+     |
+03A0 | bisync 1 
+ ... | wie 0380..038F
+03AF |
+     | 
+     | Hercules komp. Mono/Graphik Karte
+     | Mit * gekennzeichnete Bits sind nicht auf allen Karten verfÅgbar.
+03B4 | Indexport 6845 (Videocontroller) 
+     | Write: Register Nummer 0..17 
+03B5 | Datenport 6845 : Register (Write only, sofern nichts anderes vermerkt)
+     |  0: D0..D7 = Anzahl Zeichen pro Zeile -1 (Horizontalfreq.) 
+     |  1: D0..D7 = Anzahl dargestellte Zeichen pro Zeile 
+     |  2: D0..D7 = Zeichenposition-1 des HSYNC Signals 
+     |  3: D0..D3 = Breite-1 des HSYNC Signals in Zeichen 
+     |  4: D0..D6 = Anzahl Zeichenzeilen (Vertikalfreq. 50/60 Hz) 
+     |  5: D0..D4 = Bilddurchlauf Abgleich in Mikrozeilen 
+     |  6: D0..D6 = Anzahl dargestellte Zeichenzeilen 
+     |  7: D0..D6 = Zeichenzeile, bei der VSYNC Signal beginnt 
+     |  8: D0 = 0 : Kein Zeilensprungverfahren 
+     |        = 1 und D1 = 0 : Zeilensprungverfahren, normale Dichte 
+     |        =1  und D1 = 1 : Zeilensprungverfahren, doppelte Dichte 
+     |  9: D0..D4 = Mikrozeilen/Zeichen-1 
+     | 10: D0..D4 = Startmikrozeile des Cursors 
+     |     D5/D6  = 0 : Cursor normal, blinkend 
+     |              1 : Cursor unsichtbar 
+     |              2 : Cursor blinkt mit 1/16 der Vertikalfrequenz 
+     |              3 : Cursor blinkt mit 1/32 der Vertikalfrequenz 
+     | 11: D0..D4 = Endmikrozeile des Cursors 
+     | 12: D0..D5 = Highbits der Speicherstartadresse 
+     | 13: D0..D7 = Lowbits der Speicherstartadresse 
+     | 14: D0..D5 = Highbits der aktuellen Cursorspeicheradresse (Read/Write)
+     | 15: D0..D7 = Lowbits der aktuellen Cursorspeicheradresse (Read/Write)
+     | 16: D0..D5 = Highbits der Speicherstelle, bei der LPSTB ausgelîst 
+     | 17: D0..D7 = Lowbits der Speicherstelle, bei der LPSTB ausgelîst 
+03B8 | Write: Display Mode Control Port 
+     | D1: 6845 muss nach einer énderung dieses Bits neu initialisiert werdem
+     |     0 : Text Mode    (Zeichen 9 x 14, 0.5625us/Zeichen)
+     |     1 : Graphik Mode (Zeichen 4 x 16, 1us/Zeichen Horizontal)
+     | D3: 0 : Screen blanked (Bei Init 6845 auf 0 setzen) 
+     |     1 : Screen activated 
+     | D5: 0 : Textblinker (Attributbit 7 = 1) ausgeschaltet 
+     |     1 : Textblinker angeschaltet 
+     |*D6: 0 : 80 Spalten Modus (nur CT6040S)
+     | D7: 0 : Graphikpage 0 (B0000..B7FFF) 
+     |     1 : Graphikpage 1 (B8000..BFFFF) 
+03B9 |*Write: Set Lightpen Flip-Flop (Eingang zum 6845 LPSTB) 
+03BA | Read: Display Status Port 
+     | D0: 1 : HSYNC (Horizontal Retrace) lÑuft gerade 
+     |*D1: Ausgang des Lightpen Flip-Flop (LPSTB-Eingang 6845) 
+     |*D2: 1 : Lightpen Taster gedrÅckt (Pin 3 des LP-Steckers) 
+     | D3: Ausgang VIDEO zum Monitor (Dots on/off) 
+     | D7: 1 : VSYNC (Vertical Retrace) lÑuft gerade 
+03BB |*Write: Reset Lightpen Flip-Flop 
+03BC | Read: Latched Write Data 
+     | Write: Printer Data D0..D7 (pin 2..9)
+03BD | Read: Printer Status Port 
+     | D3:0 : Printer Error (ERROR, pin 15) 
+     | D4:0 : Printer deselected (SLCT, pin 13)
+     | D5:1 : Paper end (PE, pin 12) 
+     | D6:1 : Ready for more (ACK, pin 10) 
+     | D7:0 : Printer is busy (BUSY, pin 11) 
+03BE | Read (Latched Write Data) 
+     | Write: Printer Control Port 
+     | D0: Printer Strobe (0 = Strobe to Printer, 1 = Release Strobe) pin 1
+     | D1: 0 = Autolinefeed after CR, 1 = CR, LF (Programm) pin 14
+     | D2: 0 = Init Printer (pin 16), 1 = Release Init 
+     | D3: 0 = Deselect Printer (SLCT, pin 17), 1 = Select Printer 
+     | D4: 0 = Mask IRQ7 off, 1 = IRQ7 (ACK Flanke) mask on 
+03BF |*Read LPSTB extension Adress (Im Graphikmodus) 
+     |*D0..D3 = xpos Dots MOD 16
+     |*D4: Dotclk 74112 (U58) 
+     |*D5..D6 = ypos Dots MOD 4 
+     |*D7: Aktive Graphikseite 
+     | Write: Configuration Switch 
+     | D0: Bit 1 03B8 AND-Mask (0: Kein Graphikmode einschaltbar) 
+     | D1: Bit 7 03B8 AND-Mask (0: Keine Graphikseite 1 einschaltbar) 
+     |     (falls 0: B8000..BFFFF auf Graphikkarte abgeschaltet)
+     | 
+     | 
+     | CGA (Color Graphics Adapter) 
+03D4 | 6845 Index Register (siehe 03B4)
+03D5 | 6845 Data Register (siehe 03B5)
+03D8 | 
+     | D0 : 1 = 80x25 
+     |      0 = 40x25 
+     | D1 : 1 = 320x200 Graphikmodus 
+     |      0 = Alphanumerisch Text 
+     | D2 : 1 = S/W 
+     |      0 = Color 
+     | D3 : 0 = Screen blanked
+     | D4 : 1 = 640x200 S/W Modus 
+     | D5 : 1 = Blinken statt IntensitÑtsbit (Bit 3) 
+     |      0 = IntensitÑtsbit fÅr 16 statt 8 Farben (2 Helligkeiten)
+03D9 | Write: Paletteregister 
+     | D0 : Blau 
+     | D1 : GrÅn 
+     | D2 : Rot 
+     | D3 : Intensity 
+     | D4 : 1 = Intensivfarbsatz im Graphikmodus 
+     | D5 : 1 = Farbsatz 320x200 Modus aktivieren
+03DA | Read: Statusregister 
+     | D0 = HSYNC (Anzeige aktiviert) 
+     | D1 = Lightpen Strobe Flip-Flop Ausgang 
+     | D2 = Lightpentaster gedrÅckt 
+     | D3 = VSYNC 
+03DB | Write: Reset Lightpen Flip-Flop 
+03DC | Write: Set Lightpen Flip-Flop
+     | 
+     | 
+     | Diskettencontroller uPD 765 
+03F2 | DIGOR (Digital Output Register) - Write
+     | D0..D1 : Laufwerk 00 = A, 01 = B, 10 = C, 11 = D 
+     | D2 : 0 = RESET Signal aktiviert, 1 = RESET aus
+     | D3 : 1 = DMA und IRQ aktivieren 
+     | D4..D7 : 1 = Motor fÅr Laufwerk A..D einschalten 
+03F4 | Hauptstatusregister - Read
+     | D0..D3 : Laufwerk A..D seeked noch 
+     | D4 : 1 = BUSY 
+     | D5 : 1 = DMA nicht aktiv 
+     | D6 : 1 = Prozessor liest Datenregister, 0 = Prozessor schreibt Datenr. 
+     | D7 : 1 = Register bereit fÅr Datentransfer
+03F5 | Diskettensteuerungsdatenregister - Write 
+     | D0..D7 : Command 
+     |     C5 = write (hd+drv.b,cyl.b,frst_sec.b,byte_p_sec.b,last_sec.b, 
+     |                 gap.b, dtl.b)
+     |     E6 = read (hd+drv.b,cyl.b,frst_sec.b,byte_p_sec.b,last_sec.b, 
+     |                gap.b, dtl.b)
+     |     4D = format (byte_p_sec.b, last_sec.b, gap.b, dtl.b)
+     |          hd+drv.b : D5..D2 = Head, D1..D0 = Drive
+     |     Nach jedem Kommando kann solange BUSY=1 ist, ein Statusbyte bei 
+     |     03F5 abgeholt werden (warten bis D6=1 und D7=1 in 03F4). 
+     |     Status: 
+     |     D7 = rnf, timeout
+     |     D6
+     |     D5 = crc error
+     |     D4 = dma error
+     |     D3
+     |     D2 = rnf 
+     |     D1 = write protected 
+     |     D0 = bad addr mark
+     |
+03F6 | Harddisk Control Register
+     | D7 : 1 = Disable Retries 
+     | D6 : 1 = Kein ECC bei Fehler 
+     | D5 :
+     | D4 :
+     | D3 : 1 = Falls anz. Heads > 8 
+     | D2 : 1 = RESET KONGO CARD (wieder auf 0 setzen) 
+     | D1 : 
+     | D0 :
+     | 
+03F7 | DIGIR (Digital Input Register) - Read 
+     | D7 : 1 = Media changed
+     | 
+     | 
+     | RS232C Adapter 8250 (COM1) Generiert IRQ 4
+03F8 | DLAB = 0
+     |       Read: Receivebuffer (RBR = receive buffer register)
+     |      Write: Transmitbuffer (THR = transmit holding register)
+     | DLAB = 1 : Read/Write: Divisor Latch LSB   Read/Write
+03F9 | DLAB = 1 : Read/Write: Divisor Latch MSB   Read/Write
+     |            Baud = 115200/divisor (clk = 1.8432 MHz DIV 16) 
+     | DLAB = 0 : Interrupt Enable Register (IER) Read/Write 
+     |     Bit = 1: Interrupt enabled, Bit=0: Interrupt disabled  
+     | D0: Receive Char Interrupt 
+     | D1: Transmitter empty Interrupt 
+     | D2: Receiver Line Status Interrupt (Framing, Parity, Overrun, Break)
+     | D3: Modem Status Interrupt (CTS, DSR, RI, DCD changed)
+     | D4..D7 = 0
+03FA | Interrupt Identification Register (IIR) Read/Write
+     | Prios: 1=Receiver Line Status, RX available, THR empty, 4=Modem Status 
+     | D0 = 0: Interrupt pending 
+     | D1..D2: Interrupt source (falls D0 = 0) 
+     |   Prio D21 Source                            Cleared by
+     |      1  01 Overrun, Parity, Framing, Break   Read LSR 
+     |      2  10 Receive data available            Read RBR 
+     |      3  11 THR empty                         Read IIR oder Write THR 
+     |      4  00 CTS, DSR, RI, RLSD changed        Read MSR 
+03FB | Line Control Register (LCR) Read/Write
+     | D0..D1 : Wordlength (00=5, 01=6, 10=7, 11=8 Datenbits) 
+     | D2 : 0 = 1 Stopbit 
+     |      1 = 1.5 Stopbits, falls 5 Datenbits, 2 Stopbits sonst 
+     | D3 : 1 = Parity generate & check enabled 
+     | D4 : Falls D3 = 1 : 0 = Odd Parity, 1 = Even Parity 
+     | D5 : Falls D3 = 1 und D5 = 1: 0 = Parity Mark, 1 = Parity Space
+     |     D543 Funktion
+     |      000 Kein Parity
+     |      001 Odd Parity
+     |      010 Kein Parity 
+     |      011 Even Parity
+     |      100 Kein Parity
+     |      101 Parity stuck on (1 = Mark) 
+     |      110 Kein Parity
+     |      111 Parity stuck off (0 = Space) 
+     | D6 : 1 = Send Break (Muss wieder auf 0 gesetzt werden)
+     | D7 : DLAB = 1 : Baudrate Divisor Latch Access ueber 0XF8/0XF9 
+03FC | Modem Control Register (MCR) 
+     | D0: 1 = DTR aktiv
+     | D1: 1 = RTS aktiv 
+     | D2: 1 = OUT1 aktiv (Pin 34) 
+     | D3: 1 = OUT2 aktiv (Pin 31)
+     | D4: 1 = Diagnostic Mode: 
+     |         TX-Out --> RX-In (Local Loopback) 
+     |         RTS->CTS, DTR->DSR, OUT1->DCD, OUT2->RI internally connected 
+     |         Interupts lassen sich mit D0..D3 des MCR, bzw. D0..D5 des LSR 
+     |         auslîsen (dann Bits wieder auf 0 und MCR auf 0). 
+03FD | Line Status Register (LSR) Read/Write 
+     | D0: 1 = Character Received                 Interrupt 2
+     | D1: 1 = Receiver Overrun Error             Interrupt 1
+     | D2: 1 = Parity Error                       Interrupt 1
+     | D3: 1 = Framing Error                      Interrupt 1
+     | D4: 1 = Break detected                     Interrupt 1
+     | D5: 1 = Transmitter Holding register empty Interrupt 3
+     | D6: 1 = Transmitter complete cleared (THR & TSR empty) 
+     | D7: 0 
+03FE | Modem Status Register (MSR) Read/Write 
+     | D0: 1 = CTS changed since last MSR read    Interrupt 4
+     | D1: 1 = DSR changed since last MSR read    Interrupt 4
+     | D2: 1 = RI changed from active to inactive Interrupt 4
+     | D3: 1 = DCD changed since last MSR read    Interrupt 4
+     | D4: CTS input (Diagnostic: RTS) 
+     | D5: DSR input (Diagnostic: DTR) 
+     | D6: RI  input (Diagnostic: OUT1) 
+     | D7: DCD input (Diagnostic: OUT2)
+03FF | Reserviert 
+     | 

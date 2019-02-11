@@ -1,0 +1,1434 @@
+	TITLE	SHARD - Hardwareinterface fuer EUMEL 1.8 auf RUC 180
+;
+	INCLUDE	HD64180.LIB
+;
+	.LIST
+	CSEG
+;
+;****************************************************************
+;
+;	SHARD: Interface EUMEL 1.8 -> RUC 64180 Karte
+;
+;	Version 1.3 - 05.01.87 
+;		1.3 mit log. und phys. Kanaelen
+;		1.4 - 26.06.87, Code gekuerzt, IOCONTROL clear_spooler
+;
+;	Copyright (C) 1985, 86, 87 by ruc:
+;			1.7.3:	Rainer Ellerbrake
+;				Eggeberger Str. 12
+;				4802 Halle (Westf.)
+;
+;			1.8:	Michael Staubermann
+;				Moraenenstr. 29
+;				4400 Muenster-Hiltrup
+;
+;****************************************************************
+;
+;	Globale Variable
+;
+	GLOBAL	SHEND, SHSINF, SHSACC, SHIOCNT, SHOUT, SHBIN, SHBOUT
+	GLOBAL	WARTE, SENDMSG, FLWTYP, MEMDMA
+	GLOBAL	RTCOK, HGOP
+	GLOBAL	HDOFS, HDLAST, CPMOFS, CPMLAST
+	GLOBAL	D0BLKS, D1BLKS, HGBLKS, CPMBLKS
+	GLOBAL	ADLEISTE, IINTAD, TIMEAD, INFOAD, SHUTUPAD, ERROR, TRAP
+	GLOBAL	MODECONF, ARC31, BEEPFRQ, BLINKP, IKANTAB, URLK1, URLK2
+
+;................................................................
+;
+;	Externe Variable
+;
+	EXTERNAL INIFLP, HDIO, PARKHD, PHYSADR, START, FRE65
+	EXTERNAL PUTBUF, FREEBUF, DRUCK, SCCATAB, SCCBTAB, EFLOW5
+	EXTERNAL BAUSCC, BAUBAS, TO6502, ZGERL, STROUT, AFLOW, CLRCBUF
+	EXTERNAL BITSCC, BITBAS, EGO, ESTOP, DISKBK, INIDISK, ANALOG
+	EXTERNAL GMOVE, GDRAW, GTEST, GCTRL, GCLR, GFILL, GTRANS, GRAFIO
+;	
+;................................................................
+;
+;	andere Adressen
+;
+WINDOW	EQU	0F000H		;Anfangsadresse des 4K Windows
+;
+;	Konstanten
+;
+SCHGR	EQU	196		;Groesse des Schattenspeichers in KByte
+MINFUN	EQU	-10		;iocontrol: unterste Funktionsnummer
+;
+;	Harddisk / Floppy Kommandos
+;
+SREAD	EQU	0
+SWRITE	EQU	1
+SFORMAT	EQU	2
+;
+	INCLUDE	PORTS.MAC
+;
+;*****************************************************************************
+;
+;	Konfigurationsblock, wird im Load-Modul festgelegt
+;
+BLINKP		EQU	8		; 1 Byte
+BEEPFRQ		EQU	9		; 1 Byte
+ARC31		EQU	10		; 3 Bytes SCSI-Floppy LUN
+MODECONF	EQU	13		; 4 Words: Mode, ID 4, 5, 6
+URLK1		EQU	21		; 1 Byte log. Kanal f.1.Urladertest
+URLK2		EQU	22		; 1 Byte log. Kanal f.2.Urladertest
+FREE		EQU	23		; 1 Byte
+;
+IKANTAB		EQU	58H		; 8 Bytes Kanalzuordung phys. --> log.
+KANTAB		EQU	60H		; 33 Bytes Kanalzuordnung log. --> phys
+IOFTB		EQU	81H		; 32 Bytes I/O 'typ'-Tabelle
+CPMOFS		EQU	0A1H		; Anfang eines CP/M-Volumes
+CPMLAST		EQU	0A4H		; Ende+1 des CP/M-Volumes
+
+;*****************************************************************************
+;
+;	EUMEL - Linkleiste
+;
+	JP	START		; Beginn der Initialisierung, starten
+
+ADLEISTE:			; Beginn der EUMEL-Linkleiste (kopiert)
+
+IINTAD:	JP	DEFRET		; Inputinterrupt
+
+TIMEAD:	JP	DEFRET		; Timerinterrupt
+
+WARTAD:	JP	DEFRET		; EUMEL 'warte'
+
+GRABAD:	JP	DEFRET		; (BC) 512-Byte Kacheln ab (HL) fuer SHard
+				; reservieren
+FREEAD:	JP	DEFRET		; (BC) 512-Byte Kacheln ab (HL) (wie bei
+				; 'grab'!) freigeben
+SHUTUPAD:
+	JP	DEFRET		; Shutup anfordern
+
+INFOAD:	JP	DEFRET		; Info ' shard'
+	
+DEFRET:	RET
+
+;----------------------------------------------------------------
+;
+;	W A R T E
+;
+;	Aufruf der EUMEL Warte Routine
+;
+WARTE:
+	PUSH	BC		;Register, ausser AF, retten
+	PUSH	DE
+	PUSH	HL
+	PUSH	IX
+	PUSH	IY
+;	EX	AF,AF'
+;	PUSH	AF
+;	EXX
+;	PUSH	BC
+;	PUSH	DE
+;	PUSH	HL
+;
+	CALL	WARTAD		;zunaechst auf RET-Befehl
+;
+;	POP	HL
+;	POP	DE
+;	POP	BC
+;	EXX
+;	POP	AF
+;	EX	AF,AF'
+	POP	IY
+	POP	IX
+	POP	HL
+	POP	DE
+	POP	BC
+	RET
+
+;................................................................
+;
+;	T R A P
+;
+;	Behandlung einer TRAP-Exception
+;	Einsprung bei JP 0
+
+TRAP:
+	LD	(SAVSTP),SP	; Stackpointer retten
+	PUSH	AF
+	PUSH	HL
+	PUSH	DE
+	IN0	A,(ITC)		; Trap ?
+	BIT	7,A
+	RES	7,A		; Auf jeden Fall loeschen
+	OUT0	(ITC),A
+	JR	Z,RESV		; War kein TRAP, sondern Reset: PC undefiniert
+	LD	HL,(SAVSTP)
+	LD	E,(HL)
+	INC	HL
+	LD	D,(HL)		; DE = PC bei Trapadresse
+	DEC	DE		; PC-1
+	BIT	6,A		; UFO ? (Undefined Fetch Object)
+	JR	Z,TRAP1
+	DEC	DE		; PC-2
+TRAP1:
+	LD	HL,TRPADR
+	CALL	HEXDEHL		; Nach Hex konvertieren
+
+RESV:
+	LD	HL,TRPTXT	; Vor Infoaufruf ausgeben (in Zeile 6)
+SENDERR:
+	CALL	SENDMSG
+	CALL	INFOAD
+	POP	DE
+	POP	HL
+	POP	AF
+	RET
+	
+TRPTXT:	DEFB	TRPLEN, 7, 6, 4, 1, 15, 'TRAP:'
+TRPADR:	DEFB	'RES ', 5, 14
+TRPLEN	EQU	$-TRPTXT-1
+
+;...................................................................
+;
+;	Falscher Interrupt
+;
+ERROR:	
+	PUSH	AF
+	PUSH	HL
+	PUSH	DE
+
+	LD	A,00111000B	; Reset SCC highest IUS
+	OUT0	(SCCAC),A
+	OUT0	(SCCBC),A
+	CALL	EIRET
+
+	LD	HL,INTTXT	; Message 'Ghost Interrupt'
+	JR	SENDERR
+
+INTTXT:	DEFB	INTXTLEN, 6, 4, 1, 15, 'Wrong Int', 5, 14
+INTXTLEN	EQU	$-INTTXT-1
+
+EIRET:
+	EI
+	RETI
+
+;----------------------------------------------------------------
+;
+;	S Y S E N D
+;
+;	Kaltstart ausfuehren
+;
+;	Eingang:  -
+;	Ausgang:  (Keine Rueckkehr)
+;
+SHEND:
+	CALL	PARKHD		; Harddisk in Parkposition fahren
+	DI
+	XOR	A
+	OUT0	(CNTLA0),A	; Falls verdrahtet, Hardwarereset (RTS-Pin)
+	OUT0	(CNTLA0),A	; sicherheitshalber
+	SLP			; Kein Refresh mehr, I/O bleibt aktiv
+
+;
+;----------------------------------------------------------------
+;
+;	S H S I N F
+;
+;	Groesse und Ansprechmodus des Schattenspeichers bestimmen
+;
+;	Ausgang:  BC = Groesse des Schattenspeichers in k (0..8191)
+;		       Bit 15: 1=Fenstermodus, Bit 14: 1=Transportmodus
+;
+;	In diesem SHARD werden die 1. 256 KByte RAM des HD 64180, soweit
+;	diese nicht vom SHARD und EUMEL0 belegt sind, als Schattenspeicher
+;	im Fenstermodus benutzt.
+;
+;	Der Speicher wird im einzelnen wie folgt verwendet:
+;
+;	00000 - 013FF	SHARD
+;	01400 - 0EFFF	EUMEL0 und Pagingbereich
+;	0F000 - 3FFFF	Schattenspeicher
+;	40000 - 5FFFF	reserviert fuer Grafikkarte (nicht benutzt)
+;	60000 - 6FFFF	BASIS bzw. Apple Hauptspeicher (6502 Treiber)
+;	70000 - 7FFFF	wie 60000 - 6FFFF
+;   
+SHSINF:
+	LD	BC,SCHGR+8000H	;Fenstermodus
+	RET
+;
+;----------------------------------------------------------------
+;
+;	S C H A C C
+;
+;	Ein-/ Ausgabe auf den Schattenspeicher
+;
+;	Eingang: HL = Nummer der 1/2K-Seite, die in das 4K Fenster
+;		      zu schalten ist.
+;
+;	Ausgang: HL = Anfangsadresse (im Normaladressraum) des aktuellen
+;		      Fensters
+;
+;	Das Fenster befindet sich innerhalb eines 4K Bereichs ab 0F000H
+;	in der Common Area 1
+;
+SHSACC:
+	PUSH	AF		;Akku retten
+
+	LD	A,L		;Offset im 4K Fenster berechnen
+	SLA	A		;auf 256 Byte Grenze (MSB)
+;	AND	0FH		;nicht noetig, da MSB=F 
+	OR	HIGH WINDOW	;MSB der Anfangsadresse im Fenster
+;
+	SRL	H		;512 Byte Block -> 4 K Offset (/8)
+	RR	L
+	SRL	H
+	RR	L
+	SRL	L		;nicht mehr als 512 K !!
+	OUT0	(CBR),L		;4K Blockanf. (- F000) in MMU eintragen
+
+	LD	H,A		;MSB der Anfangsadr. retten
+	LD	L,0		;HL = Anfangsadresse im log. Adr.-raum
+	POP	AF		;AF wieder herstellen
+	RET
+;
+;-------------------------------------------------------------------
+;
+;	L O G P H Y S
+;	Umrechnung der log. Kanalnummer in eine phys. Kanalnummer
+;
+;	Eingang: A = logische Kanalnummer (0..32)
+;	Ausgang: A = physische Kanalnummer (0..6, 28..32)
+;		 alle anderen Register bleiben unveraendert
+;
+LOGPHYS:
+	PUSH	HL
+	ADD	A,KANTAB
+	LD	L,A
+	LD	H,0
+	LD	A,(HL)
+	POP	HL
+	RET
+
+;----------------------------------------------------------------
+;
+;	B L O C K O U T
+;
+;	Block (512 Byte) Ausgabe
+;
+;	Der 512 Byte grosse in DE angegebene Block wird ab der in HL
+;	angegebenen Hauptspeicheradresse auf das durch Kanalnummer angewaehlte
+;	Geraet uebertragen.
+;
+;	Eingang:  A = Kanalnummer (log.)
+;		 BC = Funktionscode (immer 0)
+;		 HL = Adresse des Hauptspeicherbereichs
+;		 DE = 2. Funktionscode (Blocknummer)
+;
+;	Ausgang:  A = veraendert
+;		 BC = Rueckmeldecode (0=ok, -1=unzulaessiger Aufruf)
+;		 HL = Adresse des Rueckmeldetextes (1 Byte <Laenge>,
+;						    <Laenge> Bytes Text)
+;
+SHBOUT:
+	PUSH	AF
+	LD	A,SWRITE		;Schreiboperation
+	JR	BLKCOM
+;
+;----------------------------------------------------------------
+;
+;	B L O C K I N
+;
+;	Block (512 Byte) Eingabe
+;
+;	Der 512 Byte grosse in DE angegebene Block wird ab der in HL
+;	angegebenen Adresse vom durch Kanalnummer angewaehlten Geraet
+;	in den Hauptspeicher uebertragen.
+;
+;	Eingang:  A = Kanalnummer (log.)
+;		 BC = Funktionscode (immer 0)
+;		 HL = Adresse des Hauptspeicherbereichs
+;		 DE = 2. Funktionscode (Blocknummer)
+;
+;	Ausgang:  A = veraendert
+;		 BC = Rueckmeldecode (0=ok, -1=unzulaessiger Aufruf)
+;		 HL = Adresse des Rueckmeldetextes (1 Byte <Laenge>,
+;						    <Laenge> Bytes Text)
+;		 DE = unveraendert
+;
+;	Folgende physischen Kanaele sind fuer Block I/O definiert:
+;
+;	0 = Harddisk 0 am SCSI-Controller
+;	1 = Graphikmemory (Apple)
+;
+;	28 = Harddisk CP/M-Volume
+;	29 = Apple-Drive 1
+;	30 = Apple-Drive 0
+;	31 = Floppy 0 am SCSI-Controller
+;
+;................................................................
+
+SHBIN:
+	PUSH	AF
+	LD	A,SREAD
+BLKCOM:
+	LD	(HGOP),A	;0=lesen, 1=schreiben, 2=formatieren
+;
+	POP	AF
+	CALL	LOGPHYS		; Umrechnen log. --> phys.
+	PUSH	AF
+
+;FDHDIO:
+	CALL	BLOCKS		; Anzahl Blocks des Kanals erfragen
+
+	LD	A,B		; 0 Bloecke: Nochmal initialisieren
+	OR	C
+	JR	NZ,BLKCOM1
+
+	POP	AF
+	PUSH	AF
+
+	PUSH	DE
+	LD	D,B		; DE = 0 : Standardformat
+	LD	E,B
+	CALL	SIZEX
+	POP	DE
+
+BLKCOM1:
+	POP	AF		; A = Kanal
+
+	PUSH	HL
+	LD	H,D		; HL = Blocknummer
+	LD	L,E
+	AND	A
+	SBC	HL,BC		; Falls HL >= BC : Block zu hoch
+	POP	HL
+
+	JR	NC,TRKERR
+
+	LD	BC,HDOFS
+	AND	A
+	JR	Z,SCSIBK	; Hintergrund
+
+	LD	BC,ARC31
+	CP	31
+	JR	Z,SCSIBK	; SCSI-Floppy
+
+	LD	BC,CPMOFS
+	CP	28
+	JR	Z,SCSIBK	; CP/M-Volume auf der Harddisk
+
+				; Kein SCSI-blockio
+	JP	NC,DISKBK	; Kanal 29, 30 ist Apple-Drive
+
+	CP	1		; Grafikspeicher ?
+	JP	Z,GRAFIO
+				; Andere Kanaele nicht erlaubt
+	LD	BC,-1		; Falscher Kanal
+	RET
+
+
+SCSIBK:
+	LD	A,(HGOP)
+	PUSH	DE
+	CALL	HDIO		;I/O ausfuehren
+	POP	DE
+;
+	LD	BC,0
+	AND	A
+	RET	Z		; Transfer ok
+
+	INC	BC		; Fehler, bei dem Retries sinnlos sind
+	CP	13H		; Writeprotected (Floppy)
+	RET	Z
+	CP	14H		; Target sector not found (kein Medium)
+	RET	Z
+
+	INC	BC		; Retries sinnvoll
+	LD	HL,ERRNR	; Bufferaddress fuer Hexbyte-Fehlernummer
+	CALL	HEXAHL		; Konvertieren
+	LD	HL,BLKNR1	; Blocknr
+	CALL	HEXDEHL		; Blocknummer in Puffer schreiben
+
+	LD	HL,RWERR
+	RET
+;
+TRKERR:
+	LD	HL,BLKNR2	; Bufferadresse fuer Konvertierung
+	CALL	HEXDEHL		; DE ab HL schreiben
+	LD	BC,3		; Versorgungsfehler (Spur zu gross)
+	LD	HL,BLKZHOCH
+	RET
+;
+				; Word in DE als 4 Byte ASCII ab HL ablegen
+HEXDEHL:
+	LD	A,D		; Highbyte
+	CALL	HEXAHL
+	LD	A,E		; Lowbyte dahinter
+				; Byte in A als 2 ASCII-Zeichen ab HL ablegen
+HEXAHL:
+	PUSH	AF
+	RRCA
+	RRCA
+	RRCA
+	RRCA
+	CALL	HEXAHL1
+	POP	AF
+
+HEXAHL1:
+	AND	0FH
+	CP	0AH		; A..F ?
+	JR	C,HEXAHL2
+	ADD	A,7
+HEXAHL2:
+	ADD	A,30H
+	LD	(HL),A
+	INC	HL
+	RET
+;
+;	Fehlermeldungen, die mit 'noch ein Versuch ?' ausgegeben werden
+;
+RWERR:
+	DEFB	RWERRLN
+	DEFM	'Fehler '
+ERRNR:	DEFM	'00H auf Block '
+BLKNR1:	DEFM	'0000H,'
+RWERRLN	EQU	$-RWERR-1
+
+;
+BLKZHOCH:
+	DEFB	BLKZLN
+	DEFM	'Block '
+BLKNR2:	DEFM	'0000H zu hoch,'
+BLKZLN	EQU	$-BLKZHOCH-1
+
+;
+;----------------------------------------------------------------
+;
+;	M E M D M A
+;	DMA-Transfer zwischen 64180-Speicher (log.) und Basisspeicher
+;
+;	Darf auch in Interruptroutinen benutzt werden!
+;
+;	Eingang: BC = Anzahl der zu transportierenden Bytes
+;		 DE = log.Hauptspeicheradresse (64k)
+;		 HL = phys. Adresse im Basisspeicher
+;		 A  = 0 : Basis --> 64180
+;		 A  = 1 : 64180 --> Basis
+;	Ausgang: alle Register (A, BC, DE, HL) moeglicherweise veraendert
+;
+MEMDMA:
+	RRA			; Bit 0 (A) ins Carry
+	LD	A,I
+	DI
+	PUSH	AF		; Carry und IEF1 merken
+
+	OUT0	(BCR0L),C	; Transferlaenge programmieren
+	OUT0	(BCR0H),B
+
+	CALL	PHYSADR		; Bank in A
+	LD	B,6		; Basis Bank
+
+	POP	AF
+	PUSH	AF		; Carryflag holen: Set : 64180 --> Basis
+
+	JR	NC,MEMDMA1
+
+	EX	DE,HL		; Source <--> Dest vertauschen
+	LD	B,A		; Bank auch vertauschen
+	LD	A,6
+
+MEMDMA1:
+	OUT0	(SAR0L),L	; Source-Adresse
+	OUT0	(SAR0H),H
+	OUT0	(SAR0B),B
+	OUT0	(DAR0L),E	; Destination-Adresse
+	OUT0	(DAR0H),D
+	OUT0	(DAR0B),A
+
+	CALL	ZGERL		; Auf 6502-Speicher Zugriffserlaubnis warten
+
+	LD	A,01100011B	; DMA-Transfer starten
+	OUT0	(DSTAT),A
+
+	POP	AF
+	RET	PO
+	EI
+	RET
+
+;----------------------------------------------------------------
+;
+;	I O C O N T R O L
+;
+;	Steuerung und Zustandsabfragen fuer alle Kanaele
+;
+;	Eingang: A  = Kanalnummer (log.)
+;		 BC = Funktionsnummer
+;		      negative Codes siehe Funktionsadresstabelle
+;		      1 = 'typ' (fuer alle Kanaele (0..32))
+;		      2 = 'frout' (fuer Kanal 1..6)
+;		      3 = 'stop' (fuer Kanal 1..6)
+;		      4 = 'weiter' (fuer Kanal  1..6)
+;		      5 = 'size' (fuer Kanal 0, 1, 30, 31)
+;		      6 = 'flow' (fuer Kanal 1..6)
+;		      7 = 'format' (fuer Kanal 30, 31)
+;		      8 = 'baud' (fuer Kanal 2, 3, 5) 
+;		      9 = 'bits' (fuer Kanal 2, 3, 5)
+;		     10 = 'calendar' (1.8)
+;
+;		 DE = 2. Parameter
+;		 HL = 3. Parameter
+;
+;	Ausgang: s. Einzelfunktion
+;		 A, BC und Flags duerfen veraendert sein (manchmal definiert!)
+;
+SHIOCNT:
+	CALL	LOGPHYS		; Kanalnummer log. --> phys. umrechnen
+
+	PUSH	HL		;3. Funktionscode retten
+	LD	HL,-MINFUN	;unterste Funktionsnummer
+	AND	A
+	ADC	HL,BC		;auf 0 normierte Funktionsnummer
+	JP	M,ILLFUN	;unzulaessige Funktion ->
+
+	LD	B,H
+	LD	C,L
+	LD	HL,MAXFUN	;Funktionsanzahl
+	AND	A
+	SBC	HL,BC
+	JR	C,ILLFUN	;Funktionsnummer zu gross ->
+
+	LD	HL,FUNTAB	;Sprungadresstabelle fuer alle Funktionen
+	ADD	HL,BC
+	ADD	HL,BC		;+ Funktionsnummer * 2
+	PUSH	AF
+	LD	A,(HL)		;LSB (Funktionsadresse)
+	INC	HL
+	LD	H,(HL)		;MSB (Funktionsadresse)
+	LD	L,A
+	POP	AF
+	JP	(HL)		; (TOS)=(HL), Funktion anspringen
+;
+ILLFUN:
+	POP	HL
+	LD	BC,-2
+	RET
+;
+;................................................................
+;
+;	Funktionsadresstabelle
+;
+FUNTAB:
+	DEFW	CLRBUF		;-10 Printerspooler loeschen
+	DEFW	GTRANS		;-9  Grafik: Grafikseiten transportieren
+	DEFW	GCTRL		;-8  Grafik: Verschiedene Steuerfunktionen
+	DEFW	GTEST		;-7  Grafik: Test, ob Pixel (x, y) gesetzt
+	DEFW	GDRAW		;-6  Grafik: Draw Line to (x, y)
+	DEFW	GMOVE		;-5  Grafik: Move to (x, y)
+	DEFW	GFILL		;-4  Grafik: Umrandete Flaeche fuellen
+	DEFW	GCLR		;-3  Grafik: Seite loeschen (fuellen)
+	DEFW	ANALOG		;-2  Analog I/O
+	DEFW	IOACC		;-1  64180-Card I/O-Ports (privilegiert)
+	DEFW	ILLFUN		; 0  -
+	DEFW	TYP		; 1
+	DEFW	FROUT		; 2
+	DEFW	STOP		; 3
+	DEFW	WEITER		; 4
+	DEFW	SIZE		; 5
+	DEFW	FLOW		; 6
+	DEFW	FORMAT		; 7
+	DEFW	BAUD		; 8
+	DEFW	BITS		; 9
+	DEFW	CALENDAR	;10
+;
+MAXFUN	EQU	(($-FUNTAB)/2)-1	;FUNKTIONSANZAHL
+;
+;................................................................
+;
+;	T Y P
+;
+;	Information welche I/O fuer welchen Kanal sinnvoll ist liefern
+;
+;	Eingang: A = Kanalnummer (phys.)
+;
+;	Ausgang: Information in BC
+;		 C Bit 0 gesetzt: 'iint' kann kommen (Zeicheneingabe)
+;		 C Bit 1 gesetzt: 'output' ist sinnvoll (Zeichenausgabe)
+;		 C Bit 2 gesetzt: 'blockin' ist sinnvoll (Blockeingabe)
+;		 C Bit 3 gesetzt: 'blockout' ist sinnvoll (Blockausgabe)
+;		 C Bit 4 gesetzt: 'IOCONTROL format' ist sinnvoll
+;
+TYP:
+	LD	BC,0
+	CP	32
+	JR	NC,TYP1
+	LD	C,A		;BC = Kanalnummer
+	LD	HL,IOFTB
+	ADD	HL,BC
+	LD	C,(HL)		;Information aus IO-Funktionstab. holen
+TYP1:
+	POP	HL
+	RET
+;
+;................................................................
+;
+;	F R O U T
+;
+;	Information, wieviel Zeichen der naechst 'outvar' uebernehmen
+;	kann.
+;
+;	Eingang: A  = Kanalnummer (phys.)
+;
+;	Ausgang: BC = Anzahl Zeichen die der naechste 'outvar' uebernehmen
+;		      kann
+;		 C-Flag gesetzt: Puffer ist leer
+;
+FROUT:
+	CP	1		; Console ?
+	JR	Z,FROUTOK
+	CP	2		; SCCB
+	JR	Z,SCCBFROUT
+	CP	3		; SCCA
+	JR	Z,SCCAFROUT
+	CP	4
+	JR	Z,OBDRU		; 64180-Card Parallel
+
+	CP	7		; Basis-Schnittstellen ?
+	JR	NC,FROUTOK	; Nein -> falscher Kanal
+
+				; Basis serielle/parallele Schnittstellen
+	CALL	FRE65
+	JR	FRCORR		; BC korrigieren auf Bytewert
+;
+OBDRU:
+	PUSH	IX
+	LD	IX,DRUCK
+FREBUF:
+	CALL	FREEBUF
+	POP	IX
+
+FRCORR:
+	POP	HL
+
+	INC	B	; Carry unveraendert
+	DEC	B
+	RET	Z	; weniger als 256 Zeichen frei
+	LD	BC,255	; mehr als 255 frei, Korrektur wegen EUMEL0!
+	RET
+
+FROUTOK:
+	SCF
+	LD	BC,200
+	POP	HL
+	RET
+
+SCCAFROUT:
+	PUSH	IX
+	LD	IX,SCCATAB
+	JR	FREBUF
+
+SCCBFROUT:
+	PUSH	IX
+	LD	IX,SCCBTAB
+	JR	FREBUF
+
+	
+;................................................................
+;
+;	S T O P
+;
+;	Weitere Eingaben sperren
+;
+;	Eingang: A = Kanalnummer (phys.)
+;
+STOP:
+	CALL	ESTOP
+	POP	HL
+	RET
+;
+;................................................................
+;
+;	W E I T E R
+;
+;	Weitere Eingaben wieder zulassen
+;
+;	Eingang: A  = Kanalnummer (phys.)
+;
+WEITER:
+	CALL	EGO
+	POP	HL
+	RET
+;
+;................................................................
+;
+;	S I Z E
+;
+;	Groesse in Bloecken eines Block I/O Kanals erfragen
+;
+;	Eingang: A  = Kanalnummer (phys.)
+;		 DE = Schluessel:
+;			Alle Formate haben 512-Bytes/Sektor und 5.25 Zoll
+;			0 = Standardformat des Laufwerks
+;			1, 0101010110101001B = 55A9H = 360k, 2 * 40 Tracks
+;			2, 0101011110101001B = 57A9H = 720k, 2 * 80 Tracks
+;			   0101011110001111B = 578FH = 640k-Erphi, 2 * 80 Trks
+;			   1101011110001111B = D78FH = 640k-Ehring, 2 * 80 Trks
+;			   0100000110001111B = 418FH = 160k-Apple, 1 * 40 Trks
+;	Ausgang: BC = Blockanzahl low
+;		 A  = Blockanzahl high
+SIZEX:
+	PUSH	HL
+
+SIZE:
+	CP	31
+	JR	NZ,SIZE1
+
+	LD	B,80		; Default 80 Tracks
+	INC	D
+	DEC	D		; D = 0 ?
+	JR	NZ,SIZE3	; Nein, Schluessel auswerten
+	LD	A,E
+	CP	1
+	JR	C,SIZE2		; 0: Default 80 Tracks
+	JR	NZ,SIZE2	; > 1 : 80 Tracks
+SIZE4:
+	LD	B,40		; 1: 40 Tracks
+SIZE2:
+	LD	A,B
+	CALL	INIFLP		; Archivtyp bestimmen
+	LD	(ARBLKS),BC
+	JR	ZRET
+
+SIZE3:
+	BIT	1,D		; Bit 9 (DE) unterscheidet 40/80 Tracks
+	JR	Z,SIZE4
+	JR	SIZE2
+	
+SIZE1:
+	CP	29		; Apple-Drive 0 oder 1 ?
+	JR	C,BRET		; Keine Formaterkennung auf anderen Kanaelen
+	CP	32
+	JR	NC,BRET		; Kanal >= 32 ?
+
+	CALL	INIDISK
+
+	LD	HL,D0BLKS	; HL darf veraendert werden
+	CP	30
+	JR	Z,SIZE5
+	LD	HL,D1BLKS
+SIZE5:
+	LD	(HL),C		; Fuer Blockio eintragen
+	INC	HL
+	LD	(HL),B
+	JR	ZRET		; Groesse in BC
+	
+BRET:
+	CALL	BLOCKS		; Groesse erfragen
+
+ZRET:
+	XOR	A		; Immer weniger als 65536 Bloecke
+	POP	HL
+	RET
+
+;................................................................
+;
+;	B L O C K S
+;	Erfragt die Anzahl der 512-Byte Bloecke, die ein phys. Kanal
+;	fassen kann.
+;
+;	Eingang: A = Kanalnummer (0, 1, 27..31)
+;	Ausgang: BC = Anzahl 512-Byte Blocks
+;		 keine anderen Register veraendert
+;
+BLOCKS:
+	PUSH	AF
+	CP	28
+	JR	NC,BLOCKS1
+	ADD	A,32			; 0 --> 32, 1 --> 33
+BLOCKS1:
+	LD	BC,0
+
+	CP	34
+	JR	NC,BLOCKS2		; Kanal existiert nicht
+
+	SUB	28			; Auf 0 normieren
+
+	PUSH	HL
+	ADD	A			; * 2
+	LD	C,A
+	LD	HL,BLKTAB
+	ADD	HL,BC
+	LD	C,(HL)
+	INC	HL
+	LD	B,(HL)
+	POP	HL
+BLOCKS2:
+	POP	AF
+	RET
+
+;................................................................
+;
+;	B A U D
+;
+;	Einstellung der Baudrate fuer serielle Schnittstellen
+;	andere Funktionen nicht implementiert
+;
+;	Eingang: A  = eigener Kanal
+;		 DE = adressierter Kanal
+;		 TOS= Schluessel
+;
+;		
+; 	Ausgang: BC = 0=ok, 1=nicht moeglich
+;
+BAUD:
+	POP	HL
+	PUSH	AF
+	LD	A,H
+	OR	D
+	JR	NZ,BITERR
+
+	LD	A,E		; addressierter Kanal
+	CALL	LOGPHYS		; Kanalnummer umrechnen
+	LD	E,A
+
+	CP	5
+	JR	Z,BASSER
+	CP	2
+	JR	Z,ONBDSR
+	CP	3
+	JR	NZ,BITERR
+
+ONBDSR:
+	LD	A,L
+	CP	17
+	JR	NC,BITERR	; Keine SHardspezifischen Baudrates
+	POP	AF
+	PUSH	AF
+	CP	32
+	LD	A,E
+	CALL	Z,BAUSCC	;serielle Schnittstellen on board
+	JR	ISPO
+;
+BASSER:
+	LD	A,L		;serielle Schnittstelle BASIS	
+	CP	16		;38400 Baud nicht moeglich, kein SHardspez.
+	JR	NC,BITERR
+	POP	AF
+	PUSH	AF
+	CP	32		;einstellend ?
+	CALL	Z,BAUBAS	;Ja ->	
+	JR	ISPO
+;
+;................................................................
+;
+;	B I T S
+;
+;	Eingang: A  = eigener Kanal
+;		 DE = adressierter Kanal
+;		 TOS= Schluessel
+;
+;	Unterstuetzt: 	1, 1.5, 2 Stopbits
+;			7 oder 8 Datenbits
+;			No, Even, Odd Parity
+;
+; 	Ausgang: BC = 0=ok, 1=nicht moeglich
+;
+BITS:
+	POP	HL
+	PUSH	AF
+	LD	A,H
+	OR	D
+	JR	NZ,BITERR
+
+	LD	A,E		; addressierter Kanal
+	CALL	LOGPHYS		; umrechnen
+	LD	E,A
+
+	CP	5
+	JR	Z,TBASS
+	CP	2
+	JR	Z,TSSER
+	CP	3		;serielle Kanaele ?
+	JR	NZ,BITERR	;Nein ->
+
+TSSER:
+	LD	A,L
+	AND	7		; Weniger als 7 Datenbits ?
+	CP	7-1
+	JR	C,BITERR
+;
+	POP	AF
+	PUSH	AF
+	CP	32
+	LD	A,E
+	CALL	Z,BITSCC
+ISPO:
+	POP	AF
+	LD	BC,0		;sonst moeglich melden
+	RET
+;
+TBASS:
+	LD	A,L
+	AND	7
+	CP	7-1
+	JR	C,BITERR	; Weniger als 7 Datenbits
+	BIT	5,L		; 1.5 Stopbits nicht moeglich
+	JR	NZ,BITERR
+	LD	A,L
+	CP	00101111B	; 8 Datenbits, 2 Stopbits und Parity nicht
+	JR	Z,BITERR
+	CP	00110111B	; dgl. even Parity nicht moeglich
+	JR	Z,BITERR
+
+	POP	AF
+	PUSH	AF
+	CP	32		; Werte einstellen ?
+	CALL	Z,BITBAS
+	JR	ISPO
+;
+BITERR:
+	POP	AF
+	LD	BC,1		;nicht moeglich
+	RET
+;
+;................................................................
+;
+;	F L O W
+;
+;	Flusskontrolle einstellen
+;
+;	Eingang: A  = eigener Kanal
+;		 DE = adressierter Kanal
+;		 TOS= Schluessel
+;
+;		
+; 	Ausgang: BC = 0=ok, 1=nicht moeglich
+;		
+FLOW:
+	POP	HL
+	PUSH	AF
+	LD	A,D
+	OR	H		; Modus > 255 oder Kanal > 255 --> geht nicht
+	JR	NZ,BITERR
+
+	LD	A,E		; adressierter Kanal
+	CALL	LOGPHYS		; umrechnen
+	LD	E,A
+	CP	CHNUM
+	JR	NC,BITERR	;falscher Kanal -> nicht moeglich
+	CP	1
+	JR	Z,BITERR
+
+	LD	A,L
+	AND	A		; Keine Flusskontrolle ?
+	JR	Z,FLOW1		; ja, 0 eintragen
+
+	CP	11
+	JR	NC,BITERR	; Modus > 11 geht nicht
+
+	CP	4		; Eingabe-/Ausgabeseitig ? (1, 2, 3)
+	JR	NC,FLOW1	; nein, Bits bleiben so
+	OR	1100B		; Bit 2 und 3 setzen
+FLOW1:
+	LD	C,A
+	LD	HL,FLMOD
+	ADD	HL,DE
+	AND	(HL)		; Und-Verknuepfen
+	CP	C		; Immer noch gleich Modus ? ja, erlaubt
+	JR	NZ,BITERR	; sonst nicht erlaubt
+	
+	POP	AF
+	PUSH	AF
+	CP	32
+	JR	NZ,ISPO		; ok melden, wenn nicht einstellend
+
+;	Flusskontrolle einstellen
+
+	LD	A,E		; Adressierter Kanal in A 
+	CALL	EGO		; 'Weiter' aufrufen mit alter Einstellung
+
+	CALL	FLWTYP
+	LD	(HL),C		; gewuenschten Modus eintragen
+
+	CP	5
+	CALL	Z,EFLOW5	; Eingabeflusskontrolle fuer Kanal 5
+				; DTR, XON/XOFF einstellbar
+
+				; Da RTS-Fluskontrolle hardwaremaessig bedingt
+				; nicht wie gewuenscht arbeitet (Uebertragungs-
+				; fehler und Transmitter disabled), wird DTR-
+				; Flusskontrolle verwendet. ggf. muss die RTS-
+				; Leitung des Fremdrechners mit der DTR-
+				; Leitung (Pin 20) des Basis verbunden werden.
+	CALL	AFLOW		; Ausgabe-Flusskontrolle einstellen
+	JR	ISPO
+	
+;...........................................................................
+;	
+;	F L W T Y P
+;
+;	Zeiger auf Tabelle mit aktuellem Flusskontrollmodus berechnen
+;
+;	Eingang: A = gewuenschter Kanal (1..15)
+;
+;	Ausgang: HL = Zeiger auf Eintrag in der Flowtabelle
+;		 andere Register nicht veraendert
+;
+FLWTYP:
+	LD	HL,FLTAB
+	CP	CHNUM		; Zeigt auf Dummyeintrag
+	RET	NC
+
+	PUSH	DE
+	LD	D,0
+	LD	E,A
+	ADD	HL,DE
+	POP	DE
+	RET
+
+;
+;
+;	Flowtabelle
+;
+;	Bit 0 : 1 = XON/XOFF
+;	Bit 1 : 1 = RTS/CTS (bzw. DTR/CTS bei Basis)
+;	Bit 2 : 1 = Ausgabeseitige Flusskontrolle
+;	Bit 3 : 1 = Eingabeseitige Flusskontrolle
+;	Bit 7 : 1 = Eingabeseitig im Stopzustand
+;
+FLTAB::
+	DEFB	0		; -
+	DEFB	1000B		; Kanal 1, Eingabeflusskontrolle
+	DEFB	0		; Kanal 2
+	DEFB	0		; Kanal 3
+	DEFB	0		; Kanal 4
+	DEFB	0		; Kanal 5
+	DEFB	0		; Kanal 6
+;
+CHNUM	EQU	$-FLTAB		;Kanalanzahl
+
+;	Tabelle mit Flowmoeglichkeiten der Kanaele
+;	Bit 0 : 1 = XON/XOFF moeglich
+;	Bit 1 : 1 = RTS/CTS (bzw. DTR/CTS bei Basis) moeglich
+;	Bit 2 : 1 = Ausgabeseitige Flusskontrolle moeglich
+;	Bit 3 : 1 = Eingabeseitige Flusskontrolle moeglich
+;		Bit 2 und 3 duerfen gleichzeitig 1 sein.
+;		Bit 0 und 1 duerfen gleichzeitig 0 und 1 sein.
+
+FLMOD:
+	DEFB	0		; -
+	DEFB	0		; Kanal 1, nicht einstellbar
+	DEFB	1111B		; Kanal 2
+	DEFB	1111B		; Kanal	3
+	DEFB	0		; Kanal 4
+	DEFB	1111B		; Kanal 5
+	DEFB	0		; Kanal 6
+;
+;................................................................
+;
+;	F O R M A T
+;
+;	Archiv formatieren
+;
+;	Eingang:  A = Kanalnummer
+;		  DE = Schluessel, wie SIZE
+;	Ausgang:  BC = Rueckmeldung, wie BLOCKIO
+;
+FORMAT:
+	POP	HL
+	LD	BC,-1
+	CP	31		; SCSI-Floppy ?
+	RET	NZ		; Kein formatieren moeglich
+
+	PUSH	AF
+
+	CALL	SIZEX
+	LD	A,SFORMAT
+	LD	(HGOP),A
+	LD	BC,ARC31
+	CALL	SCSIBK
+	POP	AF
+	RET
+;
+;****************************************************************
+;
+;	C A L E N D A R
+;
+;	Entry:	DE = (1:Min, 2:Std, 3: Tag, 4:Mon, 5:Jahr)
+;	Ausgang:BC = Rueckmeldung
+;		     BC = -1 : Keine Uhr oder falsche Parameter
+;			sonst: gewuenschter BCD(!)-Wert
+;
+;
+
+CALENDAR:
+	PUSH	AF
+	DI
+	LD	BC,-1
+	LD	A,D	
+	JR	NZ,CALEND	; fehlerhafter Aufruf
+	LD	A,E
+	CP	6
+	JR	NC,CALEND	; ebenfalls
+	LD	A,(RTCOK)	; Flag fuer Time ok
+	AND	A
+	JR	Z,CALEND	; 0= Nicht ok
+
+	LD	A,20H		; 2 (programmierte) eff. 3 Uhrenwaitstates
+	OUT0	(DCNTL),A
+
+	LD	BC,RTCRA	; B=0 !
+
+CAL1:	TSTIO	80H		; UIP (Update in progress) testen
+	JR	NZ,CAL1		; warten bis beendet
+
+	LD	HL,CALPORTS	; Tabelle mit Registerzuordnung
+	ADD	HL,DE		; D ist 0, E ist Offset
+	LD	C,(HL)
+	IN	C,(C)		; BC = BCD-Wert
+	LD	B,C		; High-Digit ins Highbyte
+	SRL	B
+	SRL	B
+	SRL	B
+	SRL	B
+
+CALEND:
+	XOR	A
+	OUT0	(DCNTL),A	; 0 (prog.) I/O Waitstates
+	EI
+	POP	AF
+	POP	HL
+	RET
+
+CALPORTS:
+	DEFB	RTCS, RTCM, RTCH, RTCDY, RTCMO, RTCYR
+;		Sec,  Min,  Std,  Day,   Mon,   Year
+
+	
+;****************************************************************
+;
+;	I O A C C
+;
+;	Entry:	HL = -1 = Read, sonst Value
+;		DE = I/O-Addr. (0..FF) real + 40H
+;			(Prozessor I/O: C0..FF)
+;		A  = aufrufender Kanal (Write nur 32!)
+;
+;	Exit:	BC = -1 = Error
+;		sonst Value
+;
+;
+IOACC:
+	POP	HL
+	CP	25		; Nur an privilegierten Kanaelen
+	LD	BC,-1		; Kanal 25..32
+	RET	C
+	INC	B		; B := 0
+
+	LD	A,E
+	ADD	A,040H		; I/O-Adresse umrechnen
+	LD	C,A
+;
+;	2 zusaetzliche I/O Wait States einbauen (fuer Uhrenzugriff)
+;
+	CP	0C0H		; Uhrenzugriff ?
+	JR	C,NCLK		; Nein -> keine extra Wait States
+
+	DI
+
+	LD	A,20H
+	OUT0	(DCNTL),A
+;
+NCLK:
+	LD	A,L
+	AND	H
+	INC	A		; HL = -1 ? 
+	JR	Z,RDVAL		; Ja ->
+;
+	OUT	(C),L		; Wert eintragen
+	LD	C,B		; C := 0
+	JR	IOAEND
+;
+RDVAL:
+	IN	C,(C)
+;
+IOAEND:
+	XOR	A		; Keine Waitstates mehr
+	OUT0	(DCNTL),A
+	EI
+	RET
+
+;***********************************************************************
+;
+;	C L R B U F
+;
+;	Drucker-Spooler des Kanals loeschen
+;
+;	Eingang: A = Kanalnummer (4, 6)
+;
+CLRBUF:
+	CALL	LOGPHYS
+	LD	L,8			; Task 8 : Clear Spooler
+	CP	A,6
+	CALL	Z,TO6502		; A nicht veraendert
+	CP	A,4
+	CALL	Z,CLRCBUF
+	POP	HL
+	RET
+
+;----------------------------------------------------------------
+;
+;	O U T V A R
+;
+;	Ausgabe einer Zeichenkette
+;
+; 	Eingang:  A = Terminalnummer (1=Arbeitsconsole, 2=Drucker)
+;	          HL = Adresse der Zeichenkette
+;       	  BC = Anzahl der Zeichen
+;	Ausgang:  BC = Anzahl der uebernommenen Zeichen.
+;	          c-Flag gesetzt <=> alles uebernommem.
+;
+;	Hinweis: SHOUT darf auf keinen Fall WARTE aufrufen !!
+;
+SHOUT:
+	
+	CALL	LOGPHYS		; Kanalnummer log. --> phys. umrechnen
+	LD	(KANAL),A
+	LD	A,B
+	OR	C
+	JR	Z,OUTEA		; Nix auszugeben
+
+	PUSH	DE
+	PUSH	HL
+
+	LD	A,(KANAL)
+	CP	1
+	JR	Z,OUT1
+	CP	5
+	JR	Z,OUT5
+	CP	6
+	JR	C,OUT234
+	JR	Z,OUT6
+
+OVDON:
+	SCF			; Alles uebernommen
+RETREG:
+	POP	HL
+	POP	DE
+OUTEA:	LD	A,(KANAL)
+	RET
+
+OUT1:				; Master Console
+	CALL	STROUT
+	JR	OVDON		; Alles uebernommen
+;
+;
+OUT5:				; BASIS serielle Schnittstelle
+	LD	E,4
+	JR	OUT56
+
+OUT6:				; BASIS parallele Schnittstelle
+	LD	E,3
+OUT56:
+				; Anzahl uebernehmbarer Zeichen berechnen
+	PUSH	BC
+	CALL	FRE65		; Kanal in A, HL veraendert BC = Size-Free
+	LD	H,B
+	LD	L,C
+	POP	BC
+
+	LD	A,L
+	SUB	C
+	LD	A,H
+	SBC	B		; NC : HL (free) >= BC (length)
+	JR	NC,OUT56A	; NC: Alles uebernommen
+	LD	B,H
+	LD	C,L		; uebernommene Laenge
+OUT56A:
+	POP	HL
+	PUSH	HL
+	CCF			; Carry Flag, fuer "Alles uebernommen"
+	PUSH	BC
+	PUSH	AF
+				; fuer Ausgang merken
+OUT56B:
+	LD	A,B
+	OR	C
+	JR	Z,OUT56C	; fertig
+
+	PUSH	HL
+	LD	H,(HL)		; Zu sendendes Zeichen
+	LD	L,E		; Task 3 oder 4
+	CALL	TO6502
+	POP	HL
+
+	INC	HL
+	DEC	BC
+	JR	OUT56B
+
+OUT56C:
+	POP	AF		; Carry Flag
+	POP	BC
+	JR	RETREG
+
+OUT234:				; 64180-Card Kanaele (SCCA, SCCB, Centronics)
+	PUSH	IX
+	LD	IX,DRUCK	; Zeiger auf Centronics Kanaltabelle
+	CP	4
+	JR	Z,PUTBUFF
+	LD	IX,SCCATAB
+	CP	3
+	JR	Z,PUTBUFF
+	LD	IX,SCCBTAB
+
+PUTBUFF:
+	CALL	PUTBUF		; Falls Puffer voll, nichts uebernommen
+	POP	IX
+	JR	RETREG
+
+;
+;
+;****************************************************************
+;
+;	Meldungen ausgeben auf System-Kanal
+;	String beginnt mit Laengenbyte (!)
+;	Ausser HL keine Register verandert
+;
+SENDMSG:
+	PUSH	AF
+	PUSH	BC
+	LD	C,(HL)
+	INC	HL
+	LD	B,0
+	LD	A,1		; System-Kanal
+	CALL	SHOUT		; String ab HL an Kanal in A ausgeben
+	POP	BC
+	POP	AF
+	RET
+;
+;****************************************************************
+;
+;	Variable
+;
+HDOFS:	DEFB	0		;Harddisk 0
+	DEFB	30H, 00H
+HDLAST:	DEFB	0
+	DEFB	0B2H, 0
+;
+SAVSTP:	DEFW	0		; gesicherter Stackpointer bei TRAP-Interrupt
+RTCOK:	DEFB	0		; FF, wenn RTC-Werte gueltig
+HGOP:	DEFB	0
+KANAL:	DEFB	1		; Kanal merken
+
+;------------------------------------------------------------------------
+;	Anzahl 512-Byte Bloecke, die ein Blockkanal fassen kann
+;	Wird bei control-size abgefragt und vorher bestimmt
+
+BLKTAB:
+
+CPMBLKS:DEFW	0		; Kanal 28 CP/M-Harddisk-Volume
+D1BLKS:	DEFW	0		; Kanal 29 Apple-Floppy 1
+D0BLKS:	DEFW	0		; Kanal 30 Apple-Floppy 0
+ARBLKS:	DEFW	1440		; Kanal 31 SCSI-Floppy 0
+HGBLKS:	DEFW	0		; Kanal 0 (Hintergrund)
+CONBLKS:DEFW	2*4*8		; Kanal 1 (Graphikspeicher) 4 * 8k Seiten
+;
+;
+;****************************************************************
+;
+	END
+

@@ -1,0 +1,290 @@
+PACKET dos disk DEFINES                       (* Copyright (C) 1985, 86 *)
+                                              (* Frank Klapper          *)
+  first fat byte,                             (* 30.05.86               *)
+  begin of fat,
+  number of fat sectors, 
+  number of fat entrys, 
+  number of fat copies,
+  begin of dir,
+  number of dir sectors,
+  begin of data area,
+  sectors per cluster,
+  cluster size,
+  sector size,
+
+  eublock,
+  first block no of cluster,
+
+  reset disk attributes,
+  set disk attributes:
+ 
+LET dir entrys per block    = 16,
+    first non dummy ds page = 2;
+
+LET DOSDISK = STRUCT (INT sectors per cluster,
+                          number of reserved sectors,
+                          number of fats,
+                          number of dir sectors,
+                          first fat byte,
+                          number of fat sectors,
+                          heads,
+                          sectors per track,
+                          tracks,
+                          number of fat entrys,
+                     REAL size);
+
+LET BLOCK = BOUND STRUCT (ALIGN dummy, ROW 64 REAL block row);
+
+INT CONST sector size :: 512;
+
+TEXT VAR bpb := 32 * " ";
+
+INITFLAG VAR bpb ds used := FALSE;
+
+DATASPACE VAR bpb ds;
+
+BLOCK VAR bpb block;
+
+DOSDISK VAR disk format;
+BOUND DOSDISK VAR format table;
+
+INT VAR eu sectors,
+        xbegin of data area;
+
+INT PROC eublock (INT CONST nr):
+(*COND FLOPPY
+  IF page format
+    THEN head * eu sectors per head + trac * eu sectors + sector
+    ELSE head * eu sectors + trac * abs (eu heads) * eu sectors + sector
+  FI.
+
+page format:
+  eu heads < 0.
+
+sector:
+  nr MOD disk format.sectors per track.
+
+trac: 
+  (nr DIV disk format.sectors per track) DIV disk format.heads.
+
+head:
+  (nr DIV disk format.sectors per track) MOD disk format.heads.
+
+eu sectors per head:
+  eu sectors * eu tracks.
+
+ENDCOND*)
+(*COND HDU*)
+  nr
+
+(*ENDCOND*)
+
+END PROC eublock;
+
+INT PROC first block no of cluster (INT CONST cluster no):
+  IF cluster no < 2
+    THEN error stop ("interner Fehler")
+  FI;
+  begin of data area + (cluster no - 2) * sectors per cluster.
+
+END PROC first block no of cluster;
+
+INT PROC first fat byte:
+  disk format.first fat byte
+
+END PROC first fat byte;
+ 
+INT PROC number of fat copies:
+  disk format.number of fats
+
+END PROC number of fat copies;
+
+INT PROC number of fat sectors:
+  disk format.number of fat sectors 
+
+END PROC number of fat sectors;
+
+INT PROC number of fat entrys:
+  disk format.number of fat entrys
+
+END PROC number of fat entrys;
+
+INT PROC number of dir sectors:
+  disk format.number of dir sectors 
+
+END PROC number of dir sectors;
+
+INT PROC begin of fat (INT CONST no):
+  disk format.number of reserved sectors + no * disk format.number of fat sectors
+
+END PROC begin of fat;
+
+INT PROC begin of dir:
+  disk format.number of reserved sectors + 
+  disk format.number of fats * disk format.number of fat sectors
+ 
+END PROC begin of dir;
+
+INT PROC begin of data area:
+  xbegin of data area
+
+END PROC begin of data area;
+
+INT PROC sectors per cluster:
+  disk format.sectors per cluster 
+
+END PROC sectors per cluster;
+
+INT PROC cluster size:
+  disk format.sectors per cluster * 512
+
+END PROC cluster size;
+
+PROC set disk attributes (INT CONST first fat byte):
+  enable stop;
+(*COND FLOPPY
+  get bios parameter block; 
+  IF is valid bpb
+    THEN load disk data from bpb
+    ELSE load disk disk data from ds
+  FI;
+  eu sectors := eu last sector - eu first sector +1;
+ENDCOND*)
+  xbegin of data area := disk format.number of reserved sectors +
+        disk format.number of fats * disk format.number of fat sectors +
+        disk format.number of dir sectors; 
+(*COND FLOPPY
+  test compatibility 
+ 
+.is valid bpb:
+  first fat byte < 252 OR code (bpb SUB 22) = first fat byte.
+
+load disk disk data from ds:
+  IF exists (text (first fat byte))
+    THEN format table := old (text (first fat byte));
+         copy values
+    ELSE error stop ("DOS-Diskettenformat nicht implementiert")
+  FI.
+
+copy values:
+  disk format.sectors per cluster        := format table.sectors per cluster; 
+  disk format.number of reserved sectors := format table.number of reserved sectors; 
+  disk format.number of fats             := format table.number of fats;
+  disk format.size                       := format table.size;
+  disk format.number of dir sectors      := format table.number of dir sectors;
+  disk format.first fat byte             := format table.first fat byte;
+  disk format.number of fat sectors      := format table.number of fat sectors;
+  disk format.heads                      := format table.heads;
+  disk format.sectors per track          := format table.sectors per track;
+  disk format.tracks                     := format table.tracks;
+  disk format.number of fat entrys       := format table.number of fat entrys.
+
+test compatibility:
+  IF disk format.sectors per track > eu sectors
+    OR eu tracks <> disk format.tracks
+    OR abs (eu heads) < disk format.heads
+    OR disk format.number of reserved sectors <> 1
+    THEN error stop ("DOS-Format auf diesem Diskettenlaufwerk nicht lesbar")
+  FI; 
+ENDCOND*)
+ 
+END PROC set disk attributes;
+
+PROC reset disk attributes:
+(*COND FLOPPY
+  disk format.sectors per cluster        := 1;
+  disk format.number of reserved sectors := 1;
+  disk format.number of fats             := 1;
+  disk format.size                       := real (eu size);
+  disk format.number of dir sectors      := 4;
+  disk format.first fat byte             := 255;
+  disk format.number of fat sectors      := 1;
+  disk format.heads                      := eu heads;
+  disk format.sectors per track          := eu tracks;
+  disk format.tracks                     := eu sectors;
+  disk format.number of fat entrys       := 100.
+
+ENDCOND*)
+(*COND HDU*)
+  get bios parameter block; 
+  load disk data from bpb.
+
+(*ENDCOND*)
+
+END PROC reset disk attributes;
+
+PROC get bios parameter block:
+  init bpb ds;
+  read bpb;
+  copy bpb block to bpb text.
+
+init bpb ds:
+  IF NOT initialized (bpb ds used)
+    THEN bpb ds := nilspace;
+         bpb block := bpb ds
+  FI.
+
+read bpb:
+  INT VAR error;
+  read block (bpb ds, first non dummy ds page, 0, error);
+  IF error <> 0
+    THEN SELECT error OF 
+           CASE 1: errorstop ("Floppylaufwerk nicht betriebsbereit") 
+           CASE 2: errorstop ("Schreib-/Lesefehler") 
+           CASE 3: errorstop ("Interner Fehler (Blocknummer zu hoch)") 
+           OTHERWISE errorstop ("Schreib-/Lesefehler " + text (error)) 
+         END SELECT
+  FI.
+
+copy bpb block to bpb text:
+  replace (bpb, 1, bpb block. block row [1]);
+  replace (bpb, 2, bpb block. block row [2]);
+  replace (bpb, 3, bpb block. block row [3]); 
+  replace (bpb, 4, bpb block. block row [4]).
+
+END PROC get bios parameter block;
+
+PROC load disk data from bpb:
+  disable stop;
+  enable load disk data from bpb;
+  IF is error
+    THEN clear error;
+         enable stop;
+         error stop ("Bios-Parameterblock ungÅltig")
+  FI.
+
+END PROC load disk data from bpb;
+
+PROC enable load disk data from bpb:
+  disk format.sectors per cluster        := code (bpb SUB 14);
+  disk format.number of reserved sectors := code (bpb SUB 16) * 256 + code (bpb SUB 15);
+  disk format.number of fats             := code (bpb SUB 17);
+  disk format.number of dir sectors      := dir entrys DIV dir entrys per block; 
+  disk format.size                       := real (code (bpb SUB 21)) * 256.0 + real (code (bpb SUB 20));
+  disk format.first fat byte             := code (bpb SUB 22);
+  disk format.number of fat sectors      := code (bpb SUB 24) * 256 + code (bpb SUB 23); 
+  disk format.heads                      := dos heads;
+  disk format.sectors per track          := code (bpb SUB 26) * 256 + code (bpb SUB 25);
+  disk format.tracks                     :=
+        int(disk format.size / real(disk format.sectors per track * disk format.heads));
+  disk format.number of fat entrys       := fat entrys.
+ 
+dir entrys:
+  code (bpb SUB 19) * 256 + code (bpb SUB 18).
+
+dos heads:
+  code (bpb SUB 28) * 256 + code (bpb SUB 27).
+
+fat entrys:
+  data clusters + 2.
+
+data clusters:
+  int ((disk format.size - real (no of table sectors)) / real (sectors per cluster)).
+
+no of table sectors:
+  disk format.number of reserved sectors + disk format.number of fats * disk format.number of fat sectors +
+  disk format.number of dir sectors. 
+
+END PROC enable load disk data from bpb;
+
+END PACKET dos disk;

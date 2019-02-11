@@ -1,0 +1,245 @@
+PACKET disk manager DEFINES                 (* Copyright (C) 1986 *)
+                                            (* Frank Klapper      *)
+  disk fetch,                               (* 07.05.86           *)
+  disk check,
+  disk save first phase,
+  disk save second phase,
+  disk clear,
+  disk format,
+  disk erase,
+  disk exists,
+  disk list,
+  disk all,
+  disk reserve,
+  disk free:
+
+LET ascii        = 1,
+    ascii german = 2,
+    transparent  = 3,
+    ebcdic       = 4,
+    row text     = 5,
+    ds           = 6,
+    atari st     = 10;
+
+TEXT VAR file name;
+
+INT VAR mode := 0;
+TEXT VAR mode extension;
+
+REAL VAR last access time := 0.0;
+
+PROC disk fetch (TEXT CONST name, DATASPACE VAR file ds):
+  enable stop;
+  access disk;
+  file name  := adapted name (name, TRUE);
+  IF dir contains (file name)
+    THEN do fetch
+    ELSE errorstop ("die Datei """ + file name + """ gibt es nicht")
+  FI;
+  last access time := clock (1).
+
+do fetch:
+  SELECT mode OF 
+    CASE ascii, ascii german, atari st, ebcdic, transparent: fetch filemode (file ds, filename, mode)
+    CASE row text   : fetch row textmode (file ds, filename)
+    CASE ds         : fetch dsmode       (file ds, filename)
+    OTHERWISE error stop ("Unzul„ssige Betriebsart")
+  END SELECT.
+
+END PROC disk fetch;
+
+PROC disk check (TEXT CONST name):
+  enable stop;
+  access disk;
+  file name := adapted name (name, TRUE);
+  IF dir contains (file name)
+    THEN disable stop;
+         check file (file name);
+         IF is error
+           THEN clear error;
+                error stop ("Fehler beim Prflesen der Datei """ + file name + """")
+         FI;
+    ELSE error stop ("""" + file name + """ gibt es nicht")
+  FI;
+  last access time := clock (1).
+
+END PROC disk check;
+
+PROC disk save first phase (TEXT CONST name, BOOL VAR overwrite question):
+  enable stop;
+  overwrite question := FALSE;
+  access disk;
+  file name := adapted name (name, FALSE); 
+  IF dir contains (file name)
+     THEN overwrite question := TRUE
+  FI;
+  last access time := clock (1).
+
+END PROC disk save first phase;
+
+PROC disk save second phase (DATASPACE CONST file ds): 
+  enable stop;
+  access disk;
+  erase file if necessary;
+  do save;
+  last access time := clock (1).
+
+erase file if necessary:
+  IF dir contains (file name)
+    THEN erase table entrys (file name)
+  FI.
+
+do save:
+  SELECT mode OF 
+    CASE ascii, ascii german,atari st, ebcdic, transparent: save filemode (file ds, filename, mode)
+    CASE row text   : save row textmode (file ds, filename)
+    CASE ds         : save dsmode       (file ds, filename)
+    OTHERWISE error stop ("Unzul„ssige Betriebsart")
+  END SELECT.
+
+END PROC disk save second phase;
+
+(* DOS bekommt die Tabellenparameter von der Diskette
+   CPM bekommt die Tabellenparameter ber 'reserve'   *)
+
+PROC disk clear:
+  enable stop;
+(*COND DOS*)
+  access disk;
+(*ENDCOND*)
+(*COND CPM
+  open eu disk;
+  open action;
+ENDCOND*)
+  format disk;
+  last access time := clock (1).
+
+END PROC disk clear;
+
+PROC disk erase (TEXT CONST name):
+  enable stop;
+  access disk;
+  file name := adapted name (name, TRUE); 
+  IF NOT dir contains (file name)
+    THEN errorstop ("die Datei """ + file name + """ gibt es nicht")
+    ELSE erase table entrys (file name);
+  FI;
+  last access time := clock (1).
+
+END PROC disk erase;
+ 
+BOOL PROC disk exists (TEXT CONST name):
+  enable stop;
+  access disk;
+  last access time := clock (1);
+  dir contains (adapted name (name, TRUE)).
+
+END PROC disk exists;
+
+PROC disk list (DATASPACE VAR list ds):
+  enable stop;
+  access disk;
+  dir list (list ds);
+  last access time := clock (1).
+
+END PROC disk list;
+
+THESAURUS PROC disk all:
+  enable stop;
+  access disk;
+  last access time := clock (1);
+  dir all.
+
+END PROC disk all;
+
+PROC disk format:
+
+(*COND DOS*)
+  error stop ("nicht implementiert")
+(*ENDCOND*)
+
+(*COND CPM
+  enable stop;
+  open eu disk;
+  open action;
+  format archive (eu disk format no);
+  format disk;
+  last access time := clock (1).
+ENDCOND*)
+
+END PROC disk format;
+
+PROC disk reserve (TEXT CONST reserve string):
+  enable stop;
+  close action;
+  last access time := clock (1);
+  get mode.
+ 
+get mode:
+  TEXT VAR mode text;
+  IF pos (reserve string, ":") = 0
+    THEN mode text := reserve string;
+         mode extension := ""
+    ELSE mode text := subtext (reserve string, 1, pos (reserve string, ":") - 1);
+         mode extension := subtext (reserve string, pos (reserve string, ":") + 1)
+  FI;
+  prepare modetext;
+  IF mode text = "FILEASCII"
+    THEN mode := ascii
+  ELIF mode text = "FILEASCIIGERMAN"
+    THEN mode := asciigerman
+  ELIF mode text = "FILEATARIST"
+    THEN mode := atari st
+  ELIF modetext = "FILEEBCDIC"
+    THEN mode := ebcdic
+  ELIF modetext = "FILETRANSPARENT"
+    THEN mode := transparent
+  ELIF mode text = "ROWTEXT"
+    THEN mode := row text
+  ELIF mode text = "DS"
+    THEN mode := ds
+   ELSE error stop ("Unzul„ssige Betriebsart")
+  FI.
+
+prepare modetext:
+  change all (mode text, " ", "");
+  INT VAR i;
+  FOR i FROM 1 UPTO LENGTH mode text REP
+    IF is lower case
+      THEN replace (mode text, i, upper case char)
+    FI
+  PER.
+
+is lower case:
+  code (mode text SUB i) > 96 AND code (mode text SUB i) < 123.
+
+upper case char:
+  code (code (mode text SUB i) - 32).
+
+END PROC disk reserve;
+
+PROC disk free:
+  disable stop;
+  close action;
+  close disk;
+  reduce cluster buffer.
+
+END PROC disk free;
+
+PROC access disk:
+  IF action closed COR (last access more than two seconds ago CAND disk changed)
+    THEN open disk archive
+  FI.
+
+open disk archive:
+  close action;
+  open eu disk;
+  open disk (mode extension);
+  open action.
+
+last access more than two seconds ago:
+  abs (clock (1) - last access time) > 2.0.
+
+END PROC access disk;
+
+END PACKET disk manager;

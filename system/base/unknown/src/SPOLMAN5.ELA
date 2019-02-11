@@ -1,0 +1,1003 @@
+PACKET queue handler DEFINES enter into que,
+                             exists in que,
+                             all in que,
+                             erase from que, 
+                             erase last top of que,
+                             get top of que, 
+                             restore ,
+                             list que, 
+                             info, killer,first, 
+                             que status, 
+                             que empty,
+                             set entry types,
+                             change entry types,
+                             initialize que:
+ 
+ 
+LET que size    = 100, 
+ 
+    empty       =   0, 
+    used        =   1,
+    blocked     =   2, 
+    nil         =   0,
+    user  error =  99,
+    unused char =   ""0"", 
+    used char   =   ""1"", 
+    blocked char=   ""2"", 
+    ENTRY       = STRUCT(TEXT title, TASK origin, TEXT origin name, 
+                         DATASPACE space, INT storage,    acc code ) ; 
+ 
+ROW que size ENTRY VAR que ; 
+ 
+TEXT VAR status list; 
+BOOL VAR n ok := FALSE; 
+INT  VAR top of que,
+         first que entry, 
+         last que entry,
+         index ;
+ 
+.entry: que[index]. ;
+ 
+PROC initialize que : 
+  FOR index FROM 1 UPTO que size REP 
+    forget( entry.space ); 
+    entry.acc code := empty
+  END REP ; 
+  first que entry := nil;
+  last que entry  := nil; 
+  top of que      := nil;
+  index           := nil; 
+  status list     := que size * unused char; 
+END PROC initialize que ; 
+ 
+initialize que ; 
+
+(****************** Interne Queue-Zugriffsoperationen **********************)
+ 
+INT PROC next (INT CONST pre) : 
+  pre MOD que size + 1 
+END PROC next ; 
+ 
+PROC block (INT CONST entry number) : 
+  que [entry number].acc code := blocked; 
+  replace (status list,entry number,blocked char); 
+ENDPROC block; 
+ 
+PROC unblock (INT CONST entry number) : 
+  que [entry number].acc code := used; 
+  replace (status list,entry number,used char); 
+ENDPROC unblock; 
+ 
+PROC to next que entry: 
+  REP 
+    IF index = last que entry OR index = nil
+      THEN index := nil ; LEAVE to next que entry 
+    FI ;
+    index := next(index)
+  UNTIL entry.acc code <> empty PER 
+END PROC to next que entry ; 
+ 
+PROC to first que entry : 
+  index := first que entry 
+END PROC to first que entry ; 
+ 
+PROC search que entry (TEXT CONST title, TASK CONST origin) : 
+ 
+  check if index identifies entry ;
+  IF last que entry = nil 
+    THEN index := nil 
+    ELSE index := last que entry ; 
+         REPEAT 
+           IF is wanted entry 
+             THEN LEAVE search que entry 
+           FI ; 
+           IF index = first que entry 
+             THEN index := nil 
+             ELSE index DECR 1 ; 
+                  IF index = 0 
+                    THEN index := que size 
+                  FI 
+           FI 
+         UNTIL index = nil PER 
+  FI. 
+ 
+is wanted entry: 
+ 
+  entry.acc code <> empty CAND 
+  entry.title    =  title CAND 
+ (entry.origin   =  origin OR 
+  origin = niltask ).
+ 
+check if index identifies entry: 
+ 
+  IF index <> nil CAND is wanted entry 
+    THEN LEAVE search que entry 
+  FI 
+ 
+END PROC search que entry ; 
+ 
+PROC exec erase :
+ 
+    forget (entry.space) ; entry.acc code := empty ; 
+    replace (status list,index,unused char); 
+    try to cut off queue ends. 
+ 
+try to cut off queue ends: 
+ 
+  WHILE first entry is not valid REP 
+    check if que empty ; 
+    first que entry := next(first que entry) 
+  END REP ; 
+  WHILE last entry is not valid REP 
+    make index invalid if necessary ; 
+    last que entry DECR 1 ; 
+    IF last que entry = 0 
+      THEN last que entry := que size 
+    FI 
+  END REP . 
+ 
+first entry is not valid: 
+     que [first que entry].acc code = empty. 
+ 
+last entry is not valid: 
+     que [last que entry].acc code = empty. 
+ 
+check if que empty: 
+     IF first que entry = last que entry 
+       THEN first que entry := nil ;
+            last que entry  := nil ; 
+            index := nil ; 
+            LEAVE try to cut off queue ends
+     FI.
+
+make index invalid if necessary: 
+     IF index = last que entry 
+       THEN index := nil 
+     FI. 
+ 
+END PROC exec erase ;
+ 
+PROC exec first: 
+  IF next (last que entry) = first que entry 
+    THEN errorstop ("Queue ist voll - vorziehen unmoeglich") 
+  ELIF index = top of que 
+    THEN errorstop ("Auftrag wird bereits bearbeitet") 
+  ELIF entry.acc code = empty 
+    THEN errorstop ("undefinierter Queue-Eintrag. /exec first") 
+    ELSE first que entry DECR 1 ; 
+         IF first que entry = 0 
+           THEN first que entry := que size 
+         FI ; 
+         que[first que entry] := que[index] ; 
+         replace (status list,first que entry,code (entry.acc code)); 
+         exec erase 
+  FI 
+END PROC exec first ; 
+ 
+PROC erase last top of que: 
+  IF top of que <> nil 
+    THEN index := top of que; exec erase;
+         top of que := nil 
+  FI 
+END PROC erase last top of que;
+ 
+ 
+(******************  Behandlung von DATASPACE-typen  ***********************)
+ 
+LET semicolon = ";" , 
+    colon     = ":" , 
+    quote     = """"; 
+TEXT VAR entry types ::   ""   ; 
+ 
+BOOL PROC no permitted type (DATASPACE CONST ds) : 
+  TEXT CONST type nr :: semicolon + text(type(ds)) + colon; 
+  INT  CONST t pos   :: pos (entry types,type nr) ; 
+  entry types <> "" CAND t pos = 0 
+END PROC no permitted type ; 
+ 
+TEXT PROC record of que entry: 
+  IF entry.acc code = empty 
+    THEN errorstop ("undefinierter Queue-Eintrag. /record");"" 
+    ELSE TEXT VAR record :: "" ; 
+         record CAT storage in k ; 
+         record CAT type of entry ; 
+         record CAT name of entry ; 
+         record CAT origin of entry ; 
+         IF entry.acc code = blocked THEN record CAT "- blocked -" FI;
+         record
+  FI. 
+ 
+storage in k: 
+ 
+  text (entry.storage,3) + " K  ". 
+ 
+type of entry: 
+ 
+  IF entry types = "" 
+    THEN 12 * "?" 
+    ELSE TEXT CONST type nr :: semicolon + text(type(entry.space)) + colon ; 
+         INT CONST semi colon pos :: pos (entry types, type nr), 
+                   start type     :: semi colon pos + LENGTH type nr , 
+                   end type       :: pos(entrytypes,semicolon,starttype)-1; 
+         IF semi colon pos = 0 
+           THEN 12 * "?" 
+           ELSE text( subtext(entry types, starttype, endtype),12)
+         FI 
+  FI. 
+ 
+name of entry: 
+ 
+  text (quote+ entry.title +quote, 20) .
+ 
+origin of entry: 
+ 
+  IF entry.origin = niltask 
+    THEN 20 * " "
+    ELSE text (" TASK: "+entry.origin name,20) 
+  FI 
+ 
+END PROC record of que entry ;
+ 
+PROC set entry types (TEXT CONST t) : 
+  check if void ;
+  IF first char is no semicolon
+    THEN entry types := semicolon
+    ELSE entry types := "" 
+  FI;
+  entry types CAT t ; 
+  IF last char is no semicolon
+    THEN entry types CAT semicolon 
+  FI.
+
+check if void: 
+  IF t = "" 
+    THEN entry types := ""; 
+         LEAVE set entry types 
+  FI. 
+ 
+first char is no semicolon: 
+  (t SUB 1) <> semicolon. 
+ 
+last char is no semicolon: 
+  (t SUB length(t)) <> semicolon 
+ 
+END PROC set entry types ; 
+ 
+PROC change entry types: 
+  TEXT VAR t :: entry types;
+  line;putline("Entrytypes :");
+  editget(t); 
+  set entry types (t) 
+END PROC change entry types; 
+ 
+ 
+(************************ Std Zugriffe auf Queue ***************************)
+ 
+ 
+PROC erase from que (TEXT CONST title, TASK CONST origin) : 
+  search que entry (title, origin) ; 
+  IF index = nil 
+    THEN errorstop ("Auftrag existiert nicht. /erase")
+  ELIF index = top of que 
+    THEN errorstop (user error, "Dieser Auftrag wird bereits bearbeitet") 
+    ELSE exec erase 
+  FI 
+END PROC erase from que ; 
+ 
+BOOL PROC exists in que (TEXT CONST title, TASK CONST origin) : 
+  search que entry (title, origin) ; 
+  index <> nil 
+END PROC exists in que ; 
+ 
+PROC info (BOOL CONST b) : n ok := b ENDPROC info; 
+ 
+THESAURUS PROC all in que (TASK CONST origin) : 
+ 
+  THESAURUS VAR result := empty thesaurus ; 
+  to first que entry ; 
+  WHILE index <> 0 REP 
+    IF entry.origin = origin OR origin = niltask 
+      THEN insert (result, entry.title)
+    FI ; 
+    to next que entry
+  END REP ; 
+  result 
+ 
+END PROC all in que ; 
+ 
+PROC enter into que (TEXT CONST title, TASK CONST origin, 
+                     DATASPACE CONST space ):
+ 
+  IF next(last que entry) = first que entry 
+    THEN errorstop ("Queue zu voll")
+  ELIF no permitted type (space)  OR title = ""
+    THEN errorstop (user error, "Auftrag wird nicht angenommen")
+    ELSE last que entry := next(last que entry); 
+         index := last que entry;
+         entry := ENTRY: 
+            ( title, origin,task name, space, storage(space), used ) ; 
+         IF first que entry = nil 
+           THEN first que entry := 1 
+         FI ; 
+         replace (status list,last que entry,used char); 
+  FI. 
+ 
+task name : 
+  TEXT VAR name of task :: name (origin); 
+  IF name of task = "stemmer" AND n ok THEN "stemmi" ELSE name of task FI. 
+ 
+END PROC enter into que ; 
+ 
+PROC get top of que (DATASPACE VAR top space) : 
+  forget (top space) ;
+  IF que empty 
+    THEN errorstop ("kein Auftrag vorhanden. /get") 
+    ELSE erase last top of que; 
+         top of que := first que entry; 
+         IF que [top of que].acc code = blocked THEN 
+            wrap around if necessary
+         ELSE top space := que [first que entry].space ; FI; 
+  FI . 
+ 
+wrap around if necessary : 
+ 
+  IF entry is allowed to be printed THEN 
+     give it to spool manager 
+  ELSE enter into end of queue FI. 
+ 
+entry is allowed to be printed : 
+  pos (status list,used char) = nil. 
+ 
+give it to spool manager : 
+  top space := que [first que entry].space; 
+  que [first que entry].acc code := used. 
+ 
+enter into end of queue : 
+  top space := que [first que entry].space; 
+  enter into que (que [first que entry].title,que [first que entry].origin 
+                  ,top space); 
+  index := first que entry; 
+  IF entry.acc code = blocked THEN block (index) FI; 
+  get top of que (top space). 
+ 
+END PROC get top of que ; 
+ 
+PROC restore:
+  top of que := nil 
+END PROC restore ; 
+ 
+BOOL PROC que empty:                         (* 'top of que' gilt nicht *)
+  first que entry = last que entry AND 
+  top of que      = last que entry. 
+END PROC que empty ; 
+ 
+PROC que status (INT VAR size, TEXT VAR top title, 
+                 TASK VAR top origin, TEXT VAR top origin name ): 
+ 
+  size := last que entry - first que entry ;  (* geloeschte Eintraege *)
+  IF size < 0                                 (* zaehlen mit !!       *)
+    THEN size INCR que size                   (* (aber nicht 'top' )  *)
+  FI ; 
+  IF top of que <> nil 
+    THEN top title       := que [top of que].title ; 
+         top origin      := que [top of que].origin ; 
+         top origin name := que [top of que].origin name
+    ELSE size INCR 1 ; 
+         top title       := "" ; 
+         top origin      := niltask ;
+         top origin name := "" 
+  FI 
+END PROC que status ;
+
+TEXT VAR sep :: 79 * "_", record :: "", 
+         ask :: "editieren (e),kopieren (k),loeschen (l)," + 
+                "vorziehen (v),duplizieren (d),"13""10"" + 
+                "print --> quickprint (q),blockieren (b),freigeben (f)," + 
+                "weiter (w) ? "; 
+ 
+PROC info : 
+ 
+     to first que entry; 
+     WHILE index <> nil REP 
+       record := record of que entry; 
+       WHILE index <> top of que REPEAT 
+         ask user what to do; 
+         out (input char); 
+         exec command
+       UNTIL command index = 1 PER; 
+       to next que entry; 
+     PER. 
+ 
+ask user what to do : 
+ 
+     out (""13""10"");out (sep);out (""13""10""13""10""); 
+     out (record); 
+     out (""13""10""10"");out (ask); 
+     INT VAR command index; TEXT VAR input char; 
+     REPEAT 
+       inchar (input char); 
+       command index := pos ("w eklvdqbf",input char); 
+     UNTIL command index > 0 PER. 
+ 
+exec command : 
+ 
+     SELECT command index OF 
+      CASE 3 : INT VAR old dataspace type := type (entry.space); 
+               type (entry.space,1003); 
+               FILE VAR f :: sequentialfile (modify,entry.space); 
+               edit (f); line (2); 
+               type (entry.space,old dataspace type) 
+      CASE 4 : forget (entry.title,quiet); 
+               copy (entry.space,entry.title); 
+               type (old (entry.title),1003) 
+      CASE 5 : exec erase ;command index := 1 
+      CASE 6 : exec first ;command index := 1
+      CASE 7 : INT VAR dummy no := index; 
+               enter into que (que [dummy no].title,que [dummy no].origin, 
+                               que [dummy no].space) 
+      CASE 8 : type (entry.space,1103) ;record := record of que entry; 
+      CASE 9 : block (index) ;record := record of que entry;
+      CASE 10: unblock (index); record := record of que entry; 
+     ENDSELECT. 
+ 
+ENDPROC info; 
+ 
+PROC list que (FILE VAR f, DATASPACE VAR ds) : 
+  open listfile ;
+  to first que entry ; 
+  WHILE index <> nil REP 
+    TEXT VAR record :: record of que entry ; 
+    IF index = top of que 
+      THEN record := text(record,60) ; 
+           record CAT ""15"wird bearbeitet"14""
+    FI ;
+    putline (f,record) ;
+    to next que entry
+  END REP.
+ 
+open listfile:
+ 
+  forget (ds) ; 
+  ds := nilspace ; 
+  f := sequentialfile (output,ds) ; 
+  headline (f, name(myself) + " - Queue") ; 
+  line (f)
+
+END PROC list que ; 
+ 
+PROC killer : info ENDPROC killer; 
+PROC first  : info ENDPROC first; 
+ 
+END PACKET queue handler ; 
+ 
+(***************************************************************************)
+(*   Programm zur Verwaltung einer Servertask                              *)
+(*        (benutzt 'queue handler')                                        *)
+(*        Autor: A.Vox                                                     *)
+(*        Stand: 3.6.85                                                    *)
+(*                                                                         *)
+(***************************************************************************)
+PACKET spool manager DEFINES server status, 
+                             server modus, 
+                             server task, 
+                             server channel, 
+                             server routine, 
+                             server fail msg, 
+ 
+                             log edit, 
+                             logline, 
+                             logfilename,
+                             check, 
+                             feed server if hungry, 
+                             check if server vanished, 
+ 
+                             spool manager, 
+                             get title and origin, 
+
+                             start, 
+                             stop, 
+                             pause, 
+                             spool info, 
+                             list, 
+                             spool maintenance: 
+ 
+ 
+     LET user error = 99;
+ 
+     LET { Status: }       { Modus: }
+         init = 0,         active  = 0,
+         work = 1,         paused  = 1, 
+         wait = 2,         stopped = 2,
+         dead = 3;
+ 
+     LET cmd form feed             = ""12""; 
+ 
+INT VAR status :: init,
+        modus  :: stopped;
+ 
+TASK VAR server  :: niltask; 
+TEXT VAR routine :: "", 
+         fail msg:: ""; 
+INT VAR channel  :: 0;
+(************ Globale Variablen fuer alle 'que status'-Aufrufe ************) 
+ 
+INT  VAR que size; 
+TEXT VAR actual title, 
+         actual origin name; 
+TASK VAR actual origin; 
+ 
+ 
+(*********** Zugriffsoperationen auf wichtige Paketvariablen **************)
+ 
+TASK PROC  servertask    : server       END PROC servertask; 
+INT  PROC  serverstatus  : status       END PROC serverstatus; 
+INT  PROC  servermodus   : modus        END PROC servermodus; 
+TEXT PROC  serverroutine : routine      END PROC serverroutine; 
+TEXT PROC  serverfailmsg : fail msg     END PROC serverfailmsg;
+INT  PROC  serverchannel : channel      END PROC serverchannel; 
+ 
+PROC serverroutine (TEXT CONST neu): 
+  routine := neu 
+END PROC serverroutine; 
+ 
+PROC serverfailmsg (TEXT CONST neu): 
+  failmsg := neu 
+END PROC serverfailmsg; 
+ 
+PROC serverchannel (INT CONST neu): 
+  channel := neu 
+END PROC serverchannel; 
+ 
+(************************* Basic Spool Routines ***************************) 
+ 
+TEXT CONST logfilename :: "Vorkommnisse"; 
+FILE VAR logfile; 
+ 
+TEXT VAR fail title  :: "" ;
+TASK VAR fail origin :: niltask ; 
+REAL VAR fail time   :: 0.0 ; 
+ 
+PROC logline (TEXT CONST mess): 
+  logfile := sequential file(output, logfilename) ; 
+  clear file if too large ; 
+  put(logfile, date);
+  put(logfile, time of day); 
+  put(logfile, " : ");
+  putline(logfile, mess) 
+END PROC logline ; 
+ 
+PROC log edit: 
+  enable stop ; 
+  IF NOT exists(logfilename) 
+    THEN errorstop ("keine Eintragungen vorhanden") 
+    ELSE logfile := sequentialfile(modify,logfilename) ; 
+         position to actual page; 
+         edit(logfile);
+         line (2); 
+         forget (logfilename); 
+  FI. 
+ 
+position to actual page: 
+ 
+  INT CONST begin of last page :: lines(logfile)-22 ; 
+  logfile := sequential file(modify,logfilename); 
+  IF begin of last page < 1 
+    THEN toline(logfile,1) 
+    ELSE toline(logfile,begin of last page) 
+  FI
+ 
+END PROC logedit; 
+ 
+PROC clear file if too large: 
+  IF lines(logfile) > 1000 
+    THEN modify (logfile) ; 
+         toline (logfile, 900) ; 
+         remove (logfile, 900) ; 
+         clear removed (logfile) ;
+         output (logfile) 
+  FI 
+END PROC clear file if too large ; 
+ 
+PROC end server (TEXT CONST mess): 
+  access catalogue; 
+  IF exists (server) CAND son(myself) = server 
+    THEN end(server) 
+  FI; 
+  failtime := clock(1); 
+  que status (que size, fail title, fail origin, actual origin name) ; 
+  logline (mess) ; 
+  IF fail title <> "" 
+    THEN logline(""""+fail title+""" von Task: "+actual origin name) 
+    ELSE logline("kein Auftrag betroffen") 
+  FI ; 
+  status := dead ; 
+  server := niltask 
+END PROC end server; 
+ 
+PROC check (TEXT CONST title, TASK CONST origin): 
+  check if server vanished ; 
+  IF less than 3 days ago AND 
+     was failure          AND 
+     title matches        AND 
+     origin matches 
+    THEN fail origin := myself ; 
+         errorstop (user error, """"+fail title+""" abgebrochen")
+  FI. 
+ 
+less than 3 days ago: 
+  clock(1) < fail time + 3.0 * day. 
+ 
+origin matches: 
+  (origin = fail origin OR origin = niltask). 
+ 
+title matches: 
+  (title  = fail title  OR title  = ""). 
+ 
+was failure: 
+  fail title <> ""
+ 
+END PROC check ; 
+ 
+PROC start server: 
+  begin (PROC server start,server) ; 
+  status := init 
+END PROC start server; 
+ 
+PROC server start: 
+  disable stop ; 
+  IF channel <> 0 
+    THEN continue (channel) ; 
+  FI ;
+  command dialogue (FALSE) ; 
+  out (cmd form feed); 
+  do (routine) ; 
+  IF is error 
+    THEN call(logline code, "Server-Fehler :",father); 
+         call(logline code, error message, father) ; 
+         call(logline code, "Zeile: " + text(errorline) +
+                            " Code: " + text(errorcode)  ,father) 
+    ELSE call(logline code, "Ende des Server-Programms erreicht",father) 
+  FI ; 
+  IF online 
+    THEN out (fail msg) 
+  FI ; 
+  call (terminate code,fail msg, father) ;
+  end (myself) 
+END PROC server start ;
+ 
+PROC check if server vanished: 
+  IF NOT (server = nil task) CAND NOT exists (server) 
+    THEN end server ("Server gestorben :") ; 
+         start server 
+  FI 
+END PROC check if server vanished; 
+ 
+ 
+(*************************** Manager Routines *****************************)
+ 
+   LET ack              = 0,
+       second phase ack = 5,
+       not existing nak = 6,
+ 
+       begin code       = 4, 
+       fetch code       = 11, 
+       save code        = 12,
+       exists code      = 13, 
+       erase code       = 14, 
+       list code        = 15, 
+       all code         = 17, 
+       clear code       = 18, 
+       release code     = 20, 
+       check code       = 22, 
+ 
+       terminate code   = 25, 
+       logline code     = 26, 
+       get title code   = 27, 
+ 
+       continue code    = 100; 
+ 
+ 
+DATASPACE VAR packet space ; 
+INT VAR reply ; 
+BOUND STRUCT(TEXT f name,a,b) VAR msg ; 
+.f name: msg.f name. ; 
+ 
+TEXT VAR save title :: "";
+FILE VAR listfile; 
+ 
+PROC get title and origin (TEXT VAR title, origin): 
+  forget (packet space) ; 
+  packet space := nilspace ; 
+  call (father, get title code, packet space, reply) ;
+  IF reply = ack 
+    THEN msg := packet space ; 
+         title := msg.f name ; 
+         origin := msg.a ; 
+         forget (packet space)
+    ELSE forget (packet space) ; 
+         errorstop ("'get title' nicht erfolgreich. Antwort="+text(reply)) 
+  FI 
+END PROC get title and origin; 
+ 
+PROC feed server if hungry:
+  check if server vanished ; 
+  IF status = wait AND NOT que empty 
+    THEN get top of que (packet space) ; 
+         send (server, ack, packet space, reply) ; 
+         forget (packet space) ;
+         IF reply = ack 
+           THEN status := work 
+           ELSE restore ; 
+                end server ("Server nimmt keinen Auftrag an") ; 
+                start server 
+         FI 
+  FI 
+ENDPROC feed server if hungry;
+ 
+PROC server request (DATASPACE VAR ds, INT CONST order, phase) : 
+ 
+  enable stop ; 
+  msg := ds ; 
+  SELECT order OF 
+    CASE terminate code: terminate 
+    CASE logline code:   logline (f name)   ;send(server, ack, ds)
+    CASE get title code: send title 
+    OTHERWISE 
+      IF order = fetch code CAND f name = "-" 
+        THEN send top of que 
+        ELSE freemanager (ds,order,phase,server) 
+      FI 
+  END SELECT ; 
+  forget(ds). 
+ 
+terminate: 
+  end server ("Server terminiert :") ; 
+  start server.
+ 
+send title: 
+  forget (ds) ; 
+  ds := nilspace ; 
+  msg := ds ; 
+  que status (que size, msg.f name, actual origin, msg.a) ; 
+  send (server, ack, ds).
+ 
+send top of que: 
+  status := wait ; 
+  erase last top of que ;
+  IF modus = active 
+    THEN feed server if hungry
+  FI 
+ 
+END PROC server request; 
+ 
+PROC spool manager(DATASPACE VAR ds, INT CONST order, phase, 
+                   TASK CONST order task) : 
+ 
+  IF ordertask < myself 
+    THEN server request (ds,order,phase) 
+  ELIF ordertask = supervisor
+    THEN system request 
+  ELSE spool command (ds,order,phase,order task) 
+  FI; 
+  check storage; 
+  error protocol. 
+ 
+check storage: 
+  INT VAR size, used; 
+  storage(size,used); 
+  IF used > size 
+    THEN logline("Speicher-Engpass :"); 
+         initialize que; 
+         logline("Queue geloescht !!"); 
+         stop 
+  FI. 
+ 
+error protocol: 
+  IF is error AND error code <> user error 
+    THEN logline ("Spool-Fehler :") ; 
+         logline (errormessage) ; 
+         logline ("   Zeile: " + text(errorline) + 
+                  "   Code: "  + text(errorcode) ) 
+  FI. 
+ 
+system request: 
+  IF order > continue code 
+    THEN call (supervisor,order,ds,reply) ; 
+         forget(ds) ; 
+         IF reply = ack 
+           THEN spool maintenance 
+         FI 
+  FI 
+ 
+END PROC spool manager; 
+ 
+PROC spool command (DATASPACE VAR ds, INT CONST order, phase, 
+                    TASK CONST order task): 
+ 
+  enable stop ; 
+  check if server vanished ;
+  msg := ds ; 
+  SELECT order OF 
+    CASE begin code : special begin 
+    CASE fetch code:  y get logfile 
+    CASE save code :  y save 
+    CASE exists code: y exists 
+    CASE erase code:  y erase 
+    CASE list code:   y list 
+    CASE all code:    y all 
+    CASE release code, 
+         clear code:  y restart 
+    CASE check code:  y check 
+    OTHERWISE errorstop (user error, "Kein Kommando fuer SPOOLER") 
+  END SELECT. 
+ 
+special begin : 
+   INT VAR dummy; 
+   call (public,begin code,ds,dummy); 
+   send (order task,ack,ds). 
+ 
+y get logfile: 
+  forget(ds) ; 
+  ds := old(logfilename) ; 
+  send (ordertask, ack, ds). 
+ 
+y erase: 
+  IF NOT exists in que (f name,ordertask) 
+    THEN manager message(""""+f name+""" steht nicht in der Queue")
+  ELIF phase = 1 
+    THEN manager question (""""+f name+""" aus der Queue loeschen") 
+    ELSE erase from que (f name,ordertask) ; 
+         send (ordertask, ack, ds) 
+  FI. 
+ 
+y save: 
+  IF phase = 1 
+    THEN save title := f name ; 
+         send (order task,second phase ack,ds); 
+    ELSE enter into que (save title, ordertask, ds) ; 
+         IF modus = active 
+           THEN feed server if hungry
+         FI ; 
+         send (order task,ack,ds); 
+  FI. 
+ 
+y list: 
+  list que (listfile,ds) ; 
+  send (ordertask, ack, ds). 
+ 
+y all: 
+  forget(ds) ; 
+  ds := nilspace ; 
+  BOUND THESAURUS VAR all names := ds ; 
+  all names := all in que (ordertask) ; 
+  send (ordertask, ack, ds). 
+ 
+y exists: 
+  IF exists in que (f name,ordertask) 
+    THEN send (ordertask, ack, ds) 
+    ELSE send (ordertask, not existing nak, ds) 
+  FI. 
+ 
+y check: 
+  check (f name,ordertask) ; 
+  questatus (que size, actual title, actual origin, actual origin name) ; 
+  IF there is a title   AND
+     is actual origin   AND 
+     is actual title 
+    THEN manager message (""""+f name+""" wird soeben bearbeitet") 
+  ELIF exists in que (f name,ordertask) 
+    THEN manager message (""""+f name+""" steht noch in der Queue") 
+    ELSE errorstop (usererror, """"+f name+""" steht nicht in der Queue") 
+  FI. 
+ 
+  there is a title:  actual title <> "" .
+  is actual origin:  ordertask = actual origin .
+  is actual title : (f name = "" OR f name = actual title) . 
+ 
+y restart: 
+  questatus (que size, actual title, actual origin, actual origin name) ;
+  IF actual origin = ordertask 
+    THEN IF phase = 1 
+           THEN manager question (""""+actual title+""" unterbrechen") 
+           ELSE end server ("unterbrochen durch Auftraggeber :") ; 
+                start server ; 
+                IF order = clear code 
+                  THEN restore 
+                  ELSE erase last top of que
+                FI ; 
+                manager message ("Auftrag unterbrochen") 
+         FI
+    ELSE errorstop (usererror, "kein eigener Auftrag") 
+  FI
+
+END PROC spool command ; 
+ 
+PROC start: 
+  IF modus = stopped 
+    THEN start server ; 
+         modus := active; 
+         message ("Server aktiviert") 
+  ELIF modus = paused 
+    THEN modus := active ; 
+         message ("'Pause'-Modus zurueckgesetzt") ; 
+         feed server if hungry
+    ELSE message ("Server bereits aktiv") 
+  FI 
+END PROC start; 
+ 
+PROC stop: 
+  IF modus <> stopped 
+    THEN end server ("Gestoppt :"); 
+         modus := stopped ;
+         status := init ; 
+         message ("Server gestoppt") 
+    ELSE message ("Server bereits gestoppt") 
+  FI 
+END PROC stop; 
+ 
+PROC pause: 
+  IF modus = active 
+    THEN modus := paused ; 
+         message ("'Pause'-Modus gesetzt")
+  ELIF modus = paused 
+    THEN message ("'Pause'-Modus bereits gesetzt")
+    ELSE errorstop ("Server ist gestoppt") 
+  FI 
+END PROC pause; 
+ 
+PROC message (TEXT CONST mess): 
+  say(""13""10"") ; 
+  say(mess) ; 
+  say(""13""10"") 
+END PROC message ; 
+ 
+PROC list: 
+  list que(listfile,packet space) ; 
+  show(listfile) 
+END PROC list; 
+ 
+PROC spool maintenance: 
+  command dialogue (TRUE);
+  IF exists(logfilename) 
+    THEN logedit 
+  FI; 
+  WHILE online REP
+    get command ("gib spool kommando :") ;
+    do command 
+  END REP ; 
+  command dialogue (FALSE) ; 
+  break ; 
+  set autonom 
+END PROC spool maintenance ;
+ 
+PROC spoolinfo: 
+  check if server vanished ;
+  que status (que size, actual title, actual origin, actual origin name) ; 
+  line(2) ; 
+  putline("Queue :") ; 
+  put("Auslastung :");put(que size); line;
+  IF actual title <> "" 
+    THEN put("Aktueller Auftrag :");putline(actual title); 
+         put("         von Task :");putline(actual origin name) 
+  FI ; 
+  line ; 
+  putline("Server :"); 
+  put("Status :"); 
+  SELECT status OF 
+    CASE init : putline("initialisiert") 
+    CASE work : putline("arbeitet") 
+    CASE wait : putline("wartet")
+    OTHERWISE   putline("gestorben")
+  END SELECT ;
+  put("Modus  :"); 
+  SELECT modus OF 
+    CASE active : putline("aktiv") 
+    CASE paused : putline("pausierend") 
+    OTHERWISE     putline("gestoppt") 
+  END SELECT ; 
+  put("Kanal  :");put(pcb(server,4));
+  line(2) 
+END PROC spool info 
+ 
+END PACKET spool manager; 
+ 

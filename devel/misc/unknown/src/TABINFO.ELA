@@ -1,0 +1,117 @@
+PACKET table info DEFINES table info :       (* Michael Staubermann *) 
+                                             (* 02.12.86            *) 
+LET insert flag addr            = 4654 ,
+
+(*  prev modnr addr             = 4662 , *)
+    cur modnr addr              = 4806 , 
+
+    prev code end addr          = 4775 , 
+    cur code end addr           = 4807 , 
+
+    prev name tab end addr      = 4688 , 
+    cur name tab end addr       = 4693 , 
+
+    prev permanent tab end addr = 4704 ,
+    cur permanent tab end addr  = 4707 , 
+
+    prev denoter end addr       = 4815 , 
+    cur denoter end addr        = 4809 ,
+
+    prev static data end addr   = 4816 , 
+    cur static data end addr    = 4810 , 
+    prev static data begin addr = 4817 , 
+    cur static data begin addr  = 4811 , 
+(*
+    begin of hash table         = 0 , 
+    end of hash table           = 1023 , 
+
+    begin of string table       = 1024 , 
+    end of string table         = 4093 ,
+*)
+    begin of name table         = 4096 , 
+    end of name table           = 22783 , 
+
+    begin of permanent table    = 22784 , 
+    end of permanent table      = 32767 , 
+    
+    begin of code               = 4096 , 
+ 
+    begin of data               = 4096 ; 
+ 
+INT CONST end of code :: -1 , 
+          end of data :: -1 ;
+ 
+BOOL VAR was insert ; 
+ 
+INT PROC getword (INT CONST segment, address) : 
+ EXTERNAL 120 
+ENDPROC getword ; 
+ 
+PROC arith16 : 
+ EXTERNAL 92 
+ENDPROC arith16 ; 
+ 
+INT OP SUB (INT CONST left, right) : 
+ arith 16 ;
+ left - right 
+ENDOP SUB ; 
+ 
+PROC entry (TEXT CONST name, BOOL CONST size, 
+            INT CONST begin, cur, prev, end) : 
+ put (subtext (name + " ....................", 1, 20) + ":") ; 
+ IF size 
+    THEN put (card (end SUB begin)) ; 
+         put (card (end SUB cur)) ; 
+         put (card (cur SUB begin)) ; 
+         put (card (int (positiv (cur SUB begin) / 
+                         positiv (end SUB begin) * 100.0))) ;
+    ELSE put ("                       ") 
+ FI ;
+ IF NOT was insert
+    THEN put (card (prev - cur)) 
+ FI ; 
+ line
+ENDPROC entry ; 
+ 
+PROC table info : 
+ was insert := getword (0, insert flag addr) = 0 ; 
+ line ; 
+ put ("N„chste Modulenr.:") ; 
+ put (getword (0, cur modnr addr)) ; line (2) ; 
+ put ("Name                   Size  Free  Used  Used%") ;
+ IF NOT was insert 
+    THEN put ("LastRun") 
+ FI ; 
+ line ; 
+ entry ("Permanenttable", TRUE, begin of permanent table, 
+        getword (0, cur permanent tab end addr), 
+        getword (0, prev permanent tab end addr), end of permanent table) ; 
+ entry ("Nametable", TRUE, begin of name table, 
+        getword (0, cur name tab end addr), 
+        getword (0, prev name tab end addr), end of name table) ; 
+ entry ("Code", TRUE, begin of code, 
+        getword (0, cur code end addr), 
+        getword (0, prev code end addr), end of code) ; 
+ entry ("Data", TRUE, begin of data, 
+        getword (0, cur static data end addr), 
+        getword (0, prev static data end addr), end of data) ; 
+ line ;
+ENDPROC table info ; 
+ 
+REAL PROC positiv (INT CONST value) : 
+ IF value < 0 
+    THEN real (value) + 65536.0 
+    ELSE real (value) 
+ FI
+ENDPROC positiv ; 
+ 
+TEXT PROC card (INT CONST i) : 
+ IF i = minint 
+    THEN "32768" 
+ ELIF i < 0 
+    THEN subtext (text (real (i) + 65536.0), 1, 5)
+    ELSE text (i, 5)
+ FI 
+ENDPROC card
+ 
+ENDPACKET table info ; 

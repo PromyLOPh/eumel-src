@@ -1,0 +1,294 @@
+LET systemanker = 2 ,      (* Wird bei 'blockin' durch 2 geteilt *) 
+    channel field = 4 ,
+    hg channel  = 0 ; 
+ 
+ROW 256 INT VAR block ;
+INT VAR return ; 
+ 
+PROC pcb (TASK CONST id, INT CONST field, value) : 
+ EXTERNAL 105 
+ENDPROC pcb ; 
+ 
+PROC copy ds (INT CONST task nr, ds nr, TEXT CONST destination) : 
+ DATASPACE VAR ds ; 
+ ROW 8 INT VAR dr eintrag ;
+ INT VAR old channel := channel, link, i, seite ; 
+ 
+ system channel ; 
+ zugriff ueber drdr ; 
+ IF ist nilspace 
+    THEN ds := nilspace 
+ ELIF ist kleindatenraum 
+    THEN lese kleindatenraum 
+ ELSE lese grossdatenraum 
+ FI ; 
+ user channel ; 
+ forget (destination, quiet) ; 
+ copy (ds, destination) ; 
+ forget (ds) . 
+ 
+user channel : 
+ disablestop ;
+ continue (old channel) ; 
+ IF iserror 
+    THEN forget (ds) ; 
+ FI ; 
+ enablestop . 
+ 
+system channel : 
+ break (quiet) ;                           (* Offiziell abmelden *)
+ pcb (myself, channel field, hg channel) . (* Inoffiziell anmelden *)
+ 
+zugriff ueber drdr : 
+ systemanker lesen ; 
+ drdr taskwurzel lesen ; 
+ drdr dataspacewurzel lesen . 
+ 
+erste seite im dreintrag : 
+ link := 8 * (dsnr MOD 32) + 1 ; 
+ FOR i FROM link UPTO link + 7 REP 
+  IF block (i) <> -1 
+     THEN LEAVE erste seite im dreintrag WITH i 
+  FI 
+ PER ; 
+ user channel ; 
+ errorstop ("Der Datenraum existiert nicht (DR-Eintrag = 8 mal FFFF)") ; 0 . 
+ 
+ist nilspace : 
+ block (erste seite im dreintrag) = -255 . 
+ 
+ist kleindatenraum : 
+ block (link) > -255 AND block (link) < 0 . 
+ 
+lese kleindatenraum : 
+ ds := nilspace ;
+ IF seite eins existiert 
+    THEN blockin (ds, 1, block (link + 1)) ; 
+         IF return <> 0 
+            THEN user channel ; 
+                 putline ("Warnung: Seite 1 des Datenraums nicht lesbar: " + 
+                            text (return)) ; 
+                 system channel 
+         FI 
+ FI ; 
+ IF seite zwei existiert 
+    THEN blockin (ds, 2, block (link + 2)) ; 
+         IF return <> 0 
+            THEN user channel ; 
+                 putline ("Warnung: Seite 2 des Datenraums nicht lesbar: " + 
+                            text (return)) ; 
+                 system channel 
+         FI 
+ FI ; 
+ IF mehr als zwei seiten 
+    THEN FOR i FROM 0 UPTO 4 REP
+          IF hoehere seite existiert 
+             THEN blockin (ds, i + basisseite, block (link + i + 3)) ; 
+                  IF return <> 0 
+                     THEN user channel ; 
+                          putline ("Warnung: Seite " + text (i + basisseite)
+                                   + " des Datenraums nicht lesbar: " 
+                                   + text (return)) ; 
+                          system channel 
+                  FI 
+          FI 
+         PER
+ FI . 
+ 
+seite eins existiert : 
+ exists (block (link + 1)) . 
+ 
+seite zwei existiert : 
+ exists (block (link + 2)) . 
+ 
+mehr als zwei seiten : 
+ exists (block (link)) . 
+ 
+hoehere seite existiert : 
+ exists (block (link + i + 3)) . 
+ 
+basisseite : 
+ block (link) AND 255 . 
+ 
+lese grossdatenraum : 
+ ds := nilspace ; 
+ dreintrag kopieren ; 
+ seite := 0 ; 
+ FOR i FROM 1 UPTO 8 REP 
+  IF seitenblocktabelle existiert 
+     THEN seitenblocktabelle lesen ; 
+          seiten kopieren wenn sie in der seitenblocktabelle vorhanden sind 
+     ELSE seite INCR 256 
+  FI 
+ PER . 
+ 
+seitenblocktabelle lesen : 
+ blockin (dr eintrag (i)) ; 
+ IF return <> 0 
+    THEN user channel ; 
+         putline ("Warnung: Seitenblocktabelle " + text (i-1) + 
+                  " des Datenraums nicht lesbar: " + text (return)) ; 
+         putline ("Damit fehlen die Seiten " + text (max (1, seite)) +
+                  " bis " + text (seite + 255)) ; 
+         system channel 
+ FI . 
+ 
+seiten kopieren wenn sie in der seitenblocktabelle vorhanden sind : 
+ FOR link FROM 1 UPTO 256 REP 
+  IF seite vorhanden 
+     THEN blockin (ds, seite, block (link)) ; 
+          IF return <> 0 
+             THEN user channel ; 
+                  putline ("Warnung: Seite " + text (seite) + 
+                           " des Datenraums nicht lesbar: " + text (return)) ; 
+                  system channel 
+          FI ;
+          user channel ; 
+          cout (seite) ; 
+          system channel 
+  FI ; 
+  seite INCR 1 
+ PER . 
+ 
+seite vorhanden : 
+ exists (block (link)) . 
+ 
+seitenblocktabelle existiert : 
+ exists (dreintrag (i)) . 
+ 
+dreintrag kopieren : 
+ FOR i FROM 0 UPTO 7 REP 
+  dreintrag (i + 1) := block (link + i) 
+ PER .
+ 
+systemanker lesen : 
+ blockin (systemanker) ;
+ IF return <> 0 
+    THEN user channel ; 
+         errorstop ("Systemanker nicht lesbar: " + text (return))
+ FI .
+ 
+drdr taskwurzel lesen : 
+ link := block (tasknr DIV 32 + 1) ; 
+ IF link = -1 
+    THEN user channel ; 
+         errorstop ("Die Task existiert nicht") 
+ FI ; 
+ blockin (link) ; 
+ IF return <> 0 
+    THEN user channel ; 
+         errorstop ("Taskwurzel des DRDR nicht lesbar: " + text (return))
+ FI . 
+ 
+drdr dataspacewurzel lesen : 
+ link := block (8 * (tasknr MOD 32) + dsnr DIV 32 + 1) ; 
+ IF NOT exists (link)
+    THEN user channel ; 
+         errorstop ("Der Datenraum (und weitere 31) existiert nicht") 
+ FI ; 
+ blockin (link) ; 
+ IF return <> 0 
+    THEN user channel ; 
+         errorstop ("Dataspacewurzel des DRDR nicht lesbar: " +
+                    text (return)) 
+ FI . 
+ 
+ENDPROC copy ds ; 
+ 
+BOOL PROC exists (INT CONST blocknr) :
+ blocknr <> -1 AND blocknr <> -255
+ENDPROC exists ; 
+ 
+PROC blockin (INT CONST blocknr) : 
+ blockin (block, 0, blocknr DIV 2, return) ; (* ggf COPBIT ausblenden *) 
+ENDPROC blockin ; 
+ 
+PROC blockin (DATASPACE VAR ds, INT CONST page, blocknr) : 
+ blockin (ds, page, 0, blocknr DIV 2, return) (* ggf COPBIT ausblenden *)
+ENDPROC blockin ; 
+ 
+PROC dump (TEXT CONST datei) : 
+ edit dump (datei, FALSE) 
+ENDPROC dump ; 
+ 
+PROC edit dump (TEXT CONST datei, BOOL CONST write access) : 
+ BOUND STRUCT (ROW 252 INT page1, ROW 2047 ROW 256 INT blocks) VAR b ; 
+ b := old (datei) ; 
+ INT VAR blocknr :=  1, i ;
+ TEXT VAR esc char, t ; 
+ BOOL VAR clear := TRUE , modified ; 
+ ROW 256 INT VAR page 1 ;
+ page 1 (1) := 0 ; 
+ page 1 (2) := 0 ; 
+ page 1 (3) := type (old (datei)) ; 
+ page 1 (4) := -1 ;
+ page ; 
+ put ("Info mit 'ESC ?'") ; 
+ dump cursor (4, 3) ;
+ REP 
+  out (""1""5"Datei: """) ; out (datei) ; put ("""") ; 
+  put (", Page:") ; put (text (blocknr, 5)) ; 
+  put (", Dspages:") ; put (text (dspages (old (datei)), 5)) ; 
+  put (", Type:") ; put (type (old (datei))) ; 
+  IF blocknr = 1 
+     THEN FOR i FROM 1 UPTO 252 REP 
+           page1 (i + 4) := b.page1 (i) 
+          PER ; 
+          edit dump (page 1, 1, 256, clear, write access, modified, esc char); 
+          IF modified 
+             THEN FOR i FROM 1 UPTO 252 REP 
+                   b.page1 (i) := page 1 (i + 4) 
+                  PER ; 
+                  type (old (datei), page 1 (3))
+          FI 
+     ELSE edit dump (b.blocks (blocknr), 1, 256, clear, write access, modified, esc char) 
+  FI ;
+  clear := TRUE ;
+  IF esc char = ""1""10"" 
+     THEN blocknr INCR 1 
+  ELIF esc char = ""1""3"" 
+     THEN IF blocknr > 1 
+             THEN blocknr DECR 1 
+             ELSE clear := FALSE ;
+                  out (""1""15"E r s t e   S e i t e "14""5"") 
+          FI 
+  ELIF esc char = ""27"q" 
+     THEN LEAVE edit dump 
+  ELIF esc char = ""27"?" 
+     THEN clear := FALSE ; 
+          putline (""1"ESC:?,p,q,w,F,0; HOP:HOP,LEFT,UP,DOWN,RIGHT; DEL,INS,LEFT,UP,RIGHT") ; 
+  ELIF esc char = ""27"p" 
+     THEN REP 
+           put(""1""5"Neue Pagenr:") ; 
+           t := text (blocknr) ; 
+           editget (t) ; 
+           blocknr := int (t) 
+          UNTIL blocknr >= 0 AND blocknr < 2048 PER 
+  ELSE clear := FALSE 
+  FI ; 
+ PER 
+ENDPROC edit dump ; 
+ 
+INT VAR task index, ds nr ; 
+TEXT VAR task id ; 
+page ; 
+put ("""Taskname"" oder Taskindex:") ; 
+getline (task id) ; 
+IF pos (task id, """") > 0 
+   THEN scan (task id) ; 
+        nextsymbol (task id) ; 
+        task index := index (task (task id))
+   ELSE task index := int (task id) 
+FI ;
+put ("Dataspacenummer in der Task:") ; 
+get (ds nr) ; 
+IF ds nr < 4 
+   THEN errorstop ("Es gibt nur DATASPACE-Nummern >= 4") 
+FI ; 
+IF yes ("Soll vorher ein Fixpoint gesetzt werden") 
+   THEN fixpoint 
+FI ; 
+forget ("new ds", quiet) ; 
+copy ds (task index, ds nr, "new ds") ; 
+putline ("Der kopierte Datenraum steht in der Datei ""new ds""") ; 
+dump ("new ds")

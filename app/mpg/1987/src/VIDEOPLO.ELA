@@ -1,0 +1,382 @@
+#   Stand : 26.Juni 1985  #
+PACKET videostar plot DEFINES drawing area, 
+                         begin plot, 
+                         end plot, 
+                         clear, 
+ 
+                         background,
+                         foreground,
+                         thickness,
+                         linetype,
+
+                         move, 
+                         draw, 
+                         marker, 
+ 
+                         range,
+                         clipping:
+ 
+LET begin vector = ""16"";
+LET max x        =   679,
+    max y        =   479;               (* Direkt-Adressierung *)
+LET POS = STRUCT (INT x, y); 
+POS VAR pos :: POS : (0, 0);
+ 
+INT VAR akt pen :: 1, akt pen line type :: 1; 
+BOOL VAR check :: TRUE;
+INT VAR thick :: 0, i, x min :: 0, x max :: 679, y min :: 0, y max :: 479;
+TEXT VAR old pos :: "";
+ 
+PROC drawing area (REAL VAR x cm, y cm, INT VAR x pixel, y pixel) : 
+   x cm    := 27.0 ;   y cm    := 20.00; 
+   x pixel := 679;     y pixel  :=  479
+END PROC drawing area;
+
+PROC range (INT CONST h min, h max, v min, v max):
+  x min := h min;  x max := h max;
+  y min := v min;  y max := v max
+END PROC range;
+
+PROC clipping (BOOL CONST flag):
+  check := flag
+END PROC clipping;
+
+BOOL PROC clipping:
+  check
+END PROC clipping;
+
+PROC begin plot : 
+ENDPROC begin plot ;
+ 
+PROC end plot : 
+  out (""27"0@")
+ENDPROC end plot ;
+
+PROC clear :
+write (""29""27""140""27"/0d"24"")
+END PROC clear;
+ 
+PROC background (INT CONST desired, INT VAR realized):
+  realized := 0                      (*Nur schwarzer Hintergrund mîglich *)
+END PROC background;
+
+PROC foreground (INT CONST desired, INT VAR realized):
+  akt pen := desired;
+  realized := sign (desired)  .  (*Nur wei·er Sift mîglich, aber         *)
+                                 (*lîschend, Ñndernd oder Åberschreibend *)
+END PROC foreground;
+
+PROC thickness (INT CONST desired, INT VAR realized):
+  thick     := desired DIV 10;
+  realized  := thick*2+1                   (*Breite des Stiftes in Pixel *)
+END PROC thickness;
+
+PROC linetype (INT CONST desired, INT VAR realized):
+ IF desired <> akt pen linetype 
+ THEN write (""29"") ; # Graphicmode on # 
+      akt pen line type := desired; 
+      write (type cmd);
+      write (""27"x"24"") 
+  FI;
+  IF desired >= 0 AND desired <= 5 
+  THEN realized := desired 
+  ELSE realized := 0 FI  .
+
+type cmd:
+   SELECT desired OF 
+    CASE 1 : ""27"/a"                  # durchgÑngige Linie # 
+    CASE 2 : ""27"/1;1a"               # gepunktet # 
+    CASE 3 : ""27"/3;3a"               # kurz gestrichelt # 
+    CASE 4 : ""27"/6;6a"               # lang gestrichelt # 
+    CASE 5 : ""27"/6;3;1;3a"            # Strichpunkt # 
+  OTHERWISE ""27"/a" END SELECT
+END PROC linetype;
+ 
+ 
+PROC move (INT CONST x, y) :
+  x MOVE y;
+  pos := POS:(x, y)  . 
+END PROC move;
+ 
+PROC draw (INT CONST x, y):
+  IF std thickness
+  THEN draw (pos.x, pos.y, x, y)
+  ELIF is point
+  THEN point (x, y, thick);
+       x MOVE y;
+  ELIF is horizontal line 
+  THEN horizontal line (pos.x, pos.y, x, y, thick);
+       x MOVE y;
+  ELSE vertical line (pos.x, pos.y, x, y, thick);
+       x MOVE y
+  FI; 
+  pos := POS:(x, y)  . 
+
+std thickness:
+  thick = 0  .
+
+is point:
+  pos.x = x AND pos.y = y  .
+
+is horizontal line:
+  abs (pos.x-x) >= abs (pos.y-y)  .
+
+END PROC draw;
+
+PROC point (INT CONST x, y, thick):
+  INT VAR i;
+  FOR i FROM -thick UPTO thick
+  REP line (x-thick, y+i, x+thick, y+i) PER
+
+END PROC point;
+
+PROC horizontal line (INT CONST from x, from y, to x, to y, thick):
+  IF from x > to x
+  THEN horizontal line (to x, to y, from x, from y, thick)
+  ELSE draw line FI  .
+
+draw line:
+  INT VAR i;
+  calculate increase;
+  calculate limit points;
+  FOR i FROM -thick UPTO thick
+  REP calculate delta x;
+      line (x start+delta x, y start+i, x end+delta x, y end+i)
+  PER  .
+
+calculate increase:
+  REAL VAR increase :: -dy / dx  .
+
+calculate limit points:
+  INT CONST x start :: from x - thick,
+            x end   :: to x   + thick,
+            y start :: from y + int (increase * real (thick)), 
+            y end   :: to y   - int (increase * real (thick))  .
+
+calculate delta x:
+  INT CONST delta x :: int (increase*real (i))  .
+
+dx: real (to x-from x)  .
+dy: real (to y-from y)  .
+
+END PROC horizontal line;
+
+PROC vertical line (INT CONST from x, from y, to x, to y, thick):
+  IF from y > to y
+  THEN vertical line (to x, to y, from x, from y, thick)
+  ELSE draw line FI  .
+
+draw line:
+  INT VAR i;
+  calculate increase;
+  calculate limit points;
+  FOR i FROM -thick UPTO thick
+  REP calculate delta y;
+      line (x start+i, y start+delta y, x end+i, y end+delta y)
+  PER  .
+
+calculate increase:
+  REAL VAR increase :: -dx / dy  .
+
+calculate limit points:
+  INT CONST x start :: from x + int (increase * real (thick)), 
+            x end   :: to x   - int (increase * real (thick)),
+            y start :: from y - thick,
+            y end   :: to y   + thick  .
+
+calculate delta y:
+  INT CONST delta y :: int (increase*real (i))  .
+
+dx: real (to x-from x)  .
+dy: real (to y-from y)  .
+
+END PROC vertical line;
+ 
+PROC marker (INT CONST x, y, no, size):
+  IF no = 0
+  THEN draw cursor FI; 
+  pos.x MOVE pos.y  .
+
+draw cursor:
+  write(""29""27"/f"27""26"")  .
+
+END PROC marker; 
+ 
+PROC line (INT CONST from x, from y, to x, to y):
+  from x MOVE from y;
+  draw (from x, from y, to x, to y)
+END PROC line;
+
+PROC draw (INT CONST from x, from y, to x, to y):
+  IF check
+  THEN draw with clipping
+  ELSE to x DRAW to y FI  .
+
+draw with clipping:
+  INT VAR x, y;
+  calculate parts of line;
+  IF both points inside
+  THEN to x DRAW to y
+  ELIF both points outside
+  THEN 
+  ELIF first point outside
+  THEN intersection (to x, to y, to part, from x, from y, from part, x, y);
+       x    MOVE y;
+       to x DRAW to y
+  ELIF second point outside
+  THEN intersection (from x, from y, from part, to x, to y, to part, x, y);
+       x DRAW y
+  ELSE check intersection FI  .
+
+calculate parts of line:
+  INT CONST from part :: part (from x, from y),
+            to part   :: part (to x, to y)  .
+
+both points inside:
+  from part = 0 AND to part = 0  .
+
+both points outside:
+  (from part AND to part) <> 0  .
+
+first point outside:
+  from part <> 0 AND to part = 0  .
+
+second point outside:
+  to part <> 0 AND from part = 0  .
+
+check intersection:
+  intersection (to x, to y, to part, from x, from y, from part, x, y);
+  x MOVE y;
+  draw (x, y, to x, to y)  .
+
+END PROC draw;
+
+INT PROC part (INT CONST x, y):
+  INT VAR index :: 0;
+  IF x > x max
+  THEN set bit (index, 0)
+  ELIF x < x min
+  THEN set bit (index, 1) FI;
+
+  IF y > y max
+  THEN set bit (index, 2)
+  ELIF y < y min
+  THEN set bit (index, 3) FI;
+
+  index
+
+END PROC part;
+
+PROC intersection (INT CONST from x, from y, from part, to x, to y, to part,
+                   INT VAR x, y):
+  SELECT to part OF
+  CASE  1: right side
+  CASE  2: left side 
+  CASE  4: up side 
+  CASE  5: upright side 
+  CASE  6: upleft side 
+  CASE  8: down side 
+  CASE  9: downright side 
+  CASE 10: downleft side
+  OTHERWISE errorstop ("wrong partno.:" + text (to part)) ENDSELECT  .
+
+right side:
+  y := from y + int (real (x max-from x)*(dy/dx));
+  x := x max  .
+
+left side:
+  y := from y + int (real (x min-from x)*(dy/dx));
+  x := x min  .
+
+up side:
+  x := from x + int (real (y max-from y)*(dx/dy));
+  y := y max  .
+
+down side:
+  x := from x + int (real (y min-from y)*(dx/dy));
+  y := y min  .
+
+upright side:
+  right side;
+  IF y > y max
+  THEN up side FI  .
+
+downright side:
+  right side;
+  IF y < y min
+  THEN down side FI  . 
+
+upleft side:
+  left side;
+  IF y > y max
+  THEN up side FI  .
+
+downleft side:
+  left side;
+  IF y < y min
+  THEN down side FI  .
+
+dx: real (to x-from x)  .
+dy: real (to y-from y)  .
+
+END PROC intersection;
+
+PROC draw (TEXT CONST text, REAL CONST angle, height, thick) :
+INT CONST hoehe :: int(height);
+  IF akt pen linetype <> 0
+  THEN write (""29""); 
+       write (old pos);
+       write (""31"");
+       write (size);
+       write (text);
+       write(""24"")
+  FI  .
+
+size:
+  SELECT hoehe OF 
+   CASE 1 : ""27"4" 
+   CASE 2 : ""27"5"
+   CASE 3 : ""27"0"
+   CASE 4 : ""27"1"
+   CASE 5 : ""27"2"
+   CASE 6 : ""27"3"
+  OTHERWISE ""27"0" END SELECT  .  # Grî·e 3 fÅr undefinierte Werte #
+
+END PROC draw;
+ 
+PROC draw (TEXT CONST record) :
+  draw (record, 0.0, 0.0, 0.0)
+END PROC draw;
+ 
+OP MOVE (INT CONST x, y) :
+ write (""29"");
+ old pos := koordinaten (x,y);
+ write (old pos);
+ write (""24"");
+END OP MOVE;
+ 
+OP DRAW (INT CONST x, y) :
+  IF akt pen line type = 0
+  THEN x MOVE y
+  ELSE write (""29""); (* plot ein *)
+       write (colour cmd);
+       write (old pos);
+       old pos := koordinaten (x,y);
+       write (old pos);
+       write (""24""); (* plot aus *)
+  FI  .
+
+colour cmd:
+  IF   akt pen = 0 THEN ""27"/1d"    # lîschend #
+  ELIF akt pen < 0 THEN ""27"/2d"    # XOR #
+                   ELSE ""27"/0"     # normal # 
+  FI  .
+
+END OP DRAW;
+
+TEXT PROC koordinaten (INT CONST x,y):
+  code(32+((y DIV 32) AND 31)) + code(96+(y MOD 32)) +
+  code(32+((x DIV 32) AND 31)) + code(64+(x MOD 32))
+END PROC koordinaten;
+ 
+END PACKET videostar plot

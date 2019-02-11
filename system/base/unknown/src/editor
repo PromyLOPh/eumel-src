@@ -1,0 +1,210 @@
+ 
+PACKET editor DEFINES                          (* Autor: P.Heyderhoff *) 
+                                               (* Stand: 26.04.82     *) 
+    edit ,                                     (* Vers.: 1.6.3        *)
+    show ,
+    editmode :
+ 
+FILE VAR file 1, file 2 ;
+ 
+PROC edit (FILE VAR file) :
+  x edit (file) ;
+ENDPROC edit ;
+ 
+PROC edit (FILE VAR file 1, file 2) :
+  x edit (file 1, file 2 )
+ENDPROC edit ;
+ 
+PROC edit (TEXT CONST file name) :
+  last param (file name) ;
+  IF exists (file name)
+    THEN edit 1 (file name)
+  ELIF yes ("neue datei einrichten")
+    THEN edit 1 (file name)
+  ELSE errorstop ("")
+  FI
+ENDPROC edit ;
+ 
+PROC edit :
+  edit (last param)
+ENDPROC edit ;
+ 
+PROC edit 1 (TEXT CONST name) :
+  file 1 := sequential file (modify, name) ;
+  IF NOT is error
+    THEN edit (file 1)
+  FI
+ENDPROC edit 1 ;
+ 
+PROC edit (TEXT CONST file name 1, file name 2) :
+  IF exists (file name 1)
+    THEN edit 2 (file name 1, file name 2)
+  ELIF yes ("erste datei neu einrichten")
+    THEN edit 2 (file name 1, file name 2)
+  ELSE errorstop ("")
+  FI
+ENDPROC edit ;
+ 
+PROC edit 2 (TEXT CONST file name 1, file name 2) :
+  file 1 := sequential file (modify, file name 1) ;
+  IF exists (file name 2)
+    THEN file 2 := sequential file (modify, file name 2) ;
+         edit (file 1, file 2)
+  ELIF yes ("zweite datei neu einrichten")
+    THEN file 2 := sequential file (modify, file name 2) ;
+         edit (file 1, file 2)
+  ELSE errorstop ("")
+  FI
+ENDPROC edit 2 ;
+ 
+PROC show (FILE VAR file) :
+  schreiberlaubnis (FALSE) ;
+  edit (file) ;
+  schreiberlaubnis (TRUE)
+ENDPROC show ;
+ 
+PROC show (TEXT CONST file name) :
+  IF exists (file name)
+    THEN file 1 := sequential file (modify, file name) ;
+         show (file 1) ;
+    ELSE errorstop ("file does not exist")
+  FI
+ENDPROC show ;
+ 
+PROC editmode :
+  feldwortweise (NOT feldwortweise) ;
+  say ("      ") ;
+  IF feldwortweise
+    THEN say ("Flieátext"13""10"")
+    ELSE say ("kein Umbruch"13""10"")
+  FI .
+
+ENDPROC editmode ;
+
+ 
+(******************************  e d i t o r  ******************************)
+ 
+LET DATEI = ROW 4075 STRUCT (INT nachfolger, vorgaenger, index,
+                            fortsetzung, TEXT inhalt),
+    freianker = 1, dateianker = 2, satzmax = 4075,
+    bottom = ""6""23""0"" , escape = ""27"", escape w = ""27"w";
+ 
+BOOL VAR war kein wechsel ;
+TEXT VAR tabulator :: 77*" ";
+ 
+ 
+PROC editor (DATEI VAR datei) : 
+  enable stop ;
+  grundzustand;
+  zustand aus datei holen ; 
+ 
+  REP b i l d   e d i t o r  (datei);
+      d a t e i e d i t o r  (datei)
+  UNTIL (feldkommando SUB 1) = escape
+  PER;
+  war kein wechsel := (feldkommando SUB 2) <> "w";
+  feldkommando (subtext (feldkommando, 3));
+ 
+  IF schreiberlaubnis THEN zustand in datei retten FI;
+  schreiberlaubnis (TRUE);
+  out (bottom) .
+ 
+grundzustand :
+  bildneu (TRUE); bildeinfuegen (FALSE); bildmarke (0);
+  feldmarke (0); feldseparator (""); feldstelle(1);
+  feldeinfuegen (FALSE).
+ 
+zustand in datei retten : 
+  inhalt :=  text (bildstelle, 5);
+  inhalt CAT text (bildsatz,   5);
+  inhalt CAT text (bildzeile,  5);
+  inhalt CAT text (feldlimit,  5);
+  feldtab (tabulator);
+  inhalt CAT tabulator .
+ 
+zustand aus datei holen :
+  INT CONST satz nr := int (subtext (inhalt, 1, 5)) ;
+  IF satz nr > 0
+    THEN bildstelle (satz nr)
+    ELSE bildstelle (datei (dateianker).nachfolger)
+  FI ;
+  bildsatz   (int (subtext (inhalt, 6, 10)));
+  bildzeile  (int (subtext (inhalt, 11, 15)));
+  feldlimit  (int (subtext (inhalt, 16, 20)));
+  tabulator := subtext (inhalt, 21) ; 
+  feldtabulator (tabulator) .
+ 
+inhalt :
+  datei (freianker).inhalt . 
+ 
+END PROC editor;
+ 
+PROC y edit (DATEI VAR datei) :
+  editor (datei);
+  close
+END PROC y edit;
+ 
+LET begin mark = ""15"", endmark blank = ""14"  ";
+ 
+PROC y edit (DATEI VAR erste datei, zweite datei) :
+  INT CONST alte laenge := bildlaenge - 1;
+  INT VAR laenge := alte laenge DIV 2, flen := feldende - feldanfang + 2;
+  bildlaenge (laenge); feldkommando (escape w);
+  zweimal editieren;
+  bildlaenge (alte laenge + 1); bildrand (0);
+  close .
+ 
+zweimal editieren:
+  page;
+  REP cursor (  1, laenge + 2); out (begin mark);
+      cursor(flen, laenge + 2); out (endmark blank); 
+      bildrand (0); editor (erste datei); laenge anpassen;
+      IF war kein wechsel THEN LEAVE zweimal editieren FI;
+      bildrand (alte laenge + 1 - laenge); 
+      editor (zweite datei); laenge anpassen
+  UNTIL war kein wechsel
+  PER .
+ 
+laenge anpassen :
+  laenge := bildlaenge;
+  IF laenge = 1 THEN laenge := 2 FI;
+  IF   laenge <= alte laenge - 2
+  THEN laenge := alte laenge - laenge
+  ELSE laenge := 2
+  FI ; bildlaenge (laenge) .
+END PROC y edit;
+ 
+(**************** schrott ***********************)
+ 
+PROC x edit (FILE VAR f) :
+  EXTERNAL 296
+ENDPROC x edit ;
+ 
+PROC x edit (FILE VAR f1, f2) :
+  EXTERNAL 297
+ENDPROC x edit ;
+ 
+LET FDATEI= STRUCT ( BOUND DATEI f ,
+                     INT index, pointer, line counter,
+                         mode, max line length, max page length,
+                     BOOL edit status unchanged) ;
+ 
+PROC x edit (FDATEI VAR f1) :
+  INTERNAL 296 ;
+  y edit (CONCR (f1.f))
+ENDPROC x edit ; 
+ 
+PROC x edit (FDATEI VAR f1, f2) :
+  INTERNAL 297 ;
+  y edit (CONCR (f1.f), CONCR (f2.f))
+ENDPROC x edit ;
+ 
+PROC dateieditor (DATEI VAR d) :
+  EXTERNAL 295
+ENDPROC dateieditor ;
+ 
+PROC bildeditor (DATEI VAR d) :
+  EXTERNAL 293
+ENDPROC bildeditor ;
+ 
+ENDPACKET editor ;

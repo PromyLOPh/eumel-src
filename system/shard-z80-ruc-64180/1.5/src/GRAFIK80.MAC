@@ -1,0 +1,203 @@
+		TITLE	EUMEL-SHard Graphikroutinen, 64180-Teil
+
+;		RUC64180 auf Basis108
+;		19.05.86, Michael Staubermann
+;		Ueberarbeitet: 11.01.87
+
+		GLOBAL	GMOVE, GDRAW, GTEST, GCTRL
+		GLOBAL	GTRANS, GCLR, GFILL, GRAFIO
+;
+		EXTERNAL WTEND, MEMDMA, HGOP
+
+		INCLUDE HD64180.LIB
+		.LIST
+		CSEG
+
+CTRLMOVE	EQU	0
+CTRLDRAW	EQU	1
+CTRLTEST	EQU	2
+CTRLCTRL	EQU	3
+CTRLCLR		EQU	4
+CTRLFILL	EQU	5
+CTRLTRANS	EQU	6
+
+
+TASK		EQU	0F080H	; Task fuer 6502
+RESULT		EQU	0F081H	; Subtask und Ergebnis
+PARAM1		EQU	0F082H	; xpos oder Parameter
+PARAM2		EQU	0F084H	; ypos oder Linepattern
+
+;...........................................................................
+;
+;	M O V E
+;
+;	Startposition fuer DRAW setzen
+;	Es findet keine Bereichspruefung statt
+;
+;	Eingang: A = Terminalnummer (Kanal 1)
+;		 DE = xpos (0..279)
+;		 HL = ypos (0..191)
+;
+GMOVE:
+		LD	B,CTRLMOVE
+		JR	GRAPHIK
+
+;............................................................................
+;
+;	D R A W
+;
+;	Linie von Startposition bis zur uebergebenen Position zeichnen
+;	Ausserhalb des Bildschirms wird nicht gezeichnet
+;
+;	Eingang: A = Terminalnummer (Kanal 1)
+;		 DE = xpos (0..279)
+;		 HL = ypos (0..191)
+;
+GDRAW:
+		LD	B,CTRLDRAW
+		JR	GRAPHIK
+
+;............................................................................
+;
+;	T E S T B I T
+;
+;	Pruefen, ob Punkt gesetzt
+;
+;	Eingang: A = Terminalnummer (Kanal 1)
+;		 DE = xpos (0..279)
+;		 HL = ypos (0..191)
+;
+;	Ausgang: BC = 255 : Position ausserhalb des gueltigen Bereichs
+;		      sonst: Bit 0 = Zustand (0 = geloescht, 1 = gesetzt)
+;			     Bit 7 = Farbe (1 = Gelb, 0 = Violett)
+;
+GTEST:
+		LD	B,CTRLTEST
+		JR	GRAPHIK
+
+;...........................................................................
+;
+;	C T R L
+;
+;	Graphikparameter setzen
+;
+;	Eingang:  DE = Steuerbits:
+;			Bit 0: 0 = Textmode, 1 = Graphikmode
+;			Bit 1: 0 = Sichtbare Seite 0, 1 = Sichtbare Seite 1
+;			Bit 2: 0 = Bearbeitete Seite 0, 1 = Bearbeitete Seite 1
+;			Bit 3,4: 0 = OR, 1 = NAND, 2 = XOR Zeichnen
+;			Bit 5: 0 = Full Graphics, 1 = Mixed Graphics
+;			Bit 6: 0 = Pattern in HL, 1 = Letztes DRAW Pattern
+;					fuer Linetype benutzen
+;			Bit 7: 1 = Gelb, 0 = Violett
+;		 HL = Linetype Pattern, wenn Bit 6 = 0
+;
+GCTRL:
+		LD	B,CTRLCTRL
+		JR	GRAPHIK
+
+;............................................................................
+;
+;	C L E A R
+;
+;	Graphikseite mit einem Fuellzeichen loeschen
+;
+;	Eingang: DE = Page (0..3)
+;		 HL = Fuellzeichen (Byte in L)
+;
+GCLR:
+		LD	B,CTRLCLR
+		JR	GRAPHIK
+
+;............................................................................
+;
+;	F I L L
+;
+;	Umrandete Flaeche fuellen
+;
+;	Eingang: DE = xpos
+;		 HL = ypos
+GFILL:
+		LD	B,CTRLFILL
+		JR	GRAPHIK
+
+;............................................................................
+;
+;	T R A N S
+;
+;	Transportiert (kopiert) eine Graphikseite in eine andere
+;
+;	Eingang: DE = 'from'-Page (0..3)
+;		 HL = 'to'-Page (0..3)
+GTRANS:
+		LD	B,CTRLTRANS
+
+GRAPHIK:	
+		LD	A,B		; Subtasknummer
+		CALL	WTEND		; Busy warten, da in IOCONTROL
+		POP	HL
+		PUSH	HL		; Zweiter Parameter
+
+		DI
+		IN0	B,(CBR)		; Alte MMU-Einstellung merken
+		LD	C,51H		; Basisspeicher Page 0
+		OUT0	(CBR),C
+
+		LD	(PARAM1),DE	; 1. Parameter
+		LD	(PARAM2),HL	; 2. Parameter
+
+		LD	L,7		; 6502-Task: Graphik
+		LD	H,A		; Subtask
+		LD	(TASK),HL
+		LD	C,0		; Als 'ok' vorbesetzen
+		CP	CTRLTEST	; Muss auf Resultat gewartet werden ?
+		JR	NZ,TASKEND
+
+WAITTEND:	LD	A,(TASK)	; Darf intensiv auf Taskende warten
+		AND	A
+		JR	NZ,WAITTEND
+		LD	A,(RESULT)
+		LD	C,A
+
+TASKEND:	OUT0	(CBR),B		; Alte MMU-Einstellung wiederherstellen
+		EI
+		POP	HL
+		LD	B,0
+		RET
+
+;..............................................................................
+;
+;	G R A F I O 
+;	Blockin/Blockout fuer Graphikpage			
+;
+;	Eingang: DE = Blocknummer : 0..15= Page 0 (ggf. sichtbar)
+;				   16..31= Page 1 (ggf. sichtbar)
+;				   32..47= Page 2 (nur durch Transfer)
+;				   48..63= Page 3 (nur durch Transfer)
+;
+;		 HL = Hauptspeicheraddresse
+;		 (HGOP) = 1 : Graphikseite --> Hauptspeicher
+;		 (HGOP) = 0 : Hauptspeicher --> Graphikseite
+;
+GRAFIO:
+	PUSH	AF
+	PUSH	DE
+
+	EX	DE,HL		; DE = log. Hauptspeicheradresse
+	LD	A,L
+	ADD	A		; HL * 512 + 2000H
+	ADD	A,20H
+	LD	H,A
+	LD	L,0
+	LD	BC,512		; Blockgroesse
+	LD	A,(HGOP)	; Transferrichtung
+
+	CALL	MEMDMA		; Block tranportieren
+
+	POP	DE
+	POP	AF
+	LD	BC,0		; Transfer fehlerfrei
+	RET
+
+	END
+

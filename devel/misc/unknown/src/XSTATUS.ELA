@@ -1,0 +1,188 @@
+PACKET x taskinfo DEFINES x task status ,   (* M.Staubermann 1.8.0, 861009*)
+                          x task info : 
+ 
+INT PROC pcf (TASK CONST t, INT CONST byte) : 
+ TEXT VAR word := "  " ; 
+ replace (word, 1, pcb (t, byte DIV 2 + 17)) ; 
+ IF (byte AND 1) = 0 THEN code (word SUB 1) 
+ ELSE code (word SUB 2) 
+ FI 
+ENDPROC pcf ; 
+ 
+TEXT PROC xstatus (TASK CONST task, INT CONST depth) : 
+  TEXT VAR zeile := ".................." , 
+           task name := name (task) ; 
+  change (zeile, 1, length (task name) + depth , depth * " " + task name) ; 
+  task name := zeile ; 
+  zeile CAT " " + hex16 (pcb (task, 9)) + "-" + hex8 (pcb (task, 10)) ; 
+  IF bit (pcf (task, 5), 7) (* ^ tasknr & version *) 
+     THEN zeile CAT "x" 
+     ELSE zeile CAT " " 
+  FI ; 
+  IF bit (pcf (task, 5), 0) 
+     THEN zeile CAT "h"   (* comflg *)
+     ELSE zeile CAT " "   (* haltprocess liegt an *) 
+  FI ; 
+  zeile CAT status (pcf (task, 6)) ; (* status *)
+  zeile CAT " " + bin (pcf (task, 7), 3, 7) ; (* statusflags rstflg *)
+  INT CONST pcf 11 :: pcf (task, 11) ; 
+  IF bit (pcf 11, 7)           (* iserror *)
+     THEN zeile CAT " e"
+     ELSE zeile CAT " n" 
+  FI ; 
+  IF bit (pcf 11, 6)           (* disablestop *)
+     THEN zeile CAT "d"
+     ELSE zeile CAT "e" 
+  FI ; 
+  IF bit (pcf 11, 5)           (* unbelegt *)
+     THEN zeile CAT "*" 
+     ELSE zeile CAT " " 
+  FI ; 
+  IF bit (pcf 11, 4)           (* arith 16 *)
+     THEN zeile CAT "u"  (* unsigned *)
+     ELSE zeile CAT "s"  (* signed *)
+  FI ; 
+  zeile CAT " " + text (pcf 11 AND 3) ;                    (* codesegment *)
+  zeile CAT hex8 (pcf (task, 10)) + hex8 (pcf (task, 9)) ; (* icount *) 
+  zeile CAT " " + text (pcb (task, 28) AND 15) ;           (* heapsegment *)
+  zeile CAT hex16 (pcb (task, 28) AND -16) ;               (* heaptop *)
+  zeile CAT " " + hex16 (pcb (task, 23)) ;                 (* mod *) 
+  zeile CAT text (pcb (task, 4), 4) ;                      (* channel *) 
+  zeile CAT text (pcb (task, 1), 4) ;                      (* linenr *)
+  zeile CAT text (pcb (task, 2), 4) ;                      (* errorline *)
+  zeile CAT text (pcb (task, 3), 4) ;                      (* errorcode *)
+  zeile CAT text (pcb (task, 7), 4) ;                      (* msgcode *)
+  zeile CAT " " + hex16 (pcb (task, 8)) ;                  (* msgds *)
+  zeile CAT " " + hex16 (pcb (task, 11)) + "-" + hex8 (pcb (task, 12)) ; 
+  zeile CAT " " + hex8 (pcf (task, 29)) ;   (* priv *)
+  zeile CAT " " + hex8 (pcf (task, 14)) ;  (* pbas *)     (* ^ fromid *) 
+  zeile CAT " " + hex8 (pcf (task, 15)) ;   (* c8k *)
+  zeile CAT " " + hex16 (pcb (task, 25)) ;  (* lbas *)
+  zeile CAT " " + hex16 (pcb (task, 26)) ;  (* ltop *)
+  zeile CAT " " + hex16 (pcb (task, 27)) ;  (* ls_top *)
+  zeile CAT text (pcb (task, 6), 3) ;       (* prio *) 
+  zeile CAT " " + hex8 (pcf (task, 28)) ;   (* priclk *) 
+  zeile CAT " " + hex8 (pcf (task, 8)) ;    (* pricnt *)
+  zeile CAT " " + hex16(pcb (task, 17)) + hex16 (pcb (task, 18)) ;
+  zeile CAT " " + hex8 (pcf (task, 4)) ; (* millis *)  (* ^ wstate *) 
+  zeile 
+ENDPROC xstatus ; 
+ 
+TEXT PROC status (INT CONST wert) : 
+ stat + blocked .
+ 
+stat: 
+ SELECT (wert AND 60) DIV 4 OF 
+  CASE 0 : "INTER" 
+  CASE 1 : "OUT  "
+  CASE 2 : "INCHR"
+  CASE 3 : "PAUSE" 
+  CASE 4 : "RTN T"
+  CASE 5 : "RTN F"
+  CASE 6 : "CALL "
+  CASE 7 : "RTN  "
+  CASE 8 : "CHGB1" 
+  CASE 9 : "CHGB2" 
+  CASE 10: "CHGB3" 
+  CASE 15: IF wert = 255 THEN "-DEAD" ELSE "WAIT " FI
+  OTHERWISE "?? "+hex8 (wert AND 252) 
+ ENDSELECT . 
+ 
+blocked: 
+ IF (wert AND 1) = 1 
+    THEN "-B"
+    ELSE "  "
+ FI
+ENDPROC status ; 
+ 
+TEXT PROC hex8 (INT CONST wert) : 
+ hex digit (wert DIV 16) + 
+ hex digit (wert AND 15) 
+ENDPROC hex8 ; 
+ 
+TEXT PROC hex16 (INT CONST wert) :
+ TEXT VAR t := "  " ; 
+ replace (t, 1, wert) ; 
+ hex digit (code (t SUB 2) DIV 16) + 
+ hex digit (code (t SUB 2) AND 15) + 
+ hex digit (code (t SUB 1) DIV 16) + 
+ hex digit (code (t SUB 1) AND 15) 
+ENDPROC hex16 ;
+ 
+TEXT PROC hex digit (INT CONST wert) : 
+ "0123456789ABCDEF" SUB (wert+1)
+ENDPROC hex digit ; 
+ 
+TEXT PROC bin (INT CONST wert, from, to) : 
+ INT VAR i ; 
+ TEXT VAR t := "" ; 
+ FOR i FROM to DOWNTO from REP 
+  IF bit (wert, i) THEN t CAT "1" 
+  ELSE t CAT "0" 
+  FI 
+ PER ; 
+ t 
+ENDPROC bin ; 
+ 
+PROC x task info (FILE VAR list file) : 
+ access catalogue ; 
+ put (list file, date) ;
+ put (list file, " ") ; 
+ put (list file, time of day) ; 
+ put (list file, " Size:") ; 
+ INT VAR size, used ; 
+ storage (size, used) ; 
+ put (list file, size) ; 
+ put (list file, "K Used:") ; 
+ put (list file, used) ; 
+ put (list file, "K  ") ; 
+ line (list file) ; 
+ put (list file, "TASK              ") ; 
+ put (list file, "taskid xhstatus rstflg edxa icount hptop mod chn") ; 
+ write (list file, "lin eln ecd mcd mgds fromid prvpbs c8k lbs ltoplstop"); 
+ put (list file, "pripck pct wstate mls") ;
+ line (list file) ; 
+ list tree (list file, supervisor, 0) 
+ENDPROC x task info ; 
+ 
+DATASPACE VAR ds ; 
+PROC x task info : 
+ disable stop ; 
+ ds := nilspace ; 
+ FILE VAR list file := sequentialfile (output, ds) ; 
+ max line length (list file, 1000) ;
+ x task info (list file) ; 
+ edit (list file) ; 
+ forget (ds) ; 
+ENDPROC x task info ; 
+ 
+PROC list tree (FILE VAR list file, TASK CONST first son, INT CONST depth) : 
+ enable stop ; 
+ TASK VAR actual task := first son ; 
+ WHILE NOT isniltask (actual task) REP 
+  list actual task ; 
+  list tree (list file, son (actual task), depth + 1) ; 
+  actual task := brother (actual task) 
+ PER . 
+ 
+list actual task : 
+ putline (list file, x status (actual task, depth)) 
+ 
+ENDPROC list tree ; 
+ 
+PROC x task status (TASK CONST t) : 
+ TEXT VAR zeile := x status (t, 0) ; 
+ line ; 
+ put ("Task:") ; putline (name (t)) ; 
+ putline ("taskid xhstatus rstflg edxa icount hptop mod chn lin eln ecd") ;
+ putline (subtext (zeile, 20, 80)) ; 
+ putline ("mcd mgds fromid prvpbs c8k lbs ltoplstoppripck pct wstate mls") ; 
+ putline (subtext (zeile, 81)) ; 
+ line 
+ENDPROC x task status ; 
+ 
+PROC x task status : 
+ x task status (myself) 
+ENDPROC x task status ; 
+ 
+ENDPACKET x task info ;

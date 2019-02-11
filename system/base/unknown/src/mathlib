@@ -1,0 +1,359 @@
+ 
+PACKET mathlib DEFINES sqrt,**,exp,ln,log2,log10,sin,cos, 
+                       tan,arctan,sind,cosd,tand,arctand,e,pi,
+                       random,initializerandom :
+ 
+ 
+REAL VAR rdg::0.4711; 
+ 
+REAL PROC pi: 
+   3.141592653589793. 
+END PROC pi; 
+ 
+REAL PROC e: 
+  2.718281828459045. 
+END PROC e; 
+ 
+REAL PROC ln(REAL CONST x): 
+LET ln2= 0.6931471805599453; 
+log2(x)*ln2. 
+END PROC ln; 
+ 
+REAL PROC log2(REAL CONST z): 
+INT VAR k::0,p::0; 
+REAL VAR m::0.0,x::z,t::0.0,summe::0.0; 
+IF   x>0.0 
+THEN normal 
+ELSE errorstop("log2 mit negativer zahl");4711.4711 
+FI. 
+normal: 
+ IF   x>=0.5 
+ THEN normalise downwards 
+ ELSE normalise upwards 
+  FI; 
+  IF   x>=0.1 AND x< 0.7071067811865475 THEN 
+       t:=(x-0.5946035575013605)/(x+0.5946035575013605); 
+       summe:=reihenentwicklung (t) - 0.75 
+  FI; 
+  IF  x>=0.7071067811865475 AND x < 1.0 THEN 
+      t:=(x - 0.8408964152537145)/(x+0.8408964152537145); 
+      summe:= reihenentwicklung(t)-0.25 
+  FI; 
+  summe-real(p - 4*k). 
+ 
+ normalise downwards: 
+  WHILE  x>= 16.0 REP 
+    x:=x/16.0;k:=k+1; 
+  END REP; 
+  WHILE  x>=0.5 REP 
+    x:=x/2.0;p:=p-1; 
+  END REP. 
+ 
+ normalise upwards: 
+  WHILE x<=0.0625 REP 
+    x:=x*16.0;k:=k-1; 
+  END REP; 
+  WHILE x<= 0.5 REP 
+    x:=x*2.0;p:=p+1; 
+  END REP. 
+ 
+END PROC log2; 
+ 
+REAL PROC reihenentwicklung(REAL CONST x):
+  REAL VAR i::39.0,s::1.0/39.0; 
+  LET ln2=0.6931471805599453; 
+  WHILE i>1.0 REP 
+    i:=i-2.0;s:=s*x*x + 1.0/i; 
+  END REP; 
+  s*2.0*x/ln2. 
+END PROC reihenentwicklung; 
+ 
+REAL PROC log10(REAL CONST x): 
+  LET lg2=0.301029995664; 
+  log2(x)*lg2. 
+END PROC log10; 
+ 
+REAL PROC sqrt(REAL CONST z): 
+  REAL VAR y0,y1,x::z; 
+  INT VAR p::0; 
+  BOOL VAR q::FALSE; 
+  IF   x<0.0 
+  THEN errorstop("sqrt von negativer zahl");0.0
+  ELSE correct 
+  FI. 
+ 
+ correct: 
+  IF   x=0.0 
+  THEN 0.0 
+  ELSE nontrivial 
+  FI. 
+ 
+ nontrivial: 
+  IF   x<0.01 
+  THEN small 
+  ELSE notsmall 
+  FI. 
+ 
+ 
+ notsmall: 
+  IF   x>1.0 
+  THEN big 
+  ELSE normal 
+  FI. 
+ 
+ small: 
+  WHILE x<0.01 REP 
+    p:=p-1;x:=x*100.0; 
+  END REP; 
+  normal. 
+ 
+ big: 
+  WHILE x>=1.0 REP
+    p:=p+1;x:=x/100.0; 
+  END REP; 
+  normal. 
+ 
+ normal: 
+  IF   x<0.1 
+  THEN x:=x*10.0;q:=TRUE 
+  FI; 
+  y0:=10.0**p*(1.681595-1.288973/(0.8408065+x)); 
+  IF   q 
+  THEN y0:=y0/3.162278 
+  FI; 
+  y1:=(y0+z/y0)/2.0; 
+  y0:=(y1+z/y1)/2.0; 
+  y1:=(y0+z/y0)/2.0; 
+  (y1-z/y1)/2.0+z/y1. 
+ 
+END PROC sqrt; 
+ 
+REAL PROC exp(REAL CONST z): 
+  REAL VAR c,d,x::z, a, b ; 
+  IF   x<-180.2187 
+  THEN 0.0 
+  ELIF x<0.0 
+  THEN 1.0/exp(-x) 
+  ELIF x=0.0 
+  THEN 1.0 
+  ELSE x:=x/0.6931471805599453;approx 
+  FI. 
+ 
+ approx: 
+  a:=floor(x/4.0)+1.0; 
+  b:=floor(4.0*a-x); 
+  c:=(4.0*a-b-x)*16.0; 
+  d:=(c -floor(c))/16.0; 
+  d:=d*0.6931471805599453; 
+  ( (16.0 POWER a) / (2.0 POWER b) / (1.044273782427419 POWER c ))* 
+  ((((((0.135910788320380e-2*d-0.8331563191293753e-2)*d 
+  +0.4166661437490328e-1)*d-0.1666666658727157)*d+0.4999999999942539)*d 
+  - 0.9999999999999844)*d+1.0). 
+ 
+ENDPROC exp ; 
+ 
+REAL OP POWER (REAL CONST basis, exponent) : 
+ 
+  IF floor (exponent) = 0.0 
+    THEN 1.0 
+    ELSE power 
+  FI . 
+ 
+power : 
+  REAL VAR counter := floor (abs (exponent)) - 1.0 , 
+           result  := basis ; 
+  WHILE counter > 0.0 REP 
+    result := result * basis ; 
+    counter := counter - 1.0 
+  PER ; 
+  IF exponent > 0.0 
+    THEN result 
+    ELSE 1.0 / result 
+  FI . 
+ 
+ENDOP POWER ; 
+ 
+REAL PROC tan (REAL CONST x): 
+  REAL VAR p; 
+  p:=1.273239544735168*ABSx; 
+  tg(p)*sign(x). 
+END PROC tan; 
+ 
+REAL PROC tand(REAL CONST x): 
+  REAL VAR p; 
+  p:=0.02222222222222222*ABSx; 
+  tg(p)*sign(x). 
+END PROC tand; 
+ 
+REAL PROC tg(REAL CONST x): 
+  REAL VAR r,s,u,q; 
+  q:=floor(x);r:=x-q; 
+  IF q = floor(q/2.0) * 2.0 
+  THEN s:=r 
+  ELSE s:=(1.0-r) 
+  FI; 
+  q:= q - floor(q/4.0) * 4.0 ; 
+  u:=s*s; 
+  s:=s*0.785398163397448; 
+  s:=s/(((((((((-0.4018243865271481e-10*u-0.4404768172667185e-9)*u- 
+  0.748183650813680e-8)*u-0.119216115119129e-6)*u-0.1909255769212821e-5)*u- 
+0.3064200638849133e-4)*u-0.4967495424202482e-3)*u-0.8455650263333471e-2)*u- 
+  0.2056167583560294)*u+1.0); 
+  IF   q=0.0 
+  THEN s 
+  ELIF q=3.0 
+  THEN -s 
+  ELIF q=1.0 
+  THEN 1.0/s 
+  ELSE -1.0/s 
+  FI . 
+ 
+END PROC tg;
+ 
+REAL PROC sin(REAL CONST x): 
+  REAL VAR y,r; 
+  INT VAR q; 
+  y:=ABS x*1.273239544735168; 
+  q:=int(y); 
+  r:=y-real(q); 
+  IF   x<0.0 
+  THEN q:=q+4 
+  FI; 
+  sincos(q,r). 
+END PROC sin; 
+ 
+REAL PROC sind(REAL CONST x): 
+  REAL VAR y,r; 
+  INT VAR q; 
+  y:=ABSx/45.0; 
+  q:=int(y); 
+  r:=y-real(q); 
+  IF   x<0.0 
+  THEN q:=q+4 
+  FI; 
+  sincos(q,r). 
+END PROC sind; 
+ 
+ 
+REAL PROC cos(REAL CONST x): 
+  REAL VAR y,r; 
+  INT VAR q; 
+  y:=ABS x*1.273239544735168; 
+  q:=int(y); 
+  r:=y-real(q); 
+  q:=q+2; 
+  sincos(q,r). 
+END PROC cos; 
+ 
+REAL PROC cosd(REAL CONST x): 
+  REAL VAR y,r; 
+  INT VAR q; 
+  y:=ABS x/45.0; 
+  q:=int(y); 
+  r:=y-real(q); 
+  q:=q+2; 
+  sincos(q,r). 
+END PROC cosd; 
+ 
+ 
+REAL PROC sincos(INT VAR q,REAL VAR r): 
+  SELECT q MOD 8 + 1 OF 
+  CASE 1 : sin approx(r) 
+  CASE 2 : cos approx (1.0-r) 
+  CASE 3 : cos approx(r) 
+  CASE 4 : sin approx(1.0-r) 
+  CASE 5 : - sin approx(r) 
+  CASE 6 : - cos approx(1.0-r) 
+  CASE 7 : - cos approx(r) 
+  CASE 8 : - sin approx(1.0-r) 
+  OTHERWISE 0.0 
+  END SELECT 
+END PROC sincos; 
+ 
+REAL PROC sin approx(REAL CONST x): 
+  REAL VAR z::x*x; 
+  x*((((((0.6877101540593035e-11*z-0.1757149296873372e-8)*z+0.313361621667256
+8
+e-6)*z-0.3657620415845891e-4)*z+0.2490394570188737e-2)*z-0.807455121882e-1 
+)*z+0.7853981633974483). 
+END PROC sin approx; 
+ 
+REAL PROC cos approx(REAL CONST x): 
+  REAL VAR z::x*x; 
+  (((((( -0.3857761864560276e-12*z+0.115004970178141e-9)*z-0.246113638267419e
+-7)*z+0.3590860445885748e-5)*z-0.3259918869266875e-3)*z+0.1585434424381541e-1
+)*z-0.3084251375340425)*z+1.0. 
+END PROC cos approx; 
+ 
+REAL PROC arctan(REAL CONST x): 
+REAL VAR z::x*x; 
+IF   x<0.0 THEN -arctan(-x) 
+ELIF x>1.0 THEN 3.141592653589792/2.0-arctan(1.0/x) 
+ELIF x*1.0e16>2.67949192431e15   THEN pi/6.0+arctan(1.732050807568877-4.0 
+/(x+1.732050807568877)) 
+ELSE  x/(((((((0.0107090276046822*z-0.01647757182108040)*z 
+      +0.02177846332482151)*z-0.03019339673273880)*z+0.04656083561183398)*z 
+      -0.0888888888888888)*z+0.3333333333333333)*z+1.0)FI. 
+END PROC arctan; 
+ 
+REAL PROC arctand(REAL CONST x): 
+  arctan(x)/3.1415926589793*180.0. 
+END PROC arctand; 
+ 
+ 
+BOOL PROC even(INT CONST number): 
+ (number DIV 2)*2=number. 
+END PROC even; 
+ 
+REAL OP **(REAL CONST base,exponent): 
+  IF   base<0.0 
+  THEN errorstop("hoch mit negativer basis") 
+  FI; 
+  IF   base=0.0 
+  THEN test exponent 
+  ELSE
+      exp(exponent*ln(base)) 
+  FI. 
+ 
+ test exponent: 
+  IF   exponent=0.0 
+  THEN errorstop("0**0 geht nicht");4711.4711 
+  ELSE 0.0 
+  FI. 
+ 
+END OP **; 
+ 
+ 
+REAL PROC sign(REAL CONST number): 
+  IF   number >0.0  THEN 1.0 
+  ELIF number <0.0  THEN -1.0 
+  ELSE 0.0 
+  FI. 
+END PROC sign ;
+ 
+REAL OP **(REAL CONST a,INT CONST b): 
+REAL VAR p::1.0,r::a;INT VAR n::ABS b; 
+WHILE n>0 REP 
+  IF   n MOD 2=0 
+  THEN n:=n DIV 2;r:=r*r 
+  ELSE n DECR 1;p:=p*r 
+  FI; 
+END REP; 
+IF   b>0 
+THEN p 
+ELSE 1.0/p 
+FI. 
+END OP **; 
+ 
+ 
+ 
+REAL PROC random: 
+rdg:=rdg+pi;rdg:=rdg*rdg;rdg:=rdg*rdg;rdg:=rdg*rdg;rdg:=frac(rdg);rdg. 
+END PROC random; 
+ 
+ 
+PROC initializerandom(REAL CONST z): 
+ rdg:=z; 
+END PROC initializerandom; 
+ 
+END PACKET mathlib; 

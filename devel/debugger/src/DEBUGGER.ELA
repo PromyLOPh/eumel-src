@@ -1,0 +1,3151 @@
+(*************************************************************************) 
+(**                                                                     **) 
+(*  EUMEL - Debugger: (C) Michael Staubermann, Oktober/November '86      *) 
+(*  Ab EUMEL 1.7.5.4                                                     *)
+(*  Stand: 01.12.86, 1.8.2: 26.07.88                                     *)
+(*  Noch keine BOUND-Variablen-Zugriffe implementiert                    *)
+(**                                                                     **) 
+(*************************************************************************) 
+ 
+ 
+PACKET address  DEFINES ADD,                      (* 1.7.5  861006 *) 
+                        SUB,                      (* 1.8.0  861022 *)
+                        MUL,                      (* M. Staubermann*)
+                        INC, 
+                        DEC, 
+                        ulseq,
+ 
+                        split word , 
+                        make word , 
+
+                        hex16, 
+                        hex8 , 
+                        integer , 
+ 
+                        cdbint , 
+                        cdbtext , 
+ 
+                        get word , 
+                        put word : 
+ 
+ 
+(*********************** Hex-Konvertierung ********************************) 
+ 
+LET hex digits = "0123456789ABCDEF" ; 
+ 
+PROC paket initialisierung : 
+ (* Paketinitialisierung, wird nur einmal durchlaufen *)
+ INT CONST ulseq addr :: getword (0, 512 + 
+     mod nr (BOOL PROC (INT CONST, INT CONST) ulseq)) ADD 2 ; 
+ IF getword (3, ulseq addr) = integer ("B009") (* bei checkoff LSEQ *) 
+    THEN putword (3, ulseq addr, integer ("D409")) (* ULSEQ <LR 4> *)
+ ELIF getword (3, ulseq addr ADD 1) = integer ("B009") (* bei checkon *) 
+    THEN putword (3, ulseq addr ADD 1, integer ("D409"))  
+ FI 
+ 
+ENDPROC paket initialisierung ; 
+ 
+INT PROC integer (TEXT CONST hex) : 
+ INT VAR summe := 0, i ; 
+ FOR i FROM 1 UPTO min (4, LENGTH hex) REP 
+  rotate (summe, 4) ; 
+  summe INCR digit 
+ PER ; 
+ summe .
+ 
+digit : 
+ TEXT CONST char := hex SUB i ; 
+ IF char >= "a" THEN code (char) - 87 
+ ELIF char >= "A" THEN code (char) - 55 
+ ELSE code (char) - 48 
+ FI 
+ 
+ENDPROC integer ; 
+ 
+TEXT PROC hex8 (INT CONST wert) : 
+ (hex digits SUB ((wert DIV 16) +1)) +
+ (hex digits SUB ((wert AND 15) +1))
+ 
+ENDPROC hex8 ; 
+ 
+TEXT PROC hex16 (INT CONST wert) :
+ TEXT VAR result := "" ; 
+ INT VAR i, w := wert ;
+ FOR i FROM 1 UPTO 4 REP 
+  rotate (w, 4) ; 
+  result CAT (hex digits SUB ((w AND 15)+1))
+ PER ; 
+ result  
+ 
+ENDPROC hex16 ;
+ 
+(***************************** Adressarithmetik ***************************)
+
+PROC arith 15 : 
+ 
+ EXTERNAL 91 
+ 
+ENDPROC arith 15 ; 
+ 
+ 
+PROC arith 16 : 
+ 
+ EXTERNAL 92 
+ 
+ENDPROC arith 16 ; 
+ 
+ 
+OP INC (INT VAR a) : 
+ arith 16 ; 
+ a INCR 1
+ 
+ENDOP INC ; 
+ 
+
+OP DEC (INT VAR a) : 
+ arith 16 ; 
+ a DECR 1
+ 
+ENDOP DEC ; 
+ 
+ 
+INT OP ADD (INT CONST left, right) : 
+ arith 16 ; 
+ left + right  
+ 
+ENDOP ADD ; 
+ 
+INT OP SUB (INT CONST left, right) : 
+ arith16 ; 
+ left - right 
+ 
+ENDOP SUB ; 
+ 
+INT OP MUL (INT CONST left, right) : 
+ arith 16 ; 
+ left * right    (* Multiplikation MOD 65536 im Gegensatz zu IMULT *)
+ 
+ENDOP MUL ; 
+ 
+BOOL PROC ulseq (INT CONST left, right) : 
+ left <= right   (* Mu· leider(!!) auf ULSEQ Code gepatcht werden *)
+ENDPROC ulseq ; 
+
+(*************************** Wortoperationen ******************************) 
+ 
+PROC split word (INT VAR word and high byte, low byte) : 
+ 
+ EXTERNAL 15 
+ 
+ENDPROC split word ; 
+ 
+
+PROC make word (INT VAR highbyte and resultword, INT CONST low byte) : 
+ 
+ EXTERNAL 16 
+
+ENDPROC make word ; 
+ 
+ 
+(************************** DS4-Access ***********************************)
+ 
+INT PROC cdbint (INT CONST adr) : 
+ 
+ EXTERNAL 116 
+ 
+ENDPROC cdbint ; 
+ 
+ 
+TEXT PROC cdbtext (INT CONST adr) : 
+ 
+ EXTERNAL 117 
+
+ENDPROC cdbtext ; 
+ 
+ 
+PROC putword (INT CONST segment, adr, value) : 
+ 
+ EXTERNAL 119 
+ 
+ENDPROC put word ; 
+ 
+ 
+INT PROC getword (INT CONST segment, adr) : 
+ 
+ EXTERNAL 120 
+ 
+ENDPROC getword ; 
+ 
+
+INT PROC mod nr (BOOL PROC (INT CONST, INT CONST) proc) : 
+
+ EXTERNAL 35 
+
+ENDPROC mod nr ; 
+
+
+paket initialisierung 
+
+ENDPACKET address ; 
+ 
+(**************************************************************************) 
+ 
+PACKET table routines DEFINES                (* FÅr eumel decoder 861017 *)
+                                             (* 1.8.0 by M.Staubermann   *)
+                              code segment , 
+                              code address ,
+                              packet name , 
+                              module name and specifications ,
+                              get module number ,
+                              storage , 
+                              hash ,
+                              init module table, 
+                              add modules ,
+                              dump tables :
+ 
+ 
+LET end of hash table                 = 1023 , 
+    begin of permanent table          = 22784 , 
+    begin of pt minus ptt limit       = 12784 ,
+    end of permanent table            = 32767 , 
+ 
+    permanent param const             = 10000 ,
+    permanent param var               = 20000 ,
+    permanent proc op                 = 30000 ,
+    permanent type                    = 30000 ,
+    permanent row                     =    10 ,
+    permanent struct                  =    11 ,
+    permanent param proc              =    12 ,
+    permanent struct end              =     0 ,
+
+    ptt limit                         = 10000 ,
+ 
+    void                              =     0 ,
+    
+    const                             =     1 , 
+    var                               =     2 ,
+
+    sysgenoff module number           = 1280 , 
+    start of module number link table = 512 ,   
+    highest module number 1           = 2048 , 
+    max packets                       = 128 ,
+    max types                         = 64 ;
+ 
+ 
+LET MODULETABLE = ROW highest module number 1 
+                      STRUCT (TEXT name, specifications, INT packet link) , 
+    PACKETTABLE = ROW max packets STRUCT (TEXT name, INT permanent address), 
+    TYPETABLE   = STRUCT (THESAURUS names, ROW max types INT storage),
+    TABLETYPE   = BOUND STRUCT (MODULETABLE module, PACKETTABLE packet,
+                                TYPETABLE types, INT number of packets, 
+                                end of permanent table) ; 
+ 
+TABLETYPE VAR table ; 
+ 
+TEXT VAR type and mode, result ; 
+BOOL VAR end of params ; 
+INT VAR mode, paramlink, index ;
+ 
+(************************* Module- und Packettablezugriff **************) 
+ 
+PROC init module table (TEXT CONST table name) :
+ forget (table name, quiet) ; 
+ table := new (table name) ; 
+ table.number of packets := 0 ; 
+ table.end of permanent table := begin of permanent table ;
+
+ table.types.names := empty thesaurus ;
+ insert (table.types.names, "INT", index) ; 
+ table.types.storage (index) := 1 ; 
+ insert (table.types.names, "REAL", index) ; 
+ table.types.storage (index) := 4 ; 
+ insert (table.types.names, "BOOL", index) ; 
+ table.types.storage (index) := 1 ; 
+ insert (table.types.names, "TEXT", index) ; 
+ table.types.storage (index) := 8 ; 
+ insert (table.types.names, "DATASPACE", index) ; 
+ table.types.storage (index) := 1 ; 
+
+ scan permanent table (table.end of permanent table) ; 
+ scan hash table (begin of permanent table) ; 
+ 
+ENDPROC init module table ; 
+ 
+ 
+PROC add modules :
+ INT CONST old end of permanent table := table.end of permanent table ;
+ IF cdbint (table.end of permanent table) <> -3 
+    THEN scan permanent table (table.end of permanent table) ; 
+         scan hash table (old end of permanent table)
+ FI  
+
+ENDPROC add modules ; 
+ 
+ 
+PROC scan hash table (INT CONST minimum permanent address) : 
+ INT VAR hash table pointer ; 
+ FOR hash table pointer FROM 0 UPTO end of hash table REP 
+  IF cdbint (hash table pointer) <> 0 
+  THEN cout (hash table pointer) ; 
+       list all name table objects with this hash code (hash table pointer,
+                     minimum permanent address)
+  FI 
+ PER 
+ 
+ENDPROC scan hash table ; 
+ 
+ 
+PROC list all name table objects with this hash code (INT CONST link,
+                   minimum permanent address) :
+ TEXT VAR object name ;
+ INT VAR name table pointer := first link word, module nr, 
+         permanent pointer ; 
+ WHILE NOT end of name table chain REPEAT
+  permanent pointer := cdb int (nametable pointer + 1) ;
+  WHILE permanent pointer >= minimum permanent address REP
+   object name := cdbtext (name table pointer + 2) ; 
+   IF permanent type definition 
+    THEN insert (table.types.names, object name, index) ;
+         table.types.storage (index) := cdb int (permanent pointer + 2) 
+    ELSE get specifications (permanent pointer) ; 
+         module nr := cdb int (param link + 1) + 1;
+         table.module (module nr).name := object name ; 
+         table.module (module nr).specifications := result;
+         table.module (module nr).packet link := packetlink(permanentpointer) 
+   FI ; 
+   permanent pointer := cdb int (permanent pointer)
+  PER ; 
+  name table pointer := cdb int (name table pointer)  
+ END REPEAT . 
+ 
+first link word : 
+ cdb int (link) .
+ 
+end of name table chain : 
+ name table pointer = 0 . 
+ 
+permanent type definition : 
+ (object name SUB 1) <= "Z" AND (object name SUB 1) >= "A" AND 
+  cdbint (permanent pointer + 1) = permanent type 
+
+END PROC list all name table objects with this hash code ; 
+ 
+ 
+INT PROC packet link (INT CONST permanent address) : 
+ INT VAR packet pointer ; 
+ FOR packet pointer FROM 1 UPTO table.number of packets REP 
+     IF table.packet (packet pointer).permanent address > permanent address 
+        THEN LEAVE packet link WITH packet pointer -1
+     FI 
+ PER ; 
+ table.number of packets 
+
+ENDPROC packet link ; 
+ 
+
+PROC scan permanent table (INT VAR permanent pointer) : 
+ FOR permanent pointer FROM permanent pointer UPTO end of permanent table 
+     WHILE cdbint (permanent pointer) <> -3 REP 
+  IF cdbint (permanent pointer) = -2 
+     THEN cout (permanent pointer) ;
+          table.number of packets INCR 1 ; 
+          table.packet (table.number of packets).name := 
+               cdbtext (cdbint (permanent pointer +1) +2) ; 
+          table.packet (table.number of packets).permanent address := 
+               permanent pointer
+  FI 
+ PER 
+
+ENDPROC scan permanent table ; 
+ 
+
+PROC dump tables (TEXT CONST file name) : 
+ INT VAR i ; 
+ forget (filename, quiet) ; 
+ FILE VAR f := sequentialfile (output, filename) ; 
+ maxline length (f, 1000) ;
+  
+ putline (f, "PACKETTABLE:") ; 
+ put (f, "End of Permanenttable:") ; 
+ put (f, hex16 (table.end of permanent table)) ; 
+ line (f) ; 
+ putline (f, "Nr. Packetname") ;
+ FOR i FROM 1 UPTO table.number of packets REP 
+  cout (i) ; 
+  put (f, text (i, 3)) ; 
+  put (f, hex16 (table.packet (i).permanent address)) ; 
+  putline (f, table.packet (i).name) 
+ PER ; 
+ line (f, 2) ; 
+ putline (f, "TYPETABLE:") ; 
+ putline (f, " Size Name") ; 
+ index := 0 ; 
+ get (table.types.names, type and mode, index) ; 
+ WHILE index > 0 REP 
+  put (f, text (table.types.storage (index), 5)) ; 
+  putline (f, type and mode) ; 
+  get (table.types.names, type and mode, index) 
+ PER ; 
+ line (f, 2) ; 
+ putline (f, "MODULETABLE:") ; 
+ putline (f, "Modnr.PNr.Name and Parameters") ; 
+ FOR i FROM 1 UPTO highest module number 1 REP 
+  IF table.module (i).packet link <> -1 
+     THEN cout (i) ;
+          put (f, text (i-1, 5)) ; 
+          put (f, text (table.module (i).packet link, 3)) ;
+          put (f, table.module (i).name) ; 
+          putline (f, table.module (i).specifications) ; 
+  FI 
+ PER  
+ 
+ENDPROC dump tables ; 
+ 
+
+INT PROC storage (TEXT CONST typename) : 
+ index := link (table.types.names, typename) ; 
+ IF index = 0 
+    THEN 0 
+    ELSE table.types.storage (index) 
+ FI 
+
+ENDPROC storage ; 
+ 
+ 
+TEXT PROC module name and specifications (INT CONST module number) : 
+ IF LENGTH table.module (module number + 1).name > 0 
+    THEN table.module (module number + 1).name + " " + 
+         table.module (module number + 1).specifications
+    ELSE "" 
+ FI
+
+ENDPROC module name and specifications ; 
+ 
+ 
+TEXT PROC packet name (INT CONST module number) :
+ IF table.module (module number + 1).packet link > 0 
+    THEN table.packet (table.module (module number + 1).packet link).name 
+    ELSE FOR index FROM module number DOWNTO 1 REP
+           IF table.module (index).packet link > 0 
+              THEN LEAVE packet name WITH table.packet (table.module 
+                   (index).packet link).name
+           FI 
+         PER ; 
+         "" 
+ FI
+ 
+ENDPROC packet name ; 
+ 
+
+(************************ Modulnummern ***********************************) 
+ 
+INT PROC code segment (INT CONST module number) : 
+ IF module number < sysgen off module number 
+    THEN 2 
+    ELSE 3 
+ FI 
+
+ENDPROC code segment ; 
+ 
+
+INT PROC code address (INT CONST module number) : 
+ get word (0, start of module number link table + module number) 
+ENDPROC code address ; 
+ 
+
+PROC get module number (INT VAR module number) : 
+ TEXT VAR object ;
+ INT VAR anz objects, name table pointer, permanent pointer ;  
+ put ("Name oder Modulnummer der PROC/OP:") ; 
+ getline (object) ; 
+ changeall (object, " ", "") ;
+ IF object = "" 
+    THEN LEAVE get module number 
+ FI ; 
+ disablestop ; 
+ module number := int (object) ; 
+ IF NOT iserror AND last conversion ok AND module number >= -1 AND 
+                                           module number < 2048
+    THEN LEAVE get module number 
+ FI ; 
+ clear error ; 
+ enablestop ; 
+ anz objects := 0 ; 
+ FILE VAR f := notefile ; 
+ maxlinelength (f, 1000) ; 
+ note ("Modulnummer des gewÅnschten Objekts merken und ESC q tippen.") ; 
+ noteline ;
+ noteline ;
+ module number := -1 ;
+ scan permanent table chain with object name ; 
+ IF anz objects > 1 
+    THEN note edit ; 
+         put ("Modulnummer der PROC/OP:") ; 
+         get (module number)  
+    ELSE type (""27"q") ; 
+         note edit
+ FI . 
+ 
+scan permanent table chain with object name : 
+ name table pointer := first link word ; 
+ WHILE NOT end of name table chain REP
+  IF cdb text (name table pointer + 2) = object 
+     THEN permanent pointer := cdb int (nametable pointer + 1) ;
+          IF NOT permanent type definition 
+             THEN run through permanent chain 
+          FI ; 
+  FI ; 
+  name table pointer := cdb int (name table pointer)   
+ PER . 
+ 
+run through permanent chain : 
+ WHILE permanent pointer <> 0 REP
+   anz objects INCR 1 ; 
+   cout (anz objects) ;
+   get specifications (permanent pointer) ; 
+   IF anz objects = 1 
+      THEN module number := module nr 
+   FI ;
+   note (text (module nr, 4)) ; 
+   note ("  ") ; 
+   note (object) ; 
+   note (" ") ;
+   note (result) ; 
+   noteline ;
+   permanent pointer := cdbint (permanent pointer)
+ PER . 
+ 
+module nr : 
+ cdb int (param link + 1) . 
+         
+first link word : 
+ cdb int (hash (object)) .
+ 
+end of name table chain : 
+ name table pointer = 0 . 
+ 
+permanent type definition : 
+ (object SUB 1) <= "Z" AND (object SUB 1) >= "A" AND 
+  cdbint (permanent pointer + 1) = permanent type 
+ 
+ENDPROC get module number ; 
+   
+
+(************************* Permanenttabellenzugriffe **********************) 
+ 
+INT PROC hash (TEXT CONST obj name) : 
+ INT VAR i, hash code ; 
+ hash code := 0 ; 
+ FOR i FROM 1 UPTO LENGTH obj name REP 
+  addmult cyclic 
+ PER ; 
+ hash code . 
+ 
+addmult cyclic : 
+ hash code INCR hash code ; 
+ IF hash code > end of hash table THEN wrap around FI ; 
+ hash code := (hash code + code (obj name SUB i)) AND end of hash table . 
+ 
+wrap around : 
+ hash code DECR end of hash table 
+
+ENDPROC hash ; 
+
+
+PROC next pt param :
+ mode := cdb int (param link) MOD ptt limit ;
+ param link INCR 1 ;
+ IF mode = permanent row 
+   THEN skip over permanent row 
+ ELIF mode = permanent struct 
+   THEN skip over permanent struct
+ FI ;
+ set end marker if end of list .
+ 
+skip over permanent row :
+ param link INCR 1 ; (* Skip row size *)
+ next pt param .
+
+skip over permanent struct :
+ mode := cdbint (param link) ; 
+ WHILE mode <> permanent struct end REP 
+   next pt param ;
+   mode := cdbint (param link) 
+ PER ;
+ param link INCR 1   (* skip permanent struct end *) 
+
+ENDPROC next pt param ;
+
+
+PROC set end marker if end of list :
+ mode := cdb int (param link) ;
+ end of params := mode >= permanent proc op OR mode <= 0 
+ 
+ENDPROC set end marker if end of list ;
+
+
+PROC get type and mode (INT VAR type) : 
+ mode := cdb int (param link) ;
+ IF mode = permanent param proc 
+    THEN type of param proc 
+    ELSE type of object
+ FI .
+
+type of param proc : 
+ param link INCR 1 ;
+ get type and mode (type) ;
+ mode := permanent param proc .
+
+type of object :
+ IF mode < 0 
+    THEN type := 2769 + (32767 + mode) ;
+         mode := 0
+    ELSE type := mode MOD ptt limit ;
+         mode DECR type ;
+         translate type if necessary ;
+         translate mode if necessary 
+ FI .
+
+translate type if necessary :
+ IF permanent row or struct THEN translate type FI .
+
+translate type :
+ type := param link - begin of pt minus ptt limit .
+
+translate mode if necessary : 
+ IF mode = permanent param const 
+    THEN mode := const
+ ELIF mode = permanent param var 
+    THEN mode := var
+ FI .
+
+permanent row or struct :
+ type = permanent row OR type = permanent struct
+
+ENDPROC get type and mode ;
+ 
+
+PROC get specifications (INT CONST permanent pointer) : 
+ result := "" ;
+ to first param ;
+ IF NOT end of params THEN put param list FI ;
+ get result . 
+ 
+to first param :
+ param link := permanent pointer + 1 ;
+ set end marker if end of list .
+ 
+get result :
+ INT VAR type;
+ get type and mode (type) ;
+ IF type <> void 
+    THEN type and mode := " --> " ;
+         name of type (type) ;
+         result CAT type and mode 
+ FI
+
+ENDPROC get specifications ;
+
+
+PROC put param list : 
+ result CAT "(" ;
+ REP
+   INT VAR type;
+   get type and mode (type) ;
+   put type and mode ;
+   maybe param proc ;
+   next pt param ;
+   IF end of params 
+      THEN result CAT ")" ;
+           LEAVE put param list 
+   FI ;
+   result CAT ", " ;
+ PER . 
+ 
+put type and mode :
+ INT CONST mode1 :: mode ;
+ type and mode := "" ;
+ name of type (type) ;
+ type and mode CAT name of mode ;
+ result CAT type and mode .
+ 
+name of mode :
+ IF   mode1 = const THEN " CONST"
+ ELIF mode1 = var   THEN " VAR"
+ ELIF type = void   THEN "PROC" 
+                    ELSE " PROC" 
+ FI .
+ 
+maybe param proc :
+ IF mode = permanent param proc THEN put virtual params FI .
+ 
+put virtual params :
+ skip over result type if complex type ;
+ IF NOT end of virtual params 
+    THEN result CAT " " ;
+         put param list 
+ FI .
+ 
+skip over result type if complex type :
+ next pt param .
+ 
+end of virtual params :
+ end of params
+
+ENDPROC put param list ;
+ 
+
+PROC name of type (INT CONST type) :
+ LET int         = 1 ,
+     real        = 2 ,
+     string      = 3 ,
+     bool        = 5 ,
+     bool result = 6 ,
+     dataspace   = 7 ; 
+ 
+ SELECT type OF
+   CASE void        :
+   CASE int         : type and mode CAT "INT"
+   CASE real        : type and mode CAT "REAL"
+   CASE string      : type and mode CAT "TEXT"
+   CASE bool,
+        bool result : type and mode CAT "BOOL"
+   CASE dataspace   : type and mode CAT "DATASPACE"
+   OTHERWISE complex type
+ ENDSELECT .
+ 
+complex type :
+ IF type > ptt limit THEN perhaps permanent struct or row
+                     ELSE get complex type
+ FI .
+ 
+perhaps permanent struct or row :
+ index := type + begin of pt minus ptt limit ;
+ mode := cdb int (index) MOD ptt limit ;
+ IF   mode = permanent row    THEN get permanent row 
+ ELIF mode = permanent struct THEN get permanent struct
+                              ELSE type and mode CAT "-"
+ FI .
+ 
+get complex type :
+ index := type + begin of permanent table ;
+ IF is complex type 
+    THEN get name
+    ELSE type and mode CAT "<HIDDEN>"
+ FI .
+ 
+is complex type :
+ permanent type definition mode = permanent type . 
+ 
+get name :
+ type and mode CAT cdb text (link to type name + 2) .
+ 
+link to type name :
+ cdb int (index + 3) .
+ 
+permanent type definition mode :
+ cdb int (index + 1) .
+
+get permanent row :
+ INT VAR t; 
+ type and mode CAT "ROW " ;
+ type and mode CAT text (cdb int (index + 1)) ;
+ type and mode CAT " " ;
+ param link := index + 2 ;
+ get type and mode (t) ;
+ name of type (t) .
+ 
+get permanent struct :
+ type and mode CAT "STRUCT (" ; 
+ param link := index + 1 ; 
+ WHILE within permanent struct REP 
+  get type and mode (t) ;
+  name of type (t) ; 
+  next pt param ; 
+  IF within permanent struct
+     THEN type and mode CAT ", " 
+  FI 
+ PER ; 
+ type and mode CAT ")" . 
+ 
+within permanent struct :
+ cdbint (param link) <> permanent struct end . 
+ 
+ENDPROC name of type ;
+ 
+ 
+ENDPACKET table routines ; 
+ 
+
+(*************************************************************************)
+ 
+PACKET eumel decoder DEFINES        (* M. Staubermann, MÑrz/April 86 *)
+                                    (* 1.8.0 861201 *) 
+                                    (* 1.8.2 880726 *)
+       lbase , 
+       pbase ,
+       set parameters , 
+       get parameters , 
+       default no runtime ,
+       bool result ,
+       line number ,
+       list file name ,
+       last actual parameter ,
+       with code words ,
+       with object address ,
+
+       next word ,
+       next module header ,
+       data representation ,
+       object representation ,
+
+       decode module ,
+       decode : 
+
+
+LET packet data segment  =      0 , 
+    local  data segment  =      1 ,
+    standard dataspace   =      0 , (* ds = 4 *)
+
+    first elan address   = 13 584 , (* codeaddress (273) *)
+    begin of stringtable =  1 024 , 
+    begin of nametable   =  4 096 , 
+    end of nametable     = 22 783 ; 
+ 
+LET try type        =  0 , {?}
+    int addr        = 10 , {I}
+    real addr       = 19 , {R}
+    text addr       = 20 , {S}
+    dataspace addr  =  5 , {D}
+    task addr       = 21 , {T}
+    ref addr        =  1 , {@}
+    mod addr        =  2 , {A}
+    bool addr       =  3 , {B}
+    int value       = 23 , {V}
+    hexbyte value   =  9 , {H}
+    module nr value = 14 ; {M}
+ 
+LET OPN       = STRUCT (TEXT mnemonic, params, BOOL bool result) , 
+    PRIMOP    = ROW  31 OPN ,
+    SPECIALOP = ROW   6 OPN , 
+    ESCOP     = ROW 130 OPN ,
+
+    rtnt opcode = 32513 , 
+    rtnf opcode = 32514 ; 
+ 
+LET hex 3fff  = 16 383 ,
+    hex 03ff  =  1 023 ,
+    hex 0400  =  1 024 , 
+    hex 7c    =    124 ,
+    hex 7f    =    127 , 
+    hex f0    =    240 ,
+    hex fd    =    253 , 
+    hex ff    =    255 ;
+ 
+INT CONST hex 83ff  :: -31745 ,
+          hex ff00  :: -256 ,
+          hex fff8  :: -8 ,
+          minus one :: -1 ;
+ 
+FILE VAR list file ; 
+TEXT VAR file name := "" , 
+         text val := "" ;
+INT VAR file number := 0 ,
+        data base , 
+        ln := minus one ,
+        lbas := minus one ,
+        cmod := minus one ;
+   
+BOOL VAR was bool result , 
+         echo ,
+         with statement line := TRUE ,
+         with object and address := TRUE ;
+ 
+ 
+INT PROC line number : 
+ ln 
+ENDPROC line number ; 
+ 
+
+TEXT PROC last actual parameter : 
+ text val 
+ENDPROC last actual parameter ; 
+ 
+
+PROC pbase (INT CONST i) : 
+ data base := i ; 
+ makeword (data base, 0)
+ENDPROC pbase ; 
+ 
+
+INT PROC pbase : 
+ INT VAR lowbyte, highbyte := data base ; 
+ split word (highbyte, lowbyte) ; 
+ highbyte
+ENDPROC pbase ; 
+ 
+
+PROC lbase (INT CONST i) : 
+ lbas := i 
+ENDPROC lbase ; 
+ 
+
+BOOL PROC bool result : 
+ was bool result 
+ENDPROC bool result ; 
+ 
+
+BOOL PROC with object address : 
+ with object and address 
+ENDPROC with object address ; 
+ 
+
+PROC with object address (BOOL CONST b) : 
+ with object and address := b 
+ENDPROC with object address ; 
+ 
+
+PROC with codewords (BOOL CONST b) : 
+ with statement line := b 
+ENDPROC with codewords ; 
+ 
+
+BOOL PROC with codewords : 
+ with statement line 
+ENDPROC with codewords ; 
+ 
+
+PROC bool result (BOOL CONST b) : 
+ was bool result := b 
+ENDPROC bool result ; 
+ 
+
+PROC list file name (TEXT CONST name) : 
+ file name := name 
+ENDPROC list file name ; 
+ 
+
+PROC set parameters (INT CONST lbase, pbas, line number, codmod) : 
+ lbas := lbase ; 
+ pbase (pbas) ;
+ ln := line number ; 
+ cmod := codmod 
+ENDPROC set parameters ; 
+ 
+
+PROC get parameters (INT VAR lbase, pbas, line number, codmod) :
+ lbase := lbas ; 
+ pbas := pbase ; 
+ line number := ln ; 
+ codmod := cmod 
+ENDPROC get parameters ; 
+ 
+
+PROC default no runtime : 
+ lbas := minus one ; 
+ ln := minus one ; 
+ database := minus one ; 
+ cmod := minus one 
+ENDPROC default no runtime ; 
+ 
+
+PRIMOP CONST primop := PRIMOP :( 
+  OPN :("LN   ", "V",   FALSE),    (* 1 *)
+  OPN :("LN1  ", "V",   FALSE),
+  OPN :("MOV  ", "II",  FALSE), 
+  OPN :("INC1 ", "I",   FALSE), 
+  OPN :("DEC1 ", "I",   FALSE), 
+  OPN :("INC  ", "II",  FALSE), 
+  OPN :("DEC  ", "II",  FALSE), 
+  OPN :("ADD  ", "III", FALSE), 
+  OPN :("SUB  ", "III", FALSE), 
+  OPN :("CLEAR", "I",   FALSE),     (* 10 *)
+  OPN :("TEST ", "I",   TRUE), 
+  OPN :("EQU  ", "II",  TRUE), 
+  OPN :("LSEQ ", "II",  TRUE), 
+  OPN :("FMOV ", "RR",  FALSE), 
+  OPN :("FADD ", "RRR", FALSE), 
+  OPN :("FSUB ", "RRR", FALSE), 
+  OPN :("FMUL ", "RRR", FALSE), 
+  OPN :("FDIV ", "RRR", FALSE), 
+  OPN :("FLSEQ", "RR",  TRUE), 
+  OPN :("TMOV ", "SS",  FALSE), 
+  OPN :("TEQU ", "SS",  TRUE), 
+  OPN :("ULSEQ", "II",  TRUE), 
+  OPN :("DSACC", "D?",  FALSE), 
+  OPN :("REF  ", "?@",  FALSE), 
+  OPN :("SUBS ", "VVI?@", FALSE),  (* 25 *)
+  OPN :("SEL  ", "?V@", FALSE),    (* 26 *)
+  OPN :("PPV  ", "?",   FALSE), 
+  OPN :("PP   ", "?",   FALSE), 
+  OPN :("B    ", "V",   FALSE), 
+  OPN :("B1   ", "V",   FALSE), 
+  OPN :("CALL ", "M",   FALSE)) ;
+ 
+SPECIALOP CONST special op := SPECIALOP :( 
+  OPN :("EQUIM  ", "HI",   TRUE),
+  OPN :("MOVi   ", "HI",   FALSE),
+  OPN :("MOVx   ", "HII",  FALSE), 
+  OPN :("PUTW   ", "HII",  FALSE),
+  OPN :("GETW   ", "HII",  FALSE), 
+  OPN :("PENTER ", "H",    FALSE)) ; (* 7F = ESC, FF = LONGA *)
+ 
+ESCOP CONST esc op := ESCOP :( 
+  OPN :("RTN    ", "",      FALSE),   (* 0 *)
+  OPN :("RTNT   ", "",      FALSE), 
+  OPN :("RTNF   ", "",      FALSE), 
+  OPN :("???????", "",      FALSE),   (* was repair text 1.7.1 *)
+  OPN :("STOP   ", "",      FALSE),   (* TERM *)
+  OPN :("GOSUB  ", "V",     FALSE),   (* 1 ist Branch Address *) 
+  OPN :("KE     ", "",      FALSE), 
+  OPN :("GORET  ", "",      FALSE),
+  OPN :("BCRD   ", "II",    FALSE),   (* begin char read (pointer, length) *) 
+  OPN :("CRD    ", "II",    FALSE),   (* char read (char, pointer) *)
+  OPN :("ECWR   ", "III",   FALSE),   (* end char write (pointer, length, next entry) *) 
+  OPN :("CWR    ", "III",   FALSE),   (* char write (hash code, pointer, char) *) 
+  OPN :("CTT    ", "?S",    FALSE),   (* REF d2:=REF compiler table text <d1>) *)
+  OPN :("GETC   ", "SII",   TRUE),    (* INT <d3> := code (TEXT <d1> SUB INT<d2>), TRUE wenn INT<ds> <= length (TEXT) *) 
+  OPN :("FNONBL ", "ISI",   TRUE),    (* find non blank (char, line, pointer) *) 
+  OPN :("DREM256", "II",    FALSE),   (* <d2> := <d1> MOD 256, <d1> := <d1> DIV 256 *) 
+  OPN :("AMUL256", "II",    FALSE),   (* <d1> := <d1> * 256 + <d2> *) 
+  OPN :("???????", "",      FALSE), 
+  OPN :("ISDIG  ", "I",     TRUE), 
+  OPN :("ISLD   ", "I",     TRUE), 
+  OPN :("ISLCAS ", "I",     TRUE), 
+  OPN :("ISUCAS ", "I",     TRUE), 
+  OPN :("GADDR  ", "III",   FALSE),   (* IF <d2> >= 0 (Global) THEN <d3> := <d2> - <d1> (<d1>=pbase) ELIF bit (<d2>, 14) (Local Ref) THEN <d3> := (<d2> AND $3FFF)*2 + 1 ELSE (Local) <d3> := (<d2> AND $3FFF)*2 FI *)
+  OPN :("GCADDR ", "III",   TRUE), 
+  OPN :("ISSHA  ", "I",     TRUE), 
+  OPN :("SYSG   ", "",      FALSE),   (* 25 *)
+  OPN :("GETTAB ", "",      FALSE), 
+  OPN :("PUTTAB ", "",      FALSE), 
+  OPN :("ERTAB  ", "",      FALSE), 
+  OPN :("EXEC   ", "M",     FALSE),
+  OPN :("PPROC  ", "M",     FALSE),
+  OPN :("PCALL  ", "A",     FALSE),   (* : icount Segment/Address *) 
+  OPN :("BRCOMP ", "IV",    FALSE),
+  OPN :("MOVxx  ", "V??",   FALSE), 
+  OPN :("ALIAS  ", "VDD",   FALSE), 
+  OPN :("MOVii  ", "VI",    FALSE), 
+  OPN :("FEQU   ", "RR",    TRUE), 
+  OPN :("TLSEQ  ", "SS",    TRUE), 
+  OPN :("FNEG   ", "RR",    FALSE), 
+  OPN :("NEG    ", "II",    FALSE),
+  OPN :("IMULT  ", "III",   FALSE), 
+  OPN :("MUL    ", "III",   FALSE), 
+  OPN :("DIV    ", "III",   FALSE), 
+  OPN :("MOD    ", "III",   FALSE), 
+  OPN :("ITSUB  ", "SII",   FALSE), 
+  OPN :("ITRPL  ", "SII",   FALSE), 
+  OPN :("DECOD  ", "SI",    FALSE), 
+  OPN :("ENCOD  ", "IS",    FALSE), 
+  OPN :("SUBT1  ", "SIS",   FALSE), 
+  OPN :("SUBTFT ", "SIIS",  FALSE), 
+  OPN :("SUBTF  ", "SIS",   FALSE), 
+  OPN :("REPLAC ", "SIS",   FALSE), 
+  OPN :("CAT    ", "SS",    FALSE), 
+  OPN :("TLEN   ", "SI",    FALSE), 
+  OPN :("POS    ", "SSI",   FALSE), 
+  OPN :("POSF   ", "SSII",  FALSE),
+  OPN :("POSFT  ", "SSIII", FALSE), 
+  OPN :("STRANL ", "IIISIII", FALSE), 
+  OPN :("POSIF  ", "SSSII", FALSE), 
+  OPN :("???????", "",      FALSE), 
+  OPN :("OUT    ", "S",     FALSE),   (* 60 *)
+  OPN :("COUT   ", "I",     FALSE), 
+  OPN :("OUTF   ", "SI",    FALSE), 
+  OPN :("OUTFT  ", "SII",   FALSE), 
+  OPN :("INCHAR ", "S",     FALSE), 
+  OPN :("INCETY ", "S",     FALSE), 
+  OPN :("PAUSE  ", "I",     FALSE), 
+  OPN :("GCPOS  ", "II",    FALSE), 
+  OPN :("CATINP ", "SS",    FALSE), 
+  OPN :("NILDS  ", "D",     FALSE), 
+  OPN :("DSCOPY ", "DD",    FALSE), 
+  OPN :("DSFORG ", "D",     FALSE), 
+  OPN :("DSWTYP ", "DI",    FALSE), 
+  OPN :("DSRTYP ", "DI",    FALSE), 
+  OPN :("DSHEAP ", "DI",    FALSE), 
+  OPN :("ESTOP  ", "",      FALSE), 
+  OPN :("DSTOP  ", "",      FALSE), 
+  OPN :("SETERR ", "I",     FALSE), 
+  OPN :("ISERR  ", "",      TRUE), 
+  OPN :("CLRERR ", "",      FALSE), 
+  OPN :("RPCB   ", "II",    FALSE), 
+  OPN :("INFOPW ", "SSI",   FALSE),  (* War vorher Writepcb *)
+  OPN :("TWCPU  ", "TR",    FALSE), 
+  OPN :("ROTATE ", "II",    FALSE), 
+  OPN :("CONTRL ", "IIII",  FALSE), 
+  OPN :("BLKOUT ", "DIIII", FALSE), 
+  OPN :("BLKIN  ", "DIIII", FALSE), 
+  OPN :("NXTDSP ", "DII",   FALSE), 
+  OPN :("DSPAGS ", "ITI",   FALSE), 
+  OPN :("STORAGE", "II",    FALSE), 
+  OPN :("SYSOP  ", "I",     FALSE),   (* 90 *)
+  OPN :("ARITHS ", "",      FALSE), 
+  OPN :("ARITHU ", "",      FALSE), 
+  OPN :("HPSIZE ", "I",     FALSE), 
+  OPN :("GARB   ", "",      FALSE), 
+  OPN :("TPBEGIN", "TTIA",  FALSE),   (* 1.8.0: privileged begin *)
+  OPN :("FSLD   ", "IRI",   FALSE), 
+  OPN :("GEXP   ", "RI",    FALSE), 
+  OPN :("SEXP   ", "IR",    FALSE), 
+  OPN :("FLOOR  ", "RR",    FALSE), 
+  OPN :("RTSUB  ", "SIR",   FALSE), 
+  OPN :("RTRPL  ", "SIR",   FALSE), 
+  OPN :("CLOCK  ", "IR",    FALSE), 
+  OPN :("SETNOW ", "R",     FALSE), 
+  OPN :("TRPCB  ", "TII",   FALSE), 
+  OPN :("TWPCB  ", "TII",   FALSE),   (* 105 *)
+  OPN :("TCPU   ", "TR",    FALSE), 
+  OPN :("TSTAT  ", "TI",    FALSE), 
+  OPN :("ACT    ", "T",     FALSE), 
+  OPN :("DEACT  ", "T",     FALSE), 
+  OPN :("THALT  ", "T",     FALSE), 
+  OPN :("TBEGIN ", "TA",    FALSE),   (* seg/addr icount *)
+  OPN :("TEND   ", "T",     FALSE), 
+  OPN :("SEND   ", "TIDI",  FALSE), 
+  OPN :("WAIT   ", "TID",   FALSE), 
+  OPN :("SWCALL ", "TIDI",  FALSE), 
+  OPN :("CDBINT ", "II",    FALSE),   (* 116 *)
+  OPN :("CDBTXT ", "IS",    FALSE),   (* 117 *)
+  OPN :("PNACT  ", "I",     FALSE), 
+  OPN :("PW     ", "III",   FALSE), 
+  OPN :("GW     ", "III",   FALSE), 
+  OPN :("XOR    ", "III",   FALSE), 
+  OPN :("PPCALL ", "TIDI",  FALSE),   (* pingpong call *) 
+  OPN :("EXTASK ", "T",     TRUE), 
+  OPN :("AND    ", "III",   FALSE), 
+  OPN :("OR     ", "III",   FALSE), 
+  OPN :("SESSION", "I",     FALSE), 
+  OPN :("SENDFT ", "TTIDI", FALSE), 
+  OPN :("DEFCOL ", "T",     FALSE), 
+  OPN :("ID     ", "II",    FALSE)) ; (* 129 *)
+
+
+PROC decode : 
+ INT VAR mod nr ; 
+ get module number (mod nr) ; 
+ IF mod nr >= minus one 
+    THEN decode (mod nr) 
+ FI
+ENDPROC decode ; 
+ 
+
+PROC decode module : 
+ INT VAR mod nr ; 
+ get module number (mod nr) ; 
+ IF mod nr >= minus one 
+    THEN decode module (mod nr) 
+ FI
+ENDPROC decode module ; 
+ 
+
+PROC decode module (INT CONST mod nr) :
+ INT VAR address :: code address (mod nr) ;
+ default no runtime ; 
+ decode (code segment (mod nr), address, minus one, TRUE) 
+ENDPROC decode module ; 
+ 
+
+PROC decode (INT CONST mod nr) : 
+ INT VAR address :: code address (mod nr) ;
+ default no runtime ;
+ decode (code segment (mod nr), address, minus one, FALSE) 
+ENDPROC decode ; 
+ 
+
+PROC decode (INT CONST seg, from) : 
+ INT VAR address := from ; 
+ default no runtime ;
+ decode (seg, address, minus one, FALSE) 
+ENDPROC decode ; 
+ 
+
+PROC decode (INT CONST seg, INT VAR addr, INT CONST to addr, 
+             BOOL CONST only one module) : 
+
+ TEXT VAR taste, opcode, codewords, hex addr ; 
+ BOOL VAR addr out := TRUE , 
+          output permitted := TRUE ;
+ INT VAR size, used, mod nr, header address, start address := addr ; 
+
+ add modules ;
+ storage (size, used) ;
+ echo := TRUE ; 
+ file number := 0 ;
+ cmod := minus one ; 
+ init list file ; 
+ next module header (seg, addr, header address, mod nr) ; 
+ was bool result := FALSE ; 
+
+ WHILE ulseq (addr, to addr) REP 
+  protocoll ; 
+  taste := incharety ; 
+  decode one statement ;
+  analyze key ; 
+  IF (addr AND 31) = 0 
+   THEN storage (size, used) ; 
+  FI ; 
+ UNTIL taste = ""27"" OR used > size PER ; 
+
+ IF used > size 
+    THEN list line ("Abbruch wegen Speicherengpass!") 
+ FI .
+ 
+protocoll : 
+  IF output permitted AND NOT echo (* Falls Decoder im Hintergrund laufen soll *) 
+     THEN IF addr out 
+             THEN out (" ") ; 
+                  out (hex16 (addr)) ; 
+                  out (" "8""8""8""8""8""8"") ; 
+             ELSE cout (ln) 
+          FI 
+  FI . 
+  
+analyze key : 
+  SELECT code (taste) OF 
+{l}  CASE 108 : addr out := FALSE  (* Zeilennummern ausgeben *)
+{d}  CASE 100 : get command ("Gib Kommando:") ; do command 
+{f}  CASE 102 : show filename and fileline 
+{a}  CASE 97  : addr out := TRUE  (* Hexaddressen ausgeben *)
+{e}  CASE 101 : echo := NOT echo  (* Bildschirmausgabe zus. *)
+{s}  CASE 115 : storage (size,used) ; out(""13""5"System-Storage: " + text (used) + "  ") 
+{m}  CASE 109 : out (""13""5"Modulnr: " + text (mod nr-1) + "  ") 
+{Q,W}CASE 87,81:output permitted := TRUE (* LÑuft nur im Vordergrund *) 
+{S}  CASE 83  : output permitted := FALSE (* LÑuft auch im Hintergrund *) 
+{ESC}CASE 27  : IF incharety <> "" 
+                   THEN taste := "" 
+                   ELSE list line ("Abbruch mit ESC") 
+                FI
+                (* Wegen Steuertasten, wie ESC P *)
+ ENDSELECT . 
+ 
+show filename and fileline : 
+ out (""13""5"Filename: " + filename + "." + text (filenumber) + 
+      "  Fileline: " + text (lines (list file)) + "  ") . 
+ 
+decode one statement : 
+ check if module head ; 
+ hex addr  := hex16 (addr) ;
+ codewords := "" ; 
+ opcode    := "" ; 
+ decode (seg, addr, codewords, opcode, INT PROC (INT CONST, INT VAR, TEXT VAR) next word) ; 
+ hex addr CAT " " ; 
+ hex addr CAT opcode ; 
+ IF with statement line 
+    THEN hex addr CAT " " ;
+         WHILE LENGTH hex addr < 80 REP 
+          hex addr CAT " " 
+         PER ; 
+         hex addr CAT codewords ; 
+ FI ;
+ list line (hex addr) . 
+ 
+check if module head : 
+ IF addr = header address 
+    THEN IF only one module AND addr <> start address 
+            THEN LEAVE decode
+         FI ;
+         list line (" ") ; 
+         list line ("Module " + process module nr (mod nr)) ; 
+         list line (" ") ;
+         IF output permitted AND NOT echo
+            THEN put ("Module:") ; 
+                 cout (mod nr) ; 
+                 8 TIMESOUT ""8""
+         FI ;
+         calculate c8k ;
+         codewords := "" ;
+         hex addr := hex16 (addr) ;
+         hex addr CAT " HEAD        " ; 
+         hex addr CAT text (next word (seg, addr, codewords)) ; 
+         IF with statement line 
+            THEN hex addr CAT " " ; 
+                 WHILE LENGTH hex addr < 80 REP
+                  hex addr CAT " " 
+                 PER ;
+                 hex addr CAT code words ; 
+         FI ;
+         list line (hex addr) ; 
+         next module header (seg, addr, header address, mod nr) ; 
+ FI . 
+ 
+calculate c8k : 
+ INT VAR dummy ;
+ cmod := addr ; 
+ splitword (cmod, dummy) ; 
+ cmod INCR 16 ; 
+ cmod := cmod AND 255 .
+         
+ENDPROC decode ; 
+ 
+
+PROC init list file : 
+ forget (filename + "." + text (filenumber), quiet) ; 
+ list file := sequentialfile (output, filename + "." + text (filenumber)) ; 
+ maxlinelength (list file, 2000) ;
+ list line ("Addr Opcode       Parameter") ; 
+ENDPROC init list file ; 
+ 
+
+PROC list line (TEXT CONST zeile) : 
+ IF lines (list file) > 4000 
+  THEN file number INCR 1 ; 
+       init list file 
+ FI ; 
+ putline (list file, zeile) ; 
+ IF echo THEN outsubtext (zeile, 1, 79) ; line FI 
+ENDPROC list line ; 
+
+
+PROC decode (INT CONST segment, INT VAR address, TEXT VAR words, instruction,
+             INT PROC (INT CONST, INT VAR, TEXT VAR) next word) : 
+ 
+ INT VAR opcode, word, lowbyte, highbyte, 
+         opcode address := address ;
+ BOOL VAR shorta opcode ;
+
+ ln := minus one ; (* Wenn kein LN Befehl vorkam -1 *)
+
+ word := next word (segment, address, words) ;
+ highbyte := word ;
+ split word (highbyte, lowbyte) ; 
+ opcode := highbyte AND hex 7c ;
+ shorta opcode := TRUE ;
+
+ IF opcode = hex 7c AND highbyte <> hex ff
+    THEN esc or special instruction (* Kann kein LONGA sein *) 
+    ELSE IF highbyte = hex ff 
+            THEN longa instruction 
+            ELSE word := word AND hex 83ff
+         FI ; 
+         primaer instruction
+ FI . 
+ 
+esc or special instruction : 
+ IF highbyte = hex 7f 
+    THEN esc instruction
+    ELSE special instruction 
+ FI . 
+ 
+longa instruction : 
+ IF lowbyte = hex ff 
+    THEN instruction CAT "-" ; 
+         LEAVE decode 
+ ELIF lowbyte = hex fd 
+    THEN instruction CAT "Block unlesbar" ; 
+         LEAVE decode 
+ ELSE instruction CAT "LONGA " ; 
+      shorta opcode := FALSE ;
+      opcode := lowbyte ; 
+      word := next word (segment, address, words) ;
+      highbyte := word ; 
+      splitword (highbyte, lowbyte) 
+ FI . 
+ 
+special instruction : 
+ opcode := (highbyte AND 3) * 2 + 1 ; 
+ IF highbyte > hex 7f 
+    THEN opcode INCR 1 
+ FI ; 
+ word := word AND hex ff ;
+ instruction CAT special op (opcode).mnemonic ; 
+ instruction CAT "     " ; (* ESC Ausgleich *)
+ instruction CAT params0 (special op (opcode).params, word, segment, address, 
+             words, INT PROC (INT CONST, INT VAR, TEXT VAR) next word) ; 
+ was bool result := special op (opcode).bool result ; 
+ IF opcode = 6 (* PENTER *) 
+    THEN database := lowbyte ; 
+         makeword (database, 0) ; 
+ FI . 
+ 
+esc instruction : 
+ opcode := lowbyte + 1 ; 
+ IF opcode < 1 OR opcode > 131 
+    THEN instruction CAT "???????" 
+    ELSE instruction CAT "ESC " ; 
+         instruction CAT esc op (opcode).mnemonic ; 
+         instruction CAT " " ;
+         instruction CAT params (esc op (opcode).params, segment, address, 
+                     words, INT PROC (INT CONST, INT VAR, TEXT VAR) next word) ; 
+         was bool result := esc op (opcode).bool result  
+ FI . 
+ 
+primaer instruction : 
+ rotate (opcode, -2) ; 
+ SELECT opcode OF 
+  CASE 0, 1   : process ln 
+  CASE 28, 29 : process br 
+  CASE 30 : process call
+  OTHERWISE 
+   opcode INCR 1 ; 
+   instruction CAT prim op (opcode).mnemonic ; 
+   IF shorta opcode 
+      THEN instruction CAT "       " 
+      ELSE instruction CAT " "
+   FI ;
+   instruction CAT params0 (prim op (opcode).params, word, segment, address, words,
+               INT PROC (INT CONST, INT VAR, TEXT VAR) next word) ; 
+   IF opcode = 25 (* SUBS *) 
+      THEN instruction CAT "(ESiz,Lim-1,Idx,Base,Ref) " 
+   ELIF opcode = 26 (* SEL *) 
+      THEN instruction CAT "(Base,Offs,Ref) " 
+   FI ;
+   was bool result := prim op (opcode).bool result ; 
+ ENDSELECT . 
+ 
+process call : 
+ opcode INCR 1 ; 
+ word := word AND hex 03ff ;
+ IF highbyte > hex 7f 
+    THEN word INCR hex 0400 
+ FI ;
+ instruction CAT prim op (opcode).mnemonic ; 
+ IF shorta opcode
+    THEN instruction CAT "       " 
+    ELSE instruction CAT " "
+ FI ;
+ was bool result := FALSE ; (* Wird von params0 ggf Åberschrieben *) 
+ instruction CAT params0 (prim op (opcode).params, word, segment, address, words,
+             INT PROC (INT CONST, INT VAR, TEXT VAR) next word) . 
+ 
+process ln : 
+ IF shorta opcode 
+    THEN word := short address (lowbyte, highbyte, opcode = 1) 
+ FI ;
+ IF was bool result 
+    THEN instruction CAT "BT   " ; 
+         IF shorta opcode
+            THEN instruction CAT "       " 
+         FI ; 
+         instruction CAT hex16 (branch address)
+    ELSE IF segment = 2 
+            THEN instruction CAT "HEAD "
+            ELSE ln := word ; 
+                 instruction CAT "LN   " 
+         FI ;
+         IF shorta opcode 
+            THEN instruction CAT "       " 
+         FI ; 
+         instruction CAT text (word) 
+ FI ;
+ was bool result := FALSE .
+ 
+process br : 
+  word := short address (lowbyte, highbyte, opcode = 29) ;
+  IF was bool result
+     THEN instruction CAT "BF   " ; 
+     ELSE instruction CAT "B    " ; 
+  FI ;    
+  IF shorta opcode 
+     THEN instruction CAT "       " 
+  FI ; 
+  instruction CAT hex16 (branch address) ;
+  was bool result := FALSE .
+ 
+branch address : 
+ INT VAR high address byte := opcode address ; 
+ split word (high address byte, lowbyte) ;
+ highbyte := word ;
+ split word (highbyte, lowbyte) ;
+ high address byte INCR highbyte ; 
+ IF cmod <> minus one AND high address byte >= cmod 
+    THEN high address byte DECR 16 (* cms = 16 *) 
+ FI ; 
+ make word (high address byte, lowbyte) ; 
+ high address byte . 
+ 
+ENDPROC decode ; 
+ 
+
+INT PROC short address (INT CONST lowbyte, highbyte, BOOL CONST bit12) : 
+ (* Bit 7 des Highbytes in Bit 0 rotieren *) 
+ INT VAR effective address := (highbyte * 2) AND 6 ; 
+ IF highbyte > hex 7f         
+    THEN effective address INCR 1 
+ FI ; 
+ make word (effective address, lowbyte) ; (* high and result, low *)
+ IF bit12 
+    THEN effective address INCR 2048 
+ FI ; 
+ effective address
+
+ENDPROC short address ; 
+ 
+
+INT PROC next word (INT CONST segment, INT VAR address, TEXT VAR words) : 
+ INT CONST word :: get word (segment, address) ; 
+ INC address ; 
+ words CAT hex16 (word) ; 
+ words CAT " " ; 
+ word
+
+ENDPROC next word ; 
+ 
+
+PROC next module header (INT CONST segment, address, 
+                         INT VAR header address, module number) : 
+ INT VAR first, last, mid ; 
+ IF segment = 2 
+    THEN first := 0 ; 
+         last := 1275 
+    ELSE first := 1282 ; (* 1280/1281 MAIN doagain & runagain modaddr *)
+         last := 2047 
+ FI ; 
+ REP 
+  mid := (first + last) DIV 2 ; 
+  IF ulseq (address, getword (0, 512 + mid)) 
+     THEN last := mid
+     ELSE first := mid + 1
+  FI 
+ UNTIL first = last PER ; 
+ header address := getword (0, 512 + first) ; 
+ module number := first
+
+ENDPROC next module header ; 
+ 
+
+TEXT PROC params (TEXT CONST types, INT CONST segment, INT VAR address, 
+                  TEXT VAR words, INT PROC (INT CONST, INT VAR, TEXT VAR) next word) : 
+ 
+ INT VAR i, param addr, type ; 
+ TEXT VAR result ; 
+ 
+ IF types = "" 
+    THEN LEAVE params WITH ""
+ FI ;
+ result := "" ;
+ FOR i FROM 1 UPTO LENGTH types REP 
+   param addr := next word (segment, address, words) ; 
+   type := code (types SUB i)-63 ;
+   result CAT data representation (param addr, segment, address, type) ; 
+   IF i <> LENGTH types 
+      THEN result CAT ", " 
+   FI ;
+ PER ; 
+ result 
+
+ENDPROC params ; 
+ 
+
+TEXT PROC params0 (TEXT CONST types, INT CONST word, segment, INT VAR address, 
+                   TEXT VAR words, INT PROC (INT CONST, INT VAR, TEXT VAR) next word) : 
+ 
+ INT VAR i, param addr, type ; 
+ TEXT VAR result ; 
+ 
+ IF types = "" 
+    THEN LEAVE params0 WITH ""
+ FI ;
+ result := "" ;
+ param addr := word ; 
+ FOR i FROM 1 UPTO LENGTH types REP 
+   type := code (types SUB i)-63 ;
+   result CAT data representation (param addr, segment, address, type) ; 
+   IF i <> LENGTH types 
+      THEN result CAT ", " ; 
+           param addr := next word (segment, address, words)
+   FI 
+ PER ; 
+ result 
+
+ENDPROC params0 ; 
+ 
+
+TEXT PROC data representation (INT CONST data addr, segment, address, type) : 
+ INT VAR stack offset, ds segment, ds number, ds address ; 
+ TEXT VAR result ;
+ IF is data address
+    THEN IF local data address 
+            THEN stack offset := data addr ;
+                 rotate (stack offset, minus one) ;
+                 stack offset := stack offset AND hex 3fff ; 
+                 IF local reference address OR type = ref addr
+                    THEN get referenced representation
+                    ELSE get representation from stack 
+                 FI 
+            ELSE get representation from packet data
+         FI
+    ELSE object representation (minus one, data addr, segment, address, type)
+ FI . 
+ 
+is data address : 
+ NOT (type = 23 OR type = 9 OR type = 14) .
+ 
+local data address : 
+ data addr < 0 . 
+ 
+local reference address : 
+ (data addr AND 1) = 1 . 
+ 
+is runtime : 
+ lbas <> minus one . 
+ 
+get representation from packet data : 
+ IF with object and address 
+    THEN result := "<G " + hex16 (data addr) + "H>"  
+    ELSE result := ""
+ FI ; 
+ result CAT object representation (packet data segment, data addr ADD data base, 
+                                   segment, address, type) ; 
+ result . 
+ 
+get representation from stack : 
+ result := "<L " + text (stack offset) + ">" ;
+ IF is runtime 
+    THEN IF NOT with object and address 
+            THEN result := "" 
+         FI ;
+         result CAT object representation (local data segment, 
+                    lbas ADD stack offset, segment, address, type) 
+ FI ; 
+ result . 
+ 
+get referenced representation : 
+ IF is runtime 
+    THEN ds address := getword (local data segment, lbas ADD stack offset) ; 
+         ds number  := getword (local data segment, lbas ADD stack offset ADD 1) ; 
+         split word (ds number, ds segment) ; 
+         IF ds number = standard dataspace 
+            THEN IF with object and address 
+                    THEN result := "<LR " + text (stack offset) ; 
+                         result CAT " @" + text (ds segment AND 7) ; 
+                         result CAT hex16 (ds address) + "H>" 
+                    ELSE result := "" 
+                 FI ; 
+                 IF ds segment <= local data segment
+                    THEN result CAT object representation (ds segment, 
+                                    ds address, segment, address, type) 
+                 
+                 ELIF ds segment > 3 (* Illegal! *)
+                    THEN result := "<LR " + text (stack offset) ; 
+                         result CAT " @" + text (ds segment AND 7) ; 
+                         result CAT "!!!" ;
+                         result CAT hex16 (ds address) + "H>" 
+                    ELSE (* PROC-Addresse *)
+                         result CAT object representation (ds segment, 
+                                    ds address, segment, address, mod addr)
+                 FI ; 
+                 result
+            ELSE "<LR " + text (stack offset) + 
+                 " DS:" + hex8 (ds number) + " @" + 
+                 text (ds segment AND 7) + hex16 (ds address) + "H>"
+         FI
+    ELSE "<LR " + text (stack offset) + ">"
+ FI . 
+ 
+ENDPROC data representation ; 
+ 
+
+INT VAR anzahl zeros, anzahl steuerzeichen ; 
+
+TEXT PROC object representation (INT CONST data segment, data address, 
+                                           segment, address, type) : 
+ TEXT VAR t, result ; 
+ INT VAR i, zeichen, highbyte, lowbyte, first word ;
+ SELECT type OF 
+  CASE try type,refaddr: try representation 
+  CASE int addr        : int representation 
+  CASE real addr       : real representation
+  CASE text addr       : text representation 
+  CASE dataspace addr  : dataspace representation
+  CASE task addr       : task representation 
+  CASE mod addr        : module address representation 
+  CASE bool addr       : bool representation
+  CASE int value       : integer value
+  CASE hexbyte value   : integer hexbyte
+  CASE module nr value : module nr representation
+  OTHERWISE "unbek. Typ: " + code (type + 63)
+ ENDSELECT . 
+ 
+module nr representation : 
+ text val := text (data address) ;
+ process module nr (data address) . 
+
+bool representation : 
+ IF getword (data segment, data address) = 0 
+    THEN text val := "TRUE" 
+    ELSE text val := "FALSE" 
+ FI ; 
+ text val . 
+ 
+reference address : 
+ highbyte := getword (data segment, data address ADD 1) ; 
+ splitword (highbyte, lowbyte) ; 
+ result := "@" + hex8 (highbyte) + "-" + hex8 (lowbyte) ; 
+ result CAT hex16 (getword (data segment, data address)) ; 
+ text val := result ; 
+ result . 
+ 
+int representation : 
+ i := get word (data segment, data address) ; 
+ text val := text (i) ;
+ result := text (i) ; 
+ IF i < 0 
+    THEN result CAT "|" ; 
+         result CAT hex16 (i) ; 
+         result CAT "H"
+ ELIF i >= 256 
+    THEN result CAT "|" ; 
+         result CAT hex16 (i) ;
+         result CAT "H" ;
+ FI ;
+ result . 
+
+integer value : 
+ text val := text (data address) ;
+ text (data address) . 
+ 
+integer hexbyte : 
+ text val := text (data address) ;
+ IF (data address AND hex ff00) = 0 
+    THEN hex8 (data address) + "H"  
+    ELSE hex16 (data address) + "H" 
+ FI . 
+ 
+real representation :
+ result := "12345678" ; 
+ FOR i FROM 0 UPTO 3 REP 
+  replace (result, i + 1, get word (data segment, data address ADD i)) 
+ PER ; 
+ disablestop ; 
+ result := compress (text (result RSUB 1, 20)) ;
+ IF iserror 
+    THEN clear error ;
+         result := "undefined REAL"
+ FI ; 
+ text val := result ; 
+ result . 
+ 
+text representation : 
+ t := copied text var (data segment, data address) ; 
+ result := """" ; 
+ anzahl steuerzeichen := 0 ; 
+ anzahl zeros := 0 ; 
+ FOR i FROM 1 UPTO length (t) REP 
+  zeichen := code (t SUB i) ; 
+  IF zeichen = 34 THEN result CAT """""" 
+  ELIF zeichen = 251 OR zeichen > 31 AND zeichen < 127 OR 
+       zeichen > 213 AND zeichen < 224 THEN result CAT code (zeichen) 
+  ELSE result CAT """" ; 
+       result CAT text (zeichen) ; 
+       result CAT """" ; 
+       anzahl steuerzeichen INCR 1 ; 
+       IF zeichen = 0 
+          THEN anzahl zeros INCR 1 
+       FI 
+  FI 
+ PER ; 
+ result CAT """" ; 
+ text val := result ;
+ result . 
+ 
+task representation : 
+ INT CONST index   := get word (data segment, data address) , 
+           version := get word (data segment, data address ADD 1) ; 
+ IF index < 256 
+    THEN result := hex8 (index)  
+    ELSE result := hex16 (index) ; 
+         insertchar (result, "-", 3) 
+ FI ;
+ result CAT "-" ; 
+ result CAT hex16 (version) ; 
+ result CAT "/" ; 
+ result CAT taskname (index, version) ; 
+ text val := result ;
+ result . 
+ 
+dataspace representation : 
+ highbyte := get word (data segment, data address) ; 
+ splitword (highbyte, lowbyte) ; 
+ result := hex8 (highbyte) ; 
+ result CAT "-" ; 
+ result CAT hex8 (lowbyte) ; 
+ IF (highbyte AND lowbyte) = 255
+    THEN result CAT ":not init"
+ ELIF (highbyte OR lowbyte) = 0 
+    THEN result CAT ":nilspace" 
+ FI ; 
+ text val := result ;
+ result . 
+ 
+module address representation : 
+ (* Hier: lowbyte = mod nr, highbyte = mod addr *)
+ next module header (data segment, data address, highbyte, lowbyte) ; 
+ IF highbyte <> data address 
+    THEN linear search (* Adresse mu· doch zu finden sein *)
+ FI ;
+ text val := text (lowbyte) ;
+ process module nr (lowbyte) .
+ 
+linear search : 
+ IF data segment = 2
+    THEN FOR i FROM 512 UPTO 767 REP 
+          IF getword (packet data segment, i) = data address
+             THEN lowbyte := i-512 ; 
+                  LEAVE linear search 
+          FI 
+         PER
+    ELSE FOR i FROM 1792 UPTO 3839 REP
+          IF getword (packet data segment, i) = data address
+             THEN lowbyte := i-512 ; 
+                  LEAVE linear search 
+          FI 
+         PER 
+ FI ; (* Moduleaddress nicht gefunden, da stimmt doch was nicht! *)
+ LEAVE module address representation WITH reference address . 
+ 
+try representation : 
+ first word := getword (data segment, data address) ; 
+ result := text (first word) ;
+ IF first word < 0 OR first word >= 256 
+    THEN result CAT "|" ; 
+         result CAT hex16 (first word) ; 
+         result CAT "H"
+ FI ;
+ IF first word = 0 
+    THEN result CAT "|TRUE"
+ ELIF first word = 1 
+    THEN result CAT "|FALSE" 
+ FI ; 
+ IF vorzeichen ok AND nur digits (* real *) 
+    THEN result CAT "|" ; 
+         disablestop ; 
+         TEXT CONST txt :: compress (text (t RSUB 1, 20)) ; 
+         IF is error 
+            THEN clear error  
+            ELSE result CAT txt 
+         FI ; 
+ FI ; 
+ IF within compiler
+    THEN IF first word >= begin of stringtable CAND first word <= end of nametable 
+            THEN string pointer (* first word wird ggf veraendert! *)
+         ELIF first word > 9 AND first word < 32 
+            THEN result CAT "|""""" + text (first word) + """""" (* Char *)
+         ELIF first word = 34 
+            THEN result CAT "|"""""
+         ELIF first word >= 32 AND first word < 127 
+            THEN result CAT "|""" + code (first word) + """" (* Code-Char *)
+         FI ; 
+ ELIF text sinnvoll 
+    THEN result CAT "|" ; 
+         result CAT t  
+ FI ; 
+ text val := result ;
+ result . 
+ 
+text sinnvoll : 
+ keine steuerzeichen AND
+ (getword (data segment, data address ADD 1) AND 255) < 80 . 
+ 
+within compiler : 
+ segment = 2 AND ulseq (address, first elan address-1) . 
+ 
+string pointer : 
+ IF first word >= begin of name table 
+    THEN first word INCR 2 
+ FI ; 
+ IF (cdbint (first word) AND 255) < 100 
+    THEN t := cdbtext (first word) ; 
+         IF pos (t,   ""0"",  ""31"", 1) = 0 CAND 
+            pos (t, ""127"", ""213"", 1) = 0 CAND 
+            pos (t, ""220"", ""255"", 1) = 0
+            THEN result CAT "|""" ; 
+                 result CAT t ; 
+                 result CAT """" 
+         FI 
+ FI . 
+ 
+keine steuerzeichen : 
+ t := object representation (data segment, data address, 
+                             segment, address, text addr) ;
+ anzahl steuerzeichen < 4 AND anzahl zeros < 2 AND 
+ getword (data segment, data address ADD 1) <> minus one . 
+ 
+vorzeichen ok : 
+ (first word AND hex f0) = 0 OR (first word AND hex f0) = 128 . 
+ 
+nur digits : 
+ t := "12345678" ; 
+ FOR i FROM 0 UPTO 3 REP 
+  replace (t, i + 1, get word (data segment, data address ADD i)) 
+ PER ; 
+ IF (first word AND 15) > 9 THEN FALSE 
+ ELSE FOR i FROM 2 UPTO 7 REP 
+       lowbyte := code (t SUB i) ; 
+       IF (lowbyte AND hex f0) > 249 OR (lowbyte AND 15) > 9 
+          THEN LEAVE nur digits WITH FALSE 
+       FI 
+      PER ; 
+      TRUE 
+ FI . 
+ 
+ENDPROC object representation ; 
+ 
+
+TEXT PROC process module nr (INT CONST module number) :
+ TEXT VAR object specification ; 
+ was bool result := modules last word is bool return ; 
+ IF is elan module number 
+    THEN object specification := module name and specifications (module number) ; 
+         IF object specification = "" 
+            THEN object specification := "Hidden: PACKET " ; 
+                 object specification CAT packet name (module number) ; 
+                 IF was bool result 
+                    THEN object specification CAT " --> BOOL"
+                 FI
+            ELSE was bool result := pos (object specification, "--> BOOL") > 0 ;
+         FI 
+ ELIF one of compilers own module numbers 
+    THEN object specification := "CDL (" ; 
+         object specification CAT text ((getword (2, code address (module number)) - 4) DIV 2) ;
+         object specification CAT ")" ;
+         IF was bool result 
+            THEN object specification CAT " --> BOOL" 
+         FI
+ ELIF elan defined internal
+    THEN SELECT module number - 255 OF 
+            CASE 1 : object specification := "compiler (INT CONST, FILE VAR, TEXT CONST, INT VAR, BOOL CONST ins, BOOL CONST lst, BOOL CONST rtc, BOOL CONST ser)"
+            CASE 2 : object specification := "outtext (TEXT CONST, INT CONST)" 
+            CASE 3 : object specification := "outline (INT CONST)" 
+            CASE 4 : object specification := "syntaxerror (TEXT CONST)" 
+            CASE 5 : object specification := ":= (FILE VAR, FILE CONST)" 
+          OTHERWISE  object specification := "INTERNAL " + text (module number) 
+         ENDSELECT 
+ ELSE object specification := "Modulnummer ohne Code!" ; 
+      was bool result := FALSE
+ FI ; 
+ IF with object and address OR one of compilers own module numbers
+    THEN object specification CAT " (" ; 
+         object specification CAT text (module number) ;
+         object specification CAT ":$" ;
+         object specification CAT text (code segment (module number)) ; 
+         object specification CAT hex16 (code address (module number)) ; 
+         object specification CAT ")" ; 
+ FI ;
+ object specification . 
+ 
+modules last word is bool return : 
+ INT CONST last word :: getword (code segment (module number), 
+                                 code address (module number + 1) SUB 1) ; 
+ last word = rtnt opcode OR last word = rtnf opcode .
+ 
+one of compilers own module numbers : 
+ module number < 244 . 
+ 
+elan defined internal : 
+ module number >= 256 AND module number < 272 . 
+ 
+is elan module number : 
+ module number >= 272 . 
+ 
+ENDPROC process module nr ; 
+ 
+
+TEXT PROC copied text var (INT CONST segment, addr) : 
+ TEXT VAR result, t ; 
+ INT VAR laenge, first char, address, heap segment ; 
+ address := addr ADD 1 ;
+ first char := getword (segment, address) ; 
+ splitword (first char, laenge) ;
+ IF laenge = 0 
+    THEN "" 
+ ELIF laenge = 255
+    THEN copy text from heap 
+    ELSE copy text from data segment 
+ FI . 
+ 
+copy text from data segment : 
+ result := code (first char) ; 
+ laenge DECR 1 ;
+ t := "  " ;
+ INC address ;
+ WHILE laenge > 1 REP
+   replace (t, 1, getword (segment, address)) ; 
+   result CAT t ;
+   laenge DECR 2 ; 
+   INC address ; 
+ PER ; 
+ IF laenge = 1
+    THEN result CAT code (getword (segment, address) AND 255) 
+ FI ; 
+ result . 
+ 
+copy text from heap : 
+ address := get word (segment, addr) ; 
+ rotate (address, minus one) ;
+ heap segment := address AND 7 ; 
+ address := address AND hex fff8 ; (* In Vielfachen von 8 *)
+ laenge := getword (segment, addr ADD 2) AND 255 ; 
+ makeword (laenge, first char) ; (* 16 Bit Laenge Åber Wortgrenze *)
+ laenge := min (laenge, 256) ; (* Mehr ist im Listing nicht sinnvoll *) 
+ IF getword (heap segment, address) = minus one (* Standard DS *) 
+    THEN address INCR 3 ; (* Kann nicht Åber 8000H Grenze gehen *)
+    ELSE INC address (* Im Frei-Datenraum nur Wort Laenge *)
+ FI ;
+ result := "" ;
+ WHILE laenge > 1 REP
+   result CAT getword (heap segment, address) ;
+   laenge DECR 2 ; 
+   INC address
+ PER ;
+ IF laenge = 1
+    THEN result CAT code (getword (heap segment, address) AND 255) 
+ FI ; 
+ result . 
+ 
+ENDPROC copied text var ; 
+ 
+
+PROC push (INT CONST a, b) : 
+ INT VAR dummy1 := a, dummy2 := b 
+ENDPROC push ; 
+ 
+
+PROC pop (TASK VAR a, INT CONST dummy) : 
+ TASK VAR x ; 
+ a := x 
+ENDPROC pop ; 
+ 
+
+TEXT PROC task name (INT CONST id, vers) : 
+ TASK VAR t ; 
+ IF id = 0 
+    THEN "niltask" 
+    ELSE push (id, vers) ; 
+         pop (t, 0) ; 
+         IF exists (t) 
+            THEN """" + name (t) + """" 
+            ELSE "-" 
+         FI 
+ FI 
+ENDPROC task name ; 
+ 
+
+ENDPACKET eumel decoder ; 
+ 
+
+(**************************************************************************) 
+ 
+PACKET tracer DEFINES                          (* M. Staubermann      *) 
+                                               (* 20.04.86            *)
+                      list breakpoints ,       (* 1.8.0, 861107 15:45 *)
+                      set breakpoint , 
+                      reset breakpoint ,
+                      source file , 
+                      prot file ,
+                      tracer channel ,
+                      trace ,
+                      reset breakpoints : 
+ 
+LET local base field           = 25 , 
+    packet data segment        = 0 , 
+    local data segment         = 1 ,
+    code segment 3             = 3 ,
+ 
+    begin of module nr link table = 512 , 
+ 
+    previous local base offset = 0 , 
+    return address offset      = 1 , 
+    return segment offset      = 2 , 
+    c8k offset                 = 3 , 
+ 
+    opcode mask                = 31744 , 
+ 
+    bt opcode                  = 0 , 
+    btlong opcode              = 1024 , 
+    bf opcode                  = 28672 , 
+    bflong opcode              = 29696 , 
+    br opcode                  = 28672 , 
+    brlong opcode              = 29696 , 
+    brcomp opcode              = 32544 ,
+ 
+    ln opcode                  = 0 , 
+    ln long opcode             = 1024 , 
+    call opcode                = 30720 , 
+    pcall opcode               = 32543 , 
+ 
+    pp opcode                  = 27648 , 
+    ppv opcode                 = 26624 , 
+    pproc opcode               = 32542 ,
+ 
+    rtn opcode                 = 32512 , 
+    rtnt opcode                = 32513 , 
+    rtnf opcode                = 32514 , 
+ 
+    hex 7f00                   = 32512 ;
+
+INT CONST longa opcode        :: -256 ,
+          longa ppv opcode    :: longa opcode + 104 ,
+          longa pp opcode     :: longa opcode + 108 , 
+          hex 83ff            :: -31745 ,
+          minus one           :: -1 ;
+
+LET nr of breakpoints = 2 , (* Max. Anzahl unvorhersehbare Verzweigungen/Branch *)
+    BREAKPOINT = STRUCT (BOOL set, INT address, saved word) ; 
+ 
+ROW nr of breakpoints BREAKPOINT VAR breakpoints ;
+BREAKPOINT CONST init breakpoint :: BREAKPOINT:(FALSE, -5, 0) ;
+ 
+FOR actual linenumber FROM 1 UPTO nr of breakpoints REP 
+ breakpoints (actual line number) := init breakpoint 
+PER ; 
+ 
+
+BOOL VAR auto trace := FALSE , 
+         forward trace := TRUE ,
+         source lines neu := TRUE ;
+
+INT VAR previous instruction address ,
+        prot file number ,
+        trace channel := minus one ,
+        actual line number := minus one , 
+        handler module := 339 ; (* Dummy: PROC stop *) 
+ 
+TEXT VAR prot file name := "" ,
+         source line := "" , 
+         source file name := "" ;
+ 
+FILE VAR source, protocoll ; 
+ 
+
+INT PROC tracer channel :
+ trace channel 
+ENDPROC tracer channel ; 
+ 
+
+PROC tracer channel (INT CONST c) : 
+ IF c < 17 AND c > minus one 
+    THEN trace channel := c 
+    ELSE errorstop ("PROC tracer channel: Kanalnummer unzulÑssig") 
+ FI
+ENDPROC tracer channel ; 
+ 
+
+PROC trace : 
+ TEXT VAR name ;
+ forward trace := TRUE ;
+ set breakpoint ;
+ get command ("PROC/OP-Aufruf eingeben:") ; 
+ out (""13"") ;
+ put ("      Sourcefilename (falls keine Sourcefile RETURN) :") ; 
+ getline (name) ; 
+ source file (name) ;
+ put ("      Protokollfilename (falls kein Protokoll RETURN):") ; 
+ getline (name) ; 
+ prot file (name) ;
+ put ("      Tracekanal (AusfÅhrung an diesem Kanal: RETURN):") ; 
+ name := "0" ; 
+ editget (name) ; 
+ line ; 
+ tracer channel (int (name)) ; 
+ do command  
+ 
+ENDPROC trace ; 
+ 
+
+PROC source file (TEXT CONST file name) : 
+ IF exists (file name) 
+    THEN source := sequentialfile (modify, file name) ; 
+         source file name := file name ;
+         IF actual line number >= 0 CAND actual line number <= lines (source) 
+            THEN toline (source, actual line number) ; 
+                 readrecord (source, source line) 
+            ELSE source line := ""
+         FI
+    ELSE source file name := ""
+ FI
+ 
+ENDPROC source file ; 
+ 
+
+TEXT PROC source file : 
+ source file name 
+ENDPROC source file ; 
+ 
+
+TEXT PROC prot file : 
+ prot file name 
+ENDPROC prot file ; 
+ 
+
+PROC prot file (TEXT CONST file name) : 
+ IF file name = "" 
+    THEN prot file name := "" 
+    ELSE forget (file name, quiet) ;
+         prot file number := 0 ;
+         protocoll := sequentialfile (output, file name) ; 
+         max line length (protocoll, 1000) ;
+         prot file name := file name ;
+ FI
+ENDPROC prot file ;
+ 
+
+PROC protocoll line : 
+ IF prot file name <> "" 
+    THEN line (protocoll) ; 
+         IF lines (protocoll) > 4000 
+            THEN prot file number INCR 1 ; 
+                 TEXT CONST file name :: prot file name + "." + 
+                            text (prot file number) ;
+                 putline (protocoll, "Fortsetzung in Datei " + file name) ; 
+                 forget (file name, quiet) ;
+                 protocoll := sequentialfile (output, file name) ;
+                 max line length (protocoll, 1000)
+         FI
+ FI
+
+ENDPROC protocoll line ; 
+ 
+
+PROC write protocoll (TEXT CONST t) :
+ IF prot file name <> "" 
+    THEN write (protocoll, t) 
+ FI 
+ENDPROC write protocoll ; 
+ 
+
+PROC breakpoint handler : 
+
+ ROW 32 INT VAR offset fuer inter call stack variablen ; 
+ BOOL VAR was bool result ,
+          ueberschrift neu , 
+          code lines neu ; 
+ TEXT VAR key, previous key,
+          old error message ,
+          statement line, opcode, 
+          previous opcode, next opcode ;
+ INT VAR i, x, y ,
+         actual opcode, actual word, op word, next instruction, 
+         following word, saved word,
+         lbas, this local base, st ptr,
+         old channel, old error code, old error line,
+         user address, branch address, address,
+         lowbyte,
+         c8k, packet base,
+         actual instruction address, previous actual address, 
+         next instruction address,
+         return segment, return address, 
+         breakpoint address, breakpoint nr ; 
+
+ determine return address and breakpoint nr ;
+ reset breakpoints ; 
+ getcursor (x, y) ; 
+ next instruction address := breakpoint address ; 
+ IF NOT forward trace AND previous instruction address <> minus one 
+    THEN decode instruction (previous instruction address, previous actual address, 
+                             previous opcode, FALSE) ; 
+    ELSE previous opcode := ""
+ FI ;
+ decode instruction (next instruction address, actual instruction address, 
+                     next opcode, TRUE) ;
+ was bool result := bool result ;
+ IF forward trace 
+    THEN write protocoll (" " + hex16 (actual instruction address) + " ") ;
+         write protocoll (next opcode) ; 
+         protocoll line  
+    ELSE write protocoll ("*" + hex16 (previous actual address) + " ") ; 
+         write protocoll (previous opcode) ; 
+         protocoll line 
+ FI ;
+ actual word      := getword (code segment 3, actual instruction address) ; 
+ actual opcode    := actual word AND opcode mask ;
+ following word   := getword (code segment 3, actual instruction address ADD 1) ; 
+ next instruction := getword (code segment 3, next instruction address) ; 
+ out (""1""10""5""10""5"") ; 
+ IF NOT auto trace 
+    THEN out (""6""6""0"") ;
+         putline ("Auto, Bpnt, Clrr, Dstp, Estp, File, Go, Prot, Rslt, Step(CR), Term, - + < >"5"") ; 
+         putline ("------------------------------------------------------------------------------"5"") ; 
+ FI ;
+ ueberschrift neu := TRUE ; 
+ code lines neu   := TRUE ; 
+ previous key := "" ;
+ REP 
+   kopf schreiben ;
+   IF auto trace 
+      THEN IF incharety = "" 
+              THEN key := "S" 
+              ELSE auto trace := FALSE 
+           FI 
+   FI ; 
+   IF NOT auto trace
+      THEN REP 
+            inchar (key) 
+           UNTIL pos (""13"abcdefgprst +-<>", key) > 0 PER ; 
+           IF key >= "a" 
+              THEN key := code (code (key)-32)
+           FI ;
+           analyze key
+   FI ;
+   previous key := key 
+ UNTIL pos ("GST!", key) > 0 PER ; 
+ IF key <> "T" 
+    THEN execute saved instruction 
+ FI ;
+ IF key = "T" 
+    THEN write protocoll ("      Terminated") ; 
+         protocoll line ;
+         resetbreakpoints ; 
+         term 
+ ELIF key = "G" 
+    THEN write protocoll ("      Go") ; 
+         protocoll line
+ ELIF key = "S" 
+    THEN singlestep 
+ FI ; 
+ previous instruction address := breakpoint address ;
+ cursor (x, y) ; 
+ IF trace channel > 0 
+    THEN IF old channel = 0 
+            THEN break (quiet) 
+            ELSE continue (old channel) 
+         FI 
+ FI ; 
+ IF bit (return segment, 7) 
+    THEN disablestop ; 
+         set line nr (old error line) ; 
+         error stop (old error code, old error message) ; 
+         set line nr (0)
+ FI .
+           
+analyze key : 
+ IF previous key = "B" 
+    THEN IF key = ""13"" OR key = "S" (* Sicherheitsabfrage *) 
+            THEN key := "!" ;         (* Exit-Key *)
+                 write protocoll ("      Skip") ;
+                 protocoll line ;
+                 write protocoll (" " + hex16 (user address) + " ") ; 
+                 write protocoll (opcode) ; 
+                 protocoll line ;
+                 set breakpoint (breakpoint nr, user address)
+            ELSE code lines neu := TRUE
+         FI
+ ELIF key = ""13"" 
+      THEN key := "S" 
+ ELIF key = " " 
+      THEN code lines neu := TRUE ; 
+           source lines neu := TRUE ; 
+           ueberschrift neu := TRUE ; 
+ ELSE SELECT code (key)-43 OF (* Um die Anzahl Branches klein zu halten*)
+       CASE 0 {+}  : stptr := stptr ADD 2 ;
+                     ueberschrift neu := TRUE  
+       CASE 2 {-}  : stptr := stptr SUB 2 ; 
+                     ueberschrift neu := TRUE
+       CASE 17 {<} : with object address (TRUE) ; 
+                     IF forward trace 
+                        THEN decode instruction (breakpoint address,
+                             actual instruction address, next opcode, FALSE) 
+                     ELIF previous instruction address <> minus one 
+                        THEN decode instruction (previous instruction address, 
+                             previous actual address, previous opcode, FALSE) 
+                     FI ;
+                     code lines neu := TRUE
+       CASE 19 {>} : with object address (FALSE) ; 
+                     IF forward trace 
+                        THEN decode instruction (breakpoint address,
+                             actual instruction address, next opcode, FALSE) 
+                     ELIF previous instruction address <> minus one 
+                        THEN decode instruction (previous instruction address, 
+                             previous actual address, previous opcode, FALSE) 
+                     FI ;
+                     code lines neu := TRUE ;
+       CASE 22 {A} : auto trace := TRUE ; 
+                     key := "S" 
+       CASE 23 {B} : get breakpoint address from user
+       CASE 24 {C} : resetbit (return segment, 7) ; 
+                     ueberschrift neu := TRUE
+       CASE 25 {D} : setbit (return segment, 6) ; 
+                     ueberschrift neu := TRUE
+       CASE 26 {E} : resetbit (return segment, 6) ; 
+                     ueberschrift neu := TRUE
+       CASE 27 {F} : out (""6""5""0"Sourcefile:"5"") ; 
+                     editget (source file name) ; 
+                     source file (source file name) ; 
+                     ueberschrift neu := TRUE ;
+                     source lines neu := TRUE
+       CASE 37 {P} : out (""6""5""0"Protokollfile:"5"") ; 
+                     editget (prot file name) ; 
+                     prot file (prot file name)
+       CASE 39 {R} : forward trace := NOT forward trace ; 
+                     IF NOT forward trace AND previous opcode = "" AND 
+                        previous instruction address <> minus one 
+                        THEN decode instruction (previous instruction address, 
+                             previous actual address, previous opcode, FALSE) 
+                     FI ;
+                     ueberschrift neu := TRUE ;
+                     code lines neu := TRUE
+      ENDSELECT
+ FI .
+
+kopf schreiben :
+ out (""6""5""0""5"") ;
+ IF ueberschrift neu 
+    THEN schreibe ueberschrift ; 
+         ueberschrift neu := FALSE
+ FI ; 
+ IF source lines neu
+    THEN schreibe source lines ; 
+         source lines neu := FALSE
+ FI ;
+ IF code lines neu
+    THEN IF forward trace 
+            THEN show decoded opcode (next opcode, 
+                 actual instruction address, TRUE, TRUE) 
+         ELIF previous instruction address <> minus one 
+            THEN show decoded opcode (previous opcode, 
+                 previous actual address, TRUE, TRUE) 
+         ELSE out (""6""5""0"Kein vorhergehender Befehl")
+         FI ; 
+         code lines neu := FALSE
+ FI . 
+
+schreibe ueberschrift : 
+ out (""1"") ;
+ put (breakpoint nr) ;
+ IF forward trace 
+    THEN put ("F") (* forward *)
+    ELSE put ("R") (* result *)
+ FI ;
+ IF bit (return segment, 4) 
+    THEN out ("u") (* ARITHU *)
+    ELSE out ("s") 
+ FI ; 
+ IF bit (return segment, 6) 
+    THEN out ("d") (* Disablestop *)
+    ELSE out ("e") 
+ FI ; 
+ IF bit (return segment, 7) 
+    THEN put ("E") (* iserror *)
+    ELSE put (" ") 
+ FI ; 
+ put ("lbas:") ; put (hex16 (lbas)) ; 
+ out ("stack(") ; out (hex16 (stptr)) ; put ("):") ; 
+ out (hex16 (getword (local data segment, stptr))) ; out ("-") ; 
+ put (hex16 (getword (local data segment, stptr ADD 1))) ; 
+ put ("pbas:") ; put (hex8 (packet base)) ; 
+ put ("c8k:") ;  put (hex8 (c8k)) ; 
+ IF valid source 
+    THEN out ("""") ; outsubtext (source file name, 1, 19) ; put ("""") 
+ FI ; 
+ out (""5"") . 
+
+schreibe source lines : 
+ out (""1""10"") ; 
+ IF valid source AND source line <> "" 
+    THEN put (text (actual line number, 4)) ; 
+         put ("|") ; 
+         outsubtext (source line, 1, 72) ; 
+         out (""5"") ;
+         line ; 
+         IF LENGTH source line <= 72 
+            THEN put (text (actual line number +1, 4)) ; 
+                 put ("|") ; 
+                 toline (source, actual line number +1) ; 
+                 out (subtext (source, 1, 72)) ; 
+                 out (""5"") ;
+                 toline (source, actual line number) ; 
+                 line 
+            ELSE put ("_____|") ; 
+                 outsubtext (source line, 73, 144) ; 
+                 out (""5"") ;
+                 line 
+         FI
+ FI . 
+
+valid source : 
+ exists (source file name) . 
+ 
+get breakpoint address from user : 
+ put ("NÑchste Breakpointaddresse (hex) in Segment 3:") ;
+ statement line := hex16 (next instruction address) ;
+ editget (statement line) ; 
+ user address := integer (statement line) ;
+ opcode := "" ; 
+ statement line := "" ;
+ address := user address ; 
+ bool result (FALSE) ;
+ decode (code segment 3, address, statement line,
+         opcode, INT PROC (INT CONST, INT VAR, TEXT VAR) next word) ; 
+ show decoded opcode (opcode, user address, TRUE, TRUE) ;
+ code lines neu := FALSE .
+
+singlestep : 
+ IF is return opcode
+    THEN set breakpoint behind previous call
+ ELIF was bool result AND NOT is call opcode 
+    THEN set first breakpoint behind branch instruction ; 
+         set second breakpoint at branch address
+ ELIF is bool return opcode 
+    THEN set first breakpoint behind branch instruction at return address ; 
+         set second breakpoint at branch address of branch instruction at 
+         return address  
+ ELIF is brcomp opcode
+    THEN set computed branch breakpoint  
+ ELIF is branch instruction 
+    THEN set breakpoint at branch address 
+ ELIF is call opcode AND NOT auto trace CAND segment 3 module CAND 
+      ask if subroutine trace
+    THEN write protocoll ("      Subroutine Trace") ; 
+         protocoll line ;
+         calculate subroutine segment and address ; 
+         set breakpoint behind next instruction
+ ELSE set breakpoint behind next instruction
+ FI . 
+ 
+ask if subroutine trace : 
+ IF forward trace 
+    THEN yes (""6""5""0"Subroutine Trace") 
+    ELSE show decoded opcode (next opcode, actual instruction address, FALSE, FALSE) ; 
+         yes (""6""6""0"Subroutine Trace"5"") 
+ FI . 
+ 
+is line number : 
+ actual opcode = ln opcode OR (* Kein LONGA, da ln < 4095 *)
+ actual opcode = lnlong opcode . 
+
+is branch instruction : 
+ actual opcode = br opcode OR 
+ actual opcode = brlong opcode . 
+ 
+is conditional branch : 
+ op word = bf opcode OR op word = bflong opcode OR 
+ op word = bt opcode OR op word = btlong opcode .
+
+is brcomp opcode : 
+ actual word = brcomp opcode . 
+ 
+is return opcode : 
+ actual word = rtn opcode . 
+ 
+is bool return opcode : 
+ actual word = rtnt opcode OR 
+ actual word = rtnf opcode . 
+ 
+is call opcode : 
+ actual opcode = call opcode OR 
+ actual word   = pcall opcode .
+   
+read source line : 
+ actual line number := actual word ; 
+ split word (actual line number, lowbyte) ;
+ actual line number := (actual line number * 2) AND 6 ; 
+ IF actual word < 0 
+    THEN actual line number INCR 1 
+ FI ; 
+ IF actual opcode = lnlong opcode
+    THEN actual line number INCR 8 
+ FI ; 
+ makeword (actual line number, lowbyte) ; 
+ actual line number DECR 1 ; 
+ source lines neu := TRUE ;
+ IF valid source 
+    THEN IF lineno (source) = actual line number CAND source line <> "" 
+            THEN (* nichts*) 
+         ELIF actual line number >= 0 AND actual line number <= lines(source) 
+            THEN toline (source, actual line number) ; 
+                 readrecord (source, source line) 
+         ELSE source line := "" 
+         FI 
+    ELSE source line := "" 
+ FI . 
+ 
+set first breakpoint behind branch instruction : 
+ op word := next instruction AND opcode mask ; 
+ IF is conditional branch
+    THEN write protocoll (" ") ;
+         write protocoll (hex16 (next instruction address) + " ") ; 
+         bool result (TRUE) ;
+         statement line := "" ; 
+         opcode := "" ; 
+         address := next instruction address ;
+         decode (code segment 3, next instruction address, statement line, opcode, 
+                 INT PROC (INT CONST, INT VAR, TEXT VAR) next word) ; 
+         write protocoll (opcode) ; 
+         protocoll line ;
+         show decoded opcode (opcode, address, FALSE, FALSE) ;
+         IF NOT auto trace
+            THEN pause (20) 
+         FI ;
+         next free breakpoint ;
+         set breakpoint (i, next instruction address) ;
+    ELSE putline ("Interner Fehler: Nach BOOL-Result folgt kein Branch"5""); 
+         LEAVE singlestep 
+ FI . 
+ 
+set second breakpoint at branch address : 
+ calculate branch address ; 
+ next free breakpoint ;
+ set breakpoint (i, branch address) . 
+ 
+set breakpoint at branch address : 
+ next instruction := actual word ; 
+ next instruction address := actual instruction address ; 
+ calculate branch address ; 
+ set breakpoint (breakpoint nr, branch address) . 
+ 
+set first breakpoint behind branch instruction at return address : 
+ IF (getword (local data segment, lbas + return segment offset) AND 7) = code segment 3
+    THEN next instruction address := getword (local data segment, 
+                                     lbas + return address offset) ; 
+         next instruction := getword (code segment 3, next instruction address) ;
+         c8k := getword (local data segment, lbas + c8k offset) AND 255 ; 
+         set first breakpoint behind branch instruction 
+    ELSE putline ("Trace bei VorwÑrtssprung beendet."5"") 
+ FI . 
+ 
+set second breakpoint at branch address of branch instruction at return address : 
+ set second breakpoint at branch address . 
+ 
+set computed branch breakpoint :
+ address := following word ; 
+ IF address < 0 (* Local/Local Ref *) 
+    THEN rotate (address, minus one) ; 
+         address := (address AND 16 383) ADD lbas ; 
+         IF bit (following word, 0)
+            THEN branch address := getword (getword (local data segment, 
+                                            address ADD 1) AND 7, 
+                                            getword (local data segment, 
+                                            address))  
+            ELSE branch address := getword (local data segment, address) 
+         FI  
+    ELSE branch address := getword (packet data segment, 
+                                    address ADD packet base)
+ FI ; 
+ IF switch out of range 
+    THEN branch address := actual instruction address ADD 3 
+    ELSE branch address := actual instruction address ADD branch address ADD 4
+ FI ; 
+ set breakpoint (breakpoint nr, branch address) . 
+ 
+switch out of range : 
+ branch address < 0 OR 
+ branch address > getword (code segment 3, actual instruction address ADD 2) .
+
+determine return address and breakpoint nr : 
+ FOR x FROM 1 UPTO 10 REP
+  determine return address ;
+  determine breakpoint nr ; 
+ PER ; 
+ line ;
+ put ("Returnaddresse nicht gefunden:"5"") ; 
+ out (text (return segment AND 3)) ; 
+ putline (hex16 (return address)) ; 
+ list breakpoints ;
+ reset breakpoints ; 
+ enablestop ;
+ errorstop ("Falsche Returnaddresse") . 
+
+determine return address : 
+ fix local base ; (* Fix pcb's: RAM --> Leitblock *)
+ this local base := getword (local data segment, pcb (local base field)) ; 
+ lbas            := getword (local data segment, this local base + 
+                             previous local base offset) ; 
+ c8k             := getword (local data segment, this local base + 
+                             c8k offset) AND 255 ; 
+ return segment  := getword (local data segment, this local base + 
+                             return segment offset) ; 
+ return address  := getword (local data segment, this local base +
+                             return address offset) ; 
+ packet base     := HIGH return segment ; (* Wort besteht aus zwei Teilen!*)
+ set parameters (lbas, packet base, minus one, c8k) ; 
+ stptr := lbas ADD 4 ;
+ DEC return address ; (* auf CALL breakpointhandler (ein Wort zurÅck) *)
+ IF bit (return segment, 7) (* ISERR *)
+   THEN old error line    := error line ; 
+        old error code    := error code ; 
+        old error message := error message
+ FI ; 
+ clear error ; 
+ enablestop ;
+ IF trace channel > 0 AND trace channel <> channel 
+    THEN old channel := channel ; 
+         disablestop ; 
+         continue (trace channel) ; 
+         clear error ; 
+         enablestop 
+ FI . 
+ 
+determine breakpoint nr : 
+ FOR i FROM 1 UPTO nr of breakpoints REP 
+  IF breakpoints (i).set CAND 
+     breakpoints (i).address = return address 
+     THEN breakpoint nr := i ; 
+          breakpoint address := breakpoints (i).address ; 
+          saved word         := breakpoints (i).saved word ;
+          LEAVE determine return address and breakpoint nr 
+  FI 
+ PER .
+
+segment 3 module : 
+ IF actual word = pcall opcode 
+    THEN op word := following word ;
+         rotate (op word, minus one) ;
+         op word := (op word AND 16 383) ADD lbas ;
+         LEAVE segment 3 module WITH (getword (local data segment, 
+                                      op word ADD 1) AND 7) = code segment 3
+ ELSE op word := actual word AND 1023 ; 
+      IF actual word < 0 
+         THEN op word INCR 1024 
+      FI ; 
+ FI ; 
+ op word >= 1280 . 
+ 
+calculate subroutine segment and address : 
+ IF actual word = pcall opcode 
+    THEN next instruction address := getword (local data segment, op word) 
+    ELSE next instruction address := getword (packet data segment,
+                          begin of module nr link table + op word)
+ FI ; 
+ INC next instruction address . (* Ab PENTER tracen *)
+ 
+calculate branch address : 
+ branch address := next instruction ; 
+ split word (branch address, low byte) ; 
+ branch address := (branch address * 2) AND 6 ; 
+ IF next instruction < 0 
+    THEN branch address INCR 1 
+ FI ; 
+ IF branch long
+    THEN branch address INCR 8 
+ FI ; 
+ branch address INCR HIGH next instruction address ; 
+ IF branch address >= c8k 
+    THEN branch address DECR 16 
+ FI ; 
+ makeword (branch address, lowbyte) . 
+ 
+branch long : 
+ bit (next instruction, 10) . 
+ 
+execute saved instruction : 
+ putword (local data segment, this local base + return address offset,
+          return address) ; 
+ putword (local data segment, this local base + return segment offset, 
+          return segment) . 
+ 
+
+set breakpoint behind next instruction : 
+ IF is line number THEN read source line FI ; 
+ set breakpoint (breakpoint nr, next instruction address) . 
+ 
+
+set breakpoint behind previous call : 
+ return segment := getword (local data segment, 
+                   lbas + return segment offset) AND 3 ;
+ return address := getword (local data segment, 
+                   lbas + return address offset) ; 
+ IF return segment = code segment 3 
+    THEN set breakpoint (breakpoint nr, return address) 
+    ELSE putline ("Trace bei RÅcksprung beendet."5"") 
+ FI . 
+ 
+next free breakpoint : 
+ FOR i FROM 1 UPTO nr of breakpoints REP 
+  IF NOT breakpoints (i).set
+     THEN LEAVE next free breakpoint 
+  FI 
+ PER ; 
+ putline ("Alle " + text(nr of breakpoints) + " Breakpoints sind belegt"5"") ; 
+ LEAVE singlestep  
+ 
+ENDPROC breakpoint handler ; 
+
+
+PROC show decoded opcode (TEXT CONST opcode, INT CONST address, 
+                          BOOL CONST zweizeilig, oben) : 
+ IF oben 
+    THEN out (""6""3""0"") 
+    ELSE out (""6""5""0"")
+ FI ;
+ put (hex16 (address)) ; 
+ put ("|") ; 
+ outsubtext (opcode, 1, 72) ; 
+ out (""5"") ;
+ line ; 
+ IF zweizeilig 
+    THEN put ("     |") ; 
+         outsubtext (opcode, 73, 144) ; 
+         out (""5"") ;
+         line 
+ FI 
+ 
+ENDPROC show decoded opcode ;
+ 
+
+PROC decode instruction (INT VAR address, actual address, TEXT VAR opcode, 
+                         BOOL CONST var) :
+
+ INT VAR actual word, actual opcode, temp address ; 
+ TEXT VAR statement line := "" ; 
+ opcode := "" ;
+ temp address := address ;
+ actual address := address ; 
+ actual word := getword (code segment 3, temp address) ; 
+ actual opcode := actual word AND opcode mask ;
+ bool result (FALSE) ;
+ IF is param push opcode 
+    THEN opcode := module with actual params (temp address, actual address) ; 
+    ELSE decode (code segment 3, temp address, 
+                 statement line, opcode, 
+                 INT PROC (INT CONST, INT VAR, TEXT VAR) next word) ;
+ FI ; 
+ IF var THEN address := temp address FI .
+ 
+is param push opcode : 
+ actual opcode = pp opcode OR 
+ actual word   = pproc opcode OR 
+ actual word   = longa pp opcode OR 
+ actual word   = longa ppv opcode OR 
+ actual opcode = ppv opcode . 
+
+ENDPROC decode instruction ;
+ 
+
+TEXT PROC module with actual params (INT VAR address, actual address) : 
+
+ TEXT VAR result, statement line, symbol, type text ;
+ INT VAR end address, start address := address, module nr, 
+         actual word, actual opcode ;
+ BOOL VAR known paramtypes, was bool result ;
+
+ skip until next call opcode ; 
+ determine module name and module nr ; 
+ collect actual parameters ;
+ perhaps result type ;
+ bool result (was bool result) ;
+ address := end address ;
+ result . 
+ 
+skip until next call opcode : 
+ actual word := getword (code segment 3, address) ; 
+ REP 
+  IF (actual word AND hex 7f00) = hex 7f00 (* LONGA oder ESC *)
+     THEN INC address
+  FI ; 
+  INC address ; 
+  actual word := getword (code segment 3, address) ; 
+  actual opcode := actual word AND opcode mask ;
+ UNTIL is call opcode PER . 
+ 
+determine module name and module nr : 
+ result := "" ; 
+ statement line := "" ; 
+ actual address := address ; (* Addresse des CALL/PCALL Befehls *)
+ decode (code segment 3, address, statement line, result, 
+         INT PROC (INT CONST, INT VAR, TEXT VAR) next word) ; 
+ was bool result := bool result ;
+ bool result (FALSE) ;
+ end address := address ;
+ module nr := int (last actual parameter) ; 
+ statement line := module name and specifications (module nr) ; 
+ scan (statement line) ;
+ IF statement line = "" 
+    THEN symbol := "(" ;
+         known paramtypes := FALSE ; 
+         actual word := getword (code segment 3, start address) ; 
+         actual opcode := actual word AND opcode mask ; 
+         IF is call opcode (* Hidden ohen Result und Parameter *) 
+            THEN LEAVE module with actual params WITH result 
+            ELSE result CAT " (" (* Result wird als VAR Parameter betr.*)
+         FI
+     ELSE nextsymbol (symbol) ; (* Skip Name *) 
+          nextsymbol (symbol) ;
+          known paramtypes := TRUE ;
+          IF symbol = "" (* Weder Parameter, noch Result *) 
+             THEN LEAVE module with actual params WITH result 
+          ELIF symbol = "(" 
+             THEN result := subtext (result, 1, pos (result, "(")) ;
+             ELSE result := subtext (result, 1, pos (result, "-->")-2)
+          FI ;
+ FI ;
+ address := start address . (* RÅcksetzen auf ersten param push *)
+ 
+collect actual parameters :
+ IF symbol <> "(" 
+    THEN LEAVE collect actual parameters 
+ FI ;
+ REP 
+  nextsymbol (symbol) ;
+  IF symbol = "ROW" 
+     THEN typetext := "ROW..." ;
+          nextsymbol (symbol) ; (* ROW-Size *) 
+          skip until end of type (symbol) ; 
+  ELIF symbol = "STRUCT" 
+     THEN typetext := "STRUCT..." ;
+          nextsymbol (symbol) ;
+          skip over brackets (symbol) ; 
+  ELIF symbol = "<" (* HIDDEN *) 
+     THEN typetext := "<HIDDEN>" ; 
+          nextsymbol (symbol) ; 
+          nextsymbol (symbol) ; 
+          nextsymbol (symbol) ;
+  ELIF symbol <> "PROC" 
+     THEN typetext := symbol ; 
+          nextsymbol (symbol)  
+  FI ; (* symbol jetzt 'PROC', 'CONST' oder 'VAR' *)
+  IF getword (code segment 3, address) = pproc opcode 
+     THEN result CAT "PROC " ; 
+          type text := "" ;
+          decode (code segment 3, address, statement line, type text, 
+                 INT PROC (INT CONST, INT VAR, TEXT VAR) next word) ; 
+          result CAT subtext (type text, 13) ;
+          next symbol (symbol) ;
+          IF symbol = "(" THEN skip over brackets (symbol) FI 
+     ELSE IF statement line <> "" (* Keine Hidden PROC *) 
+             THEN result CAT typetext ; 
+                  result CAT " " ; 
+                  result CAT symbol ; (* CONST oder VAR *)
+                  result CAT ":" ;
+                  typetext := ":" + typetext ; (* FÅr Pos-Suche *) 
+                  nextsymbol (symbol) ; (* Jetzt auf ',' oder ')' *)
+          FI ;
+          IF (getword (code segment 3, address) AND hex 7f00) = hex 7f00 (* ESC OR LONGA *)
+             THEN result CAT data representation (getword (code segment 3, 
+                  address ADD 1), code segment 3, address, object type) ; 
+                  INC address
+             ELSE result CAT data representation (getword (code segment 3, address) 
+                  AND hex 83ff, code segment 3, address, object type)  
+          FI ; 
+          INC address
+  FI ; 
+  actual word := getword (code segment 3, address) ; 
+  actual opcode := actual word AND opcode mask ;
+  IF symbol <> ")" AND NOT is call opcode 
+     THEN result CAT ", " 
+  FI  ; 
+ UNTIL symbol = ")" OR is call opcode PER ; 
+ result CAT ")" . 
+ 
+perhaps result type :
+ WHILE symbol <> "" REP nextsymbol (symbol) UNTIL symbol = ">" PER ; (* --> *) 
+ IF symbol <> ""
+    THEN nextsymbol (symbol) ;
+         IF symbol = "ROW" 
+            THEN symbol := "ROW..." ;
+         ELIF symbol = "STRUCT" 
+            THEN symbol := "STRUCT..." ;
+         ELIF symbol = "<" (* HIDDEN *) 
+            THEN symbol := "<HIDDEN>" ; 
+         FI ;
+         type text := ":" ; 
+         type text CAT symbol ; 
+         result CAT " --> " ; 
+         result CAT symbol ;
+         IF symbol = "BOOL" (* BOOl-Result nicht mit PP *)
+            THEN LEAVE perhaps result type
+         FI ;
+         result CAT ":" ;
+         IF (getword (code segment 3, address) AND hex 7f00) = hex 7f00 (* ESC OR LONGA *)
+            THEN result CAT data representation (getword (code segment 3, 
+                 address ADD 1), code segment 3, address, object type) ; 
+                 INC address
+            ELSE result CAT data representation (getword (code segment 3, address) 
+                 AND hex 83ff, code segment 3, address, object type)  
+         FI ; 
+         INC address
+ FI . 
+ 
+object type : 
+ IF known paramtypes 
+    THEN INT CONST p := pos (types, type text) ; 
+         IF p = 0 
+            THEN 0 (* Try Type auch bei STRUCT/ROW *) 
+            ELSE code (types SUB (p-1))-63 
+         FI  
+    ELSE 0 (* Try all types *) 
+ FI . 
+ 
+types : 
+ "B:BOOL I:INT R:REAL S:TEXT T:TASK D:DATASPACE D:FILE S:THESAURUS" .
+
+is call opcode : 
+ actual opcode = call opcode OR 
+ actual word   = pcall opcode .
+   
+ENDPROC module with actual params ; 
+ 
+
+PROC skip until end of type (TEXT VAR symbol) : 
+ nextsymbol (symbol) ;
+ IF symbol = "ROW" 
+    THEN nextsymbol (symbol) ; (* ROW-Size *) 
+         skip until end of type (symbol) 
+ ELIF symbol = "STRUCT" 
+    THEN next symbol (symbol) ;
+         skip over brackets (symbol) 
+ ELSE nextsymbol (symbol) (* steht auf ',' oder ')' *) 
+ FI
+ 
+ENDPROC skip until end of type ; 
+ 
+
+PROC skip over brackets (TEXT VAR symbol) : 
+ REP 
+  next symbol (symbol) ; 
+  IF symbol = "(" THEN skip over brackets (symbol) FI 
+ UNTIL symbol = ")" PER ; 
+ nextsymbol (symbol) 
+
+ENDPROC skip over brackets ; 
+ 
+
+INT OP HIGH (INT CONST word) : 
+ INT VAR highbyte := word, lowbyte ;
+ split word (highbyte, lowbyte) ; 
+ highbyte
+ 
+ENDOP HIGH ; 
+ 
+ 
+PROC fix local base : 
+ (* Kein direkter EXTERNAL-Aufruf, da bei 'CALL' lbas auf Stack gelegt wird*)
+ REP UNTIL incharety = "" PER ; (* Damit pause ausgefÅhrt wird *)
+ internal pause (0)             (* ^ War Grund fÅr 'falsche Returnaddresse'*)
+
+ENDPROC fix local base ; 
+ 
+
+PROC reset breakpoints : 
+ INT VAR i ;
+ FOR i FROM 1 UPTO nr of breakpoints REP 
+  IF breakpoints (i).set 
+     THEN reset breakpoint (i) 
+     ELSE breakpoints (i) := init breakpoint 
+  FI 
+ PER 
+ 
+ENDPROC reset breakpoints ; 
+ 
+
+PROC reset breakpoint (INT CONST nr) : 
+ IF nr < 1 OR nr > nr of breakpoints 
+    THEN errorstop ("Unzulaessige Breakpoint Nummer") 
+ ELIF NOT breakpoints (nr).set 
+    THEN display ("Warnung: Breakpoint " + text (nr) + " war nicht gesetzt")
+ ELSE putword (code segment 3, breakpoints (nr).address, breakpoints (nr).saved word) ; 
+      breakpoints (nr) := init breakpoint 
+ FI 
+ 
+ENDPROC reset breakpoint ; 
+ 
+
+PROC set breakpoint (INT CONST nr, address) : 
+ INT VAR new word ;
+ IF nr < 1 OR nr > nr of breakpoints 
+    THEN errorstop ("Unzulaessige Breakpoint Nummer") 
+ ELIF breakpoints (nr).set 
+    THEN errorstop ("Breakpoint " + text (nr) + " ist bereits gesetzt") 
+ ELSE breakpoints (nr).address := address ; 
+      breakpoints (nr).saved word := get word (code segment 3, address) ; 
+      new word := call opcode + (handler module AND 1023) ; 
+      IF handler module >= 1024 
+         THEN setbit (new word, 15)
+      FI ; 
+      putword (code segment 3, address, new word) ; 
+      IF getword (code segment 3, address) <> new word 
+         THEN errorstop ("Addresse Schreibgeschuetzt")
+         ELSE breakpoints (nr).set := TRUE
+      FI 
+ FI 
+ENDPROC set breakpoint ; 
+ 
+
+PROC handlers module nr (INT CONST module nr) : 
+ handler module := module nr 
+ENDPROC handlers module nr ; 
+ 
+
+INT PROC handlers module nr : 
+ handler module
+ENDPROC handlers module nr ; 
+
+
+INT PROC module number (PROC proc) : 
+ 
+ EXTERNAL 35 
+ 
+ENDPROC module number ; 
+ 
+ 
+PROC internal pause (INT CONST time) : 
+ 
+ EXTERNAL 66 
+ 
+ENDPROC internal pause ; 
+ 
+ 
+PROC term : 
+ 
+ EXTERNAL 4 
+
+ENDPROC term ; 
+
+
+PROC set breakpoint : 
+ INT VAR i ;
+ handlers module nr (module number (PROC breakpointhandler)) ; 
+ auto trace := FALSE ;
+ source lines neu := TRUE ; (* Zum Lîschen *) 
+ source file ("") ; 
+ prot file ("") ;
+ actual line number := minus one ;
+ previous instruction address := minus one ;
+ with object address (FALSE) ;
+ INT VAR module nr ; 
+ add modules ;
+ get module number (module nr) ; 
+ IF code segment (module nr) <> code segment 3
+    THEN errorstop ("PROC/OP liegt nicht im Codesegment 3") 
+ FI ;
+ naechsten freien breakpoint setzen ; 
+ put ("Breakpoint") ; 
+ put (i) ; 
+ putline ("wurde gesetzt.") . 
+ 
+naechsten freien breakpoint setzen : 
+ FOR i FROM 1 UPTO nr of breakpoints REP 
+  IF NOT breakpoints (i).set 
+     THEN set breakpoint (i, code address (module nr) ADD 1) ; 
+          LEAVE naechsten freien breakpoint setzen 
+  FI 
+ PER ; 
+ errorstop ("Alle " + text (nr of breakpoints) + " Breakpoints sind belegt"). 
+ 
+ENDPROC set breakpoint ; 
+ 
+
+PROC list breakpoints : 
+ INT VAR header address, mod nr, i ;
+
+ line ; 
+ putline (" Nr Set Address Word Module") ; 
+ FOR i FROM 1 UPTO nr of breakpoints REP
+  put (text (i, 2)) ; 
+  IF breakpoints (i).set 
+     THEN put (" Y  ")
+     ELSE put (" N  ") 
+  FI ; 
+  out ("3") ; 
+  put (hex16 (breakpoints (i).address)) ; 
+  put (" ") ;
+  put (hex16 (breakpoints (i).saved word)) ; 
+  IF breakpoints (i).set 
+     THEN next module header (code segment 3, breakpoints (i).address, 
+                      header address, mod nr) ; 
+          IF module name and specifications (modnr - 1) = "" 
+             THEN put ("Hidden: PACKET") ; put (packet name (modnr -1)) ; 
+             ELSE put (module name and specifications (modnr -1)) 
+          FI
+  FI ; 
+  line
+ PER 
+ 
+ENDPROC list breakpoints ;
+ 
+ENDPACKET tracer ; 
+
+init module table ("table.module") ; 
+type (""27"q") ; 
+note ("") ;

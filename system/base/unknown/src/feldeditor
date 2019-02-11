@@ -1,0 +1,747 @@
+ 
+PACKET  f e l d e d i t o r  DEFINES              (* Autor: P.Heyderhoff *)
+        (*****************)                       (* Stand: 12.04.82     *)
+                                                  (* Vers.: 1.6.0        *)
+        editget,
+        feldeditor,
+        feldout,
+        feldposition,
+        feldeinruecken,
+        feldtab,
+        feldtabulator,
+        feldseparator,
+        feldmarke,
+        feldstelle,
+        feldwortweise,
+        feldanfang,
+        feldende,
+        feldrand,
+        feldlimit,
+        feldaudit,
+        feldzeichen,
+        feldkommando,
+        feldeinfuegen,
+        feldlernmodus,
+        is incharety,
+        getchar,
+        min :
+ 
+ 
+TEXT VAR tabulator :: "", separator :: "", fzeichen ::"",
+         kommando  :: "", audit     :: "";
+ 
+INT  VAR fmarke  ::  0, fstelle :: 1, frand :: 0, limit :: 77,
+         fanfang ::  1, dyn fanfang :: fanfang,  flaenge, fj,
+         fende   :: 77, dyn fende   :: fende, dezimalen :: 0;
+ 
+BOOL VAR wortweise      :: FALSE, feinfuegen :: FALSE,
+         blankseparator :: FALSE, lernmodus  :: FALSE,
+         war absatz; 
+ 
+LET blank = " ", hop=""1"", right=""2"", up=""3"", clear eop=""4"",
+    clear eol=""5"", bell=""7"", left=""8"", tab=""9"", down=""10"",
+    rubin=""11"", rubout=""12"", cr=""13"", mark=""16"", escape=""27"",
+    hoechstes steuerzeichen=""31"", dach=""94"", end mark=""14"", begin
+    mark=""15"", clear=""1""4"", hop tab=""1""9"", hop rubin=""1""11"",
+    hop rubout=""1""12"", hop cr=""1""13"", cr down=""13""10"",
+    right left tab rubout escape = ""2""8""9""12""27"", hop escape=""1""27"",
+    left left=""8""8"", left endmark=""8""14"", endmark left=""14""8"",
+    left right=""8""2"", blank left=" "8"",
+    blank left rubout=" "8""12"", absatzmarke=""15""14"", 
+    hop esc right left tab rubin rubout cr = ""1""27""2""8""9""11""12""13"",
+    hop esc right left tab down cr         = ""1""27""2""8""9""10""13"";
+ 
+(***************************  p r o z e d u r e n  *************************)
+ 
+PROC editget (TEXT VAR editsatz, INT CONST editlimit, editfende):
+ 
+  disable stop ;  (* J.Liedtke 10.02.82 *)
+
+  INT CONST altflaenge :: LENGTH editsatz, altfrand :: frand,
+            altfmarke  :: fmarke, altfstelle :: fstelle,
+            altfanfang :: fanfang, altfende  :: fende, altlimit :: limit;
+  BOOL CONST altwortweise :: wortweise, altfeinfuegen :: feinfuegen;
+  fmarke := 0; fstelle := 1; fanfang := 1; dyn fanfang := 1; 
+  fende  := editfende MOD 256; dyn fende := fende;
+  limit  := editlimit MOD 256; wortweise := FALSE;
+  feinfuegen := FALSE; 
+  INT VAR x, y; get cursor (x,y); frand := x-1; 
+  out (editsatz);   cursor (x,y); 
+  REP
+    feldeditor (editsatz);
+    IF   (kommando SUB 1) = escape OR (kommando SUB 1) = hop 
+    THEN delete char (kommando, 1)
+    FI;
+    delete char (kommando, 1) 
+  UNTIL fzeichen = cr OR (fzeichen SUB 1) = separator OR is error
+  PER;
+  cursor (x + 1 + editflaenge - dyn fanfang, y); 
+  fmarke := altfmarke;  fstelle := altfstelle; fanfang := altfanfang;
+  dyn fanfang := fanfang; fende := altfende; dyn fende := fende;
+  limit := altlimit;  wortweise := altwortweise; frand := altfrand;
+  feinfuegen := altfeinfuegen . 
+ 
+editflaenge :
+  min (dyn fende, flaenge) .
+ 
+END PROC editget;
+ 
+PROC editget (TEXT VAR editsatz) :
+  INT VAR x, y; get cursor (x,y);
+  editget (editsatz, 255, fende-fanfang+2+frand-x)
+END PROC editget;
+ 
+PROC feldout (TEXT CONST satz) :
+  INT VAR x, y;
+  flaenge := min (fende, LENGTH satz);
+  out (cr);
+  frand TIMESOUT right; feldrest loeschen (fanfang);
+  IF   fmarke > 0
+  THEN outsubtext (satz, fanfang, fmarke-1); out (begin mark);
+       outsubtext (satz, fmarke, min (fstelle-1,flaenge));
+       out (end mark); outsubtext (satz, fstelle, flaenge);
+  ELIF absatzmarke noetig (satz) 
+  THEN get cursor (x,y); outsubtext (satz, fanfang, flaenge); 
+       cursor (x + fende + 1 - fanfang, y); out (absatzmarke)
+  ELSE outsubtext (satz, fanfang, flaenge)
+  FI
+END PROC feldout;
+ 
+ 
+PROC feld einruecken (TEXT CONST satz) :
+ 
+  IF   fstelle = fanfang
+  THEN fstelle := neue einrueckposition;
+       (fstelle-fanfang) TIMESOUT right
+  FI .
+ 
+neue einrueckposition :
+  INT VAR suchindex;
+  FOR suchindex FROM fanfang UPTO min (LENGTH satz, fende)
+  REP  IF   (satz SUB suchindex) <> blank
+       THEN LEAVE neue einrueckposition WITH suchindex
+       FI
+  PER;
+  fanfang .
+ 
+END PROC feld einruecken;
+ 
+TEXT PROC feldzeichen :
+  fzeichen
+END PROC feldzeichen;
+ 
+TEXT PROC feldkommando :
+  kommando
+END PROC feldkommando;
+ 
+PROC feldkommando (TEXT CONST t) :
+  kommando := t
+END PROC feldkommando;
+ 
+PROC feldtab (TEXT VAR t) :
+  t := tabulator
+END PROC feldtab;
+ 
+PROC feldtabulator (TEXT CONST t) :
+  tabulator := t
+END PROC feldtabulator;
+ 
+TEXT PROC feldseparator :
+  separator
+END PROC feldseparator;
+ 
+PROC feldseparator (TEXT CONST t) :
+  separator := t; blankseparator := t = blank
+END PROC feldseparator;
+ 
+TEXT PROC feldaudit :
+  audit
+END PROC feldaudit;
+ 
+PROC feldaudit (TEXT CONST a) :
+  audit := a
+END PROC feldaudit;
+ 
+BOOL PROC feldlernmodus :
+  lernmodus
+END PROC feldlernmodus;
+ 
+PROC feldlernmodus (BOOL CONST b) :
+  lernmodus := b 
+END PROC feldlernmodus;
+ 
+BOOL PROC feldeinfuegen :
+  feinfuegen
+END PROC feldeinfuegen;
+ 
+PROC feldeinfuegen (BOOL CONST b):
+  feinfuegen := b
+END PROC feldeinfuegen;
+ 
+BOOL PROC feldwortweise :
+  wortweise
+END PROC feldwortweise;
+ 
+PROC feldwortweise (BOOL CONST b) :
+  wortweise := b
+END PROC feldwortweise;
+ 
+INT PROC feldmarke :
+  fmarke
+END PROC feldmarke;
+ 
+PROC feldmarke (INT CONST i) :
+  fmarke  := i MOD 256
+END PROC feldmarke;
+ 
+INT PROC feldstelle :
+  fstelle
+END PROC feldstelle;
+ 
+PROC feldstelle (INT CONST i) :
+  fstelle := i MOD 256
+END PROC feldstelle;
+ 
+INT PROC feldanfang :
+  fanfang
+END PROC feldanfang;
+ 
+PROC feldanfang (INT CONST i) :
+  fanfang := i MOD 256; dyn fanfang := fanfang
+END PROC feldanfang;
+ 
+INT PROC feldende :
+  fende
+END PROC feldende;
+ 
+PROC feldende (INT CONST i) :
+  fende := i MOD 256; dyn fende := fende
+END PROC feldende;
+ 
+INT PROC feldrand :
+  frand
+END PROC feldrand;
+ 
+PROC feldrand (INT CONST i) :
+  frand := i MOD 256
+END PROC feldrand;
+ 
+INT PROC feldlimit :
+  limit
+END PROC feldlimit;
+ 
+PROC feldlimit (INT CONST i) :
+  limit := i MOD 256
+END PROC feldlimit;
+ 
+PROC feldposition :
+  INT VAR x, y;
+  IF   fstelle <= fende
+  THEN IF   fstelle < fanfang
+       THEN fstelle := fanfang;
+            IF fanfang > fende
+            THEN fende := fanfang; dyn fende := fanfang
+            FI
+       FI
+  ELSE fstelle := fende;
+       IF   fanfang > fende
+       THEN fanfang := fende; dyn fanfang := fende
+       FI
+  FI;
+  get cursor(x,y); cursor(1+frand+fstelle-fanfang+fmarke oder fstelle, y). 
+ 
+fmarke oder fstelle :
+  IF fmarke > 0 THEN 1 ELSE 0 FI .
+ 
+END PROC feldposition;
+ 
+PROC feldposition (INT CONST i) :
+  fstelle := i; feldposition
+END PROC feldposition;
+ 
+BOOL PROC absatzmarke noetig (TEXT CONST satz) : 
+ 
+  IF   wortweise
+  THEN (satz SUB LENGTH satz) = blank 
+  ELSE FALSE
+  FI
+END PROC absatzmarke noetig;
+ 
+PROC zeile neu schreiben (TEXT CONST satz) :
+  INT VAR x,y; get cursor (x,y);
+  flaenge := min (dyn fende, LENGTH satz);
+  cursor (1+frand, y);
+  feldrest loeschen (dyn fanfang);
+  outsubtext (satz, dyn fanfang, flaenge);
+  cursor (x,y)
+END PROC zeile neu schreiben;
+ 
+PROC feldrest loeschen (INT CONST fstelle):
+  INT VAR x,y;
+  IF   frand + fende <= 76
+  THEN get cursor (x,y); (1 + dyn fende - fstelle) TIMESOUT blank;
+       cursor (x,y)
+  ELSE out (clear eol); war absatz := FALSE 
+  FI
+END PROC feldrest loeschen;
+ 
+TEXT OP SUBB (TEXT CONST t, INT CONST i) :
+  IF i <= LENGTH t THEN t SUB i ELSE blank FI
+END OP SUBB;
+ 
+INT PROC min (INT CONST a, b):
+  IF a < b THEN a ELSE b FI
+END PROC min;
+ 
+BOOL PROC is incharety (TEXT CONST muster) :
+ 
+  fzeichen := incharety; 
+  IF   fzeichen = ""
+  THEN FALSE
+  ELSE IF   lernmodus 
+       THEN audit CAT fzeichen;
+            IF fzeichen = """" THEN audit CAT fzeichen
+       FI   FI ;
+       IF   fzeichen = muster 
+       THEN kommando := ""; TRUE
+       ELSE kommando CAT fzeichen; FALSE
+  FI   FI
+END PROC is incharety; 
+ 
+PROC getchar (TEXT VAR fzeichen) :
+ 
+  IF   kommando = ""
+  THEN inchar (fzeichen)
+  ELSE fzeichen := kommando SUB 1;
+       delete char (kommando, 1);
+       kommando CAT incharety
+  FI;
+  IF   lernmodus
+  THEN audit CAT fzeichen;
+       IF   fzeichen = """"
+       THEN audit CAT fzeichen
+       FI
+  FI .
+END PROC getchar;
+ 
+ 
+(**************************  f e l d e d i t o r  **************************)
+ 
+PROC feldeditor (TEXT VAR satz) :
+
+  enable stop ; (* J. Liedtke 10.02.82 *)
+
+  INT VAR x, y;
+  BOOL VAR inkompetent :: FALSE; war absatz := absatzmarke noetig (satz);
+  IF   fstelle <= fende 
+  THEN IF fstelle < fanfang THEN feldposition FI
+  ELSE feldposition
+  FI;
+  flaenge := min (fende, LENGTH satz);
+ 
+  REP  e i n g a b e  UNTIL inkompetent PER;
+ 
+  blanks abschneiden;
+  IF dyn fanfang <> fanfang THEN zurechtruecken FI;
+  IF   NOT war absatz AND absatzmarke noetig (satz) 
+  THEN absatzmarke schreiben
+  ELIF war absatz AND NOT absatzmarke noetig (satz)
+  THEN absatzmarke loeschen
+  FI .
+ 
+absatzmarke schreiben : 
+  get cursor (x,y); cursor (frand+fende-fanfang+2, y); out (absatzmarke);
+  cursor (x,y) .
+ 
+absatzmarke loeschen : 
+  get cursor (x,y); cursor (frand+fende-fanfang+2, y); out ("  ");
+  cursor (x,y) .
+ 
+zurechtruecken :
+  fstelle DECR (dyn fanfang - fanfang);
+  dyn fanfang := fanfang; dyn fende := fende;
+  zeile neu schreiben (satz) .
+ 
+blanks abschneiden :
+  flaenge := LENGTH satz;
+  FOR fj FROM flaenge DOWNTO 0 WHILE (satz SUB fj) = blank
+  REP delete char (satz, fj) PER;
+  IF fj < flaenge THEN satz CAT blank FI .
+ 
+eingabe :
+  IF   fmarke <= 0
+  THEN s c h r e i b e d i t o r;
+       IF   ueberlaufbedingung
+       THEN ueberlauf
+       ELSE a u s f u e h r e n
+       FI
+  ELSE m a r k e d i t o r
+  FI .
+ 
+ueberlaufbedingung :
+  IF   fstelle <= dyn fende
+  THEN IF   fstelle <= limit
+       THEN FALSE
+       ELSE fzeichen > hoechstes steuerzeichen
+       FI
+  ELSE TRUE
+  FI .
+ 
+ueberlauf :
+  IF   fstelle > limit
+  THEN IF   wortweise OR fstelle > LENGTH satz
+       THEN ueberlauf in naechste zeile; LEAVE ueberlauf
+       FI
+  FI;
+  IF   fstelle >  dyn fende
+  THEN fstelle := dyn fende; out (left);
+       zeile um eins nach links verschieben
+  FI .
+ 
+ueberlauf in naechste zeile :
+  IF   wortweise
+  THEN umbrechen
+  ELSE out (bell); kommando := cr
+  FI;
+  inkompetent := TRUE .
+ 
+umbrechen :
+  IF   LENGTH satz > limit
+  THEN kommando CAT  subtext (satz, limit+1);
+       FOR fj FROM LENGTH satz DOWNTO fstelle
+       REP kommando CAT left PER;
+       satz := subtext (satz, 1, limit)
+  FI;
+  fj := limit;
+  zeichen zuruecknehmen;
+  (fstelle-fj) TIMESOUT left; fstelle := fj; feldrest loeschen (fstelle);
+  IF kommando = "" THEN kommando := blank left rubout FI;
+  blanks loeschen.
+ 
+blanks loeschen: 
+  REP   fj DECR 1;
+        IF (satz SUB fj) <> blank THEN LEAVE blanks loeschen FI;
+        delete char (satz, fj)
+  PER .
+ 
+zeichen zuruecknehmen: 
+  REP   fzeichen := satz SUB fj; delete char (satz, fj);
+        IF fzeichen = blank THEN LEAVE zeichen zuruecknehmen FI;
+        insert char (kommando, fzeichen, 1);
+        IF fj = fanfang     THEN LEAVE zeichen zuruecknehmen FI;
+        fj DECR1
+  PER.
+ 
+ausfuehren :
+  dezimalen := 0;
+  SELECT pos (hop esc right left tab rubin rubout cr, fzeichen) OF
+    CASE 1 : getchar (fzeichen);
+             SELECT pos (right left tab rubout escape, fzeichen) OF
+               CASE 1 : zum rechten frand
+               CASE 2 : zum linken  frand
+               CASE 3 : tabulator setzen
+               CASE 4 : zeile loeschen
+               CASE 5 : bei lernmodus ein zeichen lesen
+               OTHERWISE hop return
+             END SELECT
+    CASE 2 : escape aktion
+    CASE 3 : nach rechts
+    CASE 4 : nach links
+    CASE 5 : nach tabulator
+    CASE 6 : feinfuegen umschalten
+    CASE 7 : ausfuegen
+    CASE 8 : ggf absatz erzeugen; return
+    OTHERWISE return
+  END SELECT .
+ 
+ggf absatz erzeugen : 
+  IF   wortweise
+  THEN IF   fstelle > LENGTH satz
+       THEN IF   (satz SUB LENGTH satz) <> blank
+            THEN satz CAT blank; fstelle INCR 1
+            FI
+       FI
+  FI .
+ 
+nach rechts :
+  IF   fstelle < dyn fende AND (fstelle < limit OR fstelle < flaenge)
+  THEN out (right); fstelle INCR1
+  ELIF LENGTH satz > dyn fende
+  THEN zeile um eins nach links verschieben
+  ELSE return
+  FI .
+ 
+nach links :
+  IF   fstelle > dyn fanfang
+  THEN out (left); fstelle DECR1
+  ELIF dyn fanfang = fanfang
+  THEN out (bell)
+  ELSE zeile um eins nach rechts verschieben
+  FI .
+ 
+bei lernmodus ein zeichen lesen :
+  IF   lernmodus
+  THEN getchar (fzeichen); return;
+       fzeichen := escape
+  FI;
+  hop return; fzeichen := hop escape .
+ 
+zeile um eins nach links  verschieben :
+  dyn fanfang INCR 1; dyn fende INCR 1;
+  fstelle := dyn fende; zeile neu schreiben (satz) .
+ 
+zeile um eins nach rechts verschieben :
+  dyn fanfang DECR 1; dyn fende DECR 1;
+  fstelle := dyn fanfang; zeile neu schreiben (satz) .
+ 
+feinfuegen umschalten :
+  IF   feinfuegen
+  THEN feinfuegen := FALSE
+  ELSE feinfuegen := TRUE; get cursor (x,y); out (dach);
+       outsubtext (satz, fstelle, flaenge);
+       cursor (x,y); pause (1); 
+       feldrest loeschen (fstelle);
+       outsubtext (satz, fstelle, flaenge);
+       cursor (x,y) 
+  FI;
+  return .
+ 
+ausfuegen :
+  IF   flaenge < dyn fanfang OR fstelle > flaenge
+  THEN IF   fstelle = flaenge + 1 AND fstelle > dyn fanfang 
+       THEN fstelle := flaenge; out (left)
+       ELSE out (bell);
+            LEAVE ausfuegen
+       FI
+  FI;
+  ausfuegeoperation; delete char (satz, fstelle);
+  flaenge := min (dyn fende, LENGTH satz) .
+ 
+ausfuegeoperation :
+  get cursor (x,y); outsubtext (satz, fstelle+1, flaenge+1);
+  out (blank); cursor (x,y) .
+ 
+zum linken frand :
+  IF   fstelle > fanfang
+  THEN get cursor (x,y); cursor (1+frand, y); 
+       IF   dyn fanfang = fanfang
+       THEN fstelle := fanfang
+       ELSE verschieben an linken frand
+       FI
+  FI .
+ 
+zum rechten frand :
+  fj := min (dyn fende, limit); get cursor (x,y);
+  IF   LENGTH satz >  fj
+  THEN IF   fstelle >= LENGTH satz
+       THEN out (bell)
+       ELIF LENGTH satz > dyn fende
+       THEN verschieben an rechten frand
+       ELSE cursor (x + LENGTH satz - fstelle, y);
+            fstelle := LENGTH satz
+       FI
+  ELIF fstelle < fj
+  THEN cursor (x + fj-fstelle, y); fstelle := fj
+  FI .
+ 
+verschieben an linken  frand :
+  dyn fanfang := fanfang; dyn fende := fende;
+  fstelle := fanfang; zeile neu schreiben (satz).
+ 
+verschieben an rechten frand :
+  (dyn fende - fstelle) TIMESOUT right;
+  dyn fanfang INCR (LENGTH satz - dyn fende); dyn fende := LENGTH satz;
+  fstelle := dyn fende; zeile neu schreiben (satz).
+ 
+nach tabulator :
+  fj := pos (tabulator, "^", fstelle+1);
+  IF   fj = 0
+  THEN IF   (satz SUB fstelle) = blank AND fstelle = fanfang
+       THEN IF   satz = blank 
+            THEN fstelle INCR 1; out (right)
+            ELSE out (blank left); feld einruecken (satz);
+            FI;
+            LEAVE nach tabulator
+       ELIF flaenge < dyn fende AND fstelle <= flaenge
+       THEN fj := flaenge + 1
+       FI
+  ELSE dezimalen := 1
+  FI;
+  IF   fj > 0 AND fj <= dyn fende
+  THEN outsubtext (satz, fstelle, fj-1); fstelle := fj
+  ELSE (fstelle-dyn fanfang) TIMESOUT left;
+       fstelle := dyn fanfang; insert char (kommando, down, 1)
+  FI .
+ 
+tabulator setzen :
+  IF   (tabulator SUB fstelle) = "^"
+  THEN fzeichen := right
+  ELSE fzeichen := "^"
+  FI;
+  WHILE fstelle > LENGTH tabulator
+  REP  tabulator CAT right PER;
+  replace (tabulator, fstelle, fzeichen);
+  insert char (kommando,   tab, 1);
+  insert char (kommando, hop, 1);
+  inkompetent := TRUE .
+ 
+zeile loeschen :
+  IF   fstelle = 1 
+  THEN satz := ""; feldrest loeschen (fstelle); hop return
+  ELIF fstelle <= flaenge
+  THEN REP delete char (satz, LENGTH satz)
+       UNTIL fstelle > LENGTH satz
+       PER;
+       flaenge := fstelle - 1; feldrest loeschen (fstelle)
+  ELSE hop return
+  FI .
+ 
+(***********************  s c h r e i b e d i t o r  ***********************)
+ 
+schreibeditor :
+  REP   getchar (fzeichen);
+        IF   fzeichen <= hoechstes steuerzeichen THEN LEAVE schreibeditor
+        ELIF separator bedingung                 THEN LEAVE schreibeditor
+        ELSE f o r t s c h r e i b e n           FI 
+  PER .
+ 
+separatorbedingung :
+  IF   blankseparator
+  THEN IF   flaenge + 2 <= fstelle
+       THEN insert char (kommando, fzeichen, 1);
+            fzeichen := blank
+       FI
+  FI;
+  fzeichen = separator .
+ 
+fortschreiben :
+  IF   dezimalen > 0 THEN dezimaltabulator FI;
+  out (fzeichen);
+  IF   fstelle > flaenge
+  THEN anhaengen
+  ELIF dezimalen = 0 AND feinfuegen
+  THEN insert char (satz, fzeichen, fstelle)
+  ELSE replace     (satz, fstelle, fzeichen)
+  FI;
+  flaenge := min (dyn fende, LENGTH satz);
+  fstelle INCR 1;
+  IF   feinfuegen AND dezimalen = 0 AND fstelle <= flaenge
+  THEN zeilenrest neu schreiben
+  FI;
+  IF   fstelle > dyn fende
+  OR   fstelle > limit AND (wortweise OR fstelle > flaenge)
+  THEN LEAVE schreibeditor
+  FI .
+ 
+zeilenrest neu schreiben :
+  get cursor (x,y); outsubtext (satz, fstelle, flaenge); cursor (x,y) .
+ 
+dezimaltabulator :
+  IF   fzeichen < "0" OR fzeichen > "9"
+  THEN dezimalen := 0
+  ELIF dezimalen = 1
+  THEN IF   (satz SUB fstelle) = blank OR fstelle > flaenge
+       THEN dezimalen := 2
+       ELSE dezimalen := 0
+       FI
+  ELIF (satz SUB fstelle-dezimalen) = blank
+  THEN replace (satz, fstelle-dezimalen,
+                subtext (satz, fstelle-dezimalen+1, fstelle-1)) ;
+       dezimalen TIMESOUT left;
+       outsubtext (satz, fstelle-dezimalen, fstelle-2);
+       dezimalen INCR 1; fstelle DECR 1
+  ELSE dezimalen := 0
+  FI .
+ 
+anhaengen :
+  FOR fj FROM flaenge+2 UPTO fstelle
+  REP satz CAT blank PER;
+  satz CAT fzeichen .
+ 
+ 
+(**************************  m a r k e d i t o r  **************************)
+ 
+markeditor :
+  getchar (fzeichen);
+  SELECT pos (hop esc right left tab down cr, fzeichen) OF
+    CASE 1 : getchar (fzeichen);
+             IF   fzeichen = right THEN markierung maximal
+             ELIF fzeichen = left  THEN markierung minimal
+             ELSE hop return
+             FI
+    CASE 2 : escape aktion
+    CASE 3 : markierung verlaengern
+    CASE 4 : markierung verkuerzen
+    CASE 5 : markierung bis tab verlaengern
+    CASE 6,7 : zeilenrest markieren
+    OTHERWISE IF   fzeichen <= hoechstes steuerzeichen
+              THEN return
+              ELSE out (bell)
+              FI
+  END SELECT .
+ 
+markierung verlaengern :
+  IF   fstelle <= flaenge
+  THEN out (satz SUB fstelle, end mark left); fstelle INCR 1
+  ELSE return
+  FI .
+ 
+markierung maximal :
+  IF   fstelle <= flaenge
+  THEN outsubtext (satz, fstelle, flaenge); out (end mark left);
+       fstelle := flaenge + 1
+  FI .
+ 
+zeilenrest markieren :
+  IF   fstelle <= flaenge
+  THEN outsubtext (satz, fstelle, flaenge);
+       out (end mark left);
+       (flaenge-fstelle+2) TIMESOUT left
+  FI;
+  return .
+ 
+markierung verkuerzen :
+  IF   fstelle > fmarke
+  THEN fstelle DECR 1;
+       out (left end mark, satz SUBB fstelle, left left)
+  ELSE out (bell)
+  FI .
+ 
+markierung minimal :
+  IF   fstelle > fmarke
+  THEN (fstelle-fmarke) TIMESOUT left; out (end mark);
+       outsubtext (satz, fmarke, fstelle-1);
+       (fstelle-fmarke+1) TIMESOUT left; fstelle := fmarke
+  FI .
+ 
+markierung bis tab verlaengern :
+  fj := pos (tabulator, "^", fstelle + 1);
+  IF   fj = 0
+  THEN fj := flaenge - fstelle + 1; IF fj <= 0 THEN return FI
+  ELSE fj DECR fstelle
+  FI;
+  IF   fj > 0
+  THEN outsubtext (satz, fstelle, min (fstelle+fj-1, flaenge));
+       out (end mark left)
+  FI;
+  fstelle INCR fj;
+  IF fstelle > (dyn fende+1) THEN return FI .
+ 
+ 
+(******************* allgemein verwendete refinements *********************)
+ 
+return :
+  insert char (kommando, fzeichen, 1);
+  inkompetent := TRUE .
+ 
+hop return :
+  return; insert char (kommando, hop, 1) .
+ 
+escape aktion :
+  getchar (fzeichen); return;
+  insert char (kommando, escape, 1);
+  insert char (fzeichen, escape, 1) .
+ 
+END PROC feldeditor;
+ 
+END PACKET feldeditor;

@@ -1,0 +1,263 @@
+PACKET elan lister DEFINES                            (* Autor: J.Liedtke *)
+                                                      (* Stand: 22.03.84  *)
+      is elan source ,
+      elan list :
+ 
+
+LET source lines per page  = 64 ,
+    x start                = 1 ,
+    y start                = 2 ,
+
+    tag                    = 1 ,
+    bold                   = 2 ,
+ 
+    linelength             = 120 ,
+    struct comment length  = 32 ,
+    max name length        = 25 ,
+    struct comment blanks  = "                                " ,
+    refinement layout line = "                                     |" ,
+    headline pre =
+       " Zeile    *****   E L A N    EUMEL 1.7  *****   " ;
+ 
+INT VAR  symbol type ,
+         line nr ,
+         page nr ,
+         line at page ;
+
+BOOL VAR within defines list ;
+
+TEXT VAR record,
+         list pre ,
+         source name ,
+         source prefix ,
+         symbol,
+         ahead symbol ,
+         bottom blanks := (linelength) * " " ;
+
+
+PROC elan list (FILE VAR source) :
+ 
+  initialize listing ;
+  within defines list := FALSE ;
+  WHILE NOT eof (source) REP
+    list one source line ;
+    line nr INCR 1
+  PER ;
+  page bottom ;
+  start (0.0,0.0) ;
+  new page .
+
+initialize listing :
+  reset printer ;
+  construct source name and prefix ;
+  print first page head ;
+  line nr := 1 .
+
+construct source name and prefix :
+  source name := headline (source) ;
+  INT CONST slash pos := pos (source name, "/") ;
+  IF slash pos = 0
+    THEN source prefix := ""
+    ELSE source prefix := subtext (source name, slash pos+1) + "/" ;
+         source name   := subtext (source name, 1, slash pos-1) 
+  FI .
+
+list one source line :
+  getline (source, record) ;
+  print list pre ;
+  printline (record) ;
+  page if necessary .
+
+print list pre :
+  list pre := text (line nr, 5) ;
+  IF pos (record, "P") = 0 AND pos (record, ":") = 0
+    THEN empty layout
+    ELSE analyze source line
+  FI ;
+  list pre CAT ("|") ;
+  print text (list pre, 0) .
+
+empty layout :
+  list pre CAT struct comment blanks .
+ 
+analyze source line :
+  scan (record) ;
+  next symbol (symbol, symbol type) ;
+  next symbol (ahead symbol) ;
+  IF   begin of packet     THEN packet layout 
+  ELIF within defines list THEN check end of defines part
+  ELIF begin of proc op    THEN proc op layout
+  ELIF begin of refinement THEN refinement layout
+  ELSE                          empty layout
+  FI .
+ 
+begin of packet :
+  symbol = "PACKET" .
+ 
+begin of proc op :
+  IF   is proc or op (symbol)
+    THEN TRUE
+  ELIF (symbol <> "END") AND  is proc or op (ahead symbol)
+    THEN symbol := ahead symbol ;
+         next symbol (ahead symbol) ; TRUE
+    ELSE FALSE
+  FI .
+ 
+begin of refinement :
+  symbol type = tag AND ahead symbol = ":" AND NOT within defines list .
+ 
+packet layout :
+  IF not at page head
+    THEN page bottom ;
+         page head
+  FI ;
+  layout ("   ", ahead symbol, "*") ;
+  within defines list := TRUE .
+
+check end of defines part :
+  empty layout ;
+  scan (record) ;
+  REP
+    nextsymbol (symbol) ;
+    IF symbol = ":"
+      THEN within defines list := FALSE
+    FI
+  UNTIL symbol = "" PER .
+
+proc op layout :
+(*printline ("") ;*)
+  printline ("") ;
+  printline ("") ;
+  IF not two free lines 
+    THEN page bottom ;
+         page head
+  FI ; 
+  layout ("   ", ahead symbol, ".") .
+ 
+refinement layout :
+(*print line (refinement layout line) ;*)
+  print line (refinement layout line) ;
+  IF not two free lines THEN page bottom; page head FI; 
+  layout ("      ", symbol, " ") .
+ 
+
+print first page head :
+  page nr := 1 ;
+  page head .
+
+page if necessary :
+  IF line at page > source lines per page
+    THEN page bottom ;
+         page head
+  FI .
+
+not two free lines :
+  line at page >= source lines per page - 2 .
+
+not at page head :
+  line at page > 5 .
+
+ENDPROC elan list ;
+ 
+BOOL PROC is proc or op (TEXT CONST symbol) :
+
+  symbol = "PROC" OR symbol = "PROCEDURE"
+  OR symbol = "OP" OR symbol = "OPERATOR" 
+
+ENDPROC is proc or op ;
+ 
+PROC layout (TEXT CONST pre, TEXT VAR name, TEXT CONST post) :
+
+  list pre CAT pre ;
+  name := subtext (name, 1, max name length) ;
+  list pre CAT name ;
+  list pre CAT " " ;
+  generate remaining struct comment .
+ 
+generate remaining struct comment :
+  INT VAR i ;
+  FOR i FROM 1 UPTO remaining struct comment length REP
+    list pre CAT post
+  PER .
+
+remaining struct comment length :
+  struct comment length - LENGTH pre - min(LENGTH name,max name length) - 1.
+ 
+ENDPROC layout ;
+
+PROC print line (TEXT CONST line text) :
+
+  print text (line text, 0) ;
+  line (1.0) ;
+  line at page INCR 1
+
+ENDPROC print line ;
+
+PROC printtext (TEXT CONST t, BOOL CONST b) :
+  out (t)
+ENDPROC printtext ;       (*** sonst im Hardwaretreiber *********)
+
+PROC page head :
+
+  new page ;
+  print text (headline pre, 0) ;
+  print text (date, 0);           (* R. Nolting 27.10.83 *)
+  print text ("   *****     ",0);
+  print text (source name, 0) ;
+  line (4.0) ;
+  line at page := 1 
+
+ENDPROC page head ;
+
+PROC page bottom :
+
+  WHILE line at page < source lines per page REP
+    line (1.0) ;
+    line at page INCR 1
+  PER ;
+  line (1.0) ;
+  printtext (text (source prefix + text (page nr), 8), FALSE) ;
+  printtext (bottom blanks, FALSE) ;
+  printtext (source prefix + text (page nr), FALSE) ;
+  line (1.0) ;
+  page nr INCR 1 .
+
+ENDPROC page bottom ;
+
+BOOL PROC is elan source (FILE VAR source) :
+
+  input (source) ;
+  get first symbol ;
+  symbol type = tag COR is bold begin of program COR is comment .
+
+is bold begin of program :
+  symbol type = bold CAND is elan bold .
+
+is elan bold :
+  symbol = "PACKET" COR is proc or op (symbol) COR is data declaration .
+
+is data declaration :
+  next symbol (symbol) ;
+  symbol = "VAR" OR symbol = "CONST" .
+
+is comment :
+  pos (record, "(*") > 0 OR pos (record, "{") > 0 .
+
+
+get first symbol :
+  get first non blank record ;
+  scan (record) ;
+  next symbol (symbol, symbol type) ;
+  reset (source) .
+
+get first non blank record :
+  REP
+    getline (source, record)
+  UNTIL record contains non blank OR eof (source) PER .
+
+record contains non blank :
+  pos (record, ""33"",""254"", 1) > 0 .
+
+ENDPROC is elan source ;
+
+ENDPACKET elan lister ;

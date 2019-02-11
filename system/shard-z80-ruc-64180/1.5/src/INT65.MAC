@@ -1,0 +1,412 @@
+	TITLE	INT65 - Interface 6502 <-> 64180
+;
+	INCLUDE	HD64180.LIB
+;
+	.LIST
+	CSEG
+;
+;****************************************************************
+;
+;	INT65: Interface BASIS 6502 <-> 64180, Einstellungen fuer
+;	serielle Schnittstelle im BASIS 108
+;
+;	Version 0.4 - 25.11.85 / 11:00
+;	Version 0.5 - 23.12.86, M.Staubermann
+;	Version 0.6 - 14.01.86, Kanal 5 Flusskontrolle durch 6502
+;
+;	Copyright (C) 1985 by Rainer Ellerbrake
+;			      Eggeberger Str. 12
+;			      4802 Halle (Westf.)
+;
+;****************************************************************
+;
+;	Globale Variable
+;
+	GLOBAL	ZGERL, TO6502, TO65WA, WTEND, RD6502
+	GLOBAL	BAUBAS, BITBAS, AFLOW5, EFLOW5, FRE65
+;
+;................................................................
+;
+;	Externe Variable
+;
+	EXTERNAL WARTE
+;
+;................................................................
+;
+;	Konstanten
+;
+P065	EQU	51H		;Page 0 des 6502 einblenden
+PC65	EQU	5DH		;I/O-Bereich des 6502
+;
+TASK	EQU	0F080H
+PARAM	EQU	TASK+1
+;
+AFLG	EQU	0F09AH		; XON/XOFF - Ausgabeseitig: Bit 7 = 1
+EFLG	EQU	0F09BH		; Ausgabeseitiger Stopzustand: Bit 7 = 1
+;SFLG	EQU	0F09CH		; Stopzustand des Transmitters
+WAITFLG	EQU	0F09DH		; 6502 - Update-Synchro
+;
+PFREE	EQU	0F0E0H		; Word: Anzahl freie Bytes im Druckerspooler
+TFREE	EQU	0F0F0H		; Word: Anzahl freie Bytes im Transmitbuffer
+;
+SER_CMD	EQU	0F09AH		; Command Register 6551 BASIS
+SER_CTR	EQU	0F09BH		; Control Register 6551 BASIS
+;
+;
+	INCLUDE	PORTS.MAC
+;
+;****************************************************************
+;
+;	T O 6 5 0 2
+;
+;	6502 Task Aufruf
+;
+;	Eingang: L - Task-Nummer
+;		 H - Parameter
+;
+TO6502:
+	PUSH	AF
+	LD	A,I
+	PUSH	AF
+	DI
+	IN0	A,(CBR)
+	PUSH	AF
+;
+	LD	A,P065
+	OUT0	(CBR),A
+;
+;	Warten bis vorherige Task beendet ist
+;
+WRTTAS:
+	CALL	ZGERL
+	LD	A,(TASK)	;Task = 0: beendet	
+	AND	A
+	JR	NZ,WRTTAS
+;
+	LD	A,H
+	LD	(PARAM),A
+;
+	LD	A,L
+	LD	(TASK),A	;Task aufrufen
+;
+;	auf Ende wird erst beim naechsten Aufruf gewartet
+;
+	POP	AF
+	OUT0	(CBR),A		;zurueckschalten
+	POP	AF
+	JP	PO,NOEI
+;
+	EI
+NOEI:
+	POP	AF
+	RET
+;
+;----------------------------------------------------------------
+;
+;	T O 6 5 W A
+;
+;	Warten auf Beendigung des Task Aufrufs
+;	(EUMEL WARTE wird aufgerufen!!)
+;
+TO65WA:
+	PUSH	AF
+;
+;	Warten bis Task beendet ist
+;
+	
+WTTAS:
+	IN0	A,(CIOAD)
+	BIT	0,A
+	JR	Z,WTTA1		;Zugriff nicht erlaubt -> warten
+;
+	PUSH	HL
+	LD	HL,LOW TASK
+	CALL	RD6502		; Task-Byte in A
+	POP	HL
+
+	AND	A
+	JR	NZ,WTTA1
+	POP	AF
+	RET
+
+WTTA1:
+	CALL	WARTE
+;
+	JR	WTTAS
+;
+;----------------------------------------------------------------
+;
+;	W T E N D
+;
+;	Warten auf Beendigung des Task Aufrufs
+;
+WTEND:
+	PUSH	AF
+;
+;	Warten bis Task beendet ist
+;
+WTTAS1:
+	CALL	ZGERL
+;
+	PUSH	HL
+	LD	HL,LOW TASK
+	CALL	RD6502
+	POP	HL
+
+	AND	A
+	JR	NZ,WTTAS1
+;
+	POP	AF
+	RET
+
+;
+;----------------------------------------------------------------
+;
+;	Z G E R L
+;
+;	Auf Zugriffserlaubnis warten
+;
+;	keine Register veraendert
+;
+;
+;	Zugriff auf 6502-Speicher zulaessig ?
+;
+ZGERL:
+	PUSH	AF
+WAI65:
+	IN0	A,(CIOAD)
+	BIT	0,A
+	JR	Z,WAI65		;nicht erlaubt -> warten
+;
+	POP	AF
+	RET
+;
+;---------------------------------------------------------------
+;
+;	R D 6 5 0 2
+;	Byte aus 6520-Memory Adresse HL nach A lesen
+;
+;	Eingang: HL = Zeropage- oder I/O-Page-Adresse im 6502-Memory
+;	Ausgang: In A steht der Inhalt der Adresse
+;
+RD6502:
+	PUSH	BC
+	LD	B,A
+	LD	A,I
+	DI
+	PUSH	AF
+
+	IN0	A,(CBR)
+	LD	C,P065		; Bit 7 nicht gesetzt: Zeropage
+	BIT	7,H
+	JR	Z,RD6502B
+	LD	C,PC65		; Bit 7 gesetzt: I/O-Adresse
+RD6502B:			; Achtung: Nicht eindeutig!
+	OUT0	(CBR),C
+
+	LD	C,H
+	LD	H,0F0H
+	LD	B,(HL)
+	LD	H,C	
+
+	OUT0	(CBR),A
+
+	POP	AF
+	JP	PO,RD6502A
+	EI
+RD6502A:
+	LD	A,B
+	POP	BC
+	RET
+
+;----------------------------------------------------------------
+;
+;	Baudrateneinstellung fuer BASIS serielle Schnittstelle
+;
+;	Eingang: A - Kanalnummer (immer 5)
+;		 HL - Schluessel (s. Tabelle) (1..15)
+;		 Es werden korrekte Parameter vorausgesetzt
+;
+;	Ausgang: Register duerfen nicht veraendert werden
+;
+BAUBAS:
+	PUSH	AF
+	DI
+				; Da nur I/O Zugriffe gemacht werden, braucht
+				; nicht auf Zugriffserlaubnis gewartet werden
+	IN0	A,(CBR)
+	PUSH	AF		;alte Einstellung retten
+	LD	A,PC65		;I/O-Bereich einblenden
+	OUT0	(CBR),A
+	LD	A,(SER_CTR)	;Control Register lesen
+	AND	0F0H		;Baudratenbits ausblenden
+	OR	L		;und neue Einstellung einfuegen
+	LD	(SER_CTR),A
+
+	POP	AF
+	OUT0	(CBR),A		;alten Bereich wieder einblenden
+EIRET:
+	EI
+	POP	AF
+	RET
+;
+;
+;------------------------------------------------------------------
+;
+;	F R E 6 5
+;	Freiplatz eines 6502-Ausgabepuffers erfragen
+;
+;	Eingang: A = Kanal (5, 6)
+;	Ausgang: HL veraendert, A veraendert
+;		 BC = Free Bytes
+;		 Carry set, Puffer leer
+;
+FRE65:
+	CP	5		; BASIS serielle Schnittstelle
+	LD	HL,TFREE	; Transmitbuffer
+	JR	Z,BASER
+	LD	HL,PFREE	; Druckerpuffer
+
+BASER:
+	DI
+	IN0	A,(CBR)
+	PUSH	AF
+	LD	A,51H
+	OUT0	(CBR),A		; Zeropage
+
+WAIUPD:
+	LD	A,(WAITFLG)
+	AND	A
+	JR	NZ,WAIUPD	; Warten, bis Update zuende
+
+	LD	C,(HL)		; Lowbyte Free
+	INC	HL
+	LD	B,(HL)		; Highbyte Free
+	INC	HL
+	LD	A,(HL)		; Lowbyte Size
+	INC	HL
+	OR	(HL)
+	LD	L,A
+
+	POP	AF
+	OUT0	(CBR),A
+	EI
+	LD	A,L
+	AND	A
+	RET	NZ		; Carry cleared, Puffer nicht leer
+	SCF			; Carry set, Puffer leer
+	RET
+
+;----------------------------------------------------------------
+;
+;	Stopbits, Datenbits, Parity fuer BASIS serielle Schnittstelle
+;
+;	Eingang: A - Kanalnummer (immer 5)
+;		 L - Schluessel
+;		 Es werden korrekte Parameter vorrausgesetzt
+;
+;	Ausgang: Register duerfen nicht veraendert werden
+;
+BITBAS:
+	PUSH	AF
+	DI
+				; Da nur I/O Zugriffe gemacht werden, braucht
+				; nicht auf Zugriffserlaubnis gewartet werden
+	PUSH	HL
+	IN0	H,(CBR)
+	LD	A,PC65		; I/O-Bereich einblenden
+	OUT0	(CBR),A
+				; Stopbits und Datenbits setzen
+	LD	A,(SER_CTR)	; Control Register lesen
+	AND	1FH		; Datenbits Stopbits ausblenden
+	BIT	6,L		; 2 Stopbits ?
+	JR	Z,BITBAS1
+	SET	7,A
+BITBAS1:
+	BIT	0,L		; Bit 0 = 0, wenn 7 Datenbits (7-1 = 6)
+	JR	NZ,BITBAS2
+	SET	5,A		; 01 = 7 Datenbits, 00 = 8 Datenbits
+BITBAS2:
+	LD	(SER_CTR),A
+				; Parity setzen
+	LD	A,L
+	RLCA
+	RLCA
+	AND	01100000B
+	BIT	6,A
+	JR	Z,BITBAS3	; 00 = No, 01 = Odd, 10 = Even
+	SET	5,A
+BITBAS3:			; 00 = No, 01 = Odd, 11 = Even
+	LD	L,A
+	LD	A,(SER_CMD)
+	AND	0FH
+	OR	L		; Neue Parity Bits
+	LD	(SER_CMD),A
+
+	OUT0	(CBR),H		;alten Bereich wieder einblenden
+	POP	HL
+	JR	EIRET
+;
+;-----------------------------------------------------------------
+;
+;	A F L O W 5
+;	Ausgabeflusskontrolle einstellen
+;
+;	Eingang: (HL) : Bit 0 = XON/XOFF, Bit 1 = DSR/DTR
+;
+AFLOW5:
+	PUSH	AF
+	PUSH	HL
+	XOR	A
+	BIT	2,(HL)		; Ausgabeflusskontrolle ?
+	JR	Z,AFLOW5A
+	CALL	CALCF
+AFLOW5A:
+	LD	HL,AFLG
+EAFLOW:
+	PUSH	BC
+	DI
+	IN0	B,(CBR)
+	LD	C,51H
+	OUT0	(CBR),C
+	LD	(HL),A
+	OUT0	(CBR),B
+	EI
+	POP	BC
+	POP	HL
+	POP	AF
+	RET
+	
+CALCF:
+	BIT	0,(HL)
+	JR	Z,CALCF1
+	SET	7,A		; XON/XOFF
+CALCF1:
+	BIT	1,(HL)
+	JR	Z,CALCF2
+	SET	6,A		; DSR/DTR
+CALCF2:
+	RET
+
+;-----------------------------------------------------------------
+;
+;	E F L O W 5
+;	Eingabeflusskontrolle einstellen
+;
+;	Eingang: (HL) : Bit 0 = XON/XOFF, Bit 1 = DSR/DTR
+;
+EFLOW5:
+	PUSH	AF
+	PUSH	HL
+	XOR	A
+	BIT	3,(HL)		; EIngabeflusskontrolle ?
+	JR	Z,EFLOW5A
+	CALL	CALCF		; EUMEL --> 6502 Format
+EFLOW5A:
+	LD	HL,EFLG
+	JR	EAFLOW
+
+;-------------------------------------------------------------------
+
+	END
+

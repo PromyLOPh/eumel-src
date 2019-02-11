@@ -1,0 +1,1190 @@
+PACKET dos fat and dir DEFINES               (* Copyright (C) 1985, 86 *)
+                                             (* Frank Klapper          *)
+  open disk,                                 (* 30.05.86               *)
+  close disk,
+  format disk,
+  disk changed,
+  open fetch,
+  next fetch cluster no,
+  open save,
+  next save cluster no,
+  close save,
+  erase table entrys,
+(*COND TEST
+  dump fat,
+ENDCOND*)
+  dir all,
+  dir list,
+  dir contains:
+
+LET fat row size            = 16384,     (* 32 KB *)
+    max fat blocks          = 25,
+    first fat entry no      = 2,
+    last entry of fat chain = 4088,
+    dir entrys per block    = 16, 
+    max dir entrys          = 1600,      (* 100 KB *)
+    archive byte            = " ";
+ 
+LET FAT   = BOUND STRUCT (ALIGN dummy,
+                          ROW 256 INT block row,
+                          ROW fat row size INT fat row); 
+
+LET LOCATION = STRUCT (INT msdos block no,
+                           block entry no),
+
+    FILEENTRY = STRUCT (TEXT date and time,
+                        REAL size,
+                        INT first cluster, 
+                        LOCATION location),
+
+    DIRENTRY = INT,
+
+    FILELIST = STRUCT (THESAURUS thes,
+                       ROW max dir entrys FILEENTRY entry,
+                       INT no of entrys),
+
+    DIRLIST = STRUCT (THESAURUS thes,
+                      ROW max dir entrys DIRENTRY entry,
+                      INT no of entrys),
+
+    FREELIST = STRUCT (ROW max dir entrys LOCATION stack,
+                       INT stacktop,
+                       LOCATION begin of free area,
+                                end of dir,
+                       INT dir chain root),
+ 
+    DIR = BOUND STRUCT (FILELIST filelist,
+                        DIRLIST dirlist, 
+                        FREELIST freelist,
+                        TEXT disklabel,
+                             path);
+ 
+INITFLAG VAR this packet := FALSE;
+
+DATASPACE VAR fat space,
+              dir ds, 
+              block ds; 
+ 
+BOOL VAR dataspaces open;
+ 
+FAT VAR fat struct;
+ROW max fat blocks BOOL VAR write access;
+INT VAR first possible available fat entry;
+
+DIR VAR dir;
+ 
+CLUSTER VAR block;
+
+INT VAR akt file cluster no,
+        first file cluster no;
+BOOL VAR no cluster saved;
+TEXT VAR save name;
+
+INT VAR count;
+
+TEXT VAR convert buffer := "  ",
+         name,
+         dir entry;
+
+.fat:
+  fat struct.fat row.
+
+PROC open disk (TEXT CONST subdir path):
+  disable stop;
+  enable open disk (subdir path);
+  IF is error
+    THEN close action
+  FI
+
+END PROC open disk;
+
+PROC enable open disk (TEXT CONST subdir path):
+  enable stop;
+  init dataspaces;
+  open fat;
+  open dir.
+ 
+open fat:
+  reset disk attributes;
+  read first fat block;
+  set disk attributes (fat byte (0));
+  read other fat blocks;
+  define write access table (FALSE);
+  first possible available fat entry := first fat entry no.
+
+ read first fat block:
+  read fat block (0, FALSE).
+
+read other fat blocks:
+  INT VAR block no;
+  FOR block no FROM 1 UPTO number of fat sectors - 1 REP
+     read fat block (block no, FALSE)
+  PER.
+
+open dir:
+  init dir struct (subdir path, -1);
+  load main dir blocks;
+  load subdirs if necessary.
+
+load main dir blocks:
+  BOOL VAR last block;
+  store end of dir (loc (end of main dir, dir entrys per block - 1));
+  FOR block no FROM begin of dir UPTO end of main dir REP
+    load dir block (block no, last block);
+    UNTIL last block
+  PER. 
+
+end of main dir:
+  begin of dir + number of dir sectors - 1.
+
+load subdirs if necessary: 
+  TEXT VAR path := subdir path;
+  WHILE path <> "" REP
+    load next subdir if possible
+  PER.
+
+load next subdir if possible:
+  INT VAR cluster no;
+  get next subdir name;
+  get first cluster no of subdir table;
+  clear dir entrys (cluster no);
+  WHILE cluster no >= 0 REP
+    load subdir entrys of cluster;
+    cluster no := next fetch cluster no
+    UNTIL last block 
+  PER.
+
+get next subdir name:
+  TEXT VAR subdir name;
+  IF (path SUB 1) <> "\"
+    THEN error stop ("ungÅltige Pfadbezeichnung")
+  FI;
+  INT VAR backslash pos := pos (path, "\", "\", 2);
+  IF backslash pos = 0
+    THEN subdir name := subtext (path, 2);
+         path := ""
+    ELSE subdir name := subtext (path, 2, backslash pos - 1);
+         path := subtext (path, backslash pos)
+  FI;
+  subdir name := adapted name (subdir name, TRUE).
+
+get first cluster no of subdir table:
+  IF dir thes CONTAINS subdir name
+    THEN open fetch subdir (subdir name, cluster no);
+    ELSE error stop ("Subdirectory existiert nicht")
+  FI.
+
+load subdir entrys of cluster:
+  store end of dir (loc (last block no of cluster, dir entrys per block - 1));
+  FOR block no FROM 0 UPTO (sectors per cluster - 1) REP
+    load dir block (first block no of cluster (cluster no) + block no, last block)
+    UNTIL last block
+  PER.
+
+last block no of cluster:
+  first block no of cluster (cluster no) + sectors per cluster - 1.
+
+END PROC enable open disk;
+
+PROC init dataspaces:
+  enable stop;
+  IF NOT initialized (this packet)
+    THEN dataspaces open := FALSE
+  FI;
+  IF NOT dataspaces open
+   THEN disable stop;
+         dataspaces open := TRUE;
+         fat space  := nilspace;
+         dir   ds   := nilspace;
+         block ds   := nilspace;
+         fat struct := fat space;
+         dir        := dir ds; 
+         block      := block ds 
+  FI.
+
+END PROC init dataspaces;
+
+PROC init dir struct (TEXT CONST path string, INT CONST root):
+  clear dir entrys (root);
+  dir.path := path string;
+  dir.disk label := "". 
+
+END PROC init dir struct;
+
+PROC clear dir entrys (INT CONST root):
+  init file list;
+  init dir list;
+  init free list (root).
+
+init file list:
+  dir.file list.thes := empty thesaurus;
+  dir.file list.no of entrys := 0.
+
+init dir list:
+  dir.dir list.thes := empty thesaurus;
+  dir.dir list.no of entrys := 0. 
+
+END PROC clear dir entrys;
+
+PROC close disk:
+  enable stop;
+  IF NOT initialized (this packet)
+    THEN dataspaces open := FALSE
+  FI;
+  IF dataspaces open 
+    THEN forget (dir ds);
+         forget (block ds);
+         forget (fat space);
+         dataspaces open := FALSE
+  FI.
+
+END PROC close disk;
+
+(*COND FLOPPY
+PROC format disk:
+  enable stop;
+  init dataspaces;
+  format fat;
+  format dir.
+
+format fat:
+  write first four fat bytes;
+  write other fat bytes;
+  define write access table (TRUE);
+  copy fat to disk.
+
+write first four fat bytes:
+  fat [1] := word (first fat byte, 255);
+  fat [2] := word (255, 0).
+
+write other fat bytes:
+  FOR count FROM 3 UPTO fat length REP
+    fat [count] := 0
+  PER.
+
+fat length:
+  INT VAR len := number of fat entrys + number of fat entrys DIV 2
+                       + number of fat entrys MOD 2;
+  len DIV 2 + len MOD 2.
+ 
+format dir:
+  init dir struct ("", -1);
+  store begin of free area (loc (begin of dir, 0));
+  store end of dir (loc (end of dir, dir entrys per block - 1));
+  FOR count FROM 0 UPTO dir entrys per block - 1 REP
+    write text 32 (block, ""0"" + 31 * ""246"", count)
+  PER;
+  disable stop;
+  FOR count FROM begin of dir UPTO end of dir REP
+    write disk block (block ds, count);
+  PER.
+
+end of dir:
+  begin of dir + number of dir sectors - 1. 
+
+END PROC format disk;
+ENDCOND*)
+
+(*COND HDU*)
+PROC disk clear:
+  error stop ("nicht implementiert")
+
+END PROC disk clear;
+
+PROC format disk:
+  error stop ("nicht implementiert")
+
+END PROC format disk;
+(*ENDCOND*)
+
+INT PROC word (INT CONST low byte, high byte):
+  convert buffer := code (low byte) + code (high byte);
+  convert buffer ISUB 1.
+
+END PROC word;
+ 
+BOOL PROC disk changed:
+(*COND FLOPPY
+  disable stop;
+  NOT first fat block ok COR is error     (* must be COR *)
+ENDCOND*)
+(*COND HDU*)
+  FALSE
+(*ENDCOND*)
+
+END PROC disk changed;
+
+BOOL PROC first fat block ok:
+  enable stop;
+  read fat block (0, TRUE);
+  FOR count FROM 1 UPTO 256 REP
+    compare word
+  PER; 
+  TRUE.
+
+compare word:
+  IF fat struct.fat row [count] <> fat struct.block row [count] 
+    THEN LEAVE first fat block ok WITH FALSE
+  FI. 
+
+END PROC first fat block ok;
+
+PROC open fetch (TEXT CONST name, REAL VAR size, INT VAR first cluster no):
+  enable stop;
+  first cluster no := dir.file list.entry [link index].first cluster;
+  size             := dir.file list.entry [link index].size;
+  IF first cluster no >= 4088
+    THEN first cluster no := -1
+  FI;
+  akt file cluster no := first cluster no.
+ 
+link index:
+  link (file thes, name).
+
+END PROC open fetch;
+ 
+PROC open fetch subdir (TEXT CONST subdir name, INT VAR first cluster no):
+  first cluster no := dir.dir list.entry [link index];
+  IF first cluster no >= 4088
+    THEN first cluster no := -1
+  FI;
+  akt file cluster no := first cluster no.
+ 
+link index:
+  link (dir thes, subdir name).
+
+END PROC open fetch subdir;
+
+INT PROC next fetch cluster no:
+  enable stop;
+  akt file cluster no := fat entry (akt file cluster no);
+  IF akt file cluster no < 4088  (*ff8h *)
+    THEN akt file cluster no
+    ELSE -1
+  FI.
+
+END PROC next fetch cluster no; 
+
+PROC open save (TEXT CONST file name):
+  enable stop;
+  save name := file name;
+  IF dir full
+    THEN error stop ("Directory voll")
+  FI;
+  IF dir thes CONTAINS file name
+    THEN error stop ("Subdirectory mit gleichem Namen existiert bereits")
+  FI;
+  IF file thes CONTAINS file name
+    THEN error stop ("Datei mit gleichem Namen existiert bereits")
+  FI;
+  no cluster saved := TRUE.
+
+END PROC open save;
+
+INT PROC next save cluster no:
+  enable stop;
+  IF no cluster saved
+    THEN akt file cluster no   := available fat entry;
+         first file cluster no := akt file cluster no;
+         no cluster saved := FALSE
+    ELSE INT VAR old cluster no := akt file cluster no;
+         akt file cluster no := available fat entry;
+         write fat entry (old cluster no, akt file cluster no)
+  FI;
+  write fat entry (akt file cluster no, last entry of fat chain);
+  akt file cluster no.
+
+END PROC next save cluster no;
+
+PROC close save (REAL CONST size):
+  enable stop;
+  IF no cluster saved
+    THEN insert dir entry (save name, 4088, 0.0)
+    ELSE copy fat to disk;
+         insert dir entry (save name, first file cluster no, size)
+  FI.
+
+END PROC close save;
+
+PROC erase table entrys (TEXT CONST name):
+  enable stop;
+  INT VAR first file cluster := first cluster;
+  delete dir entry (name);
+  erase fat chain (first file cluster);
+  copy fat to disk.
+
+first cluster:
+  dir.file list.entry [link index].first cluster.
+ 
+link index:
+  link (file thes, name).
+
+END PROC erase table entrys;
+
+INT PROC fat entry (INT CONST entry no):
+  fix bytes;
+  construct value.
+
+fix bytes:
+  INT VAR first byte no := entry no + entry no DIV 2.
+
+construct value:
+  IF entry no MOD 2 = 0
+    THEN (right byte MOD 16) * 256 + left byte 
+    ELSE right byte * 16 + left byte DIV 16
+  FI.
+
+left byte:
+  fat byte (first byte no).
+
+right byte:
+  fat byte (first byte no + 1).
+
+END PROC fat entry;
+
+INT PROC available fat entry:
+  FOR count FROM first possible available fat entry UPTO number of fat entrys - 1 REP
+    IF is available entry (count)
+      THEN first possible available fat entry := count;
+           LEAVE available fat entry WITH count
+    FI;
+  PER;
+  close action; error stop ("MS-DOS Datentraeger voll"); maxint.
+
+END PROC available fat entry;
+
+BOOL PROC is available entry (INT CONST entry no):
+  is zero entry.
+
+is zero entry:
+  IF entry no MOD 2 = 0
+    THEN (left byte = 0) CAND ((right byte MOD 16) = 0)
+    ELSE (right byte = 0) CAND ((left byte DIV 16) = 0)
+  FI.
+
+left byte:
+  fat byte (first byte no).
+
+right byte:
+  fat byte (first byte no + 1).
+ 
+first byte no:
+  entry no + entry no DIV 2.
+ 
+END PROC is available entry;
+
+PROC erase fat chain (INT CONST first entry):
+  INT VAR akt  entry no := first entry,
+          entry         := fat entry (akt entry no);
+  WHILE akt entry no not last chain entry no  REP
+    erase akt entry;
+    akt entry no := entry;
+    entry := fat entry (akt entry no)
+  PER;
+  erase akt entry.
+
+akt entry no not last chain entry no:
+  (entry < last entry of fat chain) AND (entry > 1).
+
+erase akt entry:
+  write fat entry (akt entry no, 0).
+
+END PROC erase fat chain; 
+
+PROC write fat entry (INT CONST entry no, value):
+  fix bytes;
+  remark write access (fat block of first  byte);
+  remark write access (fat block of second byte);
+  write value;
+  update first possible available entry. 
+
+fix bytes:
+  INT VAR first byte no := entry no + entry no DIV 2.
+
+fat block of first byte:
+  first byte no DIV 512.
+
+fat block of second byte:
+  second byte no DIV 512.
+
+write value:
+  IF even entry no
+    THEN write fat byte (first  byte no, value MOD 256);
+         write fat byte (second byte no,
+                        (right byte DIV 16) * 16 + value DIV 256)
+    ELSE write fat byte (first byte no,
+                         (left byte MOD 16) + 16 * (value MOD 16));
+         write fat byte (second byte no, value DIV 16)
+  FI.
+
+even entry no:
+  entry no MOD 2 = 0.
+
+second byte no:
+  first byte no + 1.
+
+left byte:
+  fat byte (first byte no).
+
+right byte:
+  fat byte (second byte no).
+
+update first possible available entry:
+  IF value = 0
+    THEN first possible available fat entry := 
+         min (first possible available fat entry, entry no)
+  FI.
+
+END PROC write fat entry; 
+
+INT PROC fat byte (INT CONST no): 
+  replace (convert buffer, 1, word); 
+  IF even byte no
+    THEN code (convert buffer SUB 1)
+    ELSE code (convert buffer SUB 2)
+  FI. 
+ 
+even byte no:
+  no MOD 2 = 0.
+
+word: 
+  fat [no DIV 2 + 1]. 
+
+END PROC fat byte; 
+ 
+PROC write fat byte (INT CONST byte no, new value):
+  read old word;
+  change byte;
+  write new word.
+
+read old word: 
+  replace (convert buffer, 1, word).
+
+write new word:
+  word := convert buffer ISUB 1.
+
+word:
+  fat [byte no DIV 2 + 1].
+
+change byte:
+  replace (convert buffer, byte pos, code (new value)).
+
+byte pos:
+  byte no MOD 2 + 1.
+
+END PROC write fat byte;
+
+PROC copy fat to disk:
+  INT VAR block no;
+  FOR block no FROM 0 UPTO number of fat sectors - 1 REP
+    IF was write access (block no)
+      THEN write fat block (block no)
+    FI
+  PER.
+
+END PROC copy fat to disk;
+
+PROC write fat block (INT CONST fat block no):
+  INT VAR fat copy no;
+  INT VAR return code;
+  disable stop;
+  FOR fat copy no FROM 0 UPTO number of fat copies -1 REP
+    write disk block (fat space, ds page no, block no, return code);
+    IF return code > 0
+      THEN close action
+    FI
+  PER;
+  remark no write access (block no);
+  enable stop.
+
+ds page no:
+  first non dummy ds page + fat block no + 1.
+
+block no:
+  begin of fat (fat copy no) + fat block no.
+
+END PROC write fat block;
+
+PROC read fat block (INT CONST fat block, BOOL CONST test block):
+  INT VAR fat copy no;
+  disable stop;
+  FOR fat copy no FROM 0 UPTO number of fat copies - 1 REP
+    clear error;
+    read disk block (fat space, ds page no, fat block no)
+    UNTIL NOT is error
+  PER;
+  IF is error
+    THEN close action
+  FI;
+  enable stop.
+
+ds page no:
+  IF test block
+    THEN first non dummy ds page
+    ELSE fat block + first non dummy ds page + 1
+  FI.
+
+fat block no:
+  begin of fat (fat copy no) + fat block.
+
+END PROC read fat block;
+
+PROC define write access table (BOOL CONST status):
+  FOR count FROM 1 UPTO number of fat sectors REP
+    write access [count] := status
+  PER.
+
+END PROC define write access table;
+
+PROC remark write access (INT CONST fat block no):
+  write access [fat block no + 1] := TRUE
+
+END PROC remark write access;
+
+PROC remark no write access (INT CONST fat block no):
+  write access [fat block no + 1] := FALSE
+
+END PROC remark no write access;
+
+BOOL PROC was write access (INT CONST fat block no):
+  write access [fat block no + 1]
+
+END PROC was write access;
+
+(*COND TEST
+PROC dump fat:                                                     
+  IF NOT exists ("fat dump")                                       
+    THEN open file                                                 
+  FI;                                                              
+  DATASPACE VAR ds := nilspace;                                    
+  FILE VAR in := sequential file (input, "fat dump"),              
+           out := sequential file (output, ds);                    
+  INT VAR i;                                                       
+  TEXT VAR line;                                                   
+  FOR i FROM 0 UPTO number of fat entrys - 1 REP                   
+    dump fat entry                                                 
+  PER;                                                             
+  forget ("fat dump", quiet);                                      
+  copy (ds, "fat dump");                                           
+  forget (ds).                                                     
+                                                                   
+open file:                                                         
+  in := sequential file (output, "fat dump");                      
+  FOR i FROM 0 UPTO number of fat entrys - 1 REP                   
+    putline (in, text (i, 4) + ": ")                               
+  PER.                                                             
+                                                                   
+dump fat entry:                                                    
+  cout (i);                                                        
+  getline (in, line);                                              
+  putline (out, line + "  " + text (fat entry (i), 4)).            
+                                                                   
+END PROC dump fat;                                                 
+ENDCOND*)
+
+PROC load dir block (INT CONST block no, BOOL VAR last block): 
+  last block := FALSE;
+  INT VAR return code;
+  read disk block (block ds, first non dummy ds page, block no, return code);
+  IF return code > 0
+    THEN close action;
+         io error (return code)
+  FI;
+  INT VAR entry no,
+          thes index;
+  FOR entry no FROM 0 UPTO dir entrys per block - 1 REP 
+    dir entry := text 32 (block, entry no);
+    process entry
+  PER.
+
+process entry:
+  SELECT pos (""0"."229"", dir entry SUB 1) OF
+    CASE 1: end of dir search
+    CASE 2: main dir entry
+    CASE 3: free entry
+    OTHERWISE file entry
+  END SELECT.
+
+end of dir search:
+  last block := TRUE;
+  store begin of free area (loc (block no, entry no));
+  LEAVE load dir block.
+
+main dir entry:
+  (* no operation *).
+
+free entry:
+  store in free list (loc (block no, entry no)).
+
+file entry:
+  SELECT code (dir entry SUB 12) OF
+    CASE  8: volume label
+    CASE 16: sub dir entry
+    OTHERWISE dos file entry
+  END SELECT.
+
+volume label:
+  dir.disk label := text (dir entry, 1, 11).
+
+sub dir entry:
+  dir.dir list.no of entrys INCR 1;
+  insert (dir thes, name, thes index);
+  dir list entry := first cluster no.
+
+dos file entry:
+  IF dir.file list.no of entrys >= max dir entrys
+    THEN error stop ("Directorytabelle voll")
+  FI;
+  dir.file list.no of entrys INCR 1;
+  insert (file thes, name, thes index);
+  file list entry.first cluster           := first cluster no;
+  file list entry.date and time           := dos date + "  " + dos time;
+  file list entry.size                    := dos storage;
+  file list entry.location.msdos block no := block no;
+  file list entry.location.block entry no := entry no.
+ 
+name:
+  IF name post <> ""
+    THEN name pre + "." + name post
+    ELSE name pre
+  FI.
+
+name pre:
+  compress (subtext (dir entry, 1, 8)).
+
+name post:
+  compress (subtext (dir entry, 9, 11)).
+
+file list entry:
+  dir.file list.entry [thes index].
+
+dir list entry:
+  dir.dir list.entry [thes index].
+
+first cluster no:
+  code (dir entry SUB 27) + 256 * code (dir entry SUB 28).
+
+dos storage:
+  real (code (dir entry SUB 29)) +
+  real (code (dir entry SUB 30)) * 256.0 +
+  real (code (dir entry SUB 31)) * 65536.0 +
+  real (code (dir entry SUB 32)) * 16777216.0.
+
+dos date:
+  day + "." + month + "." + year. 
+ 
+day: 
+  IF code (dir entry SUB 25) MOD 32 < 10 
+    THEN "0" + text (code (dir entry SUB 25) MOD 32) 
+    ELSE text (code (dir entry SUB 25) MOD 32)
+  FI. 
+ 
+month:
+  INT VAR dummy := code (dir entry SUB 25) DIV 32 + 8 * (code (dir entry SUB 26) MOD 2);
+  IF dummy < 10 
+    THEN "0" + text (dummy) 
+    ELSE text (dummy) 
+  FI. 
+ 
+year:
+  text (80 + code (dir entry SUB 26) DIV 2, 2).
+
+dos time:
+  hour + ":" + minute. 
+ 
+hour: 
+  dummy := code (dir entry SUB 24) DIV 8; 
+  IF dummy < 10 
+    THEN "0" + text (dummy) 
+    ELSE text (dummy) 
+  FI. 
+ 
+minute: 
+  dummy := code (dir entry SUB 23) DIV 32 + 8 * (code (dir entry SUB 24) MOD 8); 
+  IF dummy < 10 
+    THEN "0" + text (dummy)
+    ELSE text (dummy) 
+  FI. 
+ 
+END PROC load dir block; 
+ 
+PROC insert dir entry (TEXT CONST name, INT CONST start cluster, REAL CONST used storage):
+  (* name must be a dos name *)
+  LOCATION VAR ins pos := free location;
+  TEXT VAR akt date := date (clock (1)),
+           akt time := time of day (clock (1));
+  write disk entry;
+  write dir struct entry.
+
+write disk entry:
+  INT VAR return code;
+  read disk block (block ds, first non dummy ds page, ins pos.msdos block no, return code);
+  IF return code > 0
+    THEN close action;
+         io error (return code)
+  FI;
+  prepare name;
+  dir entry := name pre + name post + archive byte + (10 * ""0"") + dos time +
+               dos date + starting cluster + storage;
+  write text 32 (block, dir entry, ins pos.block entry no);
+  write disk block (block ds, first non dummy ds page,ins pos.msdos block no, return code);
+  IF return code > 0
+    THEN close action;
+         io error (return code)
+  FI.
+
+prepare name:
+  TEXT VAR name pre, name post;
+  IF point pos > 0
+    THEN name pre  := subtext (name, 1, point pos - 1);
+         name post := subtext (name, point pos + 1);
+         name pre  CAT (8 - LENGTH name pre)  * " ";
+         name post CAT (3 - LENGTH name post) * " "
+    ELSE name pre  := name + (8 - LENGTH name) * " ";
+         name post := "   "
+  FI.
+ 
+point pos:
+  pos (name, "."). 
+ 
+dos time:
+  code ((minute MOD 8) * 32) + code (8 * hour + minute DIV 8).
+
+hour:
+  int (subtext (akt time, 1, 2)).
+
+minute:
+  int (subtext (akt time, 4, 5)).
+
+dos date:
+   code (32 * (month MOD 8) + day) + code ((year - 80) * 2 + month DIV 8).
+
+day: 
+  int (subtext (akt date, 1, 2)).
+
+month:
+  int (subtext (akt date, 4, 5)).
+
+year:
+  int (subtext (akt date, 7, 8)).
+
+starting cluster:
+  code (start cluster MOD 256) + code (start cluster DIV 256).
+
+storage:
+  code (int (round (256.0 * frac (used storage / 256.0), 0))) +
+  code (int (round (frac (floor (used storage / 256.0) / 256.0) * 256.0, 0))) +
+  code (int (floor (used storage / 65536.0))) +
+  code (0).          (* maximal 16384 K *********************************)
+
+write dir struct entry:
+  INT VAR thes link;
+  insert (file thes, name, thes link);
+  file list entry.location      := ins pos; 
+  file list entry.first cluster := start cluster;
+  file list entry.date and time := akt date + "  " + akt time;
+  file list entry.size          := used storage.
+
+file list entry:
+  dir.filelist.entry [thes link].
+
+END PROC insert dir entry;
+
+PROC delete dir entry (TEXT CONST name):
+  LOCATION VAR del pos;
+  get del pos;
+  erase dir struct entry;
+  erase disk entry;
+  store in free list (del pos).
+
+get del pos:
+  del pos := dir.filelist.entry [link index].location.
+
+link index:
+  link (file thes, name).
+
+erase dir struct entry:
+  INT VAR i;
+  delete (file thes, name, i).
+
+erase disk entry:
+  INT VAR return code;
+  read disk block (block ds, first non dummy ds page, del pos.msdos block no, return code);
+  IF return code > 0
+    THEN close action;
+         io error (return code)
+  FI;
+  dir entry := text 32 (block, del pos.block entry no);
+  replace (dir entry, 1, ""229"");
+  write text 32 (block, dir entry, del pos.block entry no);
+  write disk block (block ds, first non dummy ds page, del pos.msdos block no, return code);
+  IF return code > 0
+    THEN close action;
+         io error (return code)
+  FI.
+
+END PROC delete dir entry;
+ 
+.
+file thes:
+  dir.filelist.thes.
+
+dir thes:
+  dir.dir list.thes.
+
+(*********************** dir information ******************************)
+
+THESAURUS PROC dir all: 
+  file thes.
+ 
+END PROC dir all; 
+ 
+BOOL PROC dir contains (TEXT CONST name): 
+  file thes CONTAINS name
+
+END PROC dir contains;
+ 
+PROC dir list (DATASPACE VAR ds):
+  enable stop;
+  open list file;
+  list files;
+  list dirs;
+  write list head.
+
+open list file:
+  forget (ds);
+  ds := nilspace;
+  FILE VAR list file := sequential file (output, ds);
+  putline (list file, "").
+ 
+list files: 
+  INT VAR number := 0;
+  get (file thes, name, number);
+  WHILE number > 0 REP
+    generate file list line;
+    get (file thes, name, number)
+  PER.
+
+generate file list line:
+  write (list file, centered name);
+  write (list file, "  ");
+  write (list file, text (act file entry.size, 11, 0));
+  write (list file, " Bytes belegt      ");
+  write (list file, act file entry.date and time); 
+(*COND TEST
+  write (list file, "  +++  "); 
+  write (list file, text (act file entry.first cluster)); 
+ENDCOND*)
+  line (list file).
+
+list dirs:
+  number := 0;
+  get (dir thes, name, number);
+  WHILE number > 0 REP
+    generate dir list line;
+    get (dir thes, name, number)
+  PER.
+
+generate dir list line:
+  write (list file, centered name);
+  write (list file, "   <DIR>");
+(*COND TEST
+  write (list file, "  +++  ");                                 
+  write (list file, text (dir.dir list.entry [number]));  
+ENDCOND*)
+  line (list file).
+
+centered name:
+  INT VAR point pos := pos (name, ".");
+  IF point pos > 0
+    THEN name pre + "." + name post
+    ELSE text (name, 12)
+  FI.
+
+name pre:
+  text (subtext (name, 1, point pos - 1), 8).
+
+name post:
+  text (subtext (name, point pos + 1, point pos + 4), 3).
+ 
+act file entry:
+  dir.file list.entry [number].
+
+write list head:
+  head line (list file, head).
+
+head:
+  "DOS" + disk label string + path string.
+
+disk label string:
+  IF dir.disk label <> ""
+    THEN ": " + dir.disk label
+    ELSE ""
+  FI.
+
+path string:
+  IF dir.path <> ""
+    THEN "     PATH: " + dir.path
+    ELSE ""
+  FI.
+
+END PROC dir list;
+ 
+(************ free list handling ******************************************)
+LOCATION PROC loc (INT CONST block, entry):
+  LOCATION : (block, entry) 
+
+END PROC loc;
+
+BOOL OP > (LOCATION CONST l, r):
+  l.msdos block no > r.msdos block no
+  OR ((l.msdos block no = r.msdos block no) AND 
+      (l.block entry no > r.block entry no)     )
+
+END OP >;
+
+OP INCR (LOCATION VAR l):
+  IF l.block entry no = dir entrys per block -1
+    THEN l.block entry no := 0;
+         l.msdos block no INCR 1
+    ELSE l.block entry no INCR 1
+  FI.
+
+END OP INCR;
+
+PROC init free list (INT CONST dir root):
+  dir.freelist.stacktop := 0;
+  dir.freelist.begin of free area.msdos block no := maxint;
+  dir.freelist.end of dir.msdos block no := -1;
+  dir.freelist.dir chain root := dir root.
+
+END PROC init free list;
+ 
+BOOL PROC dir full:
+  stack empty AND free area empty AND NOT expansion alloweded.
+
+stack empty:
+  dir.freelist.stacktop < 1.
+
+free area empty:
+  dir.freelist.begin of free area > dir.freelist.end of dir.
+
+expansion alloweded:
+  dir.freelist.dir chain root >= 0.
+
+END PROC dir full;
+
+PROC store in free list (LOCATION CONST free):
+  dir.freelist.stacktop INCR 1;
+  dir.freelist.stack [top] := free.
+
+top:
+  dir.freelist.stacktop.
+
+END PROC store in free list;
+
+PROC store begin of free area (LOCATION CONST begin):
+  dir.freelist.begin of free area := begin
+
+END PROC store begin of free area;
+
+PROC store end of dir (LOCATION CONST end):
+  dir.freelist.end of dir := end
+
+END PROC store end of dir;
+
+LOCATION PROC free location:
+  LOCATION VAR result;
+  IF dir.freelist.stacktop > 0
+    THEN pop
+    ELIF NOT free area empty
+    THEN first of free area
+    ELIF expansion alloweded
+    THEN allocate new dir space;
+         result := free location
+    ELSE error stop ("Directorytabelle voll")
+  FI;
+  result.
+
+pop:
+  result := dir.freelist.stack [top];
+  top DECR 1.
+
+top:
+  dir.freelist.stack top.
+
+free area empty:
+  dir.freelist.begin of free area > dir.freelist.end of dir.
+
+first of free area:
+  result := dir.freelist.begin of free area;
+  INCR dir.freelist.begin of free area.
+
+expansion alloweded:
+  dir.freelist.dir chain root >= 0.
+
+END PROC free location; 
+
+PROC allocate new dir space:
+  enable stop;
+  INT VAR new cluster no := available fat entry;
+  IF new cluster no < 0
+    THEN error stop ("MS-DOS Datentraeger voll")
+  FI;
+  INT VAR last entry no;
+  search last entry of fat chain;
+  write fat entry (new cluster no, 4095);
+  write fat entry (last entry no, new cluster no);
+  copy fat to disk;
+  store begin of free area (loc (first new block, 0));
+  store end of dir (loc (last new block, dir entrys per block - 1));
+  init new dir cluster.
+
+search last entry of fat chain:
+  last entry no := dir.freelist.dir chain root;
+  WHILE fat entry (last entry no) < last entry of fat chain REP
+    last entry no := fat entry (last entry no)
+  PER.
+
+init new dir cluster:
+  FOR count FROM 0 UPTO dir entrys per block - 1 REP
+    write text 32 (block, ""0"" + 31 * ""246"", count)
+  PER;
+  disable stop;
+  FOR count FROM first new block UPTO last new block REP
+    write disk block (block ds, count);
+  PER.
+
+first new block:
+  firstblock no of cluster (new cluster no).
+
+last new block:
+  first block no of cluster (new cluster no) + sectors per cluster - 1.
+
+END PROC allocate new dir space; 
+
+(*COND TEST
+PROC dump freelist:
+  command dialogue (FALSE);
+  FILE VAR f := sequential file (output, "freelistdump");
+  INT VAR i;
+  putline (f, "STACKTOP: " + text (fl.stacktop));
+  putline (f, "STACK:");
+  FOR i FROM 1 UPTO 16 * number of dir sectors REP
+    putline (f, "   " + text (i, 4) + ":  " +
+                text (fl.stack [i].msdos block no) + ", " +
+                text (fl.stack [i].block entry no))
+  PER; 
+  line (f);
+  putline (f, "BEGIN OF FREE: " + text (fl.begin of free area.msdos block no) + 
+            ", "  + text (fl.begin of free area.block entry no));
+  putline (f, "END   OF DIR:  " + text (fl.end of dir.msdos block no) + 
+            ", "  + text (fl.end of dir.block entry no)).
+
+fl:
+  dir.freelist.
+
+END PROC dump free list;
+ENDCOND*)
+
+END PACKET dos fat and dir;

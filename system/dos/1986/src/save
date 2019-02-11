@@ -1,0 +1,273 @@
+PACKET save DEFINES                   (* Copyright (C) 1985 *)
+                                      (* Frank Klapper      *)
+                                      (* 07.05.86           *)
+  save filemode, 
+  save rowtextmode,
+  save dsmode: 
+
+LET       ascii        = 1,
+          ascii german = 2,
+          transparent  = 3,
+          ebcdic       = 4,
+          atari st     = 10;
+
+LET ascii ctrl z = ""26"";
+
+LET row text mode length = 4000;
+
+CLUSTER VAR cluster;
+
+DATASPACE VAR cluster space;
+
+BOUND STRUCT (INT size,
+              ROW row text mode length TEXT cluster row) VAR cluster struct;
+
+REAL VAR storage;
+TEXT VAR cr lf, ff;
+TEXT VAR buffer;
+
+PROC save filemode (DATASPACE CONST file space, 
+                    TEXT CONST name,
+                    INT CONST code type):
+  disable stop;
+  cluster space := nilspace;
+  cluster := cluster space;
+  enable save filemode (file space, name, code type);
+  buffer := "";
+  forget (cluster space).
+
+END PROC save filemode;
+ 
+PROC enable save filemode (DATASPACE CONST file space, 
+                           TEXT CONST name,
+                           INT CONST code type):
+  enable stop;
+  open save (name);
+  init save filemode;
+  INT VAR line no;
+  FOR line no FROM 1 UPTO lines (file) REP
+    to line (file, line no);
+    buffer cat file line;
+    WHILE LENGTH buffer >= cluster size REP
+      copy buffer to cluster;
+      write disk cluster (cluster space, first non dummy ds page, next save cluster no);
+      remember rest
+    PER
+  PER;
+  cat ctrl z if necessary;
+  write rest;
+  close save (storage).
+
+init save filemode:
+  storage := 0.0;
+  FILE VAR file := sequential file (modify, file space);
+  SELECT code type OF
+    CASE ascii, ascii german, atari st, transparent: cr lf := ""13""10""; ff := ""12""
+    CASE ebcdic: cr lf := ""13"%"; ff := ""12""
+  END SELECT;
+  buffer := "".
+
+buffer cat file line:
+  exec (PROC (TEXT CONST, INT CONST) cat adapted line, file, code type).
+ 
+copy buffer to cluster:
+  write text (cluster, buffer);
+  storage INCR real (min (cluster size, LENGTH buffer)).
+
+remember rest:
+  buffer := subtext (buffer, cluster size + 1).
+
+write rest:
+  WHILE buffer <> ""
+    REP copy buffer to cluster; 
+        write disk cluster (cluster space, first non dummy ds page, next save cluster no);
+        remember rest
+  PER.
+ 
+cat ctrl z if necessary:
+  IF code type <> ebcdic
+    THEN buffer CAT ascii ctrl z
+  FI.
+
+END PROC enable save filemode; 
+ 
+PROC cat adapted line (TEXT VAR line, INT CONST code type):
+  IF subtext (line, 1, 6) = "#page#" 
+      THEN buffer CAT ff;
+           LEAVE cat adapted line
+  FI;
+  SELECT code type OF
+    CASE transparent: (* no operation *)
+    CASE ascii:        change eumel print chars; ascii change
+    CASE ascii german: change eumel print chars; ascii german change
+    CASE atari st:     change eumel print chars; atari st change
+    CASE ebcdic:       change eumel print chars; eumel to ebcdic with substitution (line)
+  END SELECT;
+  buffer CAT line;
+  buffer CAT cr lf.
+
+change eumel print chars:
+  INT VAR char pos := pos (line, ""220"", ""223"", 1);
+  WHILE char pos > 0 REP
+    replace (line, char pos, std char);
+    char pos := pos (line, ""220"", ""223"", char pos + 1)
+  PER.
+
+std char:
+  SELECT code (line SUB char pos) OF
+    CASE 220: "k"
+    CASE 221: "-"
+    CASE 222: "#"
+    CASE 223: " "
+    OTHERWISE ""
+  END SELECT.
+
+ascii change: 
+  change all (line, ""251"", "#251#");
+  char pos := pos (line, "é", "Å", 1);
+  WHILE char pos > 0 REP
+    line := subtext (line, 1, char pos - 1) + ersatzdarstellung + subtext (line, char pos + 1);
+    char pos := pos (line, "é", "Å", char pos + 1)
+  PER.
+
+ascii german change: 
+  char pos := pos (line, "[", "]", 1);
+  WHILE char pos > 0 REP
+    line := subtext (line, 1, char pos - 1) + ersatzdarstellung + subtext (line, char pos + 1);
+    char pos := pos (line, "[", "]", char pos + 1)
+  PER;
+  char pos := pos (line, "{", "}", 1);
+  WHILE char pos > 0 REP
+    line := subtext (line, 1, char pos - 1) + ersatzdarstellung + subtext (line, char pos + 1);
+    char pos := pos (line, "{", "}", char pos + 1)
+  PER;
+  change all (line, ""251"", "~");
+  char pos := pos (line, "é", "Å", 1);
+  WHILE char pos > 0 REP
+    replace (line, char pos, umlaut in ascii german);
+    char pos := pos (line, "é", "Å", char pos + 1)
+  PER.
+
+atari st change: 
+  change all (line, "·", ""158"");
+  char pos := pos (line, "é", "Å", 1);
+  WHILE char pos > 0 REP
+    replace (line, char pos, umlaut in atari st);
+    char pos := pos (line, "é", "Å", char pos + 1)
+  PER.
+
+ersatzdarstellung:
+  TEXT VAR char code := text (code  (line SUB char pos));
+  "#" + (3 - LENGTH char code) * "0" + char code + "#".
+
+umlaut in ascii german:
+  SELECT code (line SUB char pos) OF 
+    CASE 214: "["
+    CASE 215: "\"
+    CASE 216: "]"
+    CASE 217: "{"
+    CASE 218: "|"
+    CASE 219: "}"
+    OTHERWISE ""
+  END SELECT.
+
+umlaut in atari st:
+  SELECT code (line SUB char pos) OF 
+    CASE 214: ""142""
+    CASE 215: ""153""
+    CASE 216: ""154""
+    CASE 217: ""132""
+    CASE 218: ""148""
+    CASE 219: ""129""
+    OTHERWISE ""
+  END SELECT.
+
+END PROC cat adapted line;
+
+PROC save rowtextmode (DATASPACE CONST space,
+                       TEXT CONST name):
+  disable stop;
+  cluster space := nilspace;
+  cluster := cluster space;
+  enable save rowtext mode (space, name);
+  forget (cluster space).
+
+END PROC save rowtextmode;
+
+PROC enable save rowtextmode (DATASPACE CONST space,
+                              TEXT CONST name):
+  enable stop;
+  open save (name);
+  init save row textmode;
+  WHILE line no < cluster struct.size REP
+    fill buffer;
+    copy buffer to cluster;
+    write disk cluster (cluster space, first non dummy ds page, next save cluster no);
+    remember rest
+  PER;
+  write rest;
+  close save (storage).
+
+init save rowtextmode:
+  storage := 0.0;
+  cluster struct  := space;
+  INT VAR line no := 0;
+  TEXT VAR buffer := "".
+
+fill buffer:
+  WHILE line no < cluster struct.size AND NOT buffer full REP
+    line no INCR 1;
+    buffer CAT cluster struct.cluster row [line no]
+  PER.
+
+buffer full:
+  LENGTH buffer >= cluster size.
+
+copy buffer to cluster:
+  write text (cluster, buffer);
+  storage INCR real (min (cluster size, LENGTH buffer)).
+
+remember rest:
+  buffer := subtext (buffer, cluster size + 1).
+
+write rest:
+  WHILE buffer <> ""
+    REP copy buffer to cluster; 
+        write disk cluster (cluster space, first non dummy ds page, next save cluster no);
+        remember rest
+  PER.
+
+END PROC enable save rowtextmode;
+ 
+PROC save ds mode (DATASPACE CONST ds,
+                   TEXT CONST name):
+  disable stop;
+  enable save ds mode (ds, name).
+
+END PROC save ds mode;
+
+PROC enable save ds mode (DATASPACE CONST ds,
+                          TEXT CONST name):
+  enable stop;
+  open save (name);
+  INT VAR page no := first non dummy ds page;
+  get last allocated ds page; 
+  WHILE page no <= last allocated ds page REP
+    write disk cluster (ds, page no, next save cluster no);
+    page no INCR sectors per cluster
+  PER;
+  close save (size).
+
+get last allocated ds page:
+  INT VAR last allocated ds page := -1, 
+          i;
+  FOR i FROM 1 UPTO ds pages (ds) REP
+    last allocated ds page := next ds page (ds, last allocated ds page) 
+  PER.
+
+size:
+  real (last allocated ds page - first non dummy ds page + 1) * 512.0.
+
+END PROC enable save ds mode;
+
+END PACKET save;

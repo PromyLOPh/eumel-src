@@ -1,0 +1,241 @@
+PACKET pic plot DEFINES drawing area,               {Autor: H. Indenbirken}
+                        begin plot,                 {Stand: 13.02.85      }
+                        end plot, 
+                        clear, 
+                        pen,
+                        move, 
+                        draw, 
+                        get cursor,
+
+                        get screen, put screen: 
+ 
+LET hor faktor   = 22.21739,                   {***** x pixel / x cm *****}
+    vert faktor  = 18.61314,                   {***** y pixel / y cm *****}
+
+    h max  = 639,
+    v max  = 287,
+
+    delete = 0,                                {Farbcodes}
+    std    = 1,
+    black  = 5,
+    white  = 6,
+ 
+    nothing          = 0,                      {Linientypen}
+    durchgehend      = 1, 
+    gepunktet        = 2,
+    kurz gestrichelt = 3,
+    lang gestrichelt = 4,
+    strichpunkt      = 5;
+
+INT CONST move code :: -255,                   {Controlcodes}
+          draw code :: -254,
+          plot code :: -253,
+          norm code :: -252,
+          del  code :: -251,
+          xor  code :: -250,
+          line code :: -249;
+
+LET POS = STRUCT (INT x, y);
+
+INT VAR pen thick :: 0, pen code :: draw code, ack;
+POS VAR pos :: POS : (0, 0);
+
+PROC drawing area (REAL VAR x cm, y cm, INT VAR x pixel, y pixel) : 
+   x cm    := 23.0;      y cm    := 13.7; 
+   x pixel := h max;     y pixel := v max
+END PROC drawing area;
+
+PROC begin plot : 
+  control (plot code, 0, 0, ack);
+  out (""15"")
+ENDPROC begin plot ;
+ 
+PROC end plot : 
+  out (""14"");
+  control (norm code, 0, 0, ack)
+ENDPROC end plot ;
+
+PROC clear :
+  pos := POS : (0, 0);
+  pen (0, 1, 0, 1);
+  page
+END PROC clear;
+
+PROC pen (INT CONST background, foreground, thickness, linetype):
+  pen code := foreground colour;
+  pen thick := thickness;
+  control (line code, 0, 0, ack)  .
+
+foreground colour:
+  IF linetype = nothing
+  THEN move code
+  ELIF foreground = delete OR foreground = black
+  THEN del code
+  ELIF foreground < 0
+  THEN xor code
+  ELSE draw code FI  .
+ 
+END PROC pen;
+
+PROC move (INT CONST x, y) :
+  control (move code, x, y);
+  pos := POS  : (x, y)
+END PROC move;
+ 
+PROC draw (INT CONST x, y) :
+  control (pen code, x, y);
+  IF thick line
+  THEN IF horizontal line
+       THEN thick y
+       ELSE thick x FI;
+       control (move code, x, y)
+  FI;
+  pos := POS : (x, y)   .
+
+thick line:
+  pen thick > 0 AND pen code <> move code  .
+
+horizontal line:
+  abs (pos.x-x) > abs (pos.y-y)  .
+
+thick y:
+  INT VAR dy;
+  FOR dy FROM 1 UPTO pen thick
+  REP control (move code, pos.x, pos.y+dy);
+      control (pen code,      x,     y+dy); 
+      control (move code, pos.x, pos.y-dy);
+      control (pen code,      x,     y-dy)
+  PER  . 
+
+thick x:
+  INT VAR dx;
+  FOR dx FROM 1 UPTO pen thick
+  REP control (move code, pos.x+dx, pos.y);
+      control (pen code,      x+dx,     y); 
+      control (move code, pos.x-dx, pos.y);
+      control (pen code,      x-dx,     y)
+  PER  . 
+
+END PROC draw;
+ 
+PROC draw (TEXT CONST record) :
+  draw (record, 0.0, 0.0, 0.0)
+END PROC draw;
+
+PROC draw (TEXT CONST record, REAL CONST angle, height, width):
+  IF pen code = draw code
+  THEN cursor (x position, y position);
+       out (record)
+  FI  .
+
+x position:
+  (pos.x-1) DIV 8 + 1  .
+
+y position:
+  (pos.y-1) DIV 12 + 1  .
+
+END PROC draw;
+
+PROC control (INT CONST code, x, y):
+  control (code, x check, y check, ack)  .
+
+x check:
+  IF x < 0
+  THEN 0
+  ELIF x > h max
+  THEN h max
+  ELSE x FI  . 
+
+y check:
+  IF y =< 0
+  THEN v max
+  ELIF y >= v max
+  THEN 0
+  ELSE v max-y FI  .
+
+END PROC control;
+ 
+PROC get cursor (TEXT VAR t, INT VAR x, y) :
+  get cursor (t, x, y, -1, -1, -1, -1)
+END PROC get cursor;
+
+PROC get cursor (TEXT VAR t, INT VAR x, y, INT CONST x0, y0, x1, y1):
+  check;
+  init cursor;
+  REP set cursor;
+      get step;
+      set cursor;
+      move cursor
+  PER  .
+
+init cursor:
+  INT VAR delta := 1;
+  x := pos.x;
+  y := pos.y  .
+
+set cursor:
+  IF x0 > 0 AND y0 > 0
+  THEN control (move code, x0, v max-y0, ack);
+       control (xor  code, x, v max-y, ack)
+  FI;
+  IF x1 > 0 AND y1 > 0
+  THEN control (move code, x1, v max-y1, ack);
+       control (xor  code, x, v max-y, ack)
+  FI;
+  control (move code, x-4, v max-y, ack);
+  control (xor  code, x+5, v max-y, ack);
+  control (move code, x, v max-y-4, ack);
+  control (xor  code, x, v max-y-4, ack)  .
+
+get step:
+  t := incharety (1);
+  IF t <> ""
+  THEN IF delta < 10
+       THEN delta INCR delta
+       ELSE delta INCR 1 FI
+  ELSE delta := 1;
+       inchar (t)
+  FI  .
+
+move cursor:
+  SELECT code (t) OF
+  CASE 2 : x INCR delta
+  CASE 3 : y INCR delta
+  CASE 8 : x DECR delta
+  CASE 10: y DECR delta
+  OTHERWISE leave get cursor ENDSELECT;
+  check  .
+
+leave get cursor:
+  control (move code, pos.x, pos.y);
+  LEAVE get cursor  .
+
+check :
+  IF x < 0
+  THEN x := 0; out (""7"")
+  ELIF x > h max
+  THEN x := h max; out (""7"") FI; 
+
+  IF y < 0
+  THEN y := 0; out (""7"")
+  ELIF y > v max
+  THEN y := v max; out (""7"") FI  .
+
+END PROC get cursor;
+
+(* Bildwiederholspeicheraufbau des Pic 400:                              *)
+(* 45 Bl”cke (0...44) enthalten den Bildwiederholspeicher.               *)
+
+PROC get screen (DATASPACE VAR ds, INT CONST page):
+  INT VAR i, n, begin :: 45*page;
+  FOR i FROM 0 UPTO 44
+  REP block in (ds, begin+i, -1, i, n) PER
+END PROC get screen;
+
+PROC put screen (DATASPACE CONST ds, INT CONST page):
+  INT VAR i, n, begin :: 45*page;
+  FOR i FROM 0 UPTO 44
+  REP block out (ds, begin+i, -1, i, n) PER
+END PROC put screen;
+
+END PACKET pic plot;

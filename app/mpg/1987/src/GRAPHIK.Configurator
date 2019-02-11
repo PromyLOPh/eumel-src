@@ -1,0 +1,945 @@
+(**************************************************************************) 
+(*                                                                        *) 
+(*                        MPG - Graphik - System                          *) 
+(*                                                                        *) 
+(*                      Version 2.2 vom 11.11.1987                        *) 
+(*                                                                        *) 
+(*            (c) 1987 Beat Jegerlehner & Carsten Weinholz                *) 
+(*                unter Verwendung der Standard-Graphik                   *) 
+(*          "Graphik-Konfiguration" geschrieben von C.Weinholz            *) 
+(*                                                                        *) 
+(**************************************************************************) 
+(*                                                                        *) 
+(*                          Graphik-Konfiguration                         *) 
+(*                                                                        *) 
+(*              Erstellung eines fuer alle Engeraete gueltigen            *) 
+(*                Basisgraphik-Paketes durch zusammenfuegen               *) 
+(*                           von '.GCONF'-Dateien                         *) 
+(*                                                                        *) 
+(*            Aufruf durch 'configurate graphik', wenn insertiert         *) 
+(*                      (normalerweise nicht notwendig)                   *) 
+(*             Bei 'run' muss 'configurate graphik' ans Dateiende         *) 
+(*                            geschrieben werden.                         *) 
+(*                                                                        *) 
+(**************************************************************************) 
+PACKET graphik configuration DEFINES configurate graphik: 
+ 
+LET PLOTTERCONF = STRUCT (TEXT name, station, channel, area, prep, init, end, 
+                               clear, home, move, draw, pixel, foreground, 
+                               background, palette, std colors, circle, box, 
+                               fill, cursor, get cursor, set marker, linked,
+                               BOOL editor, 
+                               BOOL no plotter); 
+LET max conf      = 15,
+    dquote        = ""34""34"",
+    interface     = "GRAPHIK.Configuration", 
+    env conf file = "ENVIRONMENT.GCONF",
+    packet header = "PACKET device interface DEFINES prepare, init plot, endplot, clear, home, moveto, drawto, setpixel, foreground, background, set color, stdcolors, color, colors, set palette, circle, box,fill,graphik cursor, get cursor, set marker:",
+    packet end    = "END PACKET device interface", 
+    target        = "TARGET VAR  plotter; initialize target ( plotter);", 
+    install target= "install plotter ( plotter);", 
+    init set      = "PROC initplot: IF  wsc THEN  palette :=  std palette 
+                     ELSE  palette :=  empty palette FI;  initplot; set palette 
+                     END PROC initplot;", 
+    end set       = "BOOL VAR  we::TRUE; 
+                     PROCendplot(BOOL CONSTs): we:=s 
+                     END PROCendplot; 
+                     PROCendplot: IF weTHEN endplotFI 
+                     END PROCendplot;", 
+    clear set     = "BOOL VAR  wc::TRUE; PROCclear(BOOL CONSTs): wc:=s  
+                     END PROC clear; PROC clear:IF wcTHEN clearFI END PROC clear;", 
+    color set     = "BOOL VAR  wsc::TRUE; TEXT VAR  palette; PROC setcolor (INT CONST no,rgb):
+                     IF (no+1) <= colors THEN replace( palette,no+1,rgb)
+                     FI END PROC set color;", 
+    color set2    = "INT PROC colors : length ( palette) DIV 2 END PROC colors; 
+                     INT PROC color (INT CONST no): IF no >= 0  AND (no+1) <= colors 
+                     THEN  palette ISUB (no+1) ELSE maxint FI END PROC color;", 
+    std colors    = "PROCstdcolors(BOOL CONSTs):  wsc:=s END PROCstdcolors; 
+                     PROC stdcolors:IF wscTHEN palette :=  std palette;set palette FI END PROCstdcolors;", 
+    foreground    = "INT VAR af::1; INT PROCforeground: af END PROCforeground; 
+                     PROCforeground(INT CONSTm):  af:=m; foreground( af) END PROCforeground;",  
+    background    = "INT VAR  ab::0; INT PROCbackground: ab END PROCbackground; 
+                     PROCbackground(INT CONSTm):  ab:=m; background( ab) END PROCbackground;"; 
+
+ROW max conf PLOTTERCONF VAR plotter; 
+ROW max conf DATASPACE VAR global data; 
+ 
+TEXT CONST spaces :: 20 * " ";
+INT VAR inst plotter, targets, error line :: 0;
+TEXT VAR errorm1, errorm2, procvalue :: "", env conf, error source :: "";
+BOOL VAR errors :: FALSE; 
+FILE VAR f; 
+DATASPACE VAR conf ds; 
+THESAURUS VAR plotconfs; 
+ 
+PROC configurate graphik: 
+   FOR inst plotter FROM 1 UPTO max conf REP 
+       act plotter.name := ""; 
+       act plotter.area := ""; 
+       act plotter.prep := "";
+       act plotter.init := ""; 
+       act plotter.end  := ""; 
+       act plotter.clear:= ""; 
+       act plotter.home := ""; 
+       act plotter.move := ""; 
+       act plotter.draw := ""; 
+       act plotter.pixel:= ""; 
+       act plotter.foreground := ""; 
+       act plotter.background := ""; 
+       act plotter.palette    := ""; 
+       act plotter.circle     := ""; 
+       act plotter.box        := "";  
+       act plotter.fill       := ""; 
+       act plotter.cursor     := ""; 
+       act plotter.get cursor := ""; 
+       act plotter.set marker := ""; 
+       act plotter.linked     := "";
+       act plotter.editor     := FALSE; 
+    PER; 
+    env conf := "";
+    inst plotter := 0; 
+    plotconfs := empty thesaurus; 
+    IF exists (env conf file) 
+       THEN plotconfs := ALL env conf file 
+    FI; 
+    plotconfs := SOME (plotconfs + (all LIKE "*.GCONF") - env conf file);  
+    INT VAR id :: 0; TEXT VAR conf file; 
+    get (plotconfs, conf file, id); 
+    WHILE id > 0 REP 
+       IF exists (conf file) 
+          THEN extract conf data (conf file)  
+          ELSE get environment plotter
+       FI;
+       get (plotconfs, conf file, id); 
+    PER; 
+    IF inst plotter > 0 
+       THEN generate interface
+       ELSE errorstop ("Kein Interface erzeugt") 
+    FI;
+    last param (interface). 
+ 
+    get environment plotter: 
+       check sequence (conf file, "PLOTTER *,*,*,*,*,*,*;", 
+                             "2|4,3,3,3,3,3,3;", 
+                             "PLOTTER erwartet,"+ 
+                             "Name erwartet,,"+ 
+                             "Station erwartet,,"+ 
+                             "Kanal erwartet,,"+ 
+                             "XPixel erwartet,,"+ 
+                             "YPixel erwartet,,"+ 
+                             "Xcm erwartet,,"+ 
+                             "Ycm erwartet,,"+ 
+                             "Plotterkommando fehlerhaft"); 
+       IF errors  
+          THEN errorstop (errorm2) 
+          ELSE TEXT VAR one int :: ""0""0"", one real :: 8 * ""0"";
+               replace (one int,1,length(get var (1))); 
+               env conf CAT one int;
+               env conf CAT get var (1);
+               replace (one int, 1, int (get var (2)));
+               env conf CAT one int;
+               replace (one int, 1, int (get var (3)));
+               env conf CAT one int; 
+               replace (one int, 1, int (get var (4)));
+               env conf CAT one int; 
+               replace (one int, 1, int (get var (5)));
+               env conf CAT one int; 
+               replace (one real, 1, real (get var (6)));
+               env conf CAT one real; 
+               replace (one real, 1, real (get var (7))); 
+               env conf CAT one real;
+       FI 
+END PROC configurate graphik; 
+ 
+PROC extract conf data (TEXT CONST conf file): 
+   TEXT VAR line;
+   inst plotter INCR 1; 
+   IF inst plotter > max conf 
+      THEN putline ("Warnung: Es koennen nicht mehr als " + text(max conf) + 
+                    " Geraete konfiguriert werden"); 
+           inst plotter DECR 1 
+      ELSE error source := conf file; 
+           conf ds := old (conf file); 
+           f := sequential file (modify, conf ds); 
+           set line numbers;
+           IF is plotter configuration 
+              THEN get name and area (line, act plotter.name, 
+                                            act plotter.station, 
+                                            act plotter.channel, 
+                                            act plotter.area);
+                   get linked    (act plotter.linked);
+                   get includes;
+                   putline ("""" + act plotter.name + """ wird eingelesen"); 
+                   get paramless ("initplot",act plotter.init); 
+                   get paramless ("endplot" ,act plotter.end); 
+                   get paramless ("clear"   ,act plotter.clear); 
+                   get paramless ("home"    ,act plotter.home); 
+                   get paramless ("prepare" ,act plotter.prep);
+                   get koord     ("moveto"  ,act plotter.move); 
+                   get koord     ("drawto"  ,act plotter.draw); 
+                   get koord     ("setpixel",act plotter.pixel); 
+                   get var param ("foreground",act plotter.foreground); 
+                   get var param ("background",act plotter.background); 
+                   get paramless ("setpalette",act plotter.palette); 
+                   get std colors(act plotter.std colors); 
+                   get circle    (act plotter.circle); 
+                   get box       (act plotter.box); 
+                   get fill      (act plotter.fill); 
+                   IF editor available 
+                      THEN get graphik cursor (act plotter.cursor); 
+                           get get cursor     (act plotter.get cursor); 
+                           get set marker     (act plotter.set marker) 
+                   FI;
+                   push error; 
+                   IF anything noted 
+                      THEN f := sequential file (modify,conf file); 
+                           out (""7"");note edit (f);errorstop("") 
+                   FI 
+              FI;  
+              global data [inst plotter] := conf ds; 
+              forget (conf ds) 
+   FI. 
+ 
+   is plotter configuration: 
+      plotter [inst plotter].no plotter := NOT sequence found ("PLOTTER", 
+                                                               line, 1,TRUE);
+      NOT plotter [inst plotter].no plotter. 
+ 
+   editor available: 
+      plotter [inst plotter].editor := sequence found ("EDITOR", line, 1,TRUE); 
+      IF plotter [inst plotter].editor
+         THEN delete record (f); 
+              check sequence (line, "EDITOR;", "2;",  
+                            "EDITOR erwartet,"+ 
+                            "Semikolon erwartet," + 
+                            "Editorkommando fehlerhaft") 
+      FI; 
+      plotter [inst plotter].editor. 
+ 
+   set line numbers: 
+      INT VAR  line number;
+      to line (f,1); 
+      FOR line number FROM 1 UPTO lines (f)-1 REP 
+          cout (line number);
+          insert line number;           
+          down (f)
+      PER; 
+      insert line number. 
+ 
+   insert line number: 
+      TEXT VAR new line;
+      read record (f, new line); 
+      insert char (new line, " ", 1); 
+      insert char (new line, " ", 1); 
+      replace (new line, 1, line number); 
+      write record (f, new line). 
+          
+   get includes: 
+      BOOL VAR include found :: sequence found ("INCLUDE",line, 1, TRUE); 
+      WHILE include found REP 
+         push error;
+         include found := sequence found ("INCLUDE",line, line no (f), TRUE); 
+         IF include found 
+            THEN add to plotconfs 
+         FI 
+      PER. 
+ 
+      add to plotconfs: 
+         check sequence (line, "INCLUDE *;","2|4;", 
+                               "INCLUDE erwartet,Dateiname erwartet," +
+                               "Includekommando fehlerhaft");
+         IF NOT errors CAND exists (get var (1))
+            THEN IF NOT (plotconfs CONTAINS get var (1)) 
+                    THEN insert (plotconfs,get var (1))
+                 FI;
+         ELIF NOT errors
+            THEN error ("""" + get var (1) + """ existiert nicht")
+         FI;
+         delete record (f)
+END PROC extract conf data; 
+ 
+PROC generate interface: 
+   INT VAR act conf; 
+   conf ds := nilspace; 
+   forget (interface,quiet); 
+   proc value := ""; 
+   FILE VAR f :: sequential file (output, conf ds); 
+   putline (f,packet header); 
+   putline (f,target); 
+   generate target;
+   putline (f,install target); 
+   putline (f,init set);
+   putline (f,end set); 
+   putline (f,clear set); 
+   putline (f,color set); 
+   putline (f,color set 2);
+   putline (f, std colors);
+   putline (f,foreground); 
+   putline (f,background); 
+   FOR act conf FROM 1 UPTO inst plotter REP 
+      FILE VAR source := sequential file (modify,global data [act conf]); 
+      copy lines (f,source) 
+   PER; 
+   generate proc (""," initplot", TEXT PROC (INT CONST) initplotbody); 
+   generate proc (""," endplot",  TEXT PROC (INT CONST) endplotbody); 
+   generate proc (""," clear",    TEXT PROC (INT CONST) clearbody); 
+   generate proc ("","prepare",   TEXT PROC (INT CONST) prepbody);
+   proc value := " TEXT";
+   generate proc (""," std palette", TEXT PROC (INT CONST) std palette body); 
+   generate proc (""," empty palette", TEXT PROC (INT CONST) empty palette body);
+   proc value := "";
+   generate proc ("","home",     TEXT PROC (INT CONST) homebody); 
+   generate proc ("INT CONST x,y","moveto", TEXT PROC (INT CONST) movebody); 
+   generate proc ("INT CONST x,y","drawto", TEXT PROC (INT CONST) drawbody); 
+   generate proc ("INT CONST x,y","set pixel", TEXT PROC (INT CONST) pixelbody); 
+   generate proc ("INT VAR type"," foreground", TEXT PROC (INT CONST) foregroundbody); 
+   generate proc ("INT VAR type"," background", TEXT PROC (INT CONST) backgroundbody); 
+   generate proc ("","set palette", TEXT PROC (INT CONST) set palette body); 
+   generate proc ("INT CONST x,y,rad,from,to","circle", TEXT PROC (INT CONST) circlebody); 
+   generate proc ("INT CONST x1,y1,x2,y2,pattern", "box", TEXT PROC (INT CONST) box body); 
+   generate proc ("INT CONST x,y,pattern","fill", TEXT PROC (INT CONST) fill body); 
+   generate proc ("INT CONST x,y, BOOL CONST on","graphik cursor",TEXT PROC (INT CONST) graphik cursor body); 
+   generate proc ("INT VAR x,y, TEXT VAR exit char","get cursor",TEXT PROC (INT CONST) get cursor body); 
+   generate proc ("INT CONST x,y, type","set marker",TEXT PROC (INT CONST) set marker body); 
+   proc value := "BOOL "; 
+   generate proc ("","graphik cursor",TEXT PROC (INT CONST) editor available); 
+   generate device link;
+   putline (f,packet end); 
+   copy (conf ds,interface);
+   IF yes ("""" + interface + """ insertieren")
+      THEN insert (interface)
+   FI.
+ 
+   generate target:
+      INT VAR devices :: 0; 
+      targets := 0;
+      FOR act conf FROM 1 UPTO inst plotter REP 
+         TEXT VAR linked :: plotter[act conf].linked,
+                  one int:: ""0""0"";
+         plotter [act conf].linked := "";
+         IF NOT plotter [act conf].no plotter 
+             THEN putline (f,"complete target ( plotter,""" + 
+                  plotter [act conf].station + "/" + 
+                  plotter [act conf].channel + "/" + 
+                  plotter [act conf].name + 
+                  """,""" + plotter [act conf].area + """);"); 
+                  devices INCR 1; 
+                  targets INCR 1;
+                  replace (one int, 1, devices);
+                  plotter [act conf].linked CAT one int; 
+                  replace (one int, 1, targets);
+                  plotter [act conf].linked CAT one int;
+                  IF linked > "" 
+                     THEN INT VAR x :: 1; 
+                          WHILE x <=  length (linked) DIV 2 REP 
+                             putline (f,"complete target ( plotter, """ + 
+                             text(linked ISUB x) + "/" + 
+                             text(linked ISUB (x+1)) + "/" + 
+                             plotter[act conf].name + """,""" + 
+                             plotter[act conf].area + """);"); 
+                             targets INCR 1; 
+                             replace (one int, 1, targets);
+                             plotter [act conf].linked CAT one int; 
+                             x INCR 2 
+                          PER
+                  FI
+          FI 
+      PER; 
+      WHILE env conf <> "" REP 
+         generate env target (env conf) 
+      PER 
+END PROC generate interface; 
+ 
+PROC generate env target (TEXT VAR conf):
+   INT VAR nlen  :: conf ISUB 1; 
+   TEXT VAR tnam :: subtext (conf, 3, 2+nlen); 
+   conf := subtext (conf, nlen + 3);
+   putline (f,"complete target ( plotter, """ + text (conf ISUB 1) + "/" + 
+              text (conf ISUB 2) + "/" + tnam + """,""" + 
+              text (conf ISUB 3) + "," + text (conf ISUB 4) + "," + 
+              first real + "," + text (conf RSUB 2) + """);");
+   conf := subtext (conf, 17). 
+ 
+   first real: 
+      conf := subtext (conf, 9); 
+      text (conf RSUB 1)
+END PROC generate env target; 
+ 
+TEXT PROC initplotbody (INT CONST no): 
+   plotter [no].init 
+END PROC initplotbody; 
+ 
+TEXT PROC endplotbody (INT CONST no): 
+   plotter [no].end 
+END PROC endplotbody; 
+ 
+TEXT PROC clearbody (INT CONST no): 
+   plotter [no].clear 
+END PROC clearbody; 
+ 
+TEXT PROC prepbody (INT CONST no): 
+   plotter [no].prep 
+END PROC prepbody; 
+ 
+TEXT PROC homebody (INT CONST no): 
+   plotter [no].home 
+END PROC homebody; 
+ 
+TEXT PROC movebody (INT CONST no): 
+   plotter [no].move 
+END PROC movebody; 
+ 
+TEXT PROC drawbody (INT CONST no): 
+   plotter [no].draw 
+END PROC drawbody; 
+ 
+TEXT PROC pixelbody (INT CONST no): 
+   plotter [no].pixel  
+END PROC pixelbody; 
+ 
+TEXT PROC std palette body (INT CONST no): 
+   TEXT CONST rgb codes :: plotter [no].std colors;
+   TEXT VAR body :: dquote; 
+   INT VAR x; 
+   FOR x FROM 1 UPTO length (rgb codes) DIV 3 REP 
+      INT VAR color :: int (subtext(rgb codes, (x-1)*3+1, x*3)); 
+      body CAT (text (color AND 255) + dquote);
+      body CAT (text (color DIV 256) + dquote);
+   PER;
+   body 
+END PROC std palette body;
+ 
+TEXT PROC empty palette body (INT CONST no):
+   text (length (plotter[no].std colors) DIV 3) + "*" + dquote +
+   "255" + dquote + "127" + dquote
+END PROC empty palette body;
+
+TEXT PROC set palette body (INT CONST no): 
+   plotter[no].palette 
+END PROC set palette body; 
+ 
+TEXT PROC foregroundbody (INT CONST no): 
+   plotter [no].foreground 
+END PROC foregroundbody; 
+ 
+TEXT PROC backgroundbody (INT CONST no): 
+   plotter [no].background 
+END PROC backgroundbody; 
+ 
+TEXT PROC circle body (INT CONST no): 
+   plotter [no].circle 
+END PROC circle body; 
+ 
+TEXT PROC box body (INT CONST no): 
+   plotter [no].box  
+END PROC box body; 
+ 
+TEXT PROC fill body (INT CONST no): 
+   plotter [no].fill 
+END PROC fill body; 
+ 
+TEXT PROC graphik cursor body (INT CONST no): 
+   plotter [no].cursor 
+END PROC graphik cursor body; 
+ 
+TEXT PROC get cursor body (INT CONST no): 
+   plotter [no].get cursor 
+END PROC get cursor body; 
+ 
+TEXT PROC set marker body (INT CONST no): 
+   plotter [no].set marker 
+END PROC set marker body; 
+ 
+TEXT PROC editor available (INT CONST no): 
+   IF plotter [no].editor 
+      THEN "TRUE" 
+      ELSE "FALSE" 
+   FI 
+END PROC editor available; 
+
+PROC generate device link:
+   INT VAR actconf;
+   putline (f, "INT PROC  act device :");
+   putline (f, "SELECT actual plotter OF");
+   FOR act conf FROM 1 UPTO inst plotter REP
+      IF NOT plotter [act conf].no plotter
+         THEN putline (f,"CASE " + text (plotter[act conf].linked ISUB 2) + ":");
+              put (f,text (plotter[act conf].linked ISUB 1));
+              IF length (plotter[act conf].linked) > 2 
+                 THEN generate table 
+              FI
+      FI 
+   PER;
+   putline (f,"OTHERWISE errorstop (""Kein Endgeraet angekoppelt"");0"); 
+   putline (f,"END SELECT END PROC  act device;").
+
+   generate table: 
+      INT VAR x; 
+      FOR x FROM 3 UPTO length (plotter[act conf].linked) DIV 2 REP 
+         put (f,"CASE"); 
+         put (f,text (plotter[act conf].linked ISUB x)); 
+         put (f,":"); 
+         put (f, text (plotter[act conf].linked ISUB 1))
+      PER 
+END PROC generate device link; 
+
+PROC generate proc (TEXT CONST params,procname,TEXT PROC (INT CONST)procbody): 
+   INT VAR actconf, no plotter :: 0; 
+   IF params = "" 
+      THEN putline (f,procvalue + " PROC " + procname + ":") 
+      ELSE putline (f,procvalue + " PROC " + procname + "(" + params + "):") 
+   FI; 
+   IF procvalue <> "" 
+      THEN putline (f,procvalue + " VAR  d;") 
+   FI; 
+   putline (f,"SELECT  act device OF");  
+   FOR act conf FROM 1 UPTO inst plotter REP 
+       IF NOT plotter [act conf].no plotter 
+          THEN putline (f, "CASE " + text (act conf-no plotter) + ":" + 
+                           lowercase(plotter[act conf].name) + 
+                           plotter [act conf].channel + procname) 
+          ELSE no plotter INCR 1 
+       FI 
+   PER; 
+   IF procvalue <> "" 
+      THEN putline (f," OTHERWISE  d END SELECT")
+      ELSE putline (f," END SELECT") 
+   FI; 
+   FOR act conf FROM 1 UPTO inst plotter REP                                 
+       IF NOT plotter [act conf].no plotter 
+          THEN putline (f,"."); 
+               putline (f,lowercase(plotter[act conf].name)+ 
+                          plotter[act conf].channel + procname + ":"); 
+                          putline (f,procbody (act conf)) 
+       FI 
+   PER; 
+   putline (f,"END PROC "+ procname +";") 
+END PROC generate proc;      
+ 
+PROC get name and area (TEXT CONST line, TEXT VAR name, station, channel, area): 
+   push error; 
+   check sequence (line, "PLOTTER *,*,*,*,*,*,*;", 
+                         "2|4,3,3,3,3,3,3;", 
+                         "PLOTTER erwartet,"+ 
+                         "Name erwartet,,"+ 
+                         "Station erwartet,,"+ 
+                         "Kanal erwartet,,"+ 
+                         "XPixel erwartet,,"+ 
+                         "YPixel erwartet,,"+ 
+                         "Xcm erwartet,,"+ 
+                         "Ycm erwartet,,"+ 
+                         "Plotterkommando fehlerhaft"); 
+   name    := get var (1); 
+   station := get var (2); 
+   channel := get var (3); 
+   area := ""; 
+   area CAT (get var (4) + ","); 
+   area CAT (get var (5) + ","); 
+   area CAT (get var (6) + ","); 
+   area CAT (get var (7) + ","); 
+   delete record (f)
+END PROC get name and area; 
+ 
+PROC get linked (TEXT VAR keep):
+   TEXT VAR line;
+   IF sequence found ("LINK", line, 1, TRUE)
+      THEN extract data;
+           delete record (f)
+   FI.  
+ 
+   extract data: 
+      TEXT VAR symbol, one int :: ""0""0"";
+      INT VAR ltyp :: 2,type :: 0;(* 0 = ',' 1 = '/' 2 = Station 3 = Kanal*) 
+      push error;                 (* 4 = Ende erwartet ! *)
+      keep := "";
+      errorm1 := line; 
+      scan (line);
+      next symbol (symbol);
+      IF symbol <> "LINK"
+         THEN error ("LINK erwartet")
+      FI;
+      WHILE type < 7 AND NOT errors REP 
+         next symbol (symbol, type); 
+         IF ltyp = 0 
+            THEN IF symbol = "," 
+                    THEN ltyp := 2 
+                 ELIF symbol = ";" 
+                    THEN ltyp := 4 
+                    ELSE error ("Semikolon oder Komma erwartet") 
+                 FI
+         ELIF ltyp = 1 
+            THEN IF symbol = "/" 
+                    THEN ltyp := 3 
+                    ELSE error ("'/' erwartet")
+                 FI
+         ELIF ltyp = 4 
+            THEN IF type = 8 
+                    THEN error ("Kommentarende fehlt") 
+                 ELIF type = 9 
+                    THEN error ("Text unzulaessig (Textende fehlt)") 
+                 ELIF type <> 7 
+                    THEN error ("Zeilenende nach Semikolon erwartet") 
+                 FI 
+         ELIF type = 3  
+            THEN replace (one int, 1, int (symbol)); 
+                 keep CAT one int; 
+                 ltyp DECR 1;
+                 IF ltyp = 2 
+                    THEN ltyp := 0 
+                 FI 
+      FI
+   PER
+END PROC get linked; 
+ 
+PROC get graphik cursor (TEXT VAR keep): 
+   get proc ("graphik cursor","(INT CONST x,y, BOOL CONST on)", 
+             "(2|2 x,y,2|2 on)","INT erwartet, CONST erwartet,"+ 
+             "Formaler Parameter muss x heissen,"+ 
+             "Formaler Parameter muss y heissen,"+ 
+             "BOOL erwartet, CONST erwartet,"+ 
+             "Formaler Parameter muss on heissen", 
+             keep); 
+END PROC get graphik cursor; 
+ 
+PROC get get cursor (TEXT VAR keep): 
+   get proc ("get cursor","(INT VAR x,y, TEXT VAR exit char)", 
+             "(2|2 x,y,2|2 exit char)","INT erwartet, VAR erwartet,"+ 
+             "Formaler Parameter muss x heissen,"+ 
+             "Formaler Parameter muss y heissen,"+ 
+             "TEXT erwartet, VAR erwartet,"+ 
+             "Formaler Parameter muss exit char heissen", 
+             keep); 
+END PROC get get cursor; 
+ 
+PROC get set marker (TEXT VAR keep): 
+   get proc ("set marker","(INT CONST x,y,type)","(2|2 x,y,type)", 
+             "INT erwartet, CONST erwartet,"+ 
+             "Formaler Parameter muss x heissen,"+ 
+             "Formaler Parameter muss y heissen,"+ 
+             "Formaler Parameter muss type heissen", 
+             keep); 
+END PROC get set marker; 
+ 
+PROC get std colors (TEXT VAR keep): 
+   TEXT VAR line;
+   push error; 
+   IF sequence found ("COLORS", line, 1, TRUE)
+      THEN extract data 
+      ELSE error ("COLORS fehlt") 
+   FI.  
+ 
+   extract data: 
+      check sequence (line, "COLORS *;","2|4;", 
+                            "COLORS erwartet,"+ 
+                            "Rgbcodes erwartet,Semikolon fehlt"); 
+      keep := get var (1); 
+      delete record (f); 
+END PROC get std colors; 
+ 
+PROC get paramless (TEXT CONST procname, TEXT VAR keep): 
+   get proc (procname, "", "", "", keep) 
+END PROC get paramless; 
+ 
+PROC get var param (TEXT CONST procname, TEXT VAR keep): 
+   get proc (procname, "(INT VAR type)","(2|2 type)", 
+             "INT erwartet, VAR erwartet, Formaler Parameter muss type heissen", 
+             keep); 
+END PROC get var param; 
+ 
+PROC get koord (TEXT CONST procname, TEXT VAR keep): 
+   get proc (procname, "(INT CONST x,y)","(2|2 x,y)", 
+             "INT erwartet,CONST erwartet,Formaler Parameter muss x heissen,"+ 
+             "Formaler Parameter muss y heissen",keep) 
+END PROC get koord; 
+ 
+PROC get circle (TEXT VAR keep): 
+   get proc ("circle","(INT CONST x,y,rad,from,to)","(2|2 x,y,rad,from,to)", 
+             "INT erwartet,CONST erwartet,Formaler Parameter muss x heissen,"+ 
+             "Formaler Parameter muss y heissen,Formaler Parameter muss rad heissen,"+ 
+             "Formaler Parameter muss from heissen,Formaler Parameter muss to heissen", 
+             keep); 
+END PROC get circle; 
+ 
+PROC get box (TEXT VAR keep): 
+   get proc ("box","(INT CONST x1,y1,x2,y2,pattern)","(2|2 x1,y1,x2,y2,pattern)", 
+             "INT erwartet,CONST erwartet,Formaler Parameter muss x1 heissen,"+ 
+             "Formaler Parameter muss y1 heissen,Formaler Parameter muss x2 heissen,"+ 
+             "Formaler Parameter muss y2 heissen,Formaler Parameter muss pattern heissen", 
+             keep); 
+END PROC get box; 
+ 
+PROC get fill (TEXT VAR keep): 
+   get proc ("fill","(INT CONST x,y,pattern)","(2|2 x,y,pattern)", 
+             "INT erwartet,CONST erwartet,Formaler Parameter muss x heissen"+ 
+             "Formaler Parameter muss y heissen,Formaler Parameter muss pattern heissen", 
+             keep); 
+END PROC get fill; 
+ 
+PROC get proc (TEXT CONST procname, psym, ptyp, perr, 
+               TEXT VAR   keep): 
+   TEXT VAR line;
+   push error; 
+   IF sequence found ("PROC"+procname, line, 1, TRUE) 
+      THEN errors := FALSE;
+           get body (line,procname,psym,ptyp,perr,keep)
+      ELSE error (procname + " nicht gefunden") 
+   FI
+END PROC get proc; 
+ 
+PROC get body (TEXT CONST header,procname,psyms,ptypes ,perrs, TEXT VAR keep body): 
+   INT VAR start, ende; 
+   start := line no(f); 
+   keep body := ""; 
+   check sequence (header, "PROC " + procname + psyms + ":", 
+                         "2|1"+ ptypes + ":", 
+                         "PROC erwartet,"      + 
+                          procname + " erwartet,,"+ 
+                          perrs+ 
+                         ",Fehler in " + procname + "-Header"); 
+   IF NOT errors
+      THEN get to end of proc
+   FI.
+
+   get to end of proc:
+      TEXT VAR last;
+      errors := FALSE; 
+      IF sequence found ("END PROC " + procname,  last, line no(f),FALSE)
+         THEN ende := line no (f); 
+              check sequence (last, "END PROC " + procname + ";", 
+                                    "2|2|1;", 
+                                    "END erwartet,"+ 
+                                    "PROC erwartet,"+ 
+                                    "PROC heisst " + procname + 
+                                    ",Semikolon fehlt"); 
+              IF NOT errors 
+                 THEN to line (f,start); 
+                      delete record (f); 
+                      INT VAR lc; 
+                      FOR lc FROM start UPTO ende-2 REP 
+                          TEXT VAR scratch; 
+                          read record (f,scratch); 
+                          scratch := subtext (scratch, 3);
+                          keep body CAT (" " + scratch); 
+                          delete record (f); 
+                      PER; 
+                      delete record (f)
+              FI 
+         ELSE error ("END PROC " + procname + " nicht gefunden") 
+      FI 
+END PROC get body; 
+ 
+BOOL PROC sequence found (TEXT CONST sequence text, 
+                          TEXT VAR   sequence line, INT CONST from line,
+                          BOOL CONST evtl at): 
+   BOOL VAR found :: FALSE, at char :: evtl at;
+   to line (f,from line);
+   col (f,1);
+   WHILE NOT (found OR eof (f)) REP 
+      cout (line no (f));
+      to first char; 
+      IF found 
+         THEN read record (f, sequence line);
+              error line := sequence line ISUB 1;
+              sequence line := subtext (sequence line, 3); 
+              scan sequence
+      FI
+   PER; 
+   IF NOT found 
+      THEN read record (f, sequence line);
+           IF pos (first char, sequence line) > 0 
+              THEN scan sequence 
+           FI
+   FI;
+   found.
+ 
+   to first char: 
+      IF at char
+         THEN downety (f, first char)
+         ELSE down (f, first char)
+      FI; 
+      at char := FALSE;
+      found := pattern found. 
+ 
+   scan sequence: 
+      TEXT VAR source symbols,symbols;
+      scan (sequence text); 
+      get symbols;
+      source symbols := symbols;
+      scan (sequence line); 
+      get symbols; 
+      found := pos (symbols,source symbols) = 1.
+
+   get symbols: 
+      TEXT VAR symbol;
+      INT VAR type;
+      symbols := "";
+      REP 
+          next symbol (symbol, type); 
+          symbols CAT symbol
+      UNTIL type > 6 PER. 
+ 
+   first char: 
+      sequence text SUB 1 
+END PROC sequence found; 
+ 
+PROC error (TEXT CONST emsg): 
+   IF NOT eof (f) 
+      THEN read record (f,errorm1); 
+           errorm1 := """" + error source + """, Zeile " + 
+                      text (error line) + ":"
+      ELSE errorm1 := """" + error source + """, Fileende:" 
+   FI; 
+   errorm2 := spaces + emsg; 
+   errors  := TRUE  
+END PROC error; 
+ 
+PROC push error: 
+  IF errors 
+     THEN note (errorm1);note line; 
+          note (10* " " + errorm2); note line; 
+          errors := FALSE 
+  FI 
+END PROC push error; 
+ 
+ (* Hinweis: bei Fehlermeldungen statt Blank ' ' (geschuetzt) verwenden. 
+             Bei verschiedenen Typen ohne trennenden Delimiter zur 
+             Abgrenzung in 'seq typ' '|' verwenden. 
+             '*' wird in 'seq sym' als Wildcard verwendet (Itemweise) 
+             Bei Delimitern wird der 'allgemeine Fehler' (letzter i.d Liste) 
+             verwendet. Jedoch muss auch fuer Delimiter ein Eintrag 
+             in der Liste freigehalten werden (...,,... oder ...,dummy,...). 
+*) 
+ 
+ROW 100 STRUCT (TEXT sym, INT typ, BOOL var) VAR seqlist; 
+INT VAR scanpos; 
+ 
+TEXT PROC get var (INT CONST no): 
+   INT VAR count :: 0, checkpos :: 1; 
+   WHILE checkpos <= scanpos REP 
+      IF seqlist[checkpos].var 
+         THEN count INCR 1; 
+              IF count >= no 
+                 THEN LEAVE get var WITH seqlist[checkpos].sym 
+              FI 
+      FI; 
+      checkpos INCR 1  
+   PER;"" 
+END PROC get var; 
+ 
+PROC check sequence (TEXT CONST seq, seq sym, seq typ, seq err): 
+   ROW 100 TEXT VAR err; 
+   INT VAR checkpos,erpos, typ, error1 :: 0,error2 :: 0; 
+   TEXT VAR sym; 
+   scan (seq err); 
+   next symbol (sym, typ); 
+   erpos := 1; 
+   err[erpos] := ""; 
+   REP 
+       SELECT typ OF 
+         CASE 5: err[erpos] CAT " " 
+         CASE 6: erpos INCR 1; 
+                 err [erpos] := "" 
+       OTHERWISE err[erpos] CAT sym 
+       END SELECT; 
+       next symbol (sym, typ) 
+    UNTIL typ >= 7 PER; 
+    scan (seq); 
+    FOR scanpos FROM 1 UPTO 100 REP 
+       next symbol (seqlist[scanpos].sym,seqlist[scanpos].typ); 
+    UNTIL seqlist[scanpos].typ >= 7 PER; 
+    SELECT seqlist[scanpos].typ OF 
+      CASE 8: error ("Kommentarende fehlt") 
+      CASE 9: error ("Textende fehlt") 
+      OTHERWISE IF scanpos = 100 
+                   THEN error ("Kommando zu schwierig") 
+                FI 
+    END SELECT; 
+    scan (seq sym); 
+    FOR checkpos FROM 1 UPTO scanpos REP 
+       next symbol (sym, typ); 
+       IF sym = "*" 
+          THEN seqlist[checkpos].var := TRUE 
+          ELSE seqlist[checkpos].var := FALSE 
+       FI 
+    PER; 
+    scan (seq typ); 
+    next symbol (sym,typ); 
+    FOR checkpos FROM 1 UPTO scanpos REP 
+       WHILE sym = "|" REP 
+         next symbol (sym, typ) 
+       PER; 
+       BOOL VAR std err :: typ <> 3;  
+       IF NOT std err 
+          THEN typ := int(sym); 
+               IF seqlist[checkpos].typ <> typ 
+                  THEN error1 := checkpos 
+               FI; 
+       ELIF seqlist[checkpos].sym <> sym 
+          THEN error1 := erpos 
+       FI; 
+       next symbol (sym, typ) 
+    UNTIL error1 > 0 OR typ >= 7 PER; 
+    scan (seq sym); 
+    next symbol (sym,typ); 
+    FOR checkpos FROM 1 UPTO scanpos-1 REP 
+       std err := typ = 6; 
+       IF (seqlist[checkpos].sym <> sym) AND (sym <> "*") 
+          THEN IF std err 
+                  THEN error2 := erpos 
+                  ELSE error2 := checkpos 
+               FI 
+       FI; 
+       next symbol (sym, typ) 
+    UNTIL error2 > 0 PER; 
+    IF error1 = 0 
+       THEN error1 := error2 
+    ELIF error1 = erpos 
+       THEN IF (error2 <> 0) AND (error2 <> erpos) 
+               THEN error1 := error2 
+            FI 
+    FI;  
+    IF error1 > 0 
+       THEN error (err [error1]) 
+    FI 
+END PROC check sequence; 
+ 
+INT PROC lower pair (INT CONST upper pair): 
+   INT VAR lower :: upper pair; 
+   set bit (lower,5); 
+   set bit (lower,13); 
+   lower 
+END PROC lower pair; 
+ 
+TEXT PROC lower case (TEXT CONST uppercase): 
+   TEXT VAR lower :: uppercase; 
+   INT VAR x; 
+   IF length(lower) MOD 2 <> 0 
+      THEN lower CAT ""0"" 
+   FI ; 
+   FOR x FROM 1 UPTO length(lower)DIV2 REP 
+      replace (lower,x,lower pair (lower ISUB x)) 
+   PER; 
+   lower  
+END PROC lower case; 
+ 
+PROC copy lines (FILE VAR dest, source): 
+   INT VAR l; 
+   input(source); 
+   output(dest); 
+   FOR l FROM 1 UPTO lines (source) REP 
+      TEXT VAR scratch,test; 
+      getline (source,scratch); 
+      scratch := subtext (scratch,3);
+      test := scratch; 
+      change all (test," ",""); 
+      IF test <> "" 
+         THEN putline (dest, scratch) 
+      FI 
+   PER 
+END PROC copy lines;
+
+.act plotter:
+   plotter[inst plotter]
+ 
+END PACKET graphik configuration; 
+configurate graphik

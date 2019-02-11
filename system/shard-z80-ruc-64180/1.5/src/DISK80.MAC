@@ -1,0 +1,302 @@
+		TITLE	64180-Teil fuer EUMEL-SHard Apple-Disk Unterstuetzung
+
+;		24.05.86, M. Staubermann
+;		Ueberarbeitet: 04.01.87
+
+		INCLUDE	HD64180.LIB
+		.LIST
+		CSEG
+;
+;----------------------------------------------------------------
+;
+;		Globale Adressen
+;
+		GLOBAL	ANALOG, DISKBK, INIDISK
+;
+;----------------------------------------------------------------
+;
+;		Externe Adressen
+;
+		EXTERNAL TO6502, WTEND, TO65WA, ZGERL, RD6502
+		EXTERNAL HGOP, WARTE, MEMDMA
+
+;---------------------------------------------------------------------------
+;
+;	K O N S T A N T E
+;
+;---------------------------------------------------------------------------
+
+SEKTOR		EQU	0F00CH
+LASTTRACK	EQU	0F00DH
+ANALOGWERT	EQU	0F00FH
+TASK		EQU	0F080H
+PARAM		EQU	0F081H
+DEFBYTE		EQU	0F082H
+DISKNO		EQU	0F083H
+TRACK		EQU	0F084H
+DISKERR		EQU	0F086H
+
+BUFPAGE		EQU	0E0H		; Erste Page des Trackpuffers
+
+SEMA:		DEFB	0		; Semaphor fuer Apple-Disk
+LASTDISK:	DEFB	0FFH
+DEFBYTE0:	DEFB	0E0H		; Drive 0
+DEFBYTE1:	DEFB	0E0H		; Drive 1
+
+;---------------------------------------------------------------------------
+;
+;	A N A L O G
+;	Eingang:	E = Nummer des Analogschalters (1..4)
+;	Ausgang:	BC = Analogwert (0..255)
+;
+;---------------------------------------------------------------------------
+
+ANALOG:
+		LD	A,E		; An jedem Kanal moeglich
+		AND	A
+		JR	Z,ILLEGAL	; Nur Analogschalter 1..4
+
+		CP	5
+		JR	NC,ILLEGAL
+
+		LD	H,E		; Parameter ist Analogschalternr.
+		LD	L,6		; Analogport abfragen
+		CALL	TO6502		; Auf Taskende warten
+
+		CALL	WTEND		; Auf Ergebnis warten
+
+		LD	HL,LOW ANALOGWERT
+		CALL	RD6502
+		LD	C,A
+
+		LD	B,0		; Ergebnis in BC
+		POP	HL
+		RET
+
+ILLEGAL:
+		LD	BC,-1
+		POP	HL
+		RET
+
+;---------------------------------------------------------------------------
+;
+;	C H K A C C
+;	Semaphorhandler fuer Apple-Disks
+;
+;	Akku veraendert, warte wird aufgerufen
+;
+CHKACC:
+	LD	A,(SEMA)	; Disk-Zugriffssemaphor
+	AND	A		; 0=frei
+	JR	Z,ISFREE	; Ja ->
+	CALL	WARTE
+	JR	CHKACC
+
+ISFREE:
+	DEC	A
+	LD	(SEMA),A	;Semaphor sperren
+	RET
+
+;---------------------------------------------------------------------------
+;
+;	I N I D I S K
+;	Eingang:	A = Kanalnummer (29, 30)
+;			DE = Schluessel von control 'size'
+;	Ausgang:	BC = Anzahl 512-Byte Bloecke, die auf die Disk passen
+;
+;--------------------------------------------------------------------------
+
+INIDISK:
+		PUSH	HL
+		PUSH	AF
+
+		CALL	CHKACC
+
+		LD	A,0FFH		; Nach der naechsten Operation
+		LD	(LASTDISK),A	; Track neu laden
+
+		LD	C,081H
+		LD	A,D
+		AND	A
+		JR	Z,INIDISK3	; DE = 0, 1, 2
+					; Format ueber Schluessel
+		AND	10000010B	; Bit 7 und Bit 1 ausblenden
+		JR	Z,INIDISK4	; 0: Erphi, 160k
+
+		LD	C,0E0H
+		CP	10B		; 2: Erphi, 640k
+		JR	Z,INIDISK4
+
+		LD	C,0A1H
+		CP	10000000B	; 128: Ehring, 160k
+		JR	Z,INIDISK4
+
+		DEC	C		; 130: Ehring 640k
+		JR	INIDISK4
+
+INIDISK3:
+		LD	A,E		; Kein analytischer Schluessel
+		CP	1
+		JR	Z,INIDISK4	; 1: 40 Tracks
+
+		LD	C,0E0H		; 2 * 80 Tracks		
+INIDISK4:
+		POP	AF
+
+		LD	HL,DEFBYTE0
+		CP	30
+		JR	Z,INIDISK5
+		INC	HL
+INIDISK5:	LD	(HL),C		; Defbyte eintragen
+		LD	HL,SEMA
+		LD	(HL),0		; Semaphor freigeben
+		
+		POP	HL
+
+		BIT	0,C		; 160k oder 640k ?
+		LD	BC,640*2
+		RET	Z
+		LD	BC,160*2
+		RET
+
+;---------------------------------------------------------------------------
+;
+;	D I S K B K
+;	Blockio auf Apple-Drives
+;
+;	Eingang:	A = Kanal (29, 30)
+;			DE = Blocknummer
+;			HL = Hauptspeicheraddresse des Blocks
+;			(HGOP) : 1 = BLOCKOUT, 0 = BLOCKIN
+;	Ausgang:	BC = Fehlercode (0, 1, 2)
+;
+;--------------------------------------------------------------------------
+
+DISKBK:
+		PUSH	DE
+		PUSH	AF		; Kanal merken
+
+		CALL	CHKACC		; Auf freie Diskroutinen warten
+
+		XOR	A		; A := 0
+		LD	B,3
+DIVLOOP:	SRL	D		; DE DIV 8 (Blocks/Track)
+		RR	E
+		RRA
+		DJNZ	DIVLOOP		; E = Tracknummer
+					; D = 0
+		RRA
+		RRA
+		RRA
+		RRA			; A = Sektornummer
+		LD	D,E
+		LD	E,A		; DE = Track/Sektor
+
+		LD	A,(HGOP)	; BLOCKIN oder BLOCKOUT ?
+		DEC	A
+		CALL	Z,TRANSPORT	; BLOCKOUT: 180-RAM --> 6502-RAM
+
+		DI
+		IN0	B,(CBR)
+		LD	C,51H		; Zeropage 6502 einblenden
+		OUT0	(CBR),C
+
+		CALL	ZGERL
+
+		POP	AF		; Kanal zurueck
+		AND	1		; Diskno in A
+		LD	C,A
+		LD	A,(LASTDISK)
+		CP	C
+		JR	Z,DISKBK2
+		LD	A,0FFH
+		LD	(LASTTRACK),A	; Track muss neu geladen werden
+DISKBK2:
+		PUSH	HL
+
+		LD	HL,TRACK
+		LD	(HL),D		; Track
+
+		LD	A,C
+		LD	(LASTDISK),A
+		DEC	HL
+		LD	(HL),C
+
+		LD	A,(DEFBYTE0)
+		DEC	C
+		INC	C
+		JR	Z,DISKBK3
+		LD	A,(DEFBYTE1)
+DISKBK3:
+		DEC	HL
+		LD	(HL),A		; Defbyte
+
+		LD	A,(HGOP)
+		DEC	A		; Read/Write Param
+		DEC	HL
+		LD	(HL),A
+
+		LD	A,E		; Sektor
+		LD	(SEKTOR),A
+
+		DEC	HL
+		LD	(HL),1		; Task: Disk R/W starten
+
+		OUT0	(CBR),B
+		EI
+
+		CALL	TO65WA		; Auf Beendigung der Task warten
+					; EUMEL-'warte' wird aufgerufen!
+		LD	HL,LOW DISKERR
+		CALL	RD6502
+		POP	HL
+
+		PUSH	AF
+		LD	A,(HGOP)
+		DEC	A
+		CALL	NZ,TRANSPORT
+		POP	AF
+		LD	BC,2
+		DEC	A
+		JR	Z,DISKBK1	; 2 = Diskettenfehler
+		DEC	BC
+		DEC	A
+		JR	Z,DISKBK1	; 1 = Writeprotected
+		DEC	BC		; 0 = ok
+DISKBK1:
+		XOR	A
+		LD	(SEMA),A
+		POP	DE
+		RET
+
+
+;............................................................................
+;
+;	Falls HGOP = 0:
+;		2 Sektoren (E, E+1) aus Basisspeicher --> 64180 (HL)
+;	Falls HGOP = 1:
+;		2 Sektoren aus 64180-RAM (HL) --> Basisspeicher (E, E+1)
+;
+;	Eingang: E = Sektornummer (muss gerade sein)
+;		 HL = Hauptspeicheradresse
+;	Ausgang: A, BC, HL veraendert
+ 
+TRANSPORT:	PUSH	HL
+		PUSH	DE
+		LD	A,E		; Sektor
+		EX	DE,HL		; HL (log. Adr.) --> DE
+
+		AND	0FH		; 0..15
+		OR	BUFPAGE		; Highbyte des Trackbuffers 6502
+		LD	H,A		; phys. Adr. berechnen
+		LD	L,0
+		LD	BC,512		; 512 Bytes uebertragen
+		LD	A,(HGOP)	; Transferrichtung
+
+		CALL	MEMDMA		; DMA-Transfer
+		POP	DE
+		POP	HL
+		RET
+
+		END
+
