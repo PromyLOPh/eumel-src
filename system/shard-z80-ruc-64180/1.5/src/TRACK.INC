@@ -164,4 +164,3 @@ write_it
 	  .printx   'Ende'
 
 ; Ende von NIBLE.INC
-

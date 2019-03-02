@@ -464,4 +464,3 @@ scrtab: dw      clear,erapag,eralin,normal,invers,schome,gotoxy,up,advanc
 ;	CRTRET anstelle von chacur
 
 ; Ende von CONOUT3.INC
-

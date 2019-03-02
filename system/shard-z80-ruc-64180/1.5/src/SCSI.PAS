@@ -269,4 +269,3 @@ FUNCTION floppy_blocknummer (eumel_blocknummer : INTEGER) : INTEGER ;
  END ;
 
 
-

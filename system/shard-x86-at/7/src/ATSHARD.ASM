@@ -59,7 +59,8 @@ com4irq  equ 7
 com4_1base equ 02c0h
 com4_1irq  equ 3
 com4_2base equ 02c8h
-com4_2irq  equ 3Šcom4_3base equ 02d0h
+com4_2irq  equ 3
+com4_3base equ 02d0h
 com4_3irq  equ 3
 com4_4base equ 02d8h
 com4_4irq  equ 3
@@ -111,7 +112,8 @@ alterable_channels:
      channel 31,archive,archive_0
      channel 30,archive,archive_1
      channel -1,nilchannel,0
- Š     include I8250.ASM
+ 
+     include I8250.ASM
      include PCPAR.ASM
      include STREAM.ASM
      include NILCHAN.ASM
@@ -153,4 +155,3 @@ code ends
      end los_gehts
 
 
-

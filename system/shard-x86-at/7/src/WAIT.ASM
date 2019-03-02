@@ -173,4 +173,3 @@ device_timeout_table:
      db 0
      db 0
 
-

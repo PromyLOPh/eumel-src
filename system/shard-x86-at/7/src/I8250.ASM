@@ -434,4 +434,3 @@ i8250_sendbreak:
      out dx,al
      sti
      ret
-

@@ -14,4 +14,3 @@ bb_anz dw 0
 bt_table dw 8 DUP (-1)   ;diese kopf/spur Kombination ist unmoeglich
 bt_replace dw 8 DUP (-1) ;ersatz
      endif
-

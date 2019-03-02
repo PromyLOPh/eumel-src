@@ -15,13 +15,13 @@
 ;    Lesezugriffe bis Block 6 auf Floppy werden immer erlaubt
 ;2.5 Hercules Karte wird unterstuetzt
 ;    Bei AT werden schlechte sectoren statt spuren behandelt
-;2.6 Fehler in Plattengr”áe bei behoben (meldete immer al <> 0)
+;2.6 Fehler in PlattengrÃ¶ÃŸe bei behoben (meldete immer al <> 0)
 ;2.7 Floppylogik fuer 1.7.3 restauriert, Floppy steht jetzt immer
 ;    auf 360k, wenn keine Floppy erkannt wird, und der Urlader die
 ;    HG-Version 1742 hat.
 ;    die Schnittstellen der Addonics-Karte sind jetzt immer mit drin,
 ;    wenn COM4 generiert sind.
-;    Die Druckerkan„le liegen auf 15,14,16
+;    Die DruckerkanÃ¤le liegen auf 15,14,16
 ;    Die Baudrateabfrage verneint auch 0
 
 los_gehts:
@@ -423,4 +423,3 @@ no_eumel_partition_text:
 endtext:
 
 lastbootbyte:
-

@@ -53,7 +53,8 @@ com2base equ 02f8h
 com4_1base equ 03e8h
 com4_1irq  equ 3
 com4_2base equ 03e0h
-com4_2irq  equ 3Šcom4_3base equ 02f0h
+com4_2irq  equ 3
+com4_3base equ 02f0h
 com4_3irq  equ 3
 com4_4base equ 02e8h
 com4_4irq  equ 3
@@ -67,7 +68,8 @@ com8_3irq  equ 3
 com4_1base equ 02c0h
 com4_1irq  equ 3
 com4_2base equ 02c8h
-com4_2irq  equ 3Šcom4_3base equ 02d0h
+com4_2irq  equ 3
+com4_3base equ 02d0h
 com4_3irq  equ 3
 com4_4base equ 02d8h
 com4_4irq  equ 3
@@ -82,7 +84,8 @@ com8_4irq  equ 3
 add4_3base equ 03e8h
 add4_3irq  equ 3
 add4_4base equ 03e0h
-add4_4irq  equ 3Šadd4_8base equ 0260h
+add4_4irq  equ 3
+add4_8base equ 0260h
 add4_8irq  equ 3
  endif
 ast0_1base equ 01a0h
@@ -220,4 +223,3 @@ code ends
      end los_gehts
 
 
-

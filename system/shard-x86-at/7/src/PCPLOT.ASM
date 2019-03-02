@@ -427,4 +427,3 @@ mod_tb_length equ $-mod_tables
      db 1                        ;1 = 4 segmente, 0 = 2 segmente
      db 7                        ;maske, um si MOD pixel_pro_byte zu machen
      dw 0b000h,0b200h,0b400h,0b600h ;die vier segmente
-     

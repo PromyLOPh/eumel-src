@@ -223,4 +223,3 @@ para_get_port:
      mov dx,es:[8+bx]              ;printer basis adresse holen
      or dx,dx                      ;0?
      ret
-

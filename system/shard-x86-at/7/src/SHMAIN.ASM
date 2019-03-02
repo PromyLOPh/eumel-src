@@ -238,4 +238,3 @@ i_sysend proc far
      call control32           ;laufwerk parken, wenn implementiert
      ret
 i_sysend endp
-

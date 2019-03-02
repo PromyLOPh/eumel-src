@@ -33,7 +33,6 @@ if __name__ == '__main__':
 
     destdir = '_build'
     f = sys.argv[1]
-    print (f)
 
     basedir = os.path.dirname (f)
     basedestdir = os.path.join (destdir, basedir)
@@ -44,10 +43,12 @@ if __name__ == '__main__':
     try:
         with open (f, 'r') as srcfd:
             code = srcfd.read ()
-    except UnicodeDecodeError:
-        # that’s fine
+    except UnicodeDecodeError as e:
+        # that’s expected for data files
+        print ('skipping', f, e)
         sys.exit (0)
 
+    print (f)
     lexer = get_lexer_by_name("elan", stripall=True)
     formatter = HtmlFormatter (linenos=True, lineanchors='line', anchorlinenos=True)
     with open (destf, 'w') as destfd:

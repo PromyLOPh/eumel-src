@@ -51,4 +51,3 @@ devicetype:
      mov ch,0                      ;hoeherwertige teil immer null
      mov cl,shard:(si+devtype)     ;type dazu
      ret
-

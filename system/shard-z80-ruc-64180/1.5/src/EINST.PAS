@@ -506,4 +506,4 @@ BEGIN { MAIN }
      writeln ('SHard erfolgreich auf Floppy installiert.')
     END
  ELSE writeln ('Kein SHard installiert.')
-END.
+END.
